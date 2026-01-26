@@ -1,0 +1,2635 @@
+"use client";
+
+import { useEffect, useState, type ReactNode } from "react";
+import { useRouter } from "next/navigation";
+import Link from "next/link";
+import { createClient } from "@supabase/supabase-js";
+
+type Checklist = {
+  id: string;
+  cliente: string;
+  nome_checklist: string;
+  proforma: string | null;
+  magazzino_importazione: string | null;
+  tipo_saas: string | null;
+  saas_tipo: string | null;
+  saas_piano: string | null;
+  saas_scadenza: string | null;
+  saas_stato: string | null;
+  saas_note: string | null;
+  m2_inclusi: number | null;
+  m2_allocati: number | null;
+  ultra_interventi_illimitati: boolean | null;
+  ultra_interventi_inclusi: number | null;
+  data_prevista: string | null;
+  data_tassativa: string | null;
+  tipo_impianto: string | null;
+  dimensioni: string | null;
+  passo: string | null;
+  note: string | null;
+  tipo_struttura: string | null;
+  noleggio_vendita: string | null;
+  fine_noleggio: string | null;
+  mercato: string | null;
+  modello: string | null;
+  stato_progetto: string | null;
+  data_installazione_reale: string | null;
+  garanzia_scadenza: string | null;
+  created_at: string;
+  updated_at: string | null;
+  created_by_operatore: string | null;
+  updated_by_operatore: string | null;
+};
+
+type ChecklistItem = {
+  id: string;
+  checklist_id: string;
+  codice: string | null;
+  descrizione: string | null;
+  quantita: number | null;
+  note: string | null;
+  created_at: string;
+};
+
+type ChecklistItemRow = {
+  id?: string;
+  client_id: string;
+  codice: string;
+  descrizione: string;
+  descrizione_custom?: string;
+  quantita: string;
+  note: string;
+  search?: string;
+};
+
+type ChecklistTask = {
+  id: string;
+  sezione: number | string;
+  ordine: number | null;
+  titolo: string;
+  stato: string;
+  note: string | null;
+  task_template_id: string | null;
+  updated_at: string | null;
+  updated_by_operatore: string | null;
+  operatori?: {
+    id: string;
+    nome: string | null;
+  } | null;
+};
+
+type CatalogItem = {
+  id: string;
+  codice: string | null;
+  descrizione: string | null;
+  tipo: string | null;
+  attivo: boolean;
+};
+
+type Licenza = {
+  id: string;
+  checklist_id: string;
+  tipo: string | null;
+  scadenza: string | null;
+  stato: string | null;
+  note: string | null;
+  created_at: string | null;
+};
+
+type NewLicenza = {
+  tipo: string;
+  scadenza: string;
+  note: string;
+};
+
+type ChecklistDocument = {
+  id: string;
+  checklist_id: string;
+  tipo: string | null;
+  filename: string;
+  storage_path: string;
+  uploaded_at: string | null;
+  uploaded_by_operatore: string | null;
+};
+
+type AlertOperatore = {
+  id: string;
+  nome: string | null;
+  attivo: boolean;
+  alert_enabled: boolean;
+  alert_tasks: {
+    task_template_ids: string[];
+    all_task_status_change: boolean;
+  };
+};
+
+type ContrattoRow = {
+  id: string;
+  cliente: string;
+  piano_codice: string | null;
+  scadenza: string | null;
+  interventi_annui: number | null;
+  illimitati: boolean | null;
+  created_at: string | null;
+};
+
+type FormData = {
+  cliente: string;
+  nome_checklist: string;
+  proforma: string;
+  magazzino_importazione: string;
+  saas_tipo: string | null;
+  saas_piano: string | null;
+  saas_scadenza: string;
+  saas_stato: string;
+  saas_note: string;
+  data_prevista: string;
+  data_tassativa: string;
+  tipo_impianto: string;
+  dimensioni: string;
+  passo: string;
+  note: string;
+  tipo_struttura: string;
+  noleggio_vendita: string;
+  fine_noleggio: string;
+  mercato: string;
+  modello: string;
+  stato_progetto: string;
+  data_installazione_reale: string;
+  garanzia_scadenza: string;
+};
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+);
+
+function toDateInput(value?: string | null) {
+  if (!value) return "";
+  return value.slice(0, 10);
+}
+
+function isFiniteNumberString(v: string) {
+  if (v.trim() === "") return false;
+  const n = Number(v);
+  return Number.isFinite(n);
+}
+
+function isCustomCode(code: string) {
+  return code.trim().toUpperCase() === "CUSTOM";
+}
+
+function parseNum(v: any): number | null {
+  if (v === null || v === undefined) return null;
+  const s = String(v).trim().replace(",", ".");
+  if (!s) return null;
+  const n = Number(s);
+  return Number.isFinite(n) ? n : null;
+}
+
+function taskStyle(stato: string) {
+  if (stato === "OK") {
+    return { background: "#dcfce7", color: "#166534" };
+  }
+  if (stato === "DA_FARE") {
+    return { background: "#fee2e2", color: "#991b1b" };
+  }
+  if (stato === "NON_NECESSARIO") {
+    return { background: "#f3f4f6", color: "#374151" };
+  }
+  return {};
+}
+
+function normalizeCustomCode(code: string) {
+  return isCustomCode(code) ? "CUSTOM" : code;
+}
+
+function calcM2(dimensioni: string | null): number | null {
+  if (!dimensioni) return null;
+  const raw = dimensioni.replace(/\s+/g, "").replace(/,/g, ".");
+  const parts = raw.split("x");
+  if (parts.length !== 2) return null;
+  const w = Number(parts[0]);
+  const h = Number(parts[1]);
+  if (!Number.isFinite(w) || !Number.isFinite(h) || w <= 0 || h <= 0) return null;
+  const m2 = w * h;
+  return Math.round(m2 * 100) / 100;
+}
+
+function logSupabaseError(label: string, err: any) {
+  const payload = {
+    label,
+    name: err?.name,
+    message: err?.message,
+    details: err?.details,
+    hint: err?.hint,
+    code: err?.code,
+    status: err?.status,
+    statusText: err?.statusText,
+    keys: err ? Object.getOwnPropertyNames(err) : [],
+    raw: err,
+  };
+  console.error("SUPABASE ERROR:", payload);
+  return payload;
+}
+
+function parseLocalDay(value?: string | null): Date | null {
+  if (!value) return null;
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(value);
+  if (m) {
+    const y = Number(m[1]);
+    const mo = Number(m[2]) - 1;
+    const d = Number(m[3]);
+    const dt = new Date(y, mo, d);
+    return Number.isFinite(dt.getTime()) ? dt : null;
+  }
+  const dt = new Date(value);
+  if (!Number.isFinite(dt.getTime())) return null;
+  dt.setHours(0, 0, 0, 0);
+  return dt;
+}
+
+function getExpiryStatus(value?: string | null): "ATTIVA" | "SCADUTA" | "—" {
+  const dt = parseLocalDay(value);
+  if (!dt) return "—";
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return dt < today ? "SCADUTA" : "ATTIVA";
+}
+
+function renderBadge(label: string) {
+  const upper = label.toUpperCase();
+  let bg = "#e5e7eb";
+  let color = "#374151";
+  if (upper === "ATTIVA") {
+    bg = "#dcfce7";
+    color = "#166534";
+  } else if (upper === "SCADUTA") {
+    bg = "#fee2e2";
+    color = "#991b1b";
+  }
+  return (
+    <span
+      style={{
+        display: "inline-block",
+        padding: "2px 8px",
+        borderRadius: 999,
+        fontSize: 12,
+        fontWeight: 700,
+        background: bg,
+        color,
+      }}
+    >
+      {upper}
+    </span>
+  );
+}
+
+function getNextLicenzaScadenza(licenze: Array<{ scadenza?: string | null }>) {
+  const dates = licenze
+    .map((l) => l.scadenza)
+    .filter((d): d is string => Boolean(d));
+  if (dates.length === 0) return null;
+  return dates.slice().sort((a, b) => String(a).localeCompare(String(b)))[0] ?? null;
+}
+
+function ServiceRow({
+  label,
+  left,
+  right,
+}: {
+  label: string;
+  left: ReactNode;
+  right?: ReactNode;
+}) {
+  return (
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: "180px 1fr 140px",
+        gap: 12,
+        alignItems: "center",
+        padding: "10px 0",
+        borderBottom: "1px solid #f1f1f1",
+      }}
+    >
+      <div style={{ fontSize: 12, opacity: 0.75, fontWeight: 700 }}>{label}</div>
+      <div>{left}</div>
+      <div style={{ display: "flex", justifyContent: "flex-end" }}>{right ?? "—"}</div>
+    </div>
+  );
+}
+
+function ServiziBox({
+  title,
+  children,
+}: {
+  title: string;
+  children: ReactNode;
+}) {
+  return (
+    <div
+      style={{
+        border: "1px solid #eee",
+        borderRadius: 12,
+        padding: 12,
+        background: "white",
+      }}
+    >
+      <div style={{ fontWeight: 800, marginBottom: 6 }}>{title}</div>
+      <div>{children}</div>
+    </div>
+  );
+}
+
+function FieldRow({
+  label,
+  view,
+  edit,
+  isEdit,
+}: {
+  label: string;
+  view: ReactNode;
+  edit?: ReactNode;
+  isEdit?: boolean;
+}) {
+  return (
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: "220px 1fr",
+        gap: 12,
+        alignItems: "center",
+        padding: "8px 0",
+        borderBottom: "1px solid #f1f1f1",
+      }}
+    >
+      <div style={{ fontSize: 12, opacity: 0.75, fontWeight: 700 }}>{label}</div>
+      <div>{isEdit && edit !== undefined ? edit : view}</div>
+    </div>
+  );
+}
+
+function getLicenzaStatusLabel(lic: Licenza) {
+  return getExpiryStatus(lic.scadenza);
+}
+
+export default function ChecklistDetailPage({ params }: { params: any }) {
+  const router = useRouter();
+  const [id, setId] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [checklist, setChecklist] = useState<Checklist | null>(null);
+  const [formData, setFormData] = useState<FormData | null>(null);
+  const [originalData, setOriginalData] = useState<FormData | null>(null);
+  const [editMode, setEditMode] = useState(false);
+  const [rows, setRows] = useState<ChecklistItemRow[]>([]);
+  const [originalRowIds, setOriginalRowIds] = useState<string[]>([]);
+  const [tasks, setTasks] = useState<ChecklistTask[]>([]);
+  const [catalogItems, setCatalogItems] = useState<CatalogItem[]>([]);
+  const [catalogLoaded, setCatalogLoaded] = useState(false);
+  const [licenze, setLicenze] = useState<Licenza[]>([]);
+  const [newLicenza, setNewLicenza] = useState<NewLicenza>({
+    tipo: "",
+    scadenza: "",
+    note: "",
+  });
+  const [licenzeError, setLicenzeError] = useState<string | null>(null);
+  const [documents, setDocuments] = useState<ChecklistDocument[]>([]);
+  const [docType, setDocType] = useState("");
+  const [docFile, setDocFile] = useState<File | null>(null);
+  const [docError, setDocError] = useState<string | null>(null);
+  const [itemsError, setItemsError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [currentOperatoreId, setCurrentOperatoreId] = useState<string>("");
+  const [operatoriMap, setOperatoriMap] = useState<Map<string, string>>(new Map());
+  const [alertOperatori, setAlertOperatori] = useState<AlertOperatore[]>([]);
+  const [alertTask, setAlertTask] = useState<ChecklistTask | null>(null);
+  const [alertDestinatarioId, setAlertDestinatarioId] = useState("");
+  const [alertMessaggio, setAlertMessaggio] = useState("");
+  const [alertNotice, setAlertNotice] = useState<string | null>(null);
+  const [lastAlertByTask, setLastAlertByTask] = useState<
+    Map<string, { toOperatoreId: string; createdAt: string }>
+  >(new Map());
+  const [contrattoUltra, setContrattoUltra] = useState<ContrattoRow | null>(null);
+  const [contrattoUltraNome, setContrattoUltraNome] = useState<string | null>(null);
+  const [interventiInclusiUsati, setInterventiInclusiUsati] = useState<number>(0);
+
+  function normalizeAlertTasks(input: any) {
+    if (!input) {
+      return { task_template_ids: [], all_task_status_change: false };
+    }
+    if (Array.isArray(input)) {
+      return {
+        task_template_ids: input.filter(Boolean).map(String),
+        all_task_status_change: false,
+      };
+    }
+    if (typeof input === "object") {
+      const ids = Array.isArray(input.task_template_ids)
+        ? input.task_template_ids.filter(Boolean).map(String)
+        : [];
+      const all = Boolean(input.all_task_status_change);
+      return { task_template_ids: ids, all_task_status_change: all };
+    }
+    return { task_template_ids: [], all_task_status_change: false };
+  }
+
+  function buildFormData(c: Checklist): FormData {
+    return {
+      cliente: c.cliente ?? "",
+      nome_checklist: c.nome_checklist ?? "",
+      proforma: c.proforma ?? "",
+      magazzino_importazione: c.magazzino_importazione ?? "",
+      saas_tipo: null,
+      saas_piano: c.saas_piano ?? "",
+      saas_scadenza: toDateInput(c.saas_scadenza),
+      saas_stato: c.saas_stato ?? "",
+      saas_note: c.saas_note ?? "",
+      data_prevista: toDateInput(c.data_prevista),
+      data_tassativa: toDateInput(c.data_tassativa),
+      tipo_impianto: c.tipo_impianto ?? "",
+      dimensioni: c.dimensioni ?? "",
+      passo: c.passo ?? "",
+      note: c.note ?? "",
+      tipo_struttura: c.tipo_struttura ?? "",
+      noleggio_vendita: c.noleggio_vendita ?? "",
+      fine_noleggio: toDateInput(c.fine_noleggio),
+      mercato: c.mercato ?? "",
+      modello: c.modello ?? "",
+      stato_progetto: c.stato_progetto ?? "IN_CORSO",
+      data_installazione_reale: toDateInput(c.data_installazione_reale),
+      garanzia_scadenza: toDateInput(c.garanzia_scadenza),
+    };
+  }
+
+  async function load(id: string) {
+    setLoading(true);
+    setError(null);
+    setItemsError(null);
+
+    const { data: head, error: err1 } = await supabase
+      .from("checklists")
+      .select("*")
+      .eq("id", id)
+      .single();
+
+    if (err1) {
+      setError("Errore caricamento checklist: " + err1.message);
+      setLoading(false);
+      return;
+    }
+
+    const { data: items, error: err2 } = await supabase
+      .from("checklist_items")
+      .select("*")
+      .eq("checklist_id", id)
+      .order("created_at", { ascending: true });
+
+    if (err2) {
+      setError("Errore caricamento righe: " + err2.message);
+      setLoading(false);
+      return;
+    }
+
+    const { data: tasks, error: tasksErr } = await supabase
+      .from("checklist_tasks")
+      .select(
+        "id, sezione, ordine, titolo, stato, note, task_template_id, updated_at, updated_by_operatore, operatori:updated_by_operatore ( id, nome )"
+      )
+      .eq("checklist_id", id)
+      .order("sezione", { ascending: true })
+      .order("ordine", { ascending: true });
+
+    if (tasksErr) {
+      setError("Errore caricamento task: " + tasksErr.message);
+      setLoading(false);
+      return;
+    }
+
+    const { data: licenzeData, error: licenzeErr } = await supabase
+      .from("licenses")
+      .select("id, checklist_id, tipo, scadenza, stato, note, created_at")
+      .eq("checklist_id", id)
+      .order("created_at", { ascending: false });
+
+    if (licenzeErr) {
+      setError("Errore caricamento licenze: " + licenzeErr.message);
+      setLoading(false);
+      return;
+    }
+
+    const { data: docsData, error: docsErr } = await supabase
+      .from("checklist_documents")
+      .select(
+        "id, checklist_id, tipo, filename, storage_path, uploaded_at, uploaded_by_operatore"
+      )
+      .eq("checklist_id", id)
+      .order("uploaded_at", { ascending: false });
+
+    if (docsErr) {
+      setError("Errore caricamento documenti: " + docsErr.message);
+      setLoading(false);
+      return;
+    }
+
+    if (!catalogLoaded) {
+      const { data: catalogData, error: catalogErr } = await supabase
+        .from("catalog_items")
+        .select("id, codice, descrizione, tipo, attivo")
+        .eq("attivo", true)
+        .order("descrizione", { ascending: true });
+
+      if (catalogErr) {
+        console.error("Errore caricamento catalogo", catalogErr);
+      } else {
+        setCatalogItems((catalogData || []) as CatalogItem[]);
+      }
+      setCatalogLoaded(true);
+    }
+
+    const headChecklist = head as Checklist;
+    const mappedRows: ChecklistItemRow[] = (items || []).map((r) => {
+      const code = normalizeCustomCode(r.codice ?? "");
+      const isCustom = isCustomCode(code);
+      return {
+        id: r.id,
+        client_id: r.id,
+        codice: code,
+        descrizione: isCustom ? "Altro / Fuori catalogo" : r.descrizione ?? "",
+        descrizione_custom: isCustom ? r.descrizione ?? "" : "",
+        quantita: r.quantita != null ? String(r.quantita) : "",
+        note: r.note ?? "",
+        search: "",
+      };
+    });
+
+    const clienteKey = String(headChecklist.cliente ?? "").trim();
+
+    let activeContratto: ContrattoRow | null = null;
+    let ultraNome: string | null = null;
+    if (clienteKey) {
+      const { data: contrattiData, error: contrattiErr } = await supabase
+        .from("saas_contratti")
+        .select("id, cliente, piano_codice, scadenza, interventi_annui, illimitati, created_at")
+        .ilike("cliente", `%${clienteKey}%`)
+        .order("created_at", { ascending: false });
+
+      if (!contrattiErr) {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const rows = (contrattiData || []) as ContrattoRow[];
+        activeContratto =
+          rows.find((r) => {
+            if (!r.scadenza) return true;
+            const dt = parseLocalDay(r.scadenza);
+            return dt != null && dt >= today;
+          }) || (rows.length > 0 ? rows[0] : null);
+      }
+
+      if (activeContratto?.piano_codice) {
+        const { data: pianoRow } = await supabase
+          .from("saas_piani")
+          .select("codice, nome")
+          .eq("codice", activeContratto.piano_codice)
+          .maybeSingle();
+        ultraNome = (pianoRow as any)?.nome ?? null;
+      }
+
+      if (activeContratto?.id) {
+        const { count } = await supabase
+          .from("saas_interventi")
+          .select("id", { count: "exact", head: true })
+          .eq("contratto_id", activeContratto.id)
+          .eq("incluso", true);
+        setInterventiInclusiUsati(count ?? 0);
+      } else {
+        setInterventiInclusiUsati(0);
+      }
+    }
+
+    setContrattoUltra(activeContratto);
+    setContrattoUltraNome(ultraNome);
+    setChecklist(headChecklist);
+    setRows(mappedRows);
+    setOriginalRowIds((items || []).map((r) => r.id));
+    setTasks((tasks || []) as ChecklistTask[]);
+    setLicenze((licenzeData || []) as Licenza[]);
+    setDocuments((docsData || []) as ChecklistDocument[]);
+
+    const { data: alertData, error: alertErr } = await supabase
+      .from("checklist_alert_log")
+      .select("task_id, to_operatore_id, created_at")
+      .eq("checklist_id", id)
+      .order("created_at", { ascending: false });
+    if (!alertErr) {
+      const map = new Map<string, { toOperatoreId: string; createdAt: string }>();
+      (alertData || []).forEach((r: any) => {
+        if (!map.has(r.task_id)) {
+          map.set(r.task_id, {
+            toOperatoreId: r.to_operatore_id,
+            createdAt: r.created_at,
+          });
+        }
+      });
+      setLastAlertByTask(map);
+    }
+
+    const nextForm = buildFormData(headChecklist);
+    setFormData(nextForm);
+    setOriginalData(nextForm);
+    setLoading(false);
+  }
+
+  useEffect(() => {
+    let alive = true;
+
+    (async () => {
+      // In Next.js 15 `params` may be a Promise. Resolve it safely.
+      const resolved = await Promise.resolve(params);
+      const nextId = resolved?.id as string | undefined;
+      if (!alive) return;
+
+      if (!nextId) {
+        setError("Parametro ID mancante");
+        setLoading(false);
+        return;
+      }
+
+      setId(nextId);
+      await load(nextId);
+    })();
+
+    return () => {
+      alive = false;
+    };
+  }, [params]);
+
+  useEffect(() => {
+    const stored =
+      typeof window !== "undefined" ? window.localStorage.getItem("current_operatore_id") : null;
+    if (stored) setCurrentOperatoreId(stored);
+  }, []);
+
+  useEffect(() => {
+    (async () => {
+      const { data, error: opErr } = await supabase
+        .from("operatori")
+        .select("id, nome, attivo, alert_enabled, alert_tasks");
+      if (opErr) {
+        console.error("Errore caricamento operatori", opErr);
+        return;
+      }
+      const map = new Map<string, string>();
+      const list: AlertOperatore[] = (data || []).map((o: any) => ({
+        id: o.id,
+        nome: o.nome ?? null,
+        attivo: Boolean(o.attivo),
+        alert_enabled: Boolean(o.alert_enabled),
+        alert_tasks: normalizeAlertTasks(o.alert_tasks),
+      }));
+      (data || []).forEach((o: any) => {
+        if (o?.id) map.set(o.id, o.nome ?? o.id);
+      });
+      setOperatoriMap(map);
+      setAlertOperatori(list);
+    })();
+  }, []);
+
+  if (loading) return <div style={{ padding: 20 }}>Caricamento…</div>;
+  if (error) return <div style={{ padding: 20, color: "crimson" }}>{error}</div>;
+  if (!checklist) return <div style={{ padding: 20 }}>Checklist non trovata</div>;
+
+  const strutturaOptions = catalogItems.filter((item) => {
+    const code = (item.codice ?? "").toUpperCase();
+    return code.startsWith("STR-") || code === "TEC-STRCT";
+  });
+
+  function updateRowFields(idx: number, patch: Partial<ChecklistItemRow>) {
+    setRows((prev) => {
+      const copy = [...prev];
+      copy[idx] = { ...copy[idx], ...patch };
+      return copy;
+    });
+  }
+
+  function getEligibleOperatori(task: ChecklistTask | null) {
+    if (!task) return [];
+    return alertOperatori.filter((o) => {
+      if (!o.attivo || !o.alert_enabled) return false;
+      if (o.alert_tasks?.all_task_status_change) return true;
+      if (!task.task_template_id) return true;
+      return o.alert_tasks?.task_template_ids?.includes(task.task_template_id);
+    });
+  }
+
+  async function sendAlert() {
+    if (!alertTask || !checklist) return;
+    if (!alertDestinatarioId) {
+      alert("Seleziona un destinatario.");
+      return;
+    }
+    if (!currentOperatoreId) {
+      alert("Seleziona un operatore corrente in dashboard prima di inviare.");
+      return;
+    }
+
+    let taskTemplateId = alertTask.task_template_id;
+    if (!taskTemplateId) {
+      let sezioneNorm = "";
+      if (typeof alertTask.sezione === "number") {
+        sezioneNorm =
+          alertTask.sezione === 0
+            ? "DOCUMENTI"
+            : `SEZIONE ${alertTask.sezione}`;
+      } else {
+        sezioneNorm = String(alertTask.sezione || "")
+          .toUpperCase()
+          .replace(/_/g, " ")
+          .trim();
+      }
+
+      const { data: tpl } = await supabase
+        .from("checklist_task_templates")
+        .select("id")
+        .eq("sezione", sezioneNorm)
+        .eq("titolo", alertTask.titolo)
+        .limit(1)
+        .maybeSingle();
+
+      if (tpl?.id) {
+        taskTemplateId = tpl.id;
+        await supabase
+          .from("checklist_tasks")
+          .update({ task_template_id: taskTemplateId })
+          .eq("id", alertTask.id);
+        setTasks((prev) =>
+          prev.map((t) =>
+            t.id === alertTask.id ? { ...t, task_template_id: taskTemplateId } : t
+          )
+        );
+      }
+    }
+
+    if (!taskTemplateId) {
+      alert("Task senza template associato.");
+      return;
+    }
+
+    const payload = {
+      checklist_id: checklist.id,
+      task_id: alertTask.id,
+      task_template_id: taskTemplateId,
+      to_operatore_id: alertDestinatarioId,
+      from_operatore_id: currentOperatoreId,
+      messaggio: alertMessaggio.trim() ? alertMessaggio.trim() : null,
+      canale: "manual",
+    };
+
+    const { error: insErr } = await supabase
+      .from("checklist_alert_log")
+      .insert(payload);
+    if (insErr) {
+      alert("Errore invio alert: " + insErr.message);
+      return;
+    }
+
+    setAlertNotice("Alert registrato (nessuna email inviata).");
+    setTimeout(() => setAlertNotice(null), 2500);
+    alert("Alert registrato (nessuna email inviata).");
+    setLastAlertByTask((prev) => {
+      const next = new Map(prev);
+      next.set(alertTask.id, {
+        toOperatoreId: alertDestinatarioId,
+        createdAt: new Date().toISOString(),
+      });
+      return next;
+    });
+    setAlertTask(null);
+    setAlertDestinatarioId("");
+    setAlertMessaggio("");
+  }
+
+  function addRow() {
+    const clientId = `new-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    setRows((prev) => [
+      ...prev,
+      {
+        client_id: clientId,
+        codice: "",
+        descrizione: "",
+        descrizione_custom: "",
+        quantita: "",
+        note: "",
+        search: "",
+      },
+    ]);
+  }
+
+  function removeRow(idx: number) {
+    setRows((prev) => prev.filter((_, i) => i !== idx));
+  }
+
+  async function addLicenza() {
+    if (!id) return;
+    if (newLicenza.tipo.trim() === "") {
+      setLicenzeError("Inserisci almeno il tipo licenza.");
+      return;
+    }
+    setLicenzeError(null);
+    if (newLicenza.scadenza.trim() === "") {
+      setItemsError("Inserisci la scadenza della licenza.");
+      alert("Inserisci la scadenza della licenza.");
+      return;
+    }
+    const rawScadenza = newLicenza.scadenza.trim();
+    let scadenzaISO = rawScadenza;
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(rawScadenza)) {
+      const parsed = new Date(rawScadenza);
+      if (Number.isFinite(parsed.getTime())) {
+        scadenzaISO = parsed.toISOString().slice(0, 10);
+      }
+    }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(scadenzaISO)) {
+      setItemsError("Scadenza non valida (usa il formato YYYY-MM-DD).");
+      alert("Scadenza non valida (usa il formato YYYY-MM-DD).");
+      return;
+    }
+    const payload = {
+      checklist_id: id,
+      tipo: newLicenza.tipo.trim() ? newLicenza.tipo.trim() : null,
+      scadenza: scadenzaISO,
+      stato: "attiva",
+      note: newLicenza.note.trim() ? newLicenza.note.trim() : null,
+    };
+    console.log("LICENSE PAYLOAD", payload);
+    const { error: insertErr } = await supabase.from("licenses").insert(payload);
+    if (insertErr) {
+      const e = logSupabaseError("insert licenses", insertErr);
+      const msg = e.message || "Errore inserimento licenza";
+      alert(msg);
+      setItemsError(msg);
+      return;
+    }
+    setLicenzeError(null);
+    setNewLicenza({ tipo: "", scadenza: "", note: "" });
+    await load(id);
+  }
+
+  async function updateLicenzaStato(
+    licenzaId: string,
+    nextStato: "attiva" | "disattivata"
+  ) {
+    if (!id) return;
+    const { error: updateErr } = await supabase
+      .from("licenses")
+      .update({ stato: nextStato })
+      .eq("id", licenzaId);
+    if (updateErr) {
+      console.error("Errore aggiornamento licenza", updateErr);
+      setItemsError("Errore aggiornamento licenza: " + updateErr.message);
+      alert("Errore aggiornamento licenza: " + updateErr.message);
+      return;
+    }
+    await load(id);
+  }
+
+  async function uploadDocument() {
+    if (!id) return;
+    if (!docFile) {
+      setDocError("Seleziona un file.");
+      return;
+    }
+    if (!docType) {
+      setDocError("Seleziona il tipo documento.");
+      return;
+    }
+    setDocError(null);
+
+    const safeName = docFile.name.replace(/\s+/g, "_");
+    const storagePath = `checklists/${id}/${Date.now()}_${safeName}`;
+
+    const { error: uploadErr } = await supabase.storage
+      .from("checklist-documents")
+      .upload(storagePath, docFile, { upsert: false });
+
+    if (uploadErr) {
+      alert("Errore upload documento: " + uploadErr.message);
+      return;
+    }
+
+    const payload = {
+      checklist_id: id,
+      tipo: docType,
+      filename: docFile.name,
+      storage_path: storagePath,
+      uploaded_by_operatore: currentOperatoreId || null,
+    };
+
+    const { error: insErr } = await supabase
+      .from("checklist_documents")
+      .insert(payload);
+
+    if (insErr) {
+      alert("Errore salvataggio documento: " + insErr.message);
+      return;
+    }
+
+    setDocType("");
+    setDocFile(null);
+    await load(id);
+  }
+
+  async function openDocument(doc: ChecklistDocument, download: boolean) {
+    const { data, error: urlErr } = await supabase.storage
+      .from("checklist-documents")
+      .createSignedUrl(doc.storage_path, 60, download ? { download: true } : undefined);
+    if (urlErr || !data?.signedUrl) {
+      alert("Errore apertura documento: " + (urlErr?.message || "URL non disponibile"));
+      return;
+    }
+    if (download) {
+      const link = document.createElement("a");
+      link.href = data.signedUrl;
+      link.download = doc.filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+    } else {
+      window.open(data.signedUrl, "_blank");
+    }
+  }
+
+  async function deleteDocument(doc: ChecklistDocument) {
+    const ok = window.confirm("Eliminare questo documento?");
+    if (!ok) return;
+
+    const { error: storageErr } = await supabase.storage
+      .from("checklist-documents")
+      .remove([doc.storage_path]);
+
+    if (storageErr) {
+      alert("Errore eliminazione file: " + storageErr.message);
+      return;
+    }
+
+    const { error: delErr } = await supabase
+      .from("checklist_documents")
+      .delete()
+      .eq("id", doc.id);
+
+    if (delErr) {
+      alert("Errore eliminazione documento: " + delErr.message);
+      return;
+    }
+
+    setDocuments((prev) => prev.filter((d) => d.id !== doc.id));
+  }
+
+  async function onSave() {
+    if (!id || !formData) return;
+    setItemsError(null);
+
+    const payload = {
+      cliente: formData.cliente.trim() ? formData.cliente.trim() : null,
+      nome_checklist: formData.nome_checklist.trim()
+        ? formData.nome_checklist.trim()
+        : null,
+      proforma: formData.proforma.trim() ? formData.proforma.trim() : null,
+      magazzino_importazione: formData.magazzino_importazione.trim()
+        ? formData.magazzino_importazione.trim()
+        : null,
+      saas_tipo: null,
+      saas_piano: (formData.saas_piano ?? "").trim() ? (formData.saas_piano ?? "").trim() : null,
+      saas_scadenza: formData.saas_scadenza.trim()
+        ? formData.saas_scadenza.trim()
+        : null,
+      saas_stato: formData.saas_stato.trim() ? formData.saas_stato.trim() : null,
+      saas_note: formData.saas_note.trim() ? formData.saas_note.trim() : null,
+      tipo_saas: null,
+      m2_inclusi: null,
+      m2_allocati: null,
+      updated_by_operatore: currentOperatoreId || null,
+      ultra_interventi_illimitati: null,
+      ultra_interventi_inclusi: null,
+      data_prevista: formData.data_prevista.trim()
+        ? formData.data_prevista.trim()
+        : null,
+      data_tassativa: formData.data_tassativa.trim()
+        ? formData.data_tassativa.trim()
+        : null,
+      tipo_impianto: formData.tipo_impianto.trim()
+        ? formData.tipo_impianto.trim()
+        : null,
+      dimensioni: formData.dimensioni.trim() ? formData.dimensioni.trim() : null,
+      passo: formData.passo.trim() ? formData.passo.trim() : null,
+      note: formData.note.trim() ? formData.note.trim() : null,
+      tipo_struttura: formData.tipo_struttura.trim()
+        ? formData.tipo_struttura.trim()
+        : null,
+      noleggio_vendita: formData.noleggio_vendita.trim()
+        ? formData.noleggio_vendita.trim()
+        : null,
+      fine_noleggio: formData.fine_noleggio.trim()
+        ? formData.fine_noleggio.trim()
+        : null,
+      mercato: formData.mercato.trim() ? formData.mercato.trim() : null,
+      modello: formData.modello.trim() ? formData.modello.trim() : null,
+      stato_progetto: formData.stato_progetto.trim()
+        ? formData.stato_progetto.trim()
+        : null,
+      data_installazione_reale: formData.data_installazione_reale.trim()
+        ? formData.data_installazione_reale.trim()
+        : null,
+      garanzia_scadenza: formData.garanzia_scadenza.trim()
+        ? formData.garanzia_scadenza.trim()
+        : null,
+    };
+
+    const { error: errUpdate } = await supabase
+      .from("checklists")
+      .update(payload)
+      .eq("id", id);
+
+    if (errUpdate) {
+      const info = logSupabaseError(errUpdate);
+      alert("Errore salvataggio: " + (info || errUpdate.message));
+      return;
+    }
+
+    const normalizedRows = rows
+      .map((r) => ({
+        id: r.id,
+        codice: normalizeCustomCode(r.codice.trim()),
+        descrizione: r.descrizione.trim(),
+        descrizione_custom: (r.descrizione_custom ?? "").trim(),
+        quantita: r.quantita.trim(),
+        note: r.note.trim(),
+      }))
+      .filter((r) => {
+        return (
+          r.codice ||
+          r.descrizione ||
+          r.descrizione_custom ||
+          r.quantita ||
+          r.note
+        );
+      });
+
+    for (const r of normalizedRows) {
+      if (r.quantita !== "" && !isFiniteNumberString(r.quantita)) {
+        setItemsError(`Quantita non valida (deve essere numero): "${r.quantita}"`);
+        return;
+      }
+      if (isCustomCode(r.codice) && r.descrizione_custom === "") {
+        setItemsError("Inserisci la descrizione per la voce fuori catalogo.");
+        return;
+      }
+      if (!r.codice || (!isCustomCode(r.codice) && !r.descrizione)) {
+        setItemsError("Seleziona una voce valida dal catalogo.");
+        return;
+      }
+    }
+
+    const existingPayload = normalizedRows
+      .filter((r) => r.id)
+      .map((r) => ({
+        id: r.id as string,
+        checklist_id: id,
+        codice: r.codice ? r.codice : null,
+        descrizione: isCustomCode(r.codice)
+          ? r.descrizione_custom || null
+          : r.descrizione
+          ? r.descrizione
+          : null,
+        quantita: r.quantita === "" ? null : Number(r.quantita),
+        note: r.note ? r.note : null,
+      }));
+
+    if (existingPayload.length > 0) {
+      const { error: itemsUpdateErr } = await supabase
+        .from("checklist_items")
+        .upsert(existingPayload, { onConflict: "id" });
+
+      if (itemsUpdateErr) {
+        const info = logSupabaseError(itemsUpdateErr);
+        setItemsError("Errore salvataggio righe: " + (info || itemsUpdateErr.message));
+        return;
+      }
+    }
+
+    const insertPayload = normalizedRows
+      .filter((r) => !r.id)
+      .map((r) => ({
+        checklist_id: id,
+        codice: r.codice ? r.codice : null,
+        descrizione: isCustomCode(r.codice)
+          ? r.descrizione_custom || null
+          : r.descrizione
+          ? r.descrizione
+          : null,
+        quantita: r.quantita === "" ? null : Number(r.quantita),
+        note: r.note ? r.note : null,
+      }));
+
+    if (insertPayload.length > 0) {
+      const { error: itemsInsertErr } = await supabase
+        .from("checklist_items")
+        .insert(insertPayload);
+
+      if (itemsInsertErr) {
+        const info = logSupabaseError(itemsInsertErr);
+        setItemsError("Errore inserimento righe: " + (info || itemsInsertErr.message));
+        return;
+      }
+    }
+
+    const remainingIds = new Set(
+      normalizedRows.map((r) => r.id).filter((id): id is string => Boolean(id))
+    );
+    const deletedIds = originalRowIds.filter((rowId) => !remainingIds.has(rowId));
+
+    if (deletedIds.length > 0) {
+      const { error: itemsDeleteErr } = await supabase
+        .from("checklist_items")
+        .delete()
+        .in("id", deletedIds);
+
+      if (itemsDeleteErr) {
+        const info = logSupabaseError(itemsDeleteErr);
+        setItemsError("Errore eliminazione righe: " + (info || itemsDeleteErr.message));
+        return;
+      }
+    }
+
+    setEditMode(false);
+    await load(id);
+  }
+
+  function onCancel() {
+    if (originalData) setFormData(originalData);
+    setEditMode(false);
+    if (id) {
+      load(id);
+    }
+  }
+
+  async function onDeleteChecklist() {
+    if (!id) return;
+    const ok = confirm(
+      "Sei sicuro di voler eliminare questa checklist? L'operazione e' irreversibile."
+    );
+    if (!ok) return;
+
+    const { error: itemsErr } = await supabase
+      .from("checklist_items")
+      .delete()
+      .eq("checklist_id", id);
+    if (itemsErr) {
+      const e = logSupabaseError("delete checklist_items", itemsErr);
+      const msg = e.message || "Errore eliminazione righe checklist";
+      alert(msg);
+      setItemsError(msg);
+      return;
+    }
+
+    const { error: licensesErr } = await supabase
+      .from("licenses")
+      .delete()
+      .eq("checklist_id", id);
+    if (licensesErr) {
+      const e = logSupabaseError("delete licenses", licensesErr);
+      const msg = e.message || "Errore eliminazione licenze checklist";
+      alert(msg);
+      setItemsError(msg);
+      return;
+    }
+
+    const { data: docsData, error: docsErr } = await supabase
+      .from("checklist_documents")
+      .select("id, storage_path")
+      .eq("checklist_id", id);
+    if (docsErr) {
+      const e = logSupabaseError("load checklist_documents", docsErr);
+      const msg = e.message || "Errore caricamento documenti checklist";
+      alert(msg);
+      setItemsError(msg);
+      return;
+    }
+    const paths = (docsData || [])
+      .map((d: any) => d.storage_path)
+      .filter(Boolean);
+    if (paths.length > 0) {
+      const { error: storageErr } = await supabase.storage
+        .from("checklist-documents")
+        .remove(paths);
+      if (storageErr) {
+        const e = logSupabaseError("delete storage files", storageErr);
+        const msg = e.message || "Errore eliminazione file documenti";
+        alert(msg);
+        setItemsError(msg);
+        return;
+      }
+    }
+
+    const { error: docsDeleteErr } = await supabase
+      .from("checklist_documents")
+      .delete()
+      .eq("checklist_id", id);
+    if (docsDeleteErr) {
+      const e = logSupabaseError("delete checklist_documents", docsDeleteErr);
+      const msg = e.message || "Errore eliminazione documenti checklist";
+      alert(msg);
+      setItemsError(msg);
+      return;
+    }
+
+    const { error: checklistErr } = await supabase.from("checklists").delete().eq("id", id);
+    if (checklistErr) {
+      const e = logSupabaseError("delete checklists", checklistErr);
+      const msg = e.message || "Errore eliminazione checklist";
+      alert(msg);
+      setItemsError(msg);
+      return;
+    }
+
+    router.push("/");
+  }
+
+  const isEdit = editMode && formData != null;
+  const proformaDocs = documents.filter(
+    (d) => String(d.tipo ?? "").toUpperCase() === "FATTURA_PROFORMA" || String(d.tipo ?? "").toUpperCase() === "PROFORMA"
+  );
+  const hasProformaDoc = proformaDocs.length > 0;
+  const proformaDocTitle = hasProformaDoc
+    ? `Documento PROFORMA: ${proformaDocs[0].filename}`
+    : "Documento PROFORMA presente";
+
+  return (
+    <div style={{ maxWidth: 1100, margin: "40px auto", padding: 16 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+        <div>
+          <h1 style={{ margin: 0, fontSize: 34 }}>AT SYSTEM</h1>
+          <div style={{ marginTop: 2, fontSize: 12, opacity: 0.7 }}>CHECK LIST</div>
+        </div>
+        <a
+          href="/"
+          style={{
+            padding: "6px 10px",
+            borderRadius: 10,
+            border: "1px solid #ddd",
+            textDecoration: "none",
+            color: "inherit",
+            background: "white",
+            marginLeft: "auto",
+          }}
+        >
+          ← Dashboard
+        </a>
+      </div>
+
+      <div style={{ display: "flex", gap: 10, marginTop: 12, marginBottom: 10 }}>
+        {!editMode ? (
+          <button
+            onClick={() => setEditMode(true)}
+            style={{
+              padding: "8px 12px",
+              borderRadius: 10,
+              border: "1px solid #ddd",
+              background: "white",
+              cursor: "pointer",
+              marginLeft: "auto",
+            }}
+          >
+            Modifica
+          </button>
+        ) : (
+          <>
+            <button
+              onClick={onSave}
+              style={{
+                padding: "8px 12px",
+                borderRadius: 10,
+                border: "1px solid #111",
+                background: "#111",
+                color: "white",
+                cursor: "pointer",
+                marginLeft: "auto",
+              }}
+            >
+              Salva
+            </button>
+            <button
+              onClick={onCancel}
+              style={{
+                padding: "8px 12px",
+                borderRadius: 10,
+                border: "1px solid #ddd",
+                background: "white",
+                cursor: "pointer",
+              }}
+            >
+              Annulla
+            </button>
+          </>
+        )}
+      </div>
+
+      <div style={{ marginTop: 12, marginBottom: 10 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+          <div
+            style={{
+              border: "1px solid #eee",
+              borderRadius: 12,
+              padding: 12,
+              background: "white",
+            }}
+          >
+            <div style={{ fontWeight: 800, marginBottom: 6 }}>PROGETTO</div>
+            <FieldRow
+              label="Nome checklist"
+              view={checklist.nome_checklist || "—"}
+              edit={
+                isEdit ? (
+                  <input
+                    value={formData.nome_checklist}
+                    onChange={(e) =>
+                      setFormData({ ...formData, nome_checklist: e.target.value })
+                    }
+                    style={{ width: "100%", padding: 10 }}
+                  />
+                ) : undefined
+              }
+              isEdit={isEdit}
+            />
+            <FieldRow
+              label="Cliente"
+              view={
+                checklist.cliente ? (
+                  <Link
+                    href={`/clienti/${encodeURIComponent(checklist.cliente)}`}
+                    style={{ textDecoration: "underline", color: "#2563eb" }}
+                  >
+                    {checklist.cliente}
+                  </Link>
+                ) : (
+                  "—"
+                )
+              }
+              edit={
+                isEdit ? (
+                  <input
+                    value={formData.cliente}
+                    onChange={(e) => setFormData({ ...formData, cliente: e.target.value })}
+                    style={{ width: "100%", padding: 10 }}
+                  />
+                ) : undefined
+              }
+              isEdit={isEdit}
+            />
+            <FieldRow
+              label="Proforma"
+              view={
+                <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                  <span>{checklist.proforma || "—"}</span>
+                  {hasProformaDoc ? (
+                    <span title={proformaDocTitle}>✅</span>
+                  ) : (
+                    "—"
+                  )}
+                </div>
+              }
+              edit={
+                isEdit ? (
+                  <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                    <input
+                      value={formData.proforma}
+                      onChange={(e) => setFormData({ ...formData, proforma: e.target.value })}
+                      style={{ width: "100%", padding: 10 }}
+                    />
+                    {hasProformaDoc ? (
+                      <span title={proformaDocTitle}>✅</span>
+                    ) : (
+                      "—"
+                    )}
+                  </div>
+                ) : undefined
+              }
+              isEdit={isEdit}
+            />
+            <FieldRow
+              label="Noleggio / Vendita / Service"
+              view={checklist.noleggio_vendita || "—"}
+              edit={
+                isEdit ? (
+                  <select
+                    value={formData.noleggio_vendita}
+                    onChange={(e) =>
+                      setFormData({ ...formData, noleggio_vendita: e.target.value })
+                    }
+                    style={{ width: "100%", padding: 10 }}
+                  >
+                    <option value="">—</option>
+                    <option value="NOLEGGIO">NOLEGGIO</option>
+                    <option value="VENDITA">VENDITA</option>
+                    <option value="SERVICE">SERVICE</option>
+                    <option value="ALTRO">ALTRO</option>
+                  </select>
+                ) : undefined
+              }
+              isEdit={isEdit}
+            />
+            <FieldRow
+              label="Stato progetto"
+              view={checklist.stato_progetto || "—"}
+              edit={
+                isEdit ? (
+                  <select
+                    value={formData.stato_progetto}
+                    onChange={(e) =>
+                      setFormData({ ...formData, stato_progetto: e.target.value })
+                    }
+                    style={{ width: "100%", padding: 10 }}
+                  >
+                    <option value="IN_CORSO">IN_CORSO</option>
+                    <option value="CONSEGNATO">CONSEGNATO</option>
+                    <option value="CHIUSO">CHIUSO</option>
+                    <option value="SOSPESO">SOSPESO</option>
+                  </select>
+                ) : undefined
+              }
+              isEdit={isEdit}
+            />
+            <FieldRow
+              label="Note"
+              view={checklist.note || "—"}
+              edit={
+                isEdit ? (
+                  <input
+                    value={formData.note}
+                    onChange={(e) => setFormData({ ...formData, note: e.target.value })}
+                    style={{ width: "100%", padding: 10 }}
+                  />
+                ) : undefined
+              }
+              isEdit={isEdit}
+            />
+            <FieldRow
+              label="Creato"
+              view={new Date(checklist.created_at).toLocaleString()}
+              isEdit={false}
+            />
+            <FieldRow
+              label="Modificato"
+              view={checklist.updated_at ? new Date(checklist.updated_at).toLocaleString() : "—"}
+              isEdit={false}
+            />
+            <FieldRow
+              label="Creato da"
+              view={
+                checklist.created_by_operatore
+                  ? operatoriMap.get(checklist.created_by_operatore) ?? "—"
+                  : "—"
+              }
+              isEdit={false}
+            />
+            <FieldRow
+              label="Modificato da"
+              view={
+                checklist.updated_by_operatore
+                  ? operatoriMap.get(checklist.updated_by_operatore) ?? "—"
+                  : "—"
+              }
+              isEdit={false}
+            />
+          </div>
+
+          <div
+            style={{
+              border: "1px solid #eee",
+              borderRadius: 12,
+              padding: 12,
+              background: "white",
+            }}
+          >
+            <div style={{ fontWeight: 800, marginBottom: 6 }}>IMPIANTO</div>
+            <FieldRow
+              label="Dimensioni + m²"
+              view={
+                `${checklist.dimensioni || "—"} — ${
+                  calcM2(checklist.dimensioni) != null
+                    ? calcM2(checklist.dimensioni)!.toFixed(2)
+                    : "—"
+                }`
+              }
+              edit={
+                isEdit ? (
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 140px", gap: 10 }}>
+                    <input
+                      value={formData.dimensioni}
+                      onChange={(e) => setFormData({ ...formData, dimensioni: e.target.value })}
+                      style={{ width: "100%", padding: 10 }}
+                    />
+                    <input
+                      value={
+                        calcM2(formData.dimensioni) != null
+                          ? calcM2(formData.dimensioni)!.toFixed(2)
+                          : ""
+                      }
+                      readOnly
+                      style={{ width: "100%", padding: 10, background: "#f7f7f7" }}
+                    />
+                  </div>
+                ) : undefined
+              }
+              isEdit={isEdit}
+            />
+            <FieldRow
+              label="Passo"
+              view={checklist.passo || "—"}
+              edit={
+                isEdit ? (
+                  <input
+                    value={formData.passo}
+                    onChange={(e) => setFormData({ ...formData, passo: e.target.value })}
+                    style={{ width: "100%", padding: 10 }}
+                  />
+                ) : undefined
+              }
+              isEdit={isEdit}
+            />
+            <FieldRow
+              label="Tipo impianto"
+              view={checklist.tipo_impianto || "—"}
+              edit={
+                isEdit ? (
+                  <select
+                    value={formData.tipo_impianto}
+                    onChange={(e) =>
+                      setFormData({ ...formData, tipo_impianto: e.target.value })
+                    }
+                    style={{ width: "100%", padding: 10 }}
+                  >
+                    <option value="">—</option>
+                    <option value="INDOOR">INDOOR</option>
+                    <option value="OUTDOOR">OUTDOOR</option>
+                    <option value="SEMIOUTDOOR">SEMIOUTDOOR</option>
+                    <option value="DA DEFINIRE">DA DEFINIRE</option>
+                  </select>
+                ) : undefined
+              }
+              isEdit={isEdit}
+            />
+            <FieldRow
+              label="Tipo struttura"
+              view={checklist.tipo_struttura || "—"}
+              edit={
+                isEdit ? (
+                  <select
+                    value={formData.tipo_struttura}
+                    onChange={(e) =>
+                      setFormData({ ...formData, tipo_struttura: e.target.value })
+                    }
+                    style={{ width: "100%", padding: 10 }}
+                  >
+                    <option value="">—</option>
+                    {strutturaOptions.map((item) => (
+                      <option key={item.id} value={item.codice ?? ""}>
+                        {item.codice} — {item.descrizione}
+                      </option>
+                    ))}
+                    {formData.tipo_struttura &&
+                      !strutturaOptions.some((o) => o.codice === formData.tipo_struttura) && (
+                        <option value={formData.tipo_struttura}>{formData.tipo_struttura}</option>
+                      )}
+                  </select>
+                ) : undefined
+              }
+              isEdit={isEdit}
+            />
+            <FieldRow
+              label="Data installazione prevista"
+              view={
+                checklist.data_prevista
+                  ? new Date(checklist.data_prevista).toLocaleDateString()
+                  : "—"
+              }
+              edit={
+                isEdit ? (
+                  <input
+                    type="date"
+                    value={formData.data_prevista}
+                    onChange={(e) =>
+                      setFormData({ ...formData, data_prevista: e.target.value })
+                    }
+                    style={{ width: "100%", padding: 10 }}
+                  />
+                ) : undefined
+              }
+              isEdit={isEdit}
+            />
+            <FieldRow
+              label="Data tassativa"
+              view={
+                checklist.data_tassativa
+                  ? new Date(checklist.data_tassativa).toLocaleDateString()
+                  : "—"
+              }
+              edit={
+                isEdit ? (
+                  <input
+                    type="date"
+                    value={formData.data_tassativa}
+                    onChange={(e) =>
+                      setFormData({ ...formData, data_tassativa: e.target.value })
+                    }
+                    style={{ width: "100%", padding: 10 }}
+                  />
+                ) : undefined
+              }
+              isEdit={isEdit}
+            />
+            <FieldRow
+              label="Installazione reale"
+              view={
+                checklist.data_installazione_reale
+                  ? new Date(checklist.data_installazione_reale).toLocaleDateString()
+                  : "—"
+              }
+              edit={
+                isEdit ? (
+                  <input
+                    type="date"
+                    value={formData.data_installazione_reale}
+                    onChange={(e) =>
+                      setFormData({ ...formData, data_installazione_reale: e.target.value })
+                    }
+                    style={{ width: "100%", padding: 10 }}
+                  />
+                ) : undefined
+              }
+              isEdit={isEdit}
+            />
+            <FieldRow
+              label="Fine noleggio"
+              view={
+                checklist.fine_noleggio
+                  ? new Date(checklist.fine_noleggio).toLocaleDateString()
+                  : "—"
+              }
+              edit={
+                isEdit ? (
+                  <input
+                    type="date"
+                    value={formData.fine_noleggio}
+                    onChange={(e) =>
+                      setFormData({ ...formData, fine_noleggio: e.target.value })
+                    }
+                    style={{ width: "100%", padding: 10 }}
+                  />
+                ) : undefined
+              }
+              isEdit={isEdit}
+            />
+            <FieldRow
+              label="Garanzia scadenza"
+              view={
+                <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                  <span>
+                    {checklist.garanzia_scadenza
+                      ? new Date(checklist.garanzia_scadenza).toLocaleDateString()
+                      : "—"}
+                  </span>
+                  {renderBadge(getExpiryStatus(checklist.garanzia_scadenza))}
+                </div>
+              }
+              edit={
+                isEdit ? (
+                  <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                    <input
+                      type="date"
+                      value={formData.garanzia_scadenza}
+                      onChange={(e) =>
+                        setFormData({ ...formData, garanzia_scadenza: e.target.value })
+                      }
+                      style={{ width: "100%", padding: 10 }}
+                    />
+                    {renderBadge(getExpiryStatus(formData.garanzia_scadenza))}
+                  </div>
+                ) : undefined
+              }
+              isEdit={isEdit}
+            />
+            <FieldRow
+              label="Magazzino importazione"
+              view={checklist.magazzino_importazione || "—"}
+              edit={
+                isEdit ? (
+                  <input
+                    value={formData.magazzino_importazione}
+                    onChange={(e) =>
+                      setFormData({ ...formData, magazzino_importazione: e.target.value })
+                    }
+                    style={{ width: "100%", padding: 10 }}
+                  />
+                ) : undefined
+              }
+              isEdit={isEdit}
+            />
+          </div>
+        </div>
+      </div>
+      <div style={{ marginTop: 22 }}>
+        <h2 style={{ marginTop: 0 }}>SERVIZI</h2>
+
+        <ServiziBox title="SERVIZI">
+          <ServiceRow
+            label="PLUS/PREMIUM (impianti)"
+            left={
+              editMode && formData ? (
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 180px", gap: 10 }}>
+                  <select
+                    value={formData.saas_piano ?? ""}
+                    onChange={(e) =>
+                      setFormData({ ...formData, saas_piano: e.target.value || null })
+                    }
+                    style={{ width: "100%", padding: 10 }}
+                  >
+                    <option value="">—</option>
+                    <option value="SAS-PL">SAS-PL — CARE PLUS</option>
+                    <option value="SAS-PR">SAS-PR — CARE PREMIUM</option>
+                    <option value="SAS-UL">SAS-UL — CARE ULTRA</option>
+                    <option value="SAS-PR4">SAS-PR4 — CARE PREMIUM (H4)</option>
+                    <option value="SAS-PR8">SAS-PR8 — CARE PREMIUM (H8)</option>
+                    <option value="SAS-PR12">SAS-PR12 — CARE PREMIUM (H12)</option>
+                    <option value="SAS-PR24">SAS-PR24 — CARE PREMIUM (H24)</option>
+                    <option value="SAS-PR36">SAS-PR36 — CARE PREMIUM (H36)</option>
+                    <option value="SAS-UL4">SAS-UL4 — CARE ULTRA (H4)</option>
+                    <option value="SAS-UL8">SAS-UL8 — CARE ULTRA (H8)</option>
+                    <option value="SAS-UL12">SAS-UL12 — CARE ULTRA (H12)</option>
+                    <option value="SAS-UL24">SAS-UL24 — CARE ULTRA (H24)</option>
+                    <option value="SAS-UL36">SAS-UL36 — CARE ULTRA (H36)</option>
+                    <option value="SAS-EVTR">SAS-EVTR — ART TECH EVENT</option>
+                    <option value="SAS-MON">SAS-MON — MONITORAGGIO REMOTO & ALERT</option>
+                    <option value="SAS-TCK">SAS-TCK — TICKETING / HELP DESK</option>
+                    <option value="SAS-SIM">SAS-SIM — CONNETTIVITÀ SIM DATI</option>
+                    <option value="SAS-CMS">SAS-CMS — LICENZA CMS / SOFTWARE TERZI</option>
+                    <option value="SAS-BKP">SAS-BKP — BACKUP / RIPRISTINO</option>
+                    <option value="SAS-RPT">SAS-RPT — REPORTISTICA</option>
+                    <option value="SAS-SLA">SAS-SLA — SLA RIPRISTINO</option>
+                    <option value="SAS-EXT">SAS-EXT — ESTENSIONE GARANZIA</option>
+                    <option value="SAS-CYB">SAS-CYB — CYBER / HARDENING</option>
+                  </select>
+                  <input
+                    type="date"
+                    value={formData.saas_scadenza}
+                    onChange={(e) =>
+                      setFormData({ ...formData, saas_scadenza: e.target.value })
+                    }
+                    style={{ width: "100%", padding: 10 }}
+                  />
+                </div>
+              ) : (
+                <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+                  <span>{checklist.saas_piano || "—"}</span>
+                  <span>
+                    {checklist.saas_scadenza
+                      ? new Date(checklist.saas_scadenza).toLocaleDateString()
+                      : "—"}
+                  </span>
+                </div>
+              )
+            }
+            right={
+              (editMode && formData ? formData.saas_scadenza : checklist.saas_scadenza)
+                ? renderBadge(
+                    getExpiryStatus(
+                      editMode && formData ? formData.saas_scadenza : checklist.saas_scadenza
+                    )
+                  )
+                : "—"
+            }
+          />
+
+          <ServiceRow
+            label="ULTRA (cliente)"
+            left={
+              contrattoUltra ? (
+                <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+                  <span>
+                    {contrattoUltra.piano_codice ?? "—"}
+                    {contrattoUltraNome ? ` — ${contrattoUltraNome}` : ""}
+                  </span>
+                  <span>
+                    {contrattoUltra.scadenza
+                      ? new Date(contrattoUltra.scadenza).toLocaleDateString()
+                      : "—"}
+                  </span>
+                  <span>
+                    {contrattoUltra.illimitati
+                      ? `Usati ${interventiInclusiUsati} / illimitati`
+                      : contrattoUltra.interventi_annui != null
+                      ? `Usati ${interventiInclusiUsati} / Totale ${contrattoUltra.interventi_annui} / Residui ${Math.max(
+                          0,
+                          contrattoUltra.interventi_annui - interventiInclusiUsati
+                        )}`
+                      : `Usati ${interventiInclusiUsati} / Totale — / Residui —`}
+                  </span>
+                </div>
+              ) : (
+                "—"
+              )
+            }
+            right={contrattoUltra ? renderBadge(getExpiryStatus(contrattoUltra.scadenza)) : "—"}
+          />
+
+          <ServiceRow
+            label="Licenze"
+            left={
+              licenze.length === 0
+                ? "—"
+                : `Attive: ${licenze.length} — Prossima scadenza: ${
+                    getNextLicenzaScadenza(licenze)
+                      ? new Date(getNextLicenzaScadenza(licenze)!).toLocaleDateString()
+                      : "—"
+                  }`
+            }
+            right={
+              licenze.length === 0
+                ? "—"
+                : renderBadge(getExpiryStatus(getNextLicenzaScadenza(licenze)))
+            }
+          />
+        </ServiziBox>
+
+        <div style={{ marginTop: 12 }}>
+          <div style={{ marginBottom: 10, fontSize: 12, opacity: 0.7 }}>
+            Licenze dettaglio (dashboard):{" "}
+            {licenze.length === 0
+              ? "—"
+              : licenze
+                  .map(
+                    (l) => `${l.tipo ?? "—"}(${l.scadenza ? l.scadenza.slice(0, 10) : "—"})`
+                  )
+                  .join(", ")}
+          </div>
+
+          {licenzeError && <div style={{ color: "crimson", marginBottom: 10 }}>{licenzeError}</div>}
+
+          {licenze.length === 0 ? (
+            <div style={{ opacity: 0.7 }}>Nessuna licenza collegata</div>
+          ) : (
+            <div style={{ border: "1px solid #eee", borderRadius: 12, overflow: "hidden" }}>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "2fr 1fr 1fr 2fr 160px",
+                  gap: 0,
+                  padding: "10px 12px",
+                  fontWeight: 700,
+                  borderBottom: "1px solid #eee",
+                  background: "#fafafa",
+                }}
+              >
+                <div>Tipo / Piano</div>
+                <div>Scadenza</div>
+                <div>Stato</div>
+                <div>Note</div>
+                <div>Azioni</div>
+              </div>
+
+              {licenze.map((l) => (
+                <div
+                  key={l.id}
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "2fr 1fr 1fr 2fr 160px",
+                    gap: 0,
+                    padding: "10px 12px",
+                    borderBottom: "1px solid #f5f5f5",
+                    alignItems: "center",
+                    fontSize: 13,
+                  }}
+                >
+                  <div>{l.tipo ?? "—"}</div>
+                  <div>{l.scadenza ? new Date(l.scadenza).toLocaleDateString() : "—"}</div>
+                  <div>{renderBadge(getLicenzaStatusLabel(l))}</div>
+                  <div>{l.note ?? "—"}</div>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    {(l.stato ?? "").toLowerCase() === "disattivata" ? (
+                      <button
+                        type="button"
+                        onClick={() => updateLicenzaStato(l.id, "attiva")}
+                        style={{
+                          padding: "6px 10px",
+                          borderRadius: 8,
+                          border: "1px solid #ddd",
+                          background: "white",
+                          cursor: "pointer",
+                        }}
+                      >
+                        Riattiva
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => updateLicenzaStato(l.id, "disattivata")}
+                        style={{
+                          padding: "6px 10px",
+                          borderRadius: 8,
+                          border: "1px solid #ddd",
+                          background: "white",
+                          cursor: "pointer",
+                        }}
+                      >
+                        Disattiva
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div
+            style={{
+              marginTop: 12,
+              padding: 12,
+              border: "1px solid #eee",
+              borderRadius: 12,
+              background: "white",
+            }}
+          >
+            <div style={{ fontWeight: 700, marginBottom: 8 }}>+ Aggiungi licenza</div>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "2fr 1fr 2fr 120px",
+                gap: 10,
+                alignItems: "end",
+              }}
+            >
+              <label>
+                Tipo / Piano<br />
+                <select
+                  value={newLicenza.tipo}
+                  onChange={(e) => setNewLicenza({ ...newLicenza, tipo: e.target.value })}
+                  style={{ width: "100%", padding: 10 }}
+                >
+                  <option value="">—</option>
+                  <option value="CMS">CMS</option>
+                    <option value="SIM">SIM</option>
+                    <option value="SLA">SLA</option>
+                    <option value="MON">MON</option>
+                    <option value="TCK">TCK</option>
+                    <option value="ALTRO">ALTRO</option>
+                  </select>
+                </label>
+                <label>
+                  Scadenza<br />
+                  <input
+                    type="date"
+                    value={newLicenza.scadenza}
+                    onChange={(e) => setNewLicenza({ ...newLicenza, scadenza: e.target.value })}
+                    style={{ width: "100%", padding: 10 }}
+                  />
+                </label>
+                <label>
+                  Note<br />
+                  <input
+                    value={newLicenza.note}
+                    onChange={(e) => setNewLicenza({ ...newLicenza, note: e.target.value })}
+                    style={{ width: "100%", padding: 10 }}
+                  />
+                </label>
+                <button
+                  type="button"
+                  onClick={addLicenza}
+                  style={{
+                    padding: "10px 12px",
+                    borderRadius: 10,
+                    border: "1px solid #ddd",
+                    background: "white",
+                    cursor: "pointer",
+                  }}
+                >
+                  Aggiungi
+                </button>
+              </div>
+            </div>
+        </div>
+      </div>
+      <div style={{ marginTop: 22 }}>
+        <h2 style={{ marginTop: 0 }}>Documenti checklist</h2>
+
+        {docError && (
+          <div style={{ color: "crimson", marginBottom: 10 }}>{docError}</div>
+        )}
+
+        <div
+          style={{
+            marginBottom: 12,
+            padding: 12,
+            border: "1px solid #eee",
+            borderRadius: 12,
+            background: "white",
+          }}
+        >
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "200px 1fr 140px",
+              gap: 10,
+              alignItems: "end",
+            }}
+          >
+            <label>
+              Tipo documento<br />
+              <select
+                value={docType}
+                onChange={(e) => setDocType(e.target.value)}
+                style={{ width: "100%", padding: 10 }}
+              >
+                <option value="">—</option>
+                <option value="FATTURA_PROFORMA">FATTURA PROFORMA</option>
+                <option value="DDT">DDT</option>
+                <option value="FOTO">FOTO</option>
+                <option value="ALTRO">ALTRO</option>
+              </select>
+            </label>
+            <label>
+              File<br />
+              <input
+                type="file"
+                onChange={(e) => setDocFile(e.target.files?.[0] ?? null)}
+                style={{ width: "100%", padding: 8 }}
+              />
+            </label>
+            <button
+              type="button"
+              onClick={uploadDocument}
+              style={{
+                padding: "10px 12px",
+                borderRadius: 10,
+                border: "1px solid #111",
+                background: "#111",
+                color: "white",
+                cursor: "pointer",
+              }}
+            >
+              Carica documento
+            </button>
+          </div>
+        </div>
+
+        {documents.length === 0 ? (
+          <div style={{ opacity: 0.7 }}>Nessun documento caricato</div>
+        ) : (
+          <div style={{ border: "1px solid #eee", borderRadius: 12, overflow: "hidden" }}>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "2fr 1fr 1fr 1fr 200px",
+                gap: 0,
+                padding: "10px 12px",
+                fontWeight: 700,
+                borderBottom: "1px solid #eee",
+                background: "#fafafa",
+              }}
+            >
+              <div>Nome file</div>
+              <div>Tipo</div>
+              <div>Data upload</div>
+              <div>Caricato da</div>
+              <div>Azioni</div>
+            </div>
+
+            {documents.map((d) => (
+              <div
+                key={d.id}
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "2fr 1fr 1fr 1fr 200px",
+                  gap: 0,
+                  padding: "10px 12px",
+                  borderBottom: "1px solid #f5f5f5",
+                  alignItems: "center",
+                  fontSize: 13,
+                }}
+              >
+                <div>{d.filename}</div>
+                <div>{d.tipo ?? "—"}</div>
+                <div>{d.uploaded_at ? new Date(d.uploaded_at).toLocaleString() : "—"}</div>
+                <div>
+                  {d.uploaded_by_operatore
+                    ? operatoriMap.get(d.uploaded_by_operatore) ?? "—"
+                    : "—"}
+                </div>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button
+                    type="button"
+                    onClick={() => openDocument(d, false)}
+                    style={{
+                      padding: "6px 10px",
+                      borderRadius: 8,
+                      border: "1px solid #ddd",
+                      background: "white",
+                      cursor: "pointer",
+                    }}
+                  >
+                    Apri
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => openDocument(d, true)}
+                    style={{
+                      padding: "6px 10px",
+                      borderRadius: 8,
+                      border: "1px solid #ddd",
+                      background: "white",
+                      cursor: "pointer",
+                    }}
+                  >
+                    Scarica
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => deleteDocument(d)}
+                    style={{
+                      padding: "6px 10px",
+                      borderRadius: 8,
+                      border: "1px solid #dc2626",
+                      background: "white",
+                      color: "#dc2626",
+                      cursor: "pointer",
+                    }}
+                  >
+                    Elimina
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <h2 style={{ marginTop: 22 }}>Voci / Prodotti</h2>
+
+      {itemsError && (
+        <div style={{ color: "crimson", marginBottom: 10 }}>{itemsError}</div>
+      )}
+
+      {editMode && (
+        <div style={{ marginBottom: 10 }}>
+          <button type="button" onClick={addRow} style={{ padding: "8px 12px" }}>
+            + Aggiungi riga
+          </button>
+        </div>
+      )}
+
+      {!editMode ? (
+        rows.length === 0 ? (
+          <div>Nessuna riga inserita</div>
+        ) : (
+          <div style={{ border: "1px solid #eee", borderRadius: 12, overflow: "hidden" }}>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "160px 1fr 120px 1fr",
+                gap: 0,
+                padding: 10,
+                fontWeight: 700,
+                borderBottom: "1px solid #eee",
+              }}
+            >
+              <div>Codice</div>
+              <div>Descrizione</div>
+              <div>Q.tà</div>
+              <div>Note</div>
+            </div>
+
+            {rows.map((r) => (
+              <div
+                key={r.id ?? r.client_id}
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "160px 1fr 120px 1fr",
+                  gap: 0,
+                  padding: 10,
+                  borderBottom: "1px solid #f1f1f1",
+                }}
+              >
+                <div>{normalizeCustomCode(r.codice) || "—"}</div>
+                <div>
+                  {isCustomCode(r.codice) ? r.descrizione_custom || "—" : r.descrizione || "—"}
+                </div>
+                <div>{r.quantita || "—"}</div>
+                <div>{r.note || "—"}</div>
+              </div>
+            ))}
+          </div>
+        )
+      ) : rows.length === 0 ? (
+        <div>Nessuna riga inserita</div>
+      ) : (
+        <div style={{ display: "grid", gap: 10 }}>
+          {rows.map((r, idx) => (
+            <div
+              key={r.id ?? r.client_id}
+              style={{
+                border: "1px solid #eee",
+                borderRadius: 12,
+                padding: 12,
+              }}
+            >
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "160px 1fr 120px 1fr 120px",
+                  gap: 10,
+                  alignItems: "center",
+                }}
+              >
+                <label>
+                  Codice<br />
+                  <input
+                    value={normalizeCustomCode(r.codice)}
+                    disabled
+                    style={{ width: "100%", padding: 10 }}
+                  />
+                </label>
+
+                <label>
+                  Descrizione<br />
+                  <input
+                    type="text"
+                    placeholder="Cerca per codice o descrizione (es. SRV-, TEC-SC, LED...)"
+                    value={r.search ?? ""}
+                    onChange={(e) => updateRowFields(idx, { search: e.target.value })}
+                    style={{ width: "100%", padding: 10, marginBottom: 8 }}
+                  />
+                  <select
+                    value={isCustomCode(r.codice) ? "__CUSTOM__" : r.descrizione}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      if (value === "__CUSTOM__") {
+                        updateRowFields(idx, {
+                          descrizione: "Altro / Fuori catalogo",
+                          codice: "CUSTOM",
+                          descrizione_custom: "",
+                        });
+                        return;
+                      }
+                      const selected = catalogItems.find(
+                        (c) => c.descrizione === value
+                      );
+                      updateRowFields(idx, {
+                        descrizione: selected?.descrizione ?? "",
+                        codice: selected?.codice ?? "",
+                        descrizione_custom: "",
+                      });
+                    }}
+                    style={{ width: "100%", padding: 10 }}
+                  >
+                    <option value="">— seleziona prodotto / servizio —</option>
+                    <option value="__CUSTOM__">Altro / Fuori catalogo</option>
+                    {catalogItems
+                      .filter((item) => item.attivo !== false)
+                      .filter((item) => {
+                        const s = (r.search ?? "").trim().toLowerCase();
+                        if (!s) return true;
+                        const descr = (item.descrizione ?? "").toLowerCase();
+                        const code = (item.codice ?? "").toLowerCase();
+                        return `${code} ${descr}`.includes(s);
+                      })
+                      .slice(0, 200)
+                      .map((item) => (
+                        <option
+                          key={`${item.codice ?? "NO_CODE"}__${item.descrizione ?? ""}`}
+                          value={item.descrizione ?? ""}
+                        >
+                          {item.codice ?? "—"} — {item.descrizione ?? "—"}
+                        </option>
+                      ))}
+                  </select>
+
+                  {isCustomCode(r.codice) && (
+                    <div style={{ marginTop: 8 }}>
+                      <label
+                        style={{ display: "block", fontWeight: 600, marginBottom: 4 }}
+                      >
+                        Descrizione (fuori catalogo)
+                      </label>
+                      <input
+                        type="text"
+                        value={r.descrizione_custom ?? ""}
+                        onChange={(e) =>
+                          updateRowFields(idx, {
+                            descrizione_custom: e.target.value,
+                          })
+                        }
+                        placeholder="Es: Schermo P2.6 3x2m + struttura speciale..."
+                        style={{ width: "100%", padding: 10 }}
+                      />
+                    </div>
+                  )}
+                </label>
+
+                <label>
+                  Q.tà<br />
+                  <input
+                    type="number"
+                    value={r.quantita}
+                    onChange={(e) => updateRowFields(idx, { quantita: e.target.value })}
+                    style={{ width: "100%", padding: 10 }}
+                  />
+                </label>
+
+                <label>
+                  Note<br />
+                  <input
+                    value={r.note}
+                    onChange={(e) => updateRowFields(idx, { note: e.target.value })}
+                    style={{ width: "100%", padding: 10 }}
+                  />
+                </label>
+
+                <div>
+                  <button
+                    type="button"
+                    onClick={() => removeRow(idx)}
+                    style={{ padding: "8px 12px" }}
+                  >
+                    Rimuovi
+                  </button>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {tasks.length > 0 && (
+        <div style={{ marginTop: 24 }}>
+          <h3>Checklist operativa</h3>
+          {alertNotice && (
+            <div style={{ marginTop: 8, fontSize: 12, color: "#166534" }}>
+              {alertNotice}
+            </div>
+          )}
+
+          {[0, 1, 2, 3].map((sec) => (
+            <div
+              key={sec}
+              style={{
+                marginTop: 16,
+                padding: 12,
+                border: "1px solid #eee",
+                borderRadius: 12,
+              }}
+            >
+              <div style={{ fontWeight: 700, marginBottom: 8 }}>
+                {sec === 0 ? "DOCUMENTI" : `SEZIONE ${sec}`}
+              </div>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "1fr 160px 120px 220px",
+                  gap: 12,
+                  fontSize: 12,
+                  opacity: 0.6,
+                  marginBottom: 6,
+                }}
+              >
+                <div></div>
+                <div>Stato</div>
+                <div>Alert inviato</div>
+                <div style={{ textAlign: "right" }}>Ultima modifica da</div>
+              </div>
+
+              {tasks
+                .filter((t) => {
+                  const v = t.sezione;
+                  if (typeof v === "number") return v === sec;
+                  const s = String(v).toUpperCase();
+                  if (s === "DOCUMENTI") return sec === 0;
+                  if (s === "SEZIONE_1" || s === "SEZIONE 1") return sec === 1;
+                  if (s === "SEZIONE_2" || s === "SEZIONE 2") return sec === 2;
+                  if (s === "SEZIONE_3" || s === "SEZIONE 3") return sec === 3;
+                  return false;
+                })
+                .map((t) => (
+                  <div
+                    key={t.id}
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "1fr 160px 120px 220px",
+                      gap: 12,
+                      padding: "6px 0",
+                      alignItems: "center",
+                    }}
+                  >
+                    <div>{t.titolo}</div>
+
+                    <div>
+                      <select
+                        value={t.stato}
+                        style={{
+                          width: "100%",
+                          padding: "6px 10px",
+                          borderRadius: 8,
+                          border: "1px solid #ddd",
+                          fontWeight: 600,
+                          ...taskStyle(t.stato),
+                        }}
+                        onChange={async (e) => {
+                          const newStato = e.target.value;
+
+                          const { error } = await supabase
+                            .from("checklist_tasks")
+                            .update({
+                              stato: newStato,
+                              updated_by_operatore: currentOperatoreId || null,
+                            })
+                            .eq("id", t.id);
+
+                          if (!error) {
+                            setTasks((prev) =>
+                              prev.map((x) =>
+                                x.id === t.id
+                                  ? {
+                                      ...x,
+                                      stato: newStato,
+                                      updated_by_operatore: currentOperatoreId || null,
+                                      updated_at: new Date().toISOString(),
+                                    }
+                                  : x
+                              )
+                            );
+                          }
+                        }}
+                      >
+                        <option value="DA_FARE">DA FARE</option>
+                        <option value="OK">OK</option>
+                        <option value="NON_NECESSARIO">NON NECESSARIO</option>
+                      </select>
+                    </div>
+                    <div>
+                      <button
+                        type="button"
+                        onClick={() => setAlertTask(t)}
+                        style={{
+                          padding: "6px 10px",
+                          borderRadius: 8,
+                          border: "1px solid #ddd",
+                          background: "white",
+                          cursor: "pointer",
+                        }}
+                      >
+                        Invia alert
+                      </button>
+                      {lastAlertByTask.has(t.id) && (
+                        <div style={{ marginTop: 6, fontSize: 11, opacity: 0.7 }}>
+                          <div>
+                            Alert inviato a{" "}
+                            {operatoriMap.get(lastAlertByTask.get(t.id)!.toOperatoreId) ??
+                              lastAlertByTask.get(t.id)!.toOperatoreId}
+                          </div>
+                          <div>il {new Date(
+                            lastAlertByTask.get(t.id)!.createdAt
+                          ).toLocaleString()}</div>
+                        </div>
+                      )}
+                    </div>
+                    <div
+                      style={{
+                        justifySelf: "end",
+                        textAlign: "right",
+                        fontSize: 12,
+                        opacity: 0.7,
+                      }}
+                    >
+                      {t.updated_at ? (
+                        <>
+                          <div>
+                            ✔{" "}
+                            {t.operatori?.nome ??
+                              (t.updated_by_operatore ? `ID: ${t.updated_by_operatore}` : "—")}
+                          </div>
+                          <div>{new Date(t.updated_at).toLocaleString()}</div>
+                        </>
+                      ) : (
+                        "—"
+                      )}
+                    </div>
+                  </div>
+                ))}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {editMode && (
+        <div style={{ marginTop: 24, display: "flex", justifyContent: "flex-end" }}>
+          <div style={{ marginRight: 12, fontSize: 12, opacity: 0.7 }}>
+            Azione irreversibile
+          </div>
+          <button
+            onClick={onDeleteChecklist}
+            style={{
+              padding: "8px 12px",
+              borderRadius: 10,
+              border: "1px solid #ef4444",
+              background: "#ef4444",
+              color: "white",
+              cursor: "pointer",
+            }}
+          >
+            Elimina checklist
+          </button>
+        </div>
+      )}
+
+      {alertTask && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.25)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 50,
+            padding: 16,
+          }}
+        >
+          <div
+            style={{
+              background: "white",
+              borderRadius: 12,
+              padding: 16,
+              width: "100%",
+              maxWidth: 520,
+              boxShadow: "0 10px 30px rgba(0,0,0,0.15)",
+            }}
+          >
+            <div style={{ fontWeight: 700, marginBottom: 10 }}>Invia alert</div>
+            <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 10 }}>
+              Task: {alertTask.titolo}
+            </div>
+            <label style={{ display: "block", marginBottom: 10 }}>
+              Destinatario<br />
+              <select
+                value={alertDestinatarioId}
+                onChange={(e) => setAlertDestinatarioId(e.target.value)}
+                style={{ width: "100%", padding: 8 }}
+              >
+                <option value="">—</option>
+                {getEligibleOperatori(alertTask).map((o) => (
+                  <option key={o.id} value={o.id}>
+                    {o.nome ?? o.id}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label style={{ display: "block", marginBottom: 12 }}>
+              Messaggio (opzionale)<br />
+              <textarea
+                value={alertMessaggio}
+                onChange={(e) => setAlertMessaggio(e.target.value)}
+                rows={4}
+                style={{ width: "100%", padding: 8 }}
+              />
+            </label>
+            <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+              <button
+                type="button"
+                onClick={() => setAlertTask(null)}
+                style={{
+                  padding: "8px 12px",
+                  borderRadius: 8,
+                  border: "1px solid #ddd",
+                  background: "white",
+                }}
+              >
+                Annulla
+              </button>
+              <button
+                type="button"
+                onClick={sendAlert}
+                style={{
+                  padding: "8px 12px",
+                  borderRadius: 8,
+                  border: "1px solid #111",
+                  background: "#111",
+                  color: "white",
+                }}
+              >
+                Invia
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
