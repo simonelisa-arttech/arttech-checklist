@@ -1,14 +1,10 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { createClient } from "@supabase/supabase-js";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
+import ConfigMancante from "@/components/ConfigMancante";
+import { isSupabaseConfigured, supabase } from "@/lib/supabaseClient";
 
 const SAAS_PIANI = [
   { code: "SAS-PL", label: "CARE PLUS (ASSISTENZA BASE)" },
@@ -164,6 +160,9 @@ function calcM2(dimensioni: string | null): number | null {
 }
 
 export default function NuovaChecklistPage() {
+  if (!isSupabaseConfigured) {
+    return <ConfigMancante />;
+  }
   const router = useRouter();
   const [catalogItems, setCatalogItems] = useState<CatalogItem[]>([]);
   const [currentOperatoreId, setCurrentOperatoreId] = useState<string>("");

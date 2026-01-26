@@ -1,7 +1,8 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { supabase } from '@/lib/supabaseClient'
+import ConfigMancante from '@/components/ConfigMancante'
+import { isSupabaseConfigured, supabase } from '@/lib/supabaseClient'
 
 type CatalogItem = {
   id: string
@@ -17,6 +18,9 @@ function norm(s: string) {
 }
 
 export default function CatalogoPage() {
+  if (!isSupabaseConfigured) {
+    return <ConfigMancante />
+  }
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)

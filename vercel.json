@@ -1,0 +1,12 @@
+{
+  "crons": [
+    {
+      "path": "/api/cron/rinnovi-stage1",
+      "schedule": "30 8 * * *"
+    },
+    {
+      "path": "/api/cron/rinnovi-stage2",
+      "schedule": "40 8 * * *"
+    }
+  ]
+}

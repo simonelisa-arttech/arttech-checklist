@@ -2,12 +2,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { createClient } from "@supabase/supabase-js";
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
+import ConfigMancante from "@/components/ConfigMancante";
+import { isSupabaseConfigured, supabase } from "@/lib/supabaseClient";
 
 type OperatoreRow = {
   id?: string;
@@ -33,6 +29,9 @@ const RUOLI = [
 ];
 
 export default function OperatoriPage() {
+  if (!isSupabaseConfigured) {
+    return <ConfigMancante />;
+  }
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [rows, setRows] = useState<OperatoreRow[]>([]);
@@ -65,18 +64,26 @@ export default function OperatoriPage() {
   async function loadOperatori() {
     setLoading(true);
     setError(null);
-    const { data, error: err } = await supabase
-      .from("operatori")
-      .select("*")
-      .order("ruolo", { ascending: true })
-      .order("nome", { ascending: true });
-
-    if (err) {
-      setError("Errore caricamento operatori: " + err.message);
+    const res = await fetch("/api/operatori");
+    if (!res.ok) {
+      let msg = "Errore caricamento operatori";
+      try {
+        const data = await res.json();
+        msg = data?.error || msg;
+      } catch {
+        // ignore
+      }
+      setError(msg);
       setLoading(false);
       return;
     }
-
+    let payload: any = null;
+    try {
+      payload = await res.json();
+    } catch {
+      payload = null;
+    }
+    const data = payload?.data || [];
     const mapped = (data || []).map((r: any) => ({
       id: r.id,
       nome: r.nome ?? "",
@@ -137,6 +144,7 @@ export default function OperatoriPage() {
 
   async function saveRow(row: OperatoreRow) {
     const payload = {
+      id: row.id,
       nome: row.nome.trim() ? row.nome.trim() : null,
       ruolo: row.ruolo.trim() ? row.ruolo.trim() : null,
       email: row.email.trim() ? row.email.trim() : null,
@@ -155,21 +163,22 @@ export default function OperatoriPage() {
       return;
     }
 
-    if (row.id) {
-      const { error: err } = await supabase
-        .from("operatori")
-        .update(payload)
-        .eq("id", row.id);
-      if (err) {
-        setError("Errore salvataggio operatore: " + err.message);
-        return;
+    const method = row.id ? "PATCH" : "POST";
+    const res = await fetch("/api/operatori", {
+      method,
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) {
+      let msg = "Errore salvataggio operatore";
+      try {
+        const data = await res.json();
+        msg = data?.error || msg;
+      } catch {
+        // ignore
       }
-    } else {
-      const { error: err } = await supabase.from("operatori").insert(payload);
-      if (err) {
-        setError("Errore inserimento operatore: " + err.message);
-        return;
-      }
+      setError(msg);
+      return;
     }
 
     await loadOperatori();
@@ -182,9 +191,18 @@ export default function OperatoriPage() {
     }
     const ok = window.confirm("Eliminare questo operatore?");
     if (!ok) return;
-    const { error: err } = await supabase.from("operatori").delete().eq("id", row.id);
-    if (err) {
-      setError("Errore eliminazione operatore: " + err.message);
+    const res = await fetch(`/api/operatori?id=${encodeURIComponent(row.id)}`, {
+      method: "DELETE",
+    });
+    if (!res.ok) {
+      let msg = "Errore eliminazione operatore";
+      try {
+        const data = await res.json();
+        msg = data?.error || msg;
+      } catch {
+        // ignore
+      }
+      setError(msg);
       return;
     }
     await loadOperatori();

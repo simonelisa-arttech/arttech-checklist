@@ -2,12 +2,9 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { createClient } from "@supabase/supabase-js";
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
+import ConfigMancante from "@/components/ConfigMancante";
+import { isSupabaseConfigured, supabase } from "@/lib/supabaseClient";
+import { sendAlert } from "@/lib/sendAlert";
 
 type OperatoreRow = {
   id: string;
@@ -30,6 +27,20 @@ type InterventoRow = {
   fatturazione_stato: string | null;
   alert_fattura_last_sent_at: string | null;
 };
+
+function escapeHtml(value: string) {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+function textToHtml(text: string) {
+  return text
+    .split("\n")
+    .map((line) => escapeHtml(line))
+    .join("<br/>");
+}
 
 function getInterventoStato(i: InterventoRow): "APERTO" | "CHIUSO" {
   const raw = String(i.stato_intervento || "").toUpperCase();
@@ -71,11 +82,15 @@ function buildMessage(cliente: string, list: InterventoRow[]) {
 }
 
 export default function AlertFatturePage() {
+  if (!isSupabaseConfigured) {
+    return <ConfigMancante />;
+  }
   const [operatori, setOperatori] = useState<OperatoreRow[]>([]);
   const [currentOperatoreId, setCurrentOperatoreId] = useState<string | null>(null);
   const [running, setRunning] = useState(false);
   const [info, setInfo] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [sendEmail, setSendEmail] = useState(true);
 
   useEffect(() => {
     const stored =
@@ -149,17 +164,31 @@ export default function AlertFatturePage() {
       byCliente.get(key)!.push(i);
     }
 
-    const payloads: any[] = [];
+    if (recipients.length === 0) {
+      setInfo("Nessun destinatario con email valida.");
+      setRunning(false);
+      return;
+    }
+
+    const payloads: Array<{
+      checklistId: string | null;
+      toOperatoreId: string;
+      toEmail: string | null;
+      toNome: string | null;
+      messaggio: string;
+      cliente: string;
+    }> = [];
     byCliente.forEach((list, cliente) => {
       const messaggio = buildMessage(cliente, list);
       const checklistId = list[0]?.checklist_id ?? null;
       for (const r of recipients) {
         payloads.push({
-          checklist_id: checklistId,
-          intervento_id: null,
-          to_operatore_id: r.id,
+          checklistId,
+          toOperatoreId: r.id,
+          toEmail: r.email ?? null,
+          toNome: r.nome ?? null,
           messaggio,
-          canale: "fatturazione_auto",
+          cliente,
         });
       }
     });
@@ -170,11 +199,34 @@ export default function AlertFatturePage() {
       return;
     }
 
-    const { error: insErr } = await supabase.from("checklist_alert_log").insert(payloads);
-    if (insErr) {
-      setError("Errore inserimento alert: " + insErr.message);
-      setRunning(false);
-      return;
+    for (const p of payloads) {
+      const subject = `[Art Tech] Da fatturare – ${p.cliente || "—"}`;
+      const html = `
+        <div>
+          <h2>${escapeHtml(subject)}</h2>
+          <div>${textToHtml(p.messaggio)}</div>
+          <p style="font-size:12px;color:#6b7280">Messaggio manuale Art Tech.</p>
+        </div>
+      `;
+      try {
+        await sendAlert({
+          canale: "fatturazione_bulk",
+          subject,
+          text: p.messaggio,
+          html,
+          to_email: p.toEmail,
+          to_nome: p.toNome,
+          to_operatore_id: p.toOperatoreId,
+          from_operatore_id: currentOperatoreId ?? null,
+          checklist_id: p.checklistId,
+          send_email: sendEmail,
+        });
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : "Errore invio alert";
+        setError(msg);
+        setRunning(false);
+        return;
+      }
     }
 
     const nowIso = new Date().toISOString();
@@ -192,7 +244,8 @@ export default function AlertFatturePage() {
     if (updErr) {
       setError("Alert inviati ma errore aggiornamento timestamp: " + updErr.message);
     } else {
-      setInfo(`Alert inviati: ${due.length} interventi`);
+      const esito = sendEmail ? "Email inviate" : "Log registrati";
+      setInfo(`${esito}: ${due.length} interventi`);
     }
 
     setRunning(false);
@@ -200,11 +253,19 @@ export default function AlertFatturePage() {
 
   return (
     <div style={{ maxWidth: 900, margin: "40px auto", padding: 16 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
         <div>
           <h1 style={{ margin: 0, fontSize: 28 }}>Alert fatture</h1>
           <div style={{ fontSize: 12, opacity: 0.7 }}>Esecuzione manuale job fatture da emettere</div>
         </div>
+        <label style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 12 }}>
+          <input
+            type="checkbox"
+            checked={sendEmail}
+            onChange={(e) => setSendEmail(e.target.checked)}
+          />
+          Invia email
+        </label>
         <Link
           href="/impostazioni"
           style={{

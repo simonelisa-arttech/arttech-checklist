@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { createClient } from "@supabase/supabase-js";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import ConfigMancante from "@/components/ConfigMancante";
+import { isSupabaseConfigured, supabase } from "@/lib/supabaseClient";
 
 const SAAS_PIANI = [
   { code: "SAS-PL", label: "CARE PLUS (ASSISTENZA BASE)" },
@@ -234,11 +235,6 @@ type CatalogItem = {
   attivo: boolean;
 };
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
-
 function isFiniteNumberString(v: string) {
   if (v.trim() === "") return false;
   const n = Number(v);
@@ -274,6 +270,9 @@ function calcM2(dimensioni: string | null): number | null {
 }
 
 export default function Page() {
+  if (!isSupabaseConfigured) {
+    return <ConfigMancante />;
+  }
   const router = useRouter();
   const [items, setItems] = useState<Checklist[]>([]);
   const [loading, setLoading] = useState(true);

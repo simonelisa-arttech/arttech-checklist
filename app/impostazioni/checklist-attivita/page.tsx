@@ -2,12 +2,8 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { createClient } from "@supabase/supabase-js";
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
+import ConfigMancante from "@/components/ConfigMancante";
+import { isSupabaseConfigured, supabase } from "@/lib/supabaseClient";
 
 type TaskTemplateRow = {
   id?: string;
@@ -19,6 +15,9 @@ type TaskTemplateRow = {
 };
 
 export default function ChecklistAttivitaPage() {
+  if (!isSupabaseConfigured) {
+    return <ConfigMancante />;
+  }
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [rows, setRows] = useState<TaskTemplateRow[]>([]);

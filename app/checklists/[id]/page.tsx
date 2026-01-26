@@ -3,7 +3,9 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { createClient } from "@supabase/supabase-js";
+import ConfigMancante from "@/components/ConfigMancante";
+import { isSupabaseConfigured, supabase } from "@/lib/supabaseClient";
+import { sendAlert } from "@/lib/sendAlert";
 
 type Checklist = {
   id: string;
@@ -115,6 +117,7 @@ type ChecklistDocument = {
 type AlertOperatore = {
   id: string;
   nome: string | null;
+  email?: string | null;
   attivo: boolean;
   alert_enabled: boolean;
   alert_tasks: {
@@ -158,11 +161,6 @@ type FormData = {
   data_installazione_reale: string;
   garanzia_scadenza: string;
 };
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
 
 function toDateInput(value?: string | null) {
   if (!value) return "";
@@ -375,6 +373,9 @@ function getLicenzaStatusLabel(lic: Licenza) {
 }
 
 export default function ChecklistDetailPage({ params }: { params: any }) {
+  if (!isSupabaseConfigured) {
+    return <ConfigMancante />;
+  }
   const router = useRouter();
   const [id, setId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -406,6 +407,7 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
   const [alertTask, setAlertTask] = useState<ChecklistTask | null>(null);
   const [alertDestinatarioId, setAlertDestinatarioId] = useState("");
   const [alertMessaggio, setAlertMessaggio] = useState("");
+  const [alertSendEmail, setAlertSendEmail] = useState(true);
   const [alertNotice, setAlertNotice] = useState<string | null>(null);
   const [lastAlertByTask, setLastAlertByTask] = useState<
     Map<string, { toOperatoreId: string; createdAt: string }>
@@ -674,7 +676,7 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
     (async () => {
       const { data, error: opErr } = await supabase
         .from("operatori")
-        .select("id, nome, attivo, alert_enabled, alert_tasks");
+        .select("id, nome, email, attivo, alert_enabled, alert_tasks");
       if (opErr) {
         console.error("Errore caricamento operatori", opErr);
         return;
@@ -683,6 +685,7 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
       const list: AlertOperatore[] = (data || []).map((o: any) => ({
         id: o.id,
         nome: o.nome ?? null,
+        email: o.email ?? null,
         attivo: Boolean(o.attivo),
         alert_enabled: Boolean(o.alert_enabled),
         alert_tasks: normalizeAlertTasks(o.alert_tasks),
@@ -722,13 +725,21 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
     });
   }
 
-  async function sendAlert() {
+  async function handleSendAlert() {
     if (!alertTask || !checklist) return;
     if (!alertDestinatarioId) {
       alert("Seleziona un destinatario.");
       return;
     }
-    if (!currentOperatoreId) {
+    const destinatario = alertOperatori.find((o) => o.id === alertDestinatarioId);
+    if (alertSendEmail && !destinatario?.email) {
+      alert("Il destinatario non ha un'email configurata.");
+      return;
+    }
+    const opId =
+      currentOperatoreId ??
+      (typeof window !== "undefined" ? window.localStorage.getItem("current_operatore_id") : null);
+    if (!opId) {
       alert("Seleziona un operatore corrente in dashboard prima di inviare.");
       return;
     }
@@ -775,27 +786,56 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
       return;
     }
 
-    const payload = {
-      checklist_id: checklist.id,
-      task_id: alertTask.id,
-      task_template_id: taskTemplateId,
-      to_operatore_id: alertDestinatarioId,
-      from_operatore_id: currentOperatoreId,
-      messaggio: alertMessaggio.trim() ? alertMessaggio.trim() : null,
-      canale: "manual",
-    };
+    const clienteLabel = checklist.cliente ?? "—";
+    const subject = `[Art Tech] Alert checklist – ${clienteLabel}`;
+    const dettagli = [
+      `Cliente: ${clienteLabel}`,
+      `Checklist: ${checklist.nome_checklist}`,
+      `Task: ${alertTask.titolo}`,
+      `Stato: ${String(alertTask.stato || "—").toUpperCase()}`,
+      alertMessaggio.trim() ? `Messaggio: ${alertMessaggio.trim()}` : "",
+    ]
+      .filter(Boolean)
+      .join("\n");
+    const html = `
+      <div>
+        <h2>Alert checklist</h2>
+        <ul>
+          <li><strong>Cliente:</strong> ${clienteLabel}</li>
+          <li><strong>Checklist:</strong> ${checklist.nome_checklist}</li>
+          <li><strong>Task:</strong> ${alertTask.titolo}</li>
+          <li><strong>Stato:</strong> ${String(alertTask.stato || "—").toUpperCase()}</li>
+        </ul>
+        ${alertMessaggio.trim() ? `<p>${alertMessaggio.trim()}</p>` : ""}
+        <p style="font-size:12px;color:#6b7280">Messaggio manuale Art Tech.</p>
+      </div>
+    `;
 
-    const { error: insErr } = await supabase
-      .from("checklist_alert_log")
-      .insert(payload);
-    if (insErr) {
-      alert("Errore invio alert: " + insErr.message);
+    try {
+      await sendAlert({
+        canale: "manual_task",
+        subject,
+        text: dettagli,
+        html,
+        to_email: destinatario?.email ?? null,
+        to_nome: destinatario?.nome ?? null,
+        to_operatore_id: alertDestinatarioId,
+        from_operatore_id: opId,
+        checklist_id: checklist.id,
+        task_id: alertTask.id,
+        task_template_id: taskTemplateId,
+        send_email: alertSendEmail,
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Errore invio alert";
+      alert(msg);
       return;
     }
 
-    setAlertNotice("Alert registrato (nessuna email inviata).");
+    setAlertNotice(
+      alertSendEmail ? "✅ Email inviata e log registrato." : "Log registrato (email disattivata)."
+    );
     setTimeout(() => setAlertNotice(null), 2500);
-    alert("Alert registrato (nessuna email inviata).");
     setLastAlertByTask((prev) => {
       const next = new Map(prev);
       next.set(alertTask.id, {
@@ -807,6 +847,7 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
     setAlertTask(null);
     setAlertDestinatarioId("");
     setAlertMessaggio("");
+    setAlertSendEmail(true);
   }
 
   function addRow() {
@@ -2600,6 +2641,14 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
                 style={{ width: "100%", padding: 8 }}
               />
             </label>
+            <label style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 12 }}>
+              <input
+                type="checkbox"
+                checked={alertSendEmail}
+                onChange={(e) => setAlertSendEmail(e.target.checked)}
+              />
+              Invia email
+            </label>
             <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
               <button
                 type="button"
@@ -2615,7 +2664,7 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
               </button>
               <button
                 type="button"
-                onClick={sendAlert}
+                onClick={handleSendAlert}
                 style={{
                   padding: "8px 12px",
                   borderRadius: 8,

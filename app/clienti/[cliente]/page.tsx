@@ -3,12 +3,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { createClient } from "@supabase/supabase-js";
-
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
+import ConfigMancante from "@/components/ConfigMancante";
+import { isSupabaseConfigured, supabase } from "@/lib/supabaseClient";
+import { sendAlert } from "@/lib/sendAlert";
 
 function parseLocalDay(value?: string | null): Date | null {
   if (!value) return null;
@@ -25,6 +22,20 @@ function parseLocalDay(value?: string | null): Date | null {
   if (!Number.isFinite(dt.getTime())) return null;
   dt.setHours(0, 0, 0, 0);
   return dt;
+}
+
+function escapeHtml(value: string) {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+function textToHtml(text: string) {
+  return text
+    .split("\n")
+    .map((line) => escapeHtml(line))
+    .join("<br/>");
 }
 
 function getExpiryStatus(value?: string | null): "ATTIVA" | "SCADUTA" | "—" {
@@ -474,6 +485,9 @@ type PianoUltraRow = {
 };
 
 export default function ClientePage({ params }: { params: any }) {
+  if (!isSupabaseConfigured) {
+    return <ConfigMancante />;
+  }
   const router = useRouter();
   const [cliente, setCliente] = useState<string>("");
   const [loading, setLoading] = useState(true);
@@ -492,6 +506,7 @@ export default function ClientePage({ params }: { params: any }) {
   const [rinnoviAlertStage, setRinnoviAlertStage] = useState<"stage1" | "stage2">("stage1");
   const [rinnoviAlertToOperatoreId, setRinnoviAlertToOperatoreId] = useState("");
   const [rinnoviAlertMsg, setRinnoviAlertMsg] = useState("");
+  const [rinnoviAlertSendEmail, setRinnoviAlertSendEmail] = useState(true);
   const [rinnoviAlertIds, setRinnoviAlertIds] = useState<string[]>([]);
   const [rinnoviAlertDestMode, setRinnoviAlertDestMode] = useState<"operatore" | "email">(
     "operatore"
@@ -531,6 +546,7 @@ export default function ClientePage({ params }: { params: any }) {
   const [alertInterventoId, setAlertInterventoId] = useState<string | null>(null);
   const [alertDestinatarioId, setAlertDestinatarioId] = useState("");
   const [alertMessaggio, setAlertMessaggio] = useState("");
+  const [alertSendEmail, setAlertSendEmail] = useState(true);
   const [alertNotice, setAlertNotice] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
   const [sendErr, setSendErr] = useState<string | null>(null);
@@ -538,6 +554,7 @@ export default function ClientePage({ params }: { params: any }) {
   const [bulkOpen, setBulkOpen] = useState(false);
   const [bulkToOperatoreId, setBulkToOperatoreId] = useState("");
   const [bulkMsg, setBulkMsg] = useState("");
+  const [bulkSendEmail, setBulkSendEmail] = useState(true);
   const [bulkSending, setBulkSending] = useState(false);
   const [bulkErr, setBulkErr] = useState<string | null>(null);
   const [bulkOk, setBulkOk] = useState<string | null>(null);
@@ -1988,23 +2005,50 @@ export default function ClientePage({ params }: { params: any }) {
     }
     const checklistId = list.find((r) => r.checklist_id)?.checklist_id ?? null;
     const canale = rinnoviAlertStage === "stage1" ? "rinnovo_stage1" : "rinnovo_stage2";
-    const { error } = await supabase.from("checklist_alert_log").insert({
-      checklist_id: checklistId,
-      task_id: null,
-      task_template_id: null,
-      to_operatore_id: rinnoviAlertDestMode === "operatore" ? rinnoviAlertToOperatoreId : null,
-      to_email:
-        rinnoviAlertDestMode === "email" ? rinnoviAlertManualEmail.trim() : null,
-      to_nome:
-        rinnoviAlertDestMode === "email"
-          ? rinnoviAlertManualName.trim() || null
-          : null,
-      from_operatore_id: opId,
-      messaggio: rinnoviAlertMsg,
-      canale,
-    });
-    if (error) {
-      setRinnoviAlertErr(error.message || "Errore invio alert");
+    const op =
+      rinnoviAlertDestMode === "operatore"
+        ? alertOperatori.find((o) => o.id === rinnoviAlertToOperatoreId)
+        : null;
+    const toEmail =
+      rinnoviAlertDestMode === "email"
+        ? rinnoviAlertManualEmail.trim()
+        : op?.email ?? "";
+    const toNome =
+      rinnoviAlertDestMode === "email"
+        ? rinnoviAlertManualName.trim() || null
+        : op?.nome ?? null;
+    if (rinnoviAlertSendEmail && !toEmail.includes("@")) {
+      setRinnoviAlertErr("Destinatario senza email valida.");
+      setRinnoviAlertSending(false);
+      return;
+    }
+    const subject =
+      rinnoviAlertStage === "stage1"
+        ? `[Art Tech] Scadenze servizi – ${cliente || "—"}`
+        : `[Art Tech] Da fatturare – ${cliente || "—"}`;
+    const html = `
+      <div>
+        <h2>${escapeHtml(subject)}</h2>
+        <div>${textToHtml(rinnoviAlertMsg || "")}</div>
+        <p style="font-size:12px;color:#6b7280">Messaggio manuale Art Tech.</p>
+      </div>
+    `;
+    try {
+      await sendAlert({
+        canale,
+        subject,
+        text: rinnoviAlertMsg,
+        html,
+        to_email: toEmail || null,
+        to_nome: toNome,
+        to_operatore_id: rinnoviAlertDestMode === "operatore" ? rinnoviAlertToOperatoreId : null,
+        from_operatore_id: opId,
+        checklist_id: checklistId,
+        send_email: rinnoviAlertSendEmail,
+      });
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Errore invio alert";
+      setRinnoviAlertErr(msg);
       setRinnoviAlertSending(false);
       return;
     }
@@ -2014,20 +2058,25 @@ export default function ClientePage({ params }: { params: any }) {
       await updateRinnovi(ids, {
         stato: "AVVISATO",
         notify_stage1_sent_at: nowIso,
-        notify_stage1_to_operatore_id: rinnoviAlertToOperatoreId,
+        notify_stage1_to_operatore_id:
+          rinnoviAlertDestMode === "operatore" ? rinnoviAlertToOperatoreId : null,
       });
     } else {
       const ids = list.map((r) => r.id);
       await updateRinnovi(ids, {
+        billing_notified_at: nowIso,
         billing_stage2_sent_at: nowIso,
-        billing_stage2_to_operatore_id: rinnoviAlertToOperatoreId,
+        billing_stage2_to_operatore_id:
+          rinnoviAlertDestMode === "operatore" ? rinnoviAlertToOperatoreId : null,
       });
     }
     const recipientLabel = getRinnoviRecipientLabel();
-    setRinnoviAlertOk(`Registrato a: ${recipientLabel}`);
-    setRinnoviNotice(`Alert registrato — ${recipientLabel}`);
+    const esitoLabel = rinnoviAlertSendEmail ? "Email inviata" : "Log registrato";
+    setRinnoviAlertOk(`${esitoLabel} — ${recipientLabel}`);
+    setRinnoviNotice(`${esitoLabel} — ${recipientLabel}`);
     setRinnoviAlertSending(false);
     setRinnoviAlertOpen(false);
+    setRinnoviAlertSendEmail(true);
     await fetchRinnovi((cliente || "").trim());
   }
 
@@ -2152,31 +2201,50 @@ export default function ClientePage({ params }: { params: any }) {
       setBulkSending(false);
       return;
     }
-    const { error } = await supabase
-      .from("checklist_alert_log")
-      .insert({
-        checklist_id: checklistId,
-        task_id: null,
-        task_template_id: null,
+    const op = alertOperatori.find((o) => o.id === bulkToOperatoreId);
+    const toEmail = op?.email ?? "";
+    if (bulkSendEmail && !toEmail.includes("@")) {
+      setBulkErr("Destinatario senza email valida.");
+      setBulkSending(false);
+      return;
+    }
+    const subject = `[Art Tech] Da fatturare – ${cliente || "—"}`;
+    const html = `
+      <div>
+        <h2>${escapeHtml(subject)}</h2>
+        <div>${textToHtml(bulkMsg || "")}</div>
+        <p style="font-size:12px;color:#6b7280">Messaggio manuale Art Tech.</p>
+      </div>
+    `;
+    try {
+      await sendAlert({
+        canale: "fatturazione_bulk",
+        subject,
+        text: bulkMsg,
+        html,
+        to_email: toEmail || null,
+        to_nome: op?.nome ?? null,
         to_operatore_id: bulkToOperatoreId,
         from_operatore_id: opId,
-        messaggio: bulkMsg,
-        canale: "fatturazione_bulk",
+        checklist_id: checklistId,
+        send_email: bulkSendEmail,
       });
-    if (error) {
-      console.error("BULK INSERT ERR", error);
-      setBulkErr(error.message || "Errore invio alert");
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : "Errore invio alert";
+      setBulkErr(msg);
       setBulkSending(false);
       return;
     }
     const okCount = list.length;
     const toName =
       alertOperatori.find((o) => o.id === bulkToOperatoreId)?.nome ?? bulkToOperatoreId;
-    setBulkOk(`Alert registrato (${okCount} interventi)`);
+    const esito = bulkSendEmail ? "Email inviata" : "Log registrato";
+    setBulkOk(`${esito} (${okCount} interventi)`);
     setBulkSending(false);
     setBulkOpen(false);
+    setBulkSendEmail(true);
     setInterventiInfo(
-      `✅ Alert fatturazione registrato (${okCount} interventi, destinatario: ${toName}).`
+      `✅ ${esito} (${okCount} interventi, destinatario: ${toName}).`
     );
     await fetchLastBulkAlert();
   }
@@ -2214,16 +2282,24 @@ export default function ClientePage({ params }: { params: any }) {
     if (checklistId) {
       const nome = op?.nome ?? op?.id ?? "—";
       console.log("ALERT FATTURAZIONE opId=", opId);
-      const { error: insErr } = await supabase.from("checklist_alert_log").insert({
-        checklist_id: checklistId,
-        intervento_id: interventoId,
-        to_operatore_id: currentOperatoreId,
-        from_operatore_id: opId,
-        messaggio: `Intervento riaperto da ${nome}`,
-        canale: "manual",
-      });
-      if (insErr) {
-        console.error("Errore log riapertura intervento", insErr);
+      try {
+        await sendAlert({
+          canale: "manual",
+          subject: "Intervento riaperto",
+          text: `Intervento riaperto da ${nome}`,
+          html: `<div><strong>Intervento riaperto</strong><br/>${escapeHtml(
+            `Intervento riaperto da ${nome}`
+          )}</div>`,
+          to_email: op?.email ?? null,
+          to_nome: op?.nome ?? null,
+          to_operatore_id: currentOperatoreId,
+          from_operatore_id: opId,
+          checklist_id: checklistId,
+          intervento_id: interventoId,
+          send_email: false,
+        });
+      } catch (err) {
+        console.error("Errore log riapertura intervento", err);
       }
     }
 
@@ -2268,26 +2344,56 @@ export default function ClientePage({ params }: { params: any }) {
       toOperatoreId,
       msg,
     });
-    console.log("ALERT FATTURAZIONE opId=", opId);
-    const { error: insErr } = await supabase.from("checklist_alert_log").insert({
-      checklist_id: checklistId,
-      task_id: null,
-      task_template_id: null,
-      to_operatore_id: toOperatoreId,
-      from_operatore_id: opId,
-      messaggio: msg ? msg : null,
-      canale: "fatturazione_manual",
-    });
-    if (insErr) {
-      console.error("ALERT ERROR", insErr);
-      setSendErr(insErr.message || "Errore invio alert");
+    const op = alertOperatori.find((o) => o.id === toOperatoreId);
+    const toEmail = op?.email ?? "";
+    if (alertSendEmail && !toEmail.includes("@")) {
+      setSendErr("Destinatario senza email valida.");
       setSending(false);
       return;
     }
-    setSendOk("Alert registrato");
-    setAlertNotice("Alert registrato");
+    const subject = `[Art Tech] Alert fatturazione – ${cliente || "—"}`;
+    const dettagli = [
+      `Cliente: ${cliente || "—"}`,
+      intervento?.descrizione ? `Intervento: ${intervento.descrizione}` : "",
+      intervento?.proforma ? `Proforma: ${intervento.proforma}` : "",
+      intervento?.codice_magazzino ? `CodMag: ${intervento.codice_magazzino}` : "",
+      msg ? `Messaggio: ${msg}` : "",
+    ]
+      .filter(Boolean)
+      .join("\n");
+    const html = `
+      <div>
+        <h2>${escapeHtml(subject)}</h2>
+        <div>${textToHtml(dettagli)}</div>
+        <p style="font-size:12px;color:#6b7280">Messaggio manuale Art Tech.</p>
+      </div>
+    `;
+    try {
+      await sendAlert({
+        canale: "fatturazione_row",
+        subject,
+        text: dettagli,
+        html,
+        to_email: toEmail || null,
+        to_nome: op?.nome ?? null,
+        to_operatore_id: toOperatoreId,
+        from_operatore_id: opId,
+        checklist_id: checklistId,
+        intervento_id: alertInterventoId,
+        send_email: alertSendEmail,
+      });
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : "Errore invio alert";
+      setSendErr(errorMsg);
+      setSending(false);
+      return;
+    }
+    const esito = alertSendEmail ? "Email inviata" : "Log registrato";
+    setSendOk(esito);
+    setAlertNotice(esito);
     setAlertDestinatarioId("");
     setAlertMessaggio("");
+    setAlertSendEmail(true);
     setSending(false);
     setTimeout(() => setAlertInterventoId(null), 300);
 
@@ -2723,6 +2829,14 @@ export default function ClientePage({ params }: { params: any }) {
             {filteredRinnovi.map((r) => {
               const checklist = r.checklist_id ? checklistById.get(r.checklist_id) : null;
               const checklistName = checklist?.nome_checklist ?? r.checklist_id?.slice(0, 8);
+              const stato = String(r.stato || "").toUpperCase();
+              const canStage1 = stato === "DA_AVVISARE";
+              const canConfirm = !["CONFERMATO", "DA_FATTURARE", "FATTURATO", "NON_RINNOVATO"].includes(
+                stato
+              );
+              const canStage2 = stato === "CONFERMATO" || stato === "DA_FATTURARE";
+              const canNonRinnovato = !["FATTURATO", "NON_RINNOVATO"].includes(stato);
+              const canFatturato = stato === "DA_FATTURARE";
               return (
                 <div
                   key={r.id}
@@ -2753,77 +2867,124 @@ export default function ClientePage({ params }: { params: any }) {
                     {renderScadenzaBadge(r.scadenza)}
                   </div>
                   <div>{renderRinnovoStatoBadge(r.stato)}</div>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                    <button
-                      type="button"
-                      onClick={() => openRinnoviAlert("stage1", false, [r])}
-                      style={{
-                        padding: "4px 6px",
-                        borderRadius: 6,
-                        border: "1px solid #ddd",
-                        background: "white",
-                        cursor: "pointer",
-                        fontSize: 12,
-                      }}
-                    >
-                      Invia avviso
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => markRinnovoConfermato(r)}
-                      style={{
-                        padding: "4px 6px",
-                        borderRadius: 6,
-                        border: "1px solid #111",
-                        background: "white",
-                        cursor: "pointer",
-                        fontSize: 12,
-                      }}
-                    >
-                      Confermato
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => markRinnovoDaFatturare(r)}
-                      style={{
-                        padding: "4px 6px",
-                        borderRadius: 6,
-                        border: "1px solid #111",
-                        background: "white",
-                        cursor: "pointer",
-                        fontSize: 12,
-                      }}
-                    >
-                      DA FATTURARE + Avvisa Admin
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => markRinnovoNonRinnovato(r)}
-                      style={{
-                        padding: "4px 6px",
-                        borderRadius: 6,
-                        border: "1px solid #ddd",
-                        background: "white",
-                        cursor: "pointer",
-                        fontSize: 12,
-                      }}
-                    >
-                      NON_RINNOVATO
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => markRinnovoFatturato(r)}
-                      style={{
-                        padding: "4px 6px",
-                        borderRadius: 6,
-                        border: "1px solid #ddd",
-                        background: "white",
-                        cursor: "pointer",
-                        fontSize: 12,
-                      }}
-                    >
-                      FATTURATO
-                    </button>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                      <button
+                        type="button"
+                        onClick={() => openRinnoviAlert("stage1", false, [r])}
+                        disabled={!canStage1}
+                        title={
+                          canStage1
+                            ? "Invia avviso (stage1)"
+                            : "Disponibile solo per stato DA_AVVISARE"
+                        }
+                        style={{
+                          padding: "4px 8px",
+                          borderRadius: 6,
+                          border: "1px solid #111",
+                          background: "white",
+                          cursor: canStage1 ? "pointer" : "not-allowed",
+                          fontSize: 12,
+                          fontWeight: 700,
+                          opacity: canStage1 ? 1 : 0.5,
+                        }}
+                      >
+                        Invia avviso
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (stato === "DA_FATTURARE") {
+                            openRinnoviAlert("stage2", false, [r]);
+                          } else {
+                            markRinnovoDaFatturare(r);
+                          }
+                        }}
+                        disabled={!canStage2}
+                        title={
+                          canStage2
+                            ? "Invia admin (stage2)"
+                            : "Disponibile solo dopo CONFERMATO"
+                        }
+                        style={{
+                          padding: "4px 8px",
+                          borderRadius: 6,
+                          border: "1px solid #111",
+                          background: "white",
+                          cursor: canStage2 ? "pointer" : "not-allowed",
+                          fontSize: 12,
+                          fontWeight: 700,
+                          opacity: canStage2 ? 1 : 0.5,
+                        }}
+                      >
+                        Invia admin
+                      </button>
+                    </div>
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                      <button
+                        type="button"
+                        onClick={() => markRinnovoConfermato(r)}
+                        disabled={!canConfirm}
+                        title={
+                          canConfirm
+                            ? "Segna come CONFERMATO"
+                            : "Stato già CONFERMATO o oltre"
+                        }
+                        style={{
+                          padding: "4px 6px",
+                          borderRadius: 6,
+                          border: "1px solid #ddd",
+                          background: "#f9fafb",
+                          cursor: canConfirm ? "pointer" : "not-allowed",
+                          fontSize: 12,
+                          opacity: canConfirm ? 1 : 0.5,
+                        }}
+                      >
+                        Confermato
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => markRinnovoNonRinnovato(r)}
+                        disabled={!canNonRinnovato}
+                        title={
+                          canNonRinnovato
+                            ? "Segna come NON_RINNOVATO"
+                            : "Non disponibile se già FATTURATO/NON_RINNOVATO"
+                        }
+                        style={{
+                          padding: "4px 6px",
+                          borderRadius: 6,
+                          border: "1px solid #ddd",
+                          background: "#f9fafb",
+                          cursor: canNonRinnovato ? "pointer" : "not-allowed",
+                          fontSize: 12,
+                          opacity: canNonRinnovato ? 1 : 0.5,
+                        }}
+                      >
+                        NON_RINNOVATO
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => markRinnovoFatturato(r)}
+                        disabled={!canFatturato}
+                        title={
+                          canFatturato
+                            ? "Segna come FATTURATO"
+                            : "Disponibile solo per stato DA_FATTURARE"
+                        }
+                        style={{
+                          padding: "4px 6px",
+                          borderRadius: 6,
+                          border: "1px solid #ddd",
+                          background: "#f9fafb",
+                          cursor: canFatturato ? "pointer" : "not-allowed",
+                          fontSize: 12,
+                          opacity: canFatturato ? 1 : 0.5,
+                        }}
+                      >
+                        FATTURATO
+                      </button>
+                    </div>
                   </div>
                 </div>
               );
@@ -2837,11 +2998,14 @@ export default function ClientePage({ params }: { params: any }) {
           style={{
             border: "1px solid #eee",
             borderRadius: 12,
-            padding: 12,
+            padding: 14,
             background: "white",
           }}
         >
-          <div style={{ fontWeight: 800 }}>Export</div>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <div style={{ fontWeight: 800 }}>Export</div>
+            <div style={{ fontSize: 11, opacity: 0.6 }}>CSV cliente</div>
+          </div>
           <div style={{ marginTop: 8, display: "flex", gap: 12, flexWrap: "wrap" }}>
             <label style={{ fontSize: 12 }}>
               Da<br />
@@ -2862,7 +3026,15 @@ export default function ClientePage({ params }: { params: any }) {
               />
             </label>
           </div>
-          <div style={{ marginTop: 10, display: "flex", gap: 10, flexWrap: "wrap" }}>
+          <div
+            style={{
+              marginTop: 10,
+              display: "flex",
+              gap: 10,
+              flexWrap: "wrap",
+              alignItems: "stretch",
+            }}
+          >
             <button
               type="button"
               onClick={exportInterventiCsv}
@@ -2872,6 +3044,7 @@ export default function ClientePage({ params }: { params: any }) {
                 border: "1px solid #111",
                 background: "white",
                 cursor: "pointer",
+                flex: "1 1 220px",
               }}
             >
               ⬇️ Export Interventi
@@ -2885,6 +3058,7 @@ export default function ClientePage({ params }: { params: any }) {
                 border: "1px solid #111",
                 background: "white",
                 cursor: "pointer",
+                flex: "1 1 220px",
               }}
             >
               ⬇️ Export Scadenze &amp; Rinnovi
@@ -2898,6 +3072,7 @@ export default function ClientePage({ params }: { params: any }) {
                 border: "1px solid #111",
                 background: "white",
                 cursor: "pointer",
+                flex: "1 1 220px",
               }}
             >
               ⬇️ Export Fatturazione
@@ -4044,6 +4219,14 @@ export default function ClientePage({ params }: { params: any }) {
                   style={{ width: "100%", padding: 8 }}
                 />
               </label>
+              <label style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 6 }}>
+                <input
+                  type="checkbox"
+                  checked={alertSendEmail}
+                  onChange={(e) => setAlertSendEmail(e.target.checked)}
+                />
+                Invia email
+              </label>
             </div>
 
             <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
@@ -4162,6 +4345,14 @@ export default function ClientePage({ params }: { params: any }) {
                   rows={8}
                   style={{ width: "100%", padding: 8 }}
                 />
+              </label>
+              <label style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 6 }}>
+                <input
+                  type="checkbox"
+                  checked={bulkSendEmail}
+                  onChange={(e) => setBulkSendEmail(e.target.checked)}
+                />
+                Invia email
               </label>
             </div>
 
@@ -4371,6 +4562,14 @@ export default function ClientePage({ params }: { params: any }) {
                   style={{ width: "100%", padding: 8 }}
                 />
               </label>
+              <label style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 6 }}>
+                <input
+                  type="checkbox"
+                  checked={rinnoviAlertSendEmail}
+                  onChange={(e) => setRinnoviAlertSendEmail(e.target.checked)}
+                />
+                Invia email
+              </label>
             </div>
 
             <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
@@ -4389,14 +4588,25 @@ export default function ClientePage({ params }: { params: any }) {
               <button
                 type="button"
                 onClick={sendRinnoviAlert}
-                disabled={rinnoviAlertSending || !rinnoviAlertToOperatoreId}
+                disabled={
+                  rinnoviAlertSending ||
+                  (rinnoviAlertDestMode === "operatore"
+                    ? !rinnoviAlertToOperatoreId
+                    : !rinnoviAlertManualEmail.trim())
+                }
                 style={{
                   padding: "8px 12px",
                   borderRadius: 8,
                   border: "1px solid #111",
                   background: "#111",
                   color: "white",
-                  opacity: rinnoviAlertSending || !rinnoviAlertToOperatoreId ? 0.6 : 1,
+                  opacity:
+                    rinnoviAlertSending ||
+                    (rinnoviAlertDestMode === "operatore"
+                      ? !rinnoviAlertToOperatoreId
+                      : !rinnoviAlertManualEmail.trim())
+                      ? 0.6
+                      : 1,
                 }}
               >
                 {rinnoviAlertSending ? "Invio..." : "Invia"}
