@@ -105,14 +105,15 @@ function getDefaultOperatoreByRole(ops: OperatoreRow[], role: string) {
 }
 
 async function getSystemOperatoreId(supabase: ReturnType<typeof createClient>) {
-  const { data, error } = await supabase
+  const { data: row, error } = await supabase
     .from("operatori")
     .select("id")
     .or("nome.ilike.SYSTEM,ruolo.ilike.SYSTEM")
-    .limit(1);
-  if (!error && data && data.length > 0) {
-    return data[0]?.id ?? null;
-  }
+    .order("created_at", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+  if (error) throw error;
+  if (row?.id) return row.id;
   const { data: inserted, error: insertErr } = await supabase
     .from("operatori")
     .insert({
