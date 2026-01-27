@@ -10,6 +10,7 @@ type OperatoreRow = {
   id: string;
   nome: string | null;
   ruolo: string | null;
+  email?: string | null;
   attivo: boolean | null;
   alert_enabled: boolean | null;
 };

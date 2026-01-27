@@ -553,7 +553,7 @@ export default function OperatoriPage() {
                                     checked={checked}
                                     onChange={(e) => {
                                       const current = normalizeAlertTasks(row.alert_tasks);
-                                      const set = new Set(current.task_template_ids);
+                                      const set = new Set<string>(current.task_template_ids);
                                       if (e.target.checked) {
                                         set.add(t.id);
                                       } else {

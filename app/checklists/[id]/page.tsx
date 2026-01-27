@@ -614,7 +614,7 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
     setChecklist(headChecklist);
     setRows(mappedRows);
     setOriginalRowIds((items || []).map((r) => r.id));
-    setTasks((tasks || []) as ChecklistTask[]);
+    setTasks((tasks || []) as unknown as ChecklistTask[]);
     setLicenze((licenzeData || []) as Licenza[]);
     setDocuments((docsData || []) as ChecklistDocument[]);
 
@@ -1092,7 +1092,7 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
       .eq("id", id);
 
     if (errUpdate) {
-      const info = logSupabaseError(errUpdate);
+      const info = logSupabaseError("update checklist", errUpdate);
       alert("Errore salvataggio: " + (info || errUpdate.message));
       return;
     }
@@ -1152,7 +1152,7 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
         .upsert(existingPayload, { onConflict: "id" });
 
       if (itemsUpdateErr) {
-        const info = logSupabaseError(itemsUpdateErr);
+        const info = logSupabaseError("update checklist_items", itemsUpdateErr);
         setItemsError("Errore salvataggio righe: " + (info || itemsUpdateErr.message));
         return;
       }
@@ -1178,7 +1178,7 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
         .insert(insertPayload);
 
       if (itemsInsertErr) {
-        const info = logSupabaseError(itemsInsertErr);
+        const info = logSupabaseError("insert checklist_items", itemsInsertErr);
         setItemsError("Errore inserimento righe: " + (info || itemsInsertErr.message));
         return;
       }
@@ -1196,7 +1196,7 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
         .in("id", deletedIds);
 
       if (itemsDeleteErr) {
-        const info = logSupabaseError(itemsDeleteErr);
+        const info = logSupabaseError("delete checklist_items", itemsDeleteErr);
         setItemsError("Errore eliminazione righe: " + (info || itemsDeleteErr.message));
         return;
       }

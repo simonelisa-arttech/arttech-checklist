@@ -103,7 +103,7 @@ function getDefaultOperatoreByRole(ops: OperatoreRow[], role: string) {
   return ops.find((o) => o.attivo !== false && o.alert_enabled) ?? null;
 }
 
-async function getSystemOperatoreId(supabase: ReturnType<typeof createClient>) {
+async function getSystemOperatoreId(supabase: any) {
   type RowId = { id: string };
   const { data: row, error } = await supabase
     .from("operatori")
@@ -174,10 +174,10 @@ export async function GET(request: Request) {
       .is("billing_notified_at", null)
       .not("confirmed_at", "is", null)
       .order("scadenza", { ascending: true });
-    rinnovi = (withoutIdRes.data as RinnovoRow[]) ?? null;
+    rinnovi = (withoutIdRes.data ?? []) as unknown as RinnovoRow[];
     rinnoviErr = withoutIdRes.error ? { message: withoutIdRes.error.message } : null;
   } else {
-    rinnovi = (withIdRes.data as RinnovoRow[]) ?? null;
+    rinnovi = (withIdRes.data ?? []) as unknown as RinnovoRow[];
     rinnoviErr = withIdRes.error ? { message: withIdRes.error.message } : null;
   }
 

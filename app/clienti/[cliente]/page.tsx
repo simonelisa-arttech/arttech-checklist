@@ -755,7 +755,7 @@ export default function ClientePage({ params }: { params: any }) {
       if (intsErr) {
         setInterventiError("Errore caricamento interventi: " + intsErr.message);
       } else {
-        setInterventi((ints || []) as InterventoRow[]);
+        setInterventi((ints || []) as unknown as InterventoRow[]);
         setInterventiError(null);
         const ids = (ints || []).map((i: any) => i.id).filter(Boolean);
         if (ids.length > 0) {
@@ -976,7 +976,7 @@ export default function ClientePage({ params }: { params: any }) {
       .order("data", { ascending: false });
 
     if (!intsErr) {
-      setInterventi((ints || []) as InterventoRow[]);
+      setInterventi((ints || []) as unknown as InterventoRow[]);
     }
     setEditInterventoId(null);
     setInterventiError(null);
@@ -985,6 +985,7 @@ export default function ClientePage({ params }: { params: any }) {
   async function uploadInterventoFiles(interventoId: string) {
     const files = interventoUploadFiles[interventoId] || [];
     if (files.length === 0) return;
+    const opId = currentOperatoreId || null;
 
     for (const file of files) {
       const safeName = file.name.replace(/\s+/g, "_");
@@ -1601,7 +1602,7 @@ export default function ClientePage({ params }: { params: any }) {
       .order("data", { ascending: false });
 
     if (!intsErr) {
-      setInterventi((ints || []) as InterventoRow[]);
+      setInterventi((ints || []) as unknown as InterventoRow[]);
     }
 
     setNewIntervento({
@@ -1775,7 +1776,7 @@ export default function ClientePage({ params }: { params: any }) {
       .order("data", { ascending: false });
 
     if (!intsErr) {
-      setInterventi((ints || []) as InterventoRow[]);
+      setInterventi((ints || []) as unknown as InterventoRow[]);
     }
 
     setCloseInterventoId(null);
@@ -2312,7 +2313,7 @@ export default function ClientePage({ params }: { params: any }) {
       .order("data", { ascending: false });
 
     if (!intsErr) {
-      setInterventi((ints || []) as InterventoRow[]);
+      setInterventi((ints || []) as unknown as InterventoRow[]);
     }
   }
 
