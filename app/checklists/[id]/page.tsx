@@ -395,6 +395,13 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
     note: "",
   });
   const [licenzeError, setLicenzeError] = useState<string | null>(null);
+  const [editingLicenzaId, setEditingLicenzaId] = useState<string | null>(null);
+  const [editingLicenza, setEditingLicenza] = useState<{
+    tipo: string;
+    scadenza: string;
+    note: string;
+    stato: "attiva" | "disattivata";
+  } | null>(null);
   const [documents, setDocuments] = useState<ChecklistDocument[]>([]);
   const [docType, setDocType] = useState("");
   const [docFile, setDocFile] = useState<File | null>(null);
@@ -916,14 +923,28 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
     await load(id);
   }
 
-  async function updateLicenzaStato(
+  function normalizeLicenzaScadenza(rawInput: string) {
+    const raw = rawInput.trim();
+    if (!raw) return null;
+    if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
+    const parsed = new Date(raw);
+    if (Number.isFinite(parsed.getTime())) return parsed.toISOString().slice(0, 10);
+    return null;
+  }
+
+  async function updateLicenza(
     licenzaId: string,
-    nextStato: "attiva" | "disattivata"
+    patch: {
+      tipo?: string | null;
+      scadenza?: string | null;
+      note?: string | null;
+      stato?: "attiva" | "disattivata";
+    }
   ) {
     if (!id) return;
     const { error: updateErr } = await supabase
       .from("licenses")
-      .update({ stato: nextStato })
+      .update(patch)
       .eq("id", licenzaId);
     if (updateErr) {
       console.error("Errore aggiornamento licenza", updateErr);
@@ -932,6 +953,38 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
       return;
     }
     await load(id);
+  }
+
+  function startEditLicenza(l: Licenza) {
+    setEditingLicenzaId(l.id);
+    setEditingLicenza({
+      tipo: l.tipo ?? "",
+      scadenza: l.scadenza ? l.scadenza.slice(0, 10) : "",
+      note: l.note ?? "",
+      stato: (l.stato ?? "attiva") as "attiva" | "disattivata",
+    });
+  }
+
+  async function saveEditLicenza() {
+    if (!editingLicenzaId || !editingLicenza) return;
+    if (editingLicenza.tipo.trim() === "") {
+      setLicenzeError("Inserisci almeno il tipo licenza.");
+      return;
+    }
+    const normalizedScadenza = normalizeLicenzaScadenza(editingLicenza.scadenza);
+    if (!normalizedScadenza) {
+      setItemsError("Scadenza non valida (usa il formato YYYY-MM-DD).");
+      alert("Scadenza non valida (usa il formato YYYY-MM-DD).");
+      return;
+    }
+    await updateLicenza(editingLicenzaId, {
+      tipo: editingLicenza.tipo.trim(),
+      scadenza: normalizedScadenza,
+      note: editingLicenza.note.trim() ? editingLicenza.note.trim() : null,
+      stato: editingLicenza.stato,
+    });
+    setEditingLicenzaId(null);
+    setEditingLicenza(null);
   }
 
   async function uploadDocument() {
@@ -1206,6 +1259,8 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
 
   function onCancel() {
     if (originalData) setFormData(originalData);
+    setEditingLicenzaId(null);
+    setEditingLicenza(null);
     setEditMode(false);
     if (id) {
       load(id);
@@ -1949,39 +2004,137 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
                     fontSize: 13,
                   }}
                 >
-                  <div>{l.tipo ?? "—"}</div>
-                  <div>{l.scadenza ? new Date(l.scadenza).toLocaleDateString() : "—"}</div>
-                  <div>{renderBadge(getLicenzaStatusLabel(l))}</div>
-                  <div>{l.note ?? "—"}</div>
-                  <div style={{ display: "flex", gap: 8 }}>
-                    {(l.stato ?? "").toLowerCase() === "disattivata" ? (
-                      <button
-                        type="button"
-                        onClick={() => updateLicenzaStato(l.id, "attiva")}
-                        style={{
-                          padding: "6px 10px",
-                          borderRadius: 8,
-                          border: "1px solid #ddd",
-                          background: "white",
-                          cursor: "pointer",
-                        }}
+                  <div>
+                    {editMode && editingLicenzaId === l.id ? (
+                      <select
+                        value={editingLicenza?.tipo ?? ""}
+                        onChange={(e) =>
+                          setEditingLicenza((prev) =>
+                            prev ? { ...prev, tipo: e.target.value } : prev
+                          )
+                        }
+                        style={{ width: "100%", padding: 6 }}
                       >
-                        Riattiva
-                      </button>
+                        <option value="">—</option>
+                        <option value="CMS">CMS</option>
+                        <option value="SIM">SIM</option>
+                        <option value="SLA">SLA</option>
+                        <option value="MON">MON</option>
+                        <option value="TCK">TCK</option>
+                        <option value="ALTRO">ALTRO</option>
+                      </select>
                     ) : (
-                      <button
-                        type="button"
-                        onClick={() => updateLicenzaStato(l.id, "disattivata")}
-                        style={{
-                          padding: "6px 10px",
-                          borderRadius: 8,
-                          border: "1px solid #ddd",
-                          background: "white",
-                          cursor: "pointer",
-                        }}
+                      l.tipo ?? "—"
+                    )}
+                  </div>
+                  <div>
+                    {editMode && editingLicenzaId === l.id ? (
+                      <input
+                        type="date"
+                        value={editingLicenza?.scadenza ?? ""}
+                        onChange={(e) =>
+                          setEditingLicenza((prev) =>
+                            prev ? { ...prev, scadenza: e.target.value } : prev
+                          )
+                        }
+                        style={{ width: "100%", padding: 6 }}
+                      />
+                    ) : l.scadenza ? (
+                      new Date(l.scadenza).toLocaleDateString()
+                    ) : (
+                      "—"
+                    )}
+                  </div>
+                  <div>
+                    {editMode && editingLicenzaId === l.id ? (
+                      <select
+                        value={editingLicenza?.stato ?? "attiva"}
+                        onChange={(e) =>
+                          setEditingLicenza((prev) =>
+                            prev
+                              ? {
+                                  ...prev,
+                                  stato: e.target.value as "attiva" | "disattivata",
+                                }
+                              : prev
+                          )
+                        }
+                        style={{ width: "100%", padding: 6 }}
                       >
-                        Disattiva
-                      </button>
+                        <option value="attiva">ATTIVA</option>
+                        <option value="disattivata">DISATTIVATA</option>
+                      </select>
+                    ) : (
+                      renderBadge(getLicenzaStatusLabel(l))
+                    )}
+                  </div>
+                  <div>
+                    {editMode && editingLicenzaId === l.id ? (
+                      <input
+                        value={editingLicenza?.note ?? ""}
+                        onChange={(e) =>
+                          setEditingLicenza((prev) =>
+                            prev ? { ...prev, note: e.target.value } : prev
+                          )
+                        }
+                        style={{ width: "100%", padding: 6 }}
+                      />
+                    ) : (
+                      l.note ?? "—"
+                    )}
+                  </div>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    {editMode ? (
+                      editingLicenzaId === l.id ? (
+                        <>
+                          <button
+                            type="button"
+                            onClick={saveEditLicenza}
+                            style={{
+                              padding: "6px 10px",
+                              borderRadius: 8,
+                              border: "1px solid #111",
+                              background: "#111",
+                              color: "white",
+                              cursor: "pointer",
+                            }}
+                          >
+                            Salva
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditingLicenzaId(null);
+                              setEditingLicenza(null);
+                            }}
+                            style={{
+                              padding: "6px 10px",
+                              borderRadius: 8,
+                              border: "1px solid #ddd",
+                              background: "white",
+                              cursor: "pointer",
+                            }}
+                          >
+                            Annulla
+                          </button>
+                        </>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={() => startEditLicenza(l)}
+                          style={{
+                            padding: "6px 10px",
+                            borderRadius: 8,
+                            border: "1px solid #ddd",
+                            background: "white",
+                            cursor: "pointer",
+                          }}
+                        >
+                          Modifica
+                        </button>
+                      )
+                    ) : (
+                      <span style={{ opacity: 0.6 }}>—</span>
                     )}
                   </div>
                 </div>
