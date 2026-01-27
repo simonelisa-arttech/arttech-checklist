@@ -75,6 +75,16 @@ function renderBadge(label: string) {
   );
 }
 
+function getNextLicenzaScadenza(licenze: Array<{ scadenza?: string | null }>) {
+  const dates = licenze
+    .map((l) => l.scadenza)
+    .filter(Boolean)
+    .map((d) => String(d));
+  if (dates.length === 0) return null;
+  dates.sort((a, b) => a.localeCompare(b));
+  return dates[0] ?? null;
+}
+
 function renderInterventoBadge(label: "INCLUSO" | "EXTRA") {
   const bg = label === "INCLUSO" ? "#dcfce7" : "#fee2e2";
   const color = label === "INCLUSO" ? "#166534" : "#991b1b";
@@ -393,6 +403,15 @@ type ChecklistRow = {
   created_at: string;
 };
 
+type LicenzaRow = {
+  id: string;
+  checklist_id: string | null;
+  tipo: string | null;
+  scadenza: string | null;
+  stato: string | null;
+  note: string | null;
+};
+
 type InterventoRow = {
   id: string;
   cliente: string;
@@ -493,6 +512,8 @@ export default function ClientePage({ params }: { params: any }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [checklists, setChecklists] = useState<ChecklistRow[]>([]);
+  const [licenze, setLicenze] = useState<LicenzaRow[]>([]);
+  const [licenzeError, setLicenzeError] = useState<string | null>(null);
   const [onlyExpiredWarranty, setOnlyExpiredWarranty] = useState(false);
   const [interventi, setInterventi] = useState<InterventoRow[]>([]);
   const [interventiError, setInterventiError] = useState<string | null>(null);
@@ -627,6 +648,24 @@ export default function ClientePage({ params }: { params: any }) {
 
       const list = (cls || []) as ChecklistRow[];
       setChecklists(list);
+      const checklistIds = list.map((c) => c.id).filter(Boolean);
+      if (checklistIds.length === 0) {
+        setLicenze([]);
+        setLicenzeError(null);
+      } else {
+        const { data: licData, error: licErr } = await supabase
+          .from("licenses")
+          .select("id, checklist_id, tipo, scadenza, stato, note")
+          .in("checklist_id", checklistIds)
+          .order("scadenza", { ascending: true });
+        if (licErr) {
+          setLicenzeError("Errore caricamento licenze: " + licErr.message);
+          setLicenze([]);
+        } else {
+          setLicenze((licData || []) as LicenzaRow[]);
+          setLicenzeError(null);
+        }
+      }
       await fetchRinnovi(clienteKey);
 
       const { data: contrattiData, error: contrattiErr } = await supabase
@@ -1402,6 +1441,10 @@ export default function ClientePage({ params }: { params: any }) {
     }
     return map;
   }, [checklists]);
+
+  const nextLicenzaScadenza = useMemo(() => {
+    return getNextLicenzaScadenza(licenze);
+  }, [licenze]);
 
   const interventiInclusiUsati = useMemo(() => {
     return interventi.filter((i) => i.incluso).length;
@@ -2715,6 +2758,86 @@ export default function ClientePage({ params }: { params: any }) {
               </div>
             ))}
           </div>
+        )}
+      </div>
+
+      <div style={{ marginTop: 18 }}>
+        <h2 style={{ margin: 0 }}>Licenze</h2>
+        {licenzeError && (
+          <div style={{ color: "crimson", marginTop: 6 }}>{licenzeError}</div>
+        )}
+        {licenze.length === 0 ? (
+          <div style={{ opacity: 0.7, marginTop: 6 }}>Nessuna licenza trovata</div>
+        ) : (
+          <>
+            <div style={{ marginTop: 6, fontSize: 12, opacity: 0.7 }}>
+              Totale: {licenze.length} — Prossima scadenza:{" "}
+              {nextLicenzaScadenza
+                ? new Date(nextLicenzaScadenza).toLocaleDateString()
+                : "—"}
+            </div>
+            <div
+              style={{
+                marginTop: 10,
+                border: "1px solid #eee",
+                borderRadius: 12,
+                overflow: "hidden",
+              }}
+            >
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "2fr 1fr 1fr 1fr 2fr",
+                  padding: "10px 12px",
+                  fontWeight: 800,
+                  background: "#fafafa",
+                  borderBottom: "1px solid #eee",
+                }}
+              >
+                <div>Checklist</div>
+                <div>Tipo</div>
+                <div>Scadenza</div>
+                <div>Stato</div>
+                <div>Note</div>
+              </div>
+              {licenze.map((l) => {
+                const checklist = l.checklist_id
+                  ? checklistById.get(l.checklist_id)
+                  : null;
+                const label = checklist?.nome_checklist ?? l.checklist_id ?? "—";
+                return (
+                  <div
+                    key={l.id}
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "2fr 1fr 1fr 1fr 2fr",
+                      padding: "10px 12px",
+                      borderBottom: "1px solid #f3f4f6",
+                      alignItems: "center",
+                      fontSize: 13,
+                    }}
+                  >
+                    {l.checklist_id ? (
+                      <Link
+                        href={`/checklists/${l.checklist_id}`}
+                        style={{ textDecoration: "none", fontWeight: 700 }}
+                      >
+                        {label}
+                      </Link>
+                    ) : (
+                      <div>{label}</div>
+                    )}
+                    <div>{l.tipo ?? "—"}</div>
+                    <div>
+                      {l.scadenza ? new Date(l.scadenza).toLocaleDateString() : "—"}
+                    </div>
+                    <div>{renderBadge(getExpiryStatus(l.scadenza))}</div>
+                    <div>{l.note ?? "—"}</div>
+                  </div>
+                );
+              })}
+            </div>
+          </>
         )}
       </div>
 
