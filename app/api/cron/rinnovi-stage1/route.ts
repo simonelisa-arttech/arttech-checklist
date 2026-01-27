@@ -105,6 +105,7 @@ function getDefaultOperatoreByRole(ops: OperatoreRow[], role: string) {
 }
 
 async function getSystemOperatoreId(supabase: ReturnType<typeof createClient>) {
+  type RowId = { id: string };
   const { data: row, error } = await supabase
     .from("operatori")
     .select("id")
@@ -113,7 +114,8 @@ async function getSystemOperatoreId(supabase: ReturnType<typeof createClient>) {
     .limit(1)
     .maybeSingle();
   if (error) throw error;
-  if (row?.id) return row.id;
+  const rowId = (row as RowId | null)?.id ?? null;
+  if (rowId) return rowId;
   const { data: inserted, error: insertErr } = await supabase
     .from("operatori")
     .insert({
@@ -121,11 +123,11 @@ async function getSystemOperatoreId(supabase: ReturnType<typeof createClient>) {
       ruolo: "SYSTEM",
       attivo: false,
       alert_enabled: false,
-    })
+    } as any)
     .select("id")
     .single();
   if (insertErr) return null;
-  return inserted?.id ?? null;
+  return (inserted as { id?: string } | null)?.id ?? null;
 }
 
 export async function GET(request: Request) {
