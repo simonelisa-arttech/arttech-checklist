@@ -1050,8 +1050,6 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
       m2_inclusi: null,
       m2_allocati: null,
       updated_by_operatore: currentOperatoreId || null,
-      ultra_interventi_illimitati: null,
-      ultra_interventi_inclusi: null,
       data_prevista: formData.data_prevista.trim()
         ? formData.data_prevista.trim()
         : null,
