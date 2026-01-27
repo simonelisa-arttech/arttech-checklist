@@ -40,6 +40,11 @@ export default function OperatoriPage() {
     { id: string; sezione: string | null; titolo: string | null; ordine: number | null }[]
   >([]);
   const [taskSearch, setTaskSearch] = useState("");
+  const [showQuickStart, setShowQuickStart] = useState(false);
+  const [quickName, setQuickName] = useState("");
+  const [quickEmail, setQuickEmail] = useState("");
+  const [quickSaving, setQuickSaving] = useState(false);
+  const [quickError, setQuickError] = useState<string | null>(null);
 
   function normalizeAlertTasks(input: any) {
     if (!input) {
@@ -184,6 +189,57 @@ export default function OperatoriPage() {
     await loadOperatori();
   }
 
+  async function createQuickAdmin() {
+    setQuickError(null);
+    const name = quickName.trim();
+    const email = quickEmail.trim();
+    if (!name || !email) {
+      setQuickError("Nome ed email sono obbligatori.");
+      return;
+    }
+    if (!email.includes("@")) {
+      setQuickError("Email non valida.");
+      return;
+    }
+    const hasAdminRole = rows.some(
+      (r) => String(r.ruolo || "").toUpperCase() === "ADMIN"
+    );
+    const ruolo = hasAdminRole ? "ADMIN" : "AMMINISTRAZIONE";
+    setQuickSaving(true);
+    try {
+      const payload = {
+        nome: name,
+        ruolo,
+        email,
+        attivo: true,
+        alert_enabled: true,
+        alert_tasks: { task_template_ids: [], all_task_status_change: false },
+      };
+      const res = await fetch("/api/operatori", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      if (!res.ok) {
+        let msg = "Errore salvataggio operatore";
+        try {
+          const data = await res.json();
+          msg = data?.error || msg;
+        } catch {
+          // ignore
+        }
+        setQuickError(msg);
+        return;
+      }
+      await loadOperatori();
+      setShowQuickStart(false);
+      setQuickName("");
+      setQuickEmail("");
+    } finally {
+      setQuickSaving(false);
+    }
+  }
+
   async function deleteRow(row: OperatoreRow) {
     if (!row.id) {
       setRows((prev) => prev.filter((r) => r !== row));
@@ -258,6 +314,37 @@ export default function OperatoriPage() {
           }}
         >
           {error}
+        </div>
+      )}
+
+      {!loading && rows.length === 0 && (
+        <div
+          style={{
+            marginBottom: 12,
+            padding: "12px 14px",
+            borderRadius: 12,
+            border: "1px solid #fde68a",
+            background: "#fffbeb",
+          }}
+        >
+          <div style={{ fontWeight: 700 }}>📌 Primo avvio</div>
+          <div style={{ marginTop: 6, marginBottom: 10 }}>
+            Crea il primo operatore per iniziare a usare la piattaforma.
+          </div>
+          <button
+            type="button"
+            onClick={() => setShowQuickStart(true)}
+            style={{
+              padding: "8px 12px",
+              borderRadius: 10,
+              border: "1px solid #111",
+              background: "#111",
+              color: "white",
+              cursor: "pointer",
+            }}
+          >
+            Crea Admin rapido
+          </button>
         </div>
       )}
 
@@ -510,6 +597,101 @@ export default function OperatoriPage() {
               </div>
             ))
           )}
+        </div>
+      )}
+
+      {showQuickStart && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.5)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 16,
+            zIndex: 1000,
+          }}
+        >
+          <div
+            style={{
+              width: "100%",
+              maxWidth: 420,
+              background: "white",
+              borderRadius: 12,
+              padding: 16,
+              boxShadow: "0 10px 30px rgba(0,0,0,0.2)",
+            }}
+          >
+            <div style={{ fontSize: 18, fontWeight: 700, marginBottom: 8 }}>
+              Crea Admin rapido
+            </div>
+            <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 12 }}>
+              Ruolo predefinito:{" "}
+              {rows.some((r) => String(r.ruolo || "").toUpperCase() === "ADMIN")
+                ? "ADMIN"
+                : "AMMINISTRAZIONE"}
+            </div>
+            {quickError && (
+              <div
+                style={{
+                  padding: "8px 10px",
+                  borderRadius: 8,
+                  background: "#fee2e2",
+                  color: "#991b1b",
+                  marginBottom: 10,
+                  fontSize: 13,
+                }}
+              >
+                {quickError}
+              </div>
+            )}
+            <div style={{ display: "grid", gap: 8 }}>
+              <input
+                placeholder="Nome"
+                value={quickName}
+                onChange={(e) => setQuickName(e.target.value)}
+                style={{ width: "100%", padding: 8 }}
+              />
+              <input
+                placeholder="Email"
+                value={quickEmail}
+                onChange={(e) => setQuickEmail(e.target.value)}
+                style={{ width: "100%", padding: 8 }}
+              />
+            </div>
+            <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+              <button
+                type="button"
+                onClick={() => setShowQuickStart(false)}
+                style={{
+                  padding: "8px 12px",
+                  borderRadius: 10,
+                  border: "1px solid #ddd",
+                  background: "white",
+                  cursor: "pointer",
+                }}
+              >
+                Annulla
+              </button>
+              <button
+                type="button"
+                onClick={createQuickAdmin}
+                disabled={quickSaving}
+                style={{
+                  padding: "8px 12px",
+                  borderRadius: 10,
+                  border: "1px solid #111",
+                  background: "#111",
+                  color: "white",
+                  cursor: "pointer",
+                  opacity: quickSaving ? 0.7 : 1,
+                }}
+              >
+                {quickSaving ? "Salvataggio..." : "Crea"}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
