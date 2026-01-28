@@ -1890,19 +1890,32 @@ export default function Page() {
                           }}
                         >
                           {c.saas_note ? (
-                            <div
-                              style={
-                                expandedSaasNoteId === c.id
-                                  ? { whiteSpace: "pre-wrap" }
-                                  : {
-                                      display: "-webkit-box",
-                                      WebkitLineClamp: 2,
-                                      WebkitBoxOrient: "vertical",
-                                      overflow: "hidden",
-                                    }
-                              }
-                            >
-                              {c.saas_note}
+                            <div style={{ display: "grid", gap: 4 }}>
+                              <div
+                                style={
+                                  expandedSaasNoteId === c.id
+                                    ? { whiteSpace: "pre-wrap" }
+                                    : {
+                                        display: "-webkit-box",
+                                        WebkitLineClamp: 2,
+                                        WebkitBoxOrient: "vertical",
+                                        overflow: "hidden",
+                                      }
+                                }
+                              >
+                                {c.saas_note}
+                              </div>
+                              <span
+                                style={{
+                                  fontSize: 11,
+                                  opacity: 0.6,
+                                  userSelect: "none",
+                                }}
+                              >
+                                {expandedSaasNoteId === c.id
+                                  ? "clicca per chiudere"
+                                  : "clicca per espandere"}
+                              </span>
                             </div>
                           ) : (
                             "—"
