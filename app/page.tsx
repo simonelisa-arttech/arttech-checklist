@@ -202,6 +202,7 @@ type Checklist = {
   licenze_attive: number | null;
   licenze_prossima_scadenza: string | null;
   licenze_dettaglio: string | null;
+  license_search?: string | null;
   checklist_documents?: {
     id: string;
     tipo: string | null;
@@ -471,6 +472,7 @@ export default function Page() {
         c.licenze_attive != null ? String(c.licenze_attive) : "",
         c.licenze_prossima_scadenza ?? "",
         c.licenze_dettaglio ?? "",
+        c.license_search ?? "",
         c.updated_at ?? "",
       ]
         .join(" ")
@@ -518,6 +520,12 @@ export default function Page() {
     const { data: licenseSummary, error: licenseErr } = await supabase
       .from("license_summary_view")
       .select("*");
+
+    const { data: licensesData, error: licensesErr } = await supabase
+      .from("licenses")
+      .select(
+        "id, checklist_id, tipo, scadenza, note, ref_univoco, telefono, intestatario, gestore, fornitore"
+      );
 
     const { data: mainItems, error: mainItemsErr } = await supabase
       .from("checklist_main_item_view")
@@ -572,11 +580,40 @@ export default function Page() {
     }
 
     if (!error && data) {
+      const licenseSearchByChecklistId = new Map<string, string>();
+      if (licensesErr) {
+        console.error("Errore caricamento licenses", licensesErr);
+      } else if (licensesData) {
+        for (const l of licensesData as any[]) {
+          const checklistId = String(l.checklist_id ?? "");
+          if (!checklistId) continue;
+          const parts = [
+            l.tipo,
+            l.scadenza,
+            l.note,
+            l.ref_univoco,
+            l.telefono,
+            l.intestatario,
+            l.gestore,
+            l.fornitore,
+          ]
+            .filter(Boolean)
+            .map((p) => String(p));
+          if (parts.length === 0) continue;
+          const prev = licenseSearchByChecklistId.get(checklistId) || "";
+          licenseSearchByChecklistId.set(
+            checklistId,
+            prev ? `${prev} ${parts.join(" ")}` : parts.join(" ")
+          );
+        }
+      }
+
       const merged = (data as Checklist[]).map((c) => ({
         ...c,
         ...(sectionsByChecklistId[c.id] || {}),
         ...(licenzeByChecklistId[c.id] || {}),
         ...(mainByChecklistId[c.id] || {}),
+        license_search: licenseSearchByChecklistId.get(c.id) || null,
       }));
       setItems(merged as Checklist[]);
     }

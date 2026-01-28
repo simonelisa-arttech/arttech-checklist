@@ -95,6 +95,11 @@ type Licenza = {
   scadenza: string | null;
   stato: string | null;
   note: string | null;
+  ref_univoco?: string | null;
+  telefono?: string | null;
+  intestatario?: string | null;
+  gestore?: string | null;
+  fornitore?: string | null;
   created_at: string | null;
 };
 
@@ -102,6 +107,11 @@ type NewLicenza = {
   tipo: string;
   scadenza: string;
   note: string;
+  ref_univoco: string;
+  telefono: string;
+  intestatario: string;
+  gestore: string;
+  fornitore: string;
 };
 
 type ChecklistDocument = {
@@ -423,6 +433,11 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
     tipo: "",
     scadenza: "",
     note: "",
+    ref_univoco: "",
+    telefono: "",
+    intestatario: "",
+    gestore: "",
+    fornitore: "",
   });
   const [licenzeError, setLicenzeError] = useState<string | null>(null);
   const [editingLicenzaId, setEditingLicenzaId] = useState<string | null>(null);
@@ -547,7 +562,9 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
 
     const { data: licenzeData, error: licenzeErr } = await supabase
       .from("licenses")
-      .select("id, checklist_id, tipo, scadenza, stato, note, created_at")
+      .select(
+        "id, checklist_id, tipo, scadenza, stato, note, ref_univoco, telefono, intestatario, gestore, fornitore, created_at"
+      )
       .eq("checklist_id", id)
       .order("created_at", { ascending: false });
 
@@ -938,6 +955,15 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
       scadenza: scadenzaISO,
       stato: "attiva",
       note: newLicenza.note.trim() ? newLicenza.note.trim() : null,
+      ref_univoco: newLicenza.ref_univoco.trim()
+        ? newLicenza.ref_univoco.trim()
+        : null,
+      telefono: newLicenza.telefono.trim() ? newLicenza.telefono.trim() : null,
+      intestatario: newLicenza.intestatario.trim()
+        ? newLicenza.intestatario.trim()
+        : null,
+      gestore: newLicenza.gestore.trim() ? newLicenza.gestore.trim() : null,
+      fornitore: newLicenza.fornitore.trim() ? newLicenza.fornitore.trim() : null,
     };
     console.log("LICENSE PAYLOAD", payload);
     const { error: insertErr } = await supabase.from("licenses").insert(payload);
@@ -949,7 +975,16 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
       return;
     }
     setLicenzeError(null);
-    setNewLicenza({ tipo: "", scadenza: "", note: "" });
+    setNewLicenza({
+      tipo: "",
+      scadenza: "",
+      note: "",
+      ref_univoco: "",
+      telefono: "",
+      intestatario: "",
+      gestore: "",
+      fornitore: "",
+    });
     await load(id);
   }
 
@@ -2013,7 +2048,16 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
               ? "—"
               : licenze
                   .map(
-                    (l) => `${l.tipo ?? "—"}(${l.scadenza ? l.scadenza.slice(0, 10) : "—"})`
+                    (l) => {
+                      const parts = [l.tipo ?? "—"];
+                      if (l.telefono) parts.push(l.telefono);
+                      if (l.ref_univoco) parts.push(l.ref_univoco);
+                      if (l.intestatario) parts.push(l.intestatario);
+                      if (l.gestore) parts.push(l.gestore);
+                      if (l.fornitore) parts.push(l.fornitore);
+                      const suffix = parts.filter(Boolean).join(" · ");
+                      return `${suffix} (${l.scadenza ? l.scadenza.slice(0, 10) : "—"})`;
+                    }
                   )
                   .join(", ")}
           </div>
@@ -2206,20 +2250,26 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
             <div
               style={{
                 display: "grid",
-                gridTemplateColumns: "2fr 1fr 2fr 120px",
                 gap: 10,
-                alignItems: "end",
               }}
             >
-              <label>
-                Tipo / Piano<br />
-                <select
-                  value={newLicenza.tipo}
-                  onChange={(e) => setNewLicenza({ ...newLicenza, tipo: e.target.value })}
-                  style={{ width: "100%", padding: 10 }}
-                >
-                  <option value="">—</option>
-                  <option value="CMS">CMS</option>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "2fr 1fr 2fr 120px",
+                  gap: 10,
+                  alignItems: "end",
+                }}
+              >
+                <label>
+                  Tipo / Piano<br />
+                  <select
+                    value={newLicenza.tipo}
+                    onChange={(e) => setNewLicenza({ ...newLicenza, tipo: e.target.value })}
+                    style={{ width: "100%", padding: 10 }}
+                  >
+                    <option value="">—</option>
+                    <option value="CMS">CMS</option>
                     <option value="SIM">SIM</option>
                     <option value="SLA">SLA</option>
                     <option value="MON">MON</option>
@@ -2258,7 +2308,71 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
                   Aggiungi
                 </button>
               </div>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "2fr 2fr 2fr 2fr 2fr",
+                  gap: 10,
+                }}
+              >
+                <label>
+                  Riferimento (tel/licenza)<br />
+                  <input
+                    value={newLicenza.ref_univoco}
+                    onChange={(e) =>
+                      setNewLicenza({ ...newLicenza, ref_univoco: e.target.value })
+                    }
+                    placeholder="Numero licenza / telefono"
+                    style={{ width: "100%", padding: 10 }}
+                  />
+                </label>
+                <label>
+                  Telefono<br />
+                  <input
+                    value={newLicenza.telefono}
+                    onChange={(e) =>
+                      setNewLicenza({ ...newLicenza, telefono: e.target.value })
+                    }
+                    placeholder="Numero SIM"
+                    style={{ width: "100%", padding: 10 }}
+                  />
+                </label>
+                <label>
+                  Intestatario<br />
+                  <input
+                    value={newLicenza.intestatario}
+                    onChange={(e) =>
+                      setNewLicenza({ ...newLicenza, intestatario: e.target.value })
+                    }
+                    placeholder="Intestatario"
+                    style={{ width: "100%", padding: 10 }}
+                  />
+                </label>
+                <label>
+                  Gestore<br />
+                  <input
+                    value={newLicenza.gestore}
+                    onChange={(e) =>
+                      setNewLicenza({ ...newLicenza, gestore: e.target.value })
+                    }
+                    placeholder="Gestore"
+                    style={{ width: "100%", padding: 10 }}
+                  />
+                </label>
+                <label>
+                  Fornitore<br />
+                  <input
+                    value={newLicenza.fornitore}
+                    onChange={(e) =>
+                      setNewLicenza({ ...newLicenza, fornitore: e.target.value })
+                    }
+                    placeholder="Fornitore"
+                    style={{ width: "100%", padding: 10 }}
+                  />
+                </label>
+              </div>
             </div>
+          </div>
         </div>
       </div>
       <div style={{ marginTop: 22 }}>
