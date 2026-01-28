@@ -80,6 +80,47 @@ function renderBadge(label: string) {
   );
 }
 
+function renderModalitaBadge(value?: string | null) {
+  const raw = String(value || "").toUpperCase().trim();
+  if (!raw) return renderBadge("—");
+  let bg = "#e5e7eb";
+  let color = "#374151";
+  if (raw === "INCLUSO") {
+    bg = "#dcfce7";
+    color = "#166534";
+  } else if (raw === "EXTRA") {
+    bg = "#fee2e2";
+    color = "#991b1b";
+  } else if (raw === "AUTORIZZATO_CLIENTE") {
+    bg = "#e5e7eb";
+    color = "#374151";
+  }
+  return (
+    <span
+      style={{
+        display: "inline-block",
+        padding: "2px 8px",
+        borderRadius: 999,
+        fontSize: 12,
+        fontWeight: 700,
+        background: bg,
+        color,
+        whiteSpace: "nowrap",
+      }}
+    >
+      {raw}
+    </span>
+  );
+}
+
+function renderTagliandoStatoBadge(value?: string | null) {
+  const raw = String(value || "").toUpperCase().trim();
+  if (!raw) return renderBadge("—");
+  if (raw === "OK") return renderBadge("ATTIVA");
+  if (raw === "SCADUTO") return renderBadge("SCADUTA");
+  return renderBadge(raw);
+}
+
 function renderLicenseStatusBadge(status?: string | null, scadenza?: string | null) {
   const raw = (status || "").toUpperCase().trim();
   if (!raw) return renderBadge(getExpiryStatus(scadenza));
@@ -532,6 +573,32 @@ type RinnovoServizioRow = {
   billing_notified_at?: string | null;
 };
 
+type TagliandoRow = {
+  id: string;
+  cliente?: string | null;
+  checklist_id?: string | null;
+  scadenza?: string | null;
+  stato?: string | null;
+  note?: string | null;
+  modalita?: string | null;
+  alert_last_sent_at?: string | null;
+  alert_last_sent_by_operatore?: string | null;
+};
+
+type ScadenzaItem = {
+  id: string;
+  source: "rinnovi" | "tagliandi";
+  item_tipo?: string | null;
+  riferimento?: string | null;
+  descrizione?: string | null;
+  checklist_id?: string | null;
+  scadenza?: string | null;
+  stato?: string | null;
+  proforma?: string | null;
+  cod_magazzino?: string | null;
+  modalita?: string | null;
+};
+
 type InterventoFile = {
   id: string;
   intervento_id: string;
@@ -609,6 +676,7 @@ export default function ClientePage({ params }: { params: any }) {
   const [rinnoviAlertMsg, setRinnoviAlertMsg] = useState("");
   const [rinnoviAlertSendEmail, setRinnoviAlertSendEmail] = useState(true);
   const [rinnoviAlertIds, setRinnoviAlertIds] = useState<string[]>([]);
+  const [rinnoviAlertItems, setRinnoviAlertItems] = useState<ScadenzaItem[]>([]);
   const [rinnoviAlertDestMode, setRinnoviAlertDestMode] = useState<"operatore" | "email">(
     "operatore"
   );
@@ -618,6 +686,7 @@ export default function ClientePage({ params }: { params: any }) {
   const [rinnoviAlertErr, setRinnoviAlertErr] = useState<string | null>(null);
   const [rinnoviAlertOk, setRinnoviAlertOk] = useState<string | null>(null);
   const [rinnoviNotice, setRinnoviNotice] = useState<string | null>(null);
+  const [tagliandi, setTagliandi] = useState<TagliandoRow[]>([]);
   const [exportFrom, setExportFrom] = useState("");
   const [exportTo, setExportTo] = useState("");
   const [exportNotice, setExportNotice] = useState<string | null>(null);
@@ -749,6 +818,7 @@ export default function ClientePage({ params }: { params: any }) {
         }
       }
       await fetchRinnovi(clienteKey);
+      await fetchTagliandi(clienteKey);
 
       const { data: contrattiData, error: contrattiErr } = await supabase
         .from("saas_contratti")
@@ -1263,8 +1333,37 @@ export default function ClientePage({ params }: { params: any }) {
     });
   }, [checklists]);
 
+  const rinnoviAll = useMemo<ScadenzaItem[]>(() => {
+    const rinnoviMapped = rinnovi.map((r) => ({
+      id: r.id,
+      source: "rinnovi" as const,
+      item_tipo: r.item_tipo,
+      riferimento: getRinnovoReference(r),
+      descrizione: r.descrizione ?? null,
+      checklist_id: r.checklist_id ?? null,
+      scadenza: r.scadenza ?? null,
+      stato: r.stato ?? null,
+      proforma: r.proforma ?? null,
+      cod_magazzino: r.cod_magazzino ?? null,
+    }));
+    const tagliandiMapped = tagliandi.map((t) => ({
+      id: t.id,
+      source: "tagliandi" as const,
+      item_tipo: "TAGLIANDO",
+      riferimento: t.note || "Tagliando annuale",
+      descrizione: t.note ?? null,
+      checklist_id: t.checklist_id ?? null,
+      scadenza: t.scadenza ?? null,
+      stato: t.stato ?? null,
+      modalita: t.modalita ?? null,
+    }));
+    return [...rinnoviMapped, ...tagliandiMapped].sort((a, b) =>
+      String(a.scadenza || "").localeCompare(String(b.scadenza || ""))
+    );
+  }, [rinnovi, tagliandi]);
+
   const filteredRinnovi = useMemo(() => {
-    let rows = rinnovi;
+    let rows = rinnoviAll;
     if (rinnoviFilterDaAvvisare) {
       rows = rows.filter((r) => String(r.stato || "").toUpperCase() === "DA_AVVISARE");
     }
@@ -1280,19 +1379,19 @@ export default function ClientePage({ params }: { params: any }) {
       });
     }
     return rows;
-  }, [rinnovi, rinnoviFilterDaAvvisare, rinnoviFilterDaFatturare, rinnoviFilterScaduti]);
+  }, [rinnoviAll, rinnoviFilterDaAvvisare, rinnoviFilterDaFatturare, rinnoviFilterScaduti]);
 
   const rinnovi30ggCount = useMemo(() => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    return rinnovi.filter((r) => {
+    return rinnoviAll.filter((r) => {
       if (String(r.stato || "").toUpperCase() !== "DA_AVVISARE") return false;
       const dt = parseLocalDay(r.scadenza);
       if (!dt) return false;
       const diff = Math.ceil((dt.getTime() - today.getTime()) / (24 * 60 * 60 * 1000));
       return diff >= 0 && diff <= 30;
     }).length;
-  }, [rinnovi]);
+  }, [rinnoviAll]);
 
   const exportRangeLabel = useMemo(() => {
     const from = exportFrom ? exportFrom.replaceAll("-", "") : "TUTTO";
@@ -1972,8 +2071,102 @@ export default function ClientePage({ params }: { params: any }) {
     setRinnoviError(null);
   }
 
+  async function fetchTagliandi(clienteKey: string) {
+    if (!clienteKey) return;
+    const { data, error } = await supabase
+      .from("tagliandi")
+      .select("*")
+      .eq("cliente", clienteKey)
+      .order("scadenza", { ascending: true });
+    if (error) {
+      setRinnoviError("Errore caricamento tagliandi: " + error.message);
+      return;
+    }
+    setTagliandi((data || []) as TagliandoRow[]);
+  }
+
   function getRinnovoReference(r: RinnovoServizioRow) {
     return r.riferimento || r.descrizione || r.checklist_id?.slice(0, 8) || "—";
+  }
+
+  function toScadenzaItemFromRinnovo(r: RinnovoServizioRow): ScadenzaItem {
+    return {
+      id: r.id,
+      source: "rinnovi",
+      item_tipo: r.item_tipo,
+      riferimento: getRinnovoReference(r),
+      descrizione: r.descrizione ?? null,
+      checklist_id: r.checklist_id ?? null,
+      scadenza: r.scadenza ?? null,
+      stato: r.stato ?? null,
+      proforma: r.proforma ?? null,
+      cod_magazzino: r.cod_magazzino ?? null,
+    };
+  }
+
+  function buildMsgTagliandoSingle(r: ScadenzaItem, stage: "stage1" | "stage2") {
+    const dataLabel = r.scadenza ? new Date(r.scadenza).toLocaleDateString() : "—";
+    const checklist = r.checklist_id ? checklistById.get(r.checklist_id) : null;
+    const checklistName = checklist?.nome_checklist ?? r.checklist_id?.slice(0, 8) ?? "—";
+    const header =
+      stage === "stage1"
+        ? `AVVISO TAGLIANDO — Cliente: ${cliente || "—"}`
+        : `FATTURAZIONE TAGLIANDO — Cliente: ${cliente || "—"}`;
+    const modalita = r.modalita ? `Modalità: ${String(r.modalita).toUpperCase()}` : "Modalità: —";
+    return [
+      header,
+      `Riferimento: ${r.riferimento ?? r.descrizione ?? "—"}`,
+      `Scadenza: ${dataLabel}`,
+      `Checklist: ${checklistName}`,
+      modalita,
+      `Stato: ${String(r.stato || "—").toUpperCase()}`,
+    ].join("\n");
+  }
+
+  function buildMsgScadenzaSingle(r: ScadenzaItem, stage: "stage1" | "stage2") {
+    if (r.source === "tagliandi") return buildMsgTagliandoSingle(r, stage);
+    return buildMsgRinnovoSingle(r as RinnovoServizioRow, stage);
+  }
+
+  function buildMsgScadenzaBulk(list: ScadenzaItem[], stage: "stage1" | "stage2") {
+    const rinnoviItems = list.filter((x) => x.source === "rinnovi");
+    const tagliandiItems = list.filter((x) => x.source === "tagliandi");
+    const lines: string[] = [];
+    const header =
+      stage === "stage1"
+        ? `AVVISO SCADENZE — Cliente: ${cliente || "—"}`
+        : `FATTURAZIONE SCADENZE — Cliente: ${cliente || "—"}`;
+    const now = new Date().toLocaleString();
+
+    if (rinnoviItems.length > 0) {
+      lines.push("RINNOVI:");
+      for (const r of rinnoviItems) {
+        const dataLabel = r.scadenza ? new Date(r.scadenza).toLocaleDateString() : "—";
+        const checklist = r.checklist_id ? checklistById.get(r.checklist_id) : null;
+        const checklistName = checklist?.nome_checklist ?? r.checklist_id?.slice(0, 8) ?? "—";
+        const base = `${dataLabel} | ${r.riferimento ?? "—"} | Checklist: ${checklistName}`;
+        const stato = r.stato ? ` | Stato: ${String(r.stato).toUpperCase()}` : "";
+        lines.push(`- ${base}${stato}`);
+      }
+      lines.push("");
+    }
+
+    if (tagliandiItems.length > 0) {
+      lines.push("TAGLIANDI:");
+      for (const r of tagliandiItems) {
+        const dataLabel = r.scadenza ? new Date(r.scadenza).toLocaleDateString() : "—";
+        const checklist = r.checklist_id ? checklistById.get(r.checklist_id) : null;
+        const checklistName = checklist?.nome_checklist ?? r.checklist_id?.slice(0, 8) ?? "—";
+        const modalita = r.modalita ? ` | Modalità: ${String(r.modalita).toUpperCase()}` : "";
+        const stato = r.stato ? ` | Stato: ${String(r.stato).toUpperCase()}` : "";
+        lines.push(
+          `- ${dataLabel} | ${r.riferimento ?? r.descrizione ?? "—"} | Checklist: ${checklistName}${modalita}${stato}`
+        );
+      }
+      lines.push("");
+    }
+
+    return [header, `Totale: ${list.length}`, `Data invio: ${now}`, "", ...lines].join("\n");
   }
 
   function buildMsgRinnovoSingle(r: RinnovoServizioRow, stage: "stage1" | "stage2") {
@@ -2062,8 +2255,15 @@ export default function ClientePage({ params }: { params: any }) {
   function getRinnoviStageList(stage: "stage1" | "stage2", onlyWithin30Days = false) {
     let list =
       stage === "stage1"
-        ? rinnovi.filter((r) => String(r.stato || "").toUpperCase() === "DA_AVVISARE")
-        : rinnovi.filter((r) => String(r.stato || "").toUpperCase() === "DA_FATTURARE");
+        ? rinnoviAll.filter((r) => String(r.stato || "").toUpperCase() === "DA_AVVISARE")
+        : rinnoviAll.filter((r) => String(r.stato || "").toUpperCase() === "DA_FATTURARE");
+    if (stage === "stage2") {
+      list = list.filter((r) =>
+        r.source === "tagliandi"
+          ? String(r.modalita || "").toUpperCase() === "EXTRA"
+          : true
+      );
+    }
     if (onlyWithin30Days) {
       const today = new Date();
       today.setHours(0, 0, 0, 0);
@@ -2080,9 +2280,13 @@ export default function ClientePage({ params }: { params: any }) {
   function openRinnoviAlert(
     stage: "stage1" | "stage2",
     onlyWithin30Days = false,
-    listOverride?: RinnovoServizioRow[]
+    listOverride?: ScadenzaItem[] | RinnovoServizioRow[]
   ) {
-    const list = listOverride ?? getRinnoviStageList(stage, onlyWithin30Days);
+    const list = (listOverride
+      ? (listOverride as any[]).map((r) =>
+          "source" in r ? (r as ScadenzaItem) : toScadenzaItemFromRinnovo(r)
+        )
+      : getRinnoviStageList(stage, onlyWithin30Days)) as ScadenzaItem[];
     if (list.length === 0) {
       setRinnoviError(
         stage === "stage1" ? "Nessuna scadenza da avvisare." : "Nessun rinnovo da fatturare."
@@ -2091,6 +2295,7 @@ export default function ClientePage({ params }: { params: any }) {
     }
     setRinnoviAlertStage(stage);
     setRinnoviAlertIds(list.map((r) => r.id));
+    setRinnoviAlertItems(list);
     setRinnoviAlertToOperatoreId(
       stage === "stage1" ? getDefaultOperatoreIdByRole("SUPERVISORE") : getDefaultOperatoreIdByRole("AMMINISTRAZIONE")
     );
@@ -2098,7 +2303,7 @@ export default function ClientePage({ params }: { params: any }) {
     setRinnoviAlertManualEmail("");
     setRinnoviAlertManualName("");
     setRinnoviAlertMsg(
-      list.length === 1 ? buildMsgRinnovoSingle(list[0], stage) : buildMsgRinnovoBulk(list, stage)
+      list.length === 1 ? buildMsgScadenzaSingle(list[0], stage) : buildMsgScadenzaBulk(list, stage)
     );
     setRinnoviAlertErr(null);
     setRinnoviAlertOk(null);
@@ -2131,16 +2336,25 @@ export default function ClientePage({ params }: { params: any }) {
       }
     }
     const list =
-      rinnoviAlertIds.length > 0
-        ? rinnovi.filter((r) => rinnoviAlertIds.includes(r.id))
-        : getRinnoviStageList(rinnoviAlertStage);
+      rinnoviAlertItems.length > 0
+        ? rinnoviAlertItems
+        : (getRinnoviStageList(rinnoviAlertStage) as ScadenzaItem[]);
     if (list.length === 0) {
       setRinnoviAlertErr("Nessun elemento disponibile per l'invio.");
       setRinnoviAlertSending(false);
       return;
     }
     const checklistId = list.find((r) => r.checklist_id)?.checklist_id ?? null;
-    const canale = rinnoviAlertStage === "stage1" ? "rinnovo_stage1" : "rinnovo_stage2";
+    const hasTagliandi = list.some((r) => r.source === "tagliandi");
+    const hasRinnovi = list.some((r) => r.source === "rinnovi");
+    const canale =
+      rinnoviAlertStage === "stage1"
+        ? hasTagliandi && !hasRinnovi
+          ? "tagliando_stage1"
+          : "rinnovo_stage1"
+        : hasTagliandi && !hasRinnovi
+        ? "tagliando_stage2"
+        : "rinnovo_stage2";
     const op =
       rinnoviAlertDestMode === "operatore"
         ? alertOperatori.find((o) => o.id === rinnoviAlertToOperatoreId)
@@ -2189,22 +2403,46 @@ export default function ClientePage({ params }: { params: any }) {
       return;
     }
     const nowIso = new Date().toISOString();
+    const rinnoviIds = list.filter((r) => r.source === "rinnovi").map((r) => r.id);
+    const tagliandiIds = list.filter((r) => r.source === "tagliandi").map((r) => r.id);
     if (rinnoviAlertStage === "stage1") {
-      const ids = list.map((r) => r.id);
-      await updateRinnovi(ids, {
-        stato: "AVVISATO",
-        notify_stage1_sent_at: nowIso,
-        notify_stage1_to_operatore_id:
-          rinnoviAlertDestMode === "operatore" ? rinnoviAlertToOperatoreId : null,
-      });
+      if (rinnoviIds.length > 0) {
+        await updateRinnovi(rinnoviIds, {
+          stato: "AVVISATO",
+          notify_stage1_sent_at: nowIso,
+          notify_stage1_to_operatore_id:
+            rinnoviAlertDestMode === "operatore" ? rinnoviAlertToOperatoreId : null,
+        });
+      }
+      if (tagliandiIds.length > 0) {
+        await supabase
+          .from("tagliandi")
+          .update({
+            alert_last_sent_at: nowIso,
+            alert_last_sent_by_operatore:
+              rinnoviAlertDestMode === "operatore" ? rinnoviAlertToOperatoreId : null,
+          })
+          .in("id", tagliandiIds);
+      }
     } else {
-      const ids = list.map((r) => r.id);
-      await updateRinnovi(ids, {
-        billing_notified_at: nowIso,
-        billing_stage2_sent_at: nowIso,
-        billing_stage2_to_operatore_id:
-          rinnoviAlertDestMode === "operatore" ? rinnoviAlertToOperatoreId : null,
-      });
+      if (rinnoviIds.length > 0) {
+        await updateRinnovi(rinnoviIds, {
+          billing_notified_at: nowIso,
+          billing_stage2_sent_at: nowIso,
+          billing_stage2_to_operatore_id:
+            rinnoviAlertDestMode === "operatore" ? rinnoviAlertToOperatoreId : null,
+        });
+      }
+      if (tagliandiIds.length > 0) {
+        await supabase
+          .from("tagliandi")
+          .update({
+            alert_last_sent_at: nowIso,
+            alert_last_sent_by_operatore:
+              rinnoviAlertDestMode === "operatore" ? rinnoviAlertToOperatoreId : null,
+          })
+          .in("id", tagliandiIds);
+      }
     }
     const recipientLabel = getRinnoviRecipientLabel();
     const esitoLabel = rinnoviAlertSendEmail ? "Email inviata" : "Log registrato";
@@ -2214,6 +2452,7 @@ export default function ClientePage({ params }: { params: any }) {
     setRinnoviAlertOpen(false);
     setRinnoviAlertSendEmail(true);
     await fetchRinnovi((cliente || "").trim());
+    await fetchTagliandi((cliente || "").trim());
   }
 
   async function markRinnovoConfermato(r: RinnovoServizioRow) {
@@ -2270,6 +2509,48 @@ export default function ClientePage({ params }: { params: any }) {
     if (ok) {
       setRinnoviNotice("Riga aggiornata: FATTURATO.");
       await fetchRinnovi((cliente || "").trim());
+    }
+  }
+
+  async function updateTagliando(id: string, payload: Record<string, any>) {
+    const { error } = await supabase.from("tagliandi").update(payload).eq("id", id);
+    if (error) {
+      setRinnoviError("Errore aggiornamento tagliando: " + error.message);
+      return false;
+    }
+    return true;
+  }
+
+  async function markTagliandoOk(r: ScadenzaItem) {
+    const ok = await updateTagliando(r.id, { stato: "OK" });
+    if (ok) {
+      setRinnoviNotice("Tagliando confermato.");
+      await fetchTagliandi((cliente || "").trim());
+    }
+  }
+
+  async function markTagliandoDaFatturare(r: ScadenzaItem) {
+    if (String(r.modalita || "").toUpperCase() !== "EXTRA") {
+      setRinnoviError("Puoi fatturare solo tagliandi EXTRA.");
+      return;
+    }
+    const ok = await updateTagliando(r.id, { stato: "DA_FATTURARE" });
+    if (ok) {
+      setRinnoviNotice("Tagliando segnato DA_FATTURARE.");
+      await fetchTagliandi((cliente || "").trim());
+      openRinnoviAlert("stage2", false, [r]);
+    }
+  }
+
+  async function markTagliandoFatturato(r: ScadenzaItem) {
+    if (String(r.modalita || "").toUpperCase() !== "EXTRA") {
+      setRinnoviError("Puoi fatturare solo tagliandi EXTRA.");
+      return;
+    }
+    const ok = await updateTagliando(r.id, { stato: "FATTURATO" });
+    if (ok) {
+      setRinnoviNotice("Tagliando fatturato.");
+      await fetchTagliandi((cliente || "").trim());
     }
   }
 
@@ -3239,7 +3520,7 @@ export default function ClientePage({ params }: { params: any }) {
             <div
               style={{
                 display: "grid",
-                gridTemplateColumns: "120px 1fr 160px 140px 240px",
+                gridTemplateColumns: "120px 1fr 160px 140px 160px 240px",
                 padding: "10px 12px",
                 fontWeight: 800,
                 background: "#fafafa",
@@ -3251,6 +3532,7 @@ export default function ClientePage({ params }: { params: any }) {
               <div>Riferimento</div>
               <div>Scadenza</div>
               <div>Stato</div>
+              <div>Modalità</div>
               <div>Azioni</div>
             </div>
 
@@ -3258,19 +3540,23 @@ export default function ClientePage({ params }: { params: any }) {
               const checklist = r.checklist_id ? checklistById.get(r.checklist_id) : null;
               const checklistName = checklist?.nome_checklist ?? r.checklist_id?.slice(0, 8);
               const stato = String(r.stato || "").toUpperCase();
+              const isTagliando = r.source === "tagliandi";
+              const isExtra = String(r.modalita || "").toUpperCase() === "EXTRA";
               const canStage1 = stato === "DA_AVVISARE";
-              const canConfirm = !["CONFERMATO", "DA_FATTURARE", "FATTURATO", "NON_RINNOVATO"].includes(
-                stato
-              );
-              const canStage2 = stato === "CONFERMATO" || stato === "DA_FATTURARE";
-              const canNonRinnovato = !["FATTURATO", "NON_RINNOVATO"].includes(stato);
-              const canFatturato = stato === "DA_FATTURARE";
+              const canConfirm = isTagliando
+                ? true
+                : !["CONFERMATO", "DA_FATTURARE", "FATTURATO", "NON_RINNOVATO"].includes(stato);
+              const canStage2 = isTagliando
+                ? isExtra && (stato === "DA_FATTURARE" || stato === "OK")
+                : stato === "CONFERMATO" || stato === "DA_FATTURARE";
+              const canNonRinnovato = !isTagliando && !["FATTURATO", "NON_RINNOVATO"].includes(stato);
+              const canFatturato = isTagliando ? isExtra && stato === "DA_FATTURARE" : stato === "DA_FATTURARE";
               return (
                 <div
                   key={r.id}
                   style={{
                     display: "grid",
-                    gridTemplateColumns: "120px 1fr 160px 140px 240px",
+                    gridTemplateColumns: "120px 1fr 160px 140px 160px 240px",
                     padding: "10px 12px",
                     borderBottom: "1px solid #f3f4f6",
                     alignItems: "center",
@@ -3280,7 +3566,7 @@ export default function ClientePage({ params }: { params: any }) {
                 >
                   <div>{String(r.item_tipo || "—").toUpperCase()}</div>
                   <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                    <div>{getRinnovoReference(r)}</div>
+                    <div>{r.riferimento ?? r.descrizione ?? "—"}</div>
                     {r.checklist_id && (
                       <Link
                         href={`/checklists/${r.checklist_id}`}
@@ -3294,7 +3580,10 @@ export default function ClientePage({ params }: { params: any }) {
                     <div>{r.scadenza ? new Date(r.scadenza).toLocaleDateString() : "—"}</div>
                     {renderScadenzaBadge(r.scadenza)}
                   </div>
-                  <div>{renderRinnovoStatoBadge(r.stato)}</div>
+                  <div>
+                    {isTagliando ? renderTagliandoStatoBadge(r.stato) : renderRinnovoStatoBadge(r.stato)}
+                  </div>
+                  <div>{isTagliando ? renderModalitaBadge(r.modalita) : "—"}</div>
                   <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                     <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                       <button
@@ -3325,7 +3614,9 @@ export default function ClientePage({ params }: { params: any }) {
                           if (stato === "DA_FATTURARE") {
                             openRinnoviAlert("stage2", false, [r]);
                           } else {
-                            markRinnovoDaFatturare(r);
+                            isTagliando
+                              ? markTagliandoDaFatturare(r)
+                              : markRinnovoDaFatturare(r as RinnovoServizioRow);
                           }
                         }}
                         disabled={!canStage2}
@@ -3351,7 +3642,11 @@ export default function ClientePage({ params }: { params: any }) {
                     <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                       <button
                         type="button"
-                        onClick={() => markRinnovoConfermato(r)}
+                        onClick={() =>
+                          isTagliando
+                            ? markTagliandoOk(r)
+                            : markRinnovoConfermato(r as RinnovoServizioRow)
+                        }
                         disabled={!canConfirm}
                         title={
                           canConfirm
@@ -3393,7 +3688,11 @@ export default function ClientePage({ params }: { params: any }) {
                       </button>
                       <button
                         type="button"
-                        onClick={() => markRinnovoFatturato(r)}
+                        onClick={() =>
+                          isTagliando
+                            ? markTagliandoFatturato(r)
+                            : markRinnovoFatturato(r as RinnovoServizioRow)
+                        }
                         disabled={!canFatturato}
                         title={
                           canFatturato
