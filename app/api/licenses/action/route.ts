@@ -49,7 +49,7 @@ function isAllowedOrigin(request: Request) {
 }
 
 function getSupabaseClient() {
-  const supabaseUrl = process.env.SUPABASE_URL;
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
   const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!supabaseUrl || !supabaseKey) return null;
   return createClient(supabaseUrl, supabaseKey);
@@ -85,7 +85,10 @@ export async function POST(request: Request) {
 
   const supabase = getSupabaseClient();
   if (!supabase) {
-    return NextResponse.json({ error: "Missing SUPABASE_SERVICE_ROLE_KEY" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Missing SUPABASE_SERVICE_ROLE_KEY or SUPABASE_URL" },
+      { status: 500 }
+    );
   }
 
   let body: ActionBody;
