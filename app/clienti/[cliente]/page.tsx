@@ -75,6 +75,44 @@ function renderBadge(label: string) {
   );
 }
 
+function renderLicenseStatusBadge(status?: string | null, scadenza?: string | null) {
+  const raw = (status || "").toUpperCase().trim();
+  if (!raw) return renderBadge(getExpiryStatus(scadenza));
+  let bg = "#e5e7eb";
+  let color = "#374151";
+  if (raw === "DA_FATTURARE") {
+    bg = "#fef9c3";
+    color = "#854d0e";
+  } else if (raw === "FATTURATO") {
+    bg = "#dcfce7";
+    color = "#166534";
+  } else if (raw === "ANNULLATO") {
+    bg = "#e5e7eb";
+    color = "#374151";
+  } else if (raw === "AVVISATO") {
+    bg = "#dbeafe";
+    color = "#1e3a8a";
+  } else if (raw === "ATTIVA" || raw === "SCADUTA") {
+    return renderBadge(raw);
+  }
+  return (
+    <span
+      style={{
+        display: "inline-block",
+        padding: "2px 8px",
+        borderRadius: 999,
+        fontSize: 12,
+        fontWeight: 700,
+        background: bg,
+        color,
+        whiteSpace: "nowrap",
+      }}
+    >
+      {raw}
+    </span>
+  );
+}
+
 function getNextLicenzaScadenza(licenze: Array<{ scadenza?: string | null }>) {
   const dates = licenze
     .map((l) => l.scadenza)
@@ -409,7 +447,12 @@ type LicenzaRow = {
   tipo: string | null;
   scadenza: string | null;
   stato: string | null;
+  status?: string | null;
   note: string | null;
+  alert_sent_at?: string | null;
+  alert_to?: string | null;
+  alert_note?: string | null;
+  updated_by_operatore?: string | null;
 };
 
 type InterventoRow = {
@@ -514,6 +557,19 @@ export default function ClientePage({ params }: { params: any }) {
   const [checklists, setChecklists] = useState<ChecklistRow[]>([]);
   const [licenze, setLicenze] = useState<LicenzaRow[]>([]);
   const [licenzeError, setLicenzeError] = useState<string | null>(null);
+  const [licenzeNotice, setLicenzeNotice] = useState<string | null>(null);
+  const [licenseAlertOpen, setLicenseAlertOpen] = useState(false);
+  const [licenseAlertItem, setLicenseAlertItem] = useState<LicenzaRow | null>(null);
+  const [licenseAlertToOperatoreId, setLicenseAlertToOperatoreId] = useState("");
+  const [licenseAlertMsg, setLicenseAlertMsg] = useState("");
+  const [licenseAlertSendEmail, setLicenseAlertSendEmail] = useState(true);
+  const [licenseAlertDestMode, setLicenseAlertDestMode] = useState<"operatore" | "email">(
+    "operatore"
+  );
+  const [licenseAlertManualEmail, setLicenseAlertManualEmail] = useState("");
+  const [licenseAlertManualName, setLicenseAlertManualName] = useState("");
+  const [licenseAlertSending, setLicenseAlertSending] = useState(false);
+  const [licenseAlertErr, setLicenseAlertErr] = useState<string | null>(null);
   const [onlyExpiredWarranty, setOnlyExpiredWarranty] = useState(false);
   const [interventi, setInterventi] = useState<InterventoRow[]>([]);
   const [interventiError, setInterventiError] = useState<string | null>(null);
@@ -655,7 +711,9 @@ export default function ClientePage({ params }: { params: any }) {
       } else {
         const { data: licData, error: licErr } = await supabase
           .from("licenses")
-          .select("id, checklist_id, tipo, scadenza, stato, note")
+          .select(
+            "id, checklist_id, tipo, scadenza, stato, status, note, alert_sent_at, alert_to, alert_note, updated_by_operatore"
+          )
           .in("checklist_id", checklistIds)
           .order("scadenza", { ascending: true });
         if (licErr) {
@@ -1446,6 +1504,16 @@ export default function ClientePage({ params }: { params: any }) {
     return getNextLicenzaScadenza(licenze);
   }, [licenze]);
 
+  const currentOperatore = useMemo(() => {
+    if (!currentOperatoreId) return null;
+    return alertOperatori.find((o) => o.id === currentOperatoreId) ?? null;
+  }, [alertOperatori, currentOperatoreId]);
+
+  const canManageLicenzeStatus = useMemo(() => {
+    const role = String(currentOperatore?.ruolo || "").toUpperCase();
+    return role === "AMMINISTRAZIONE" || role === "SUPERVISORE" || role === "ADMIN";
+  }, [currentOperatore]);
+
   const interventiInclusiUsati = useMemo(() => {
     return interventi.filter((i) => i.incluso).length;
   }, [interventi]);
@@ -2216,6 +2284,146 @@ export default function ClientePage({ params }: { params: any }) {
     setBulkLastMessage(data.messaggio ?? null);
   }
 
+  function buildLicenseAlertMessage(l: LicenzaRow) {
+    const checklist = l.checklist_id ? checklistById.get(l.checklist_id) : null;
+    const name = checklist?.nome_checklist ?? l.checklist_id ?? "—";
+    const scad = l.scadenza ? new Date(l.scadenza).toLocaleDateString() : "—";
+    const tipo = l.tipo ?? "—";
+    return [
+      `ALERT LICENZA — Cliente: ${cliente || "—"}`,
+      `Checklist: ${name}`,
+      `Tipo: ${tipo}`,
+      `Scadenza: ${scad}`,
+      `Stato: ${(l.status || l.stato || "—").toString().toUpperCase()}`,
+    ].join("\n");
+  }
+
+  async function setLicenseStatus(licenseId: string, status: "DA_FATTURARE" | "FATTURATO" | "ANNULLATO") {
+    setLicenzeError(null);
+    setLicenzeNotice(null);
+    if (!currentOperatoreId) {
+      setLicenzeError("Seleziona l’Operatore corrente (in alto) prima di aggiornare lo stato.");
+      return;
+    }
+    const res = await fetch("/api/licenses/action", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        action: "SET_STATUS",
+        licenseId,
+        status,
+        updatedByOperatoreId: currentOperatoreId,
+      }),
+    });
+    if (!res.ok) {
+      let msg = "Errore aggiornamento licenza";
+      try {
+        const data = await res.json();
+        msg = data?.error || msg;
+      } catch {
+        // ignore
+      }
+      setLicenzeError(msg);
+      return;
+    }
+    setLicenze((prev) =>
+      prev.map((l) => (l.id === licenseId ? { ...l, status } : l))
+    );
+    setLicenzeNotice(`Stato licenza aggiornato: ${status}`);
+  }
+
+  function openLicenseAlertModal(l: LicenzaRow) {
+    setLicenseAlertItem(l);
+    setLicenseAlertDestMode("operatore");
+    setLicenseAlertManualEmail("");
+    setLicenseAlertManualName("");
+    setLicenseAlertToOperatoreId(currentOperatoreId ?? "");
+    setLicenseAlertMsg(buildLicenseAlertMessage(l));
+    setLicenseAlertErr(null);
+    setLicenseAlertOpen(true);
+  }
+
+  async function sendLicenseAlert() {
+    if (!licenseAlertItem) return;
+    setLicenseAlertSending(true);
+    setLicenseAlertErr(null);
+    if (!currentOperatoreId) {
+      setLicenseAlertErr("Seleziona l’Operatore corrente (in alto) prima di inviare un alert.");
+      setLicenseAlertSending(false);
+      return;
+    }
+    if (licenseAlertDestMode === "operatore" && !licenseAlertToOperatoreId) {
+      setLicenseAlertErr("Seleziona un destinatario.");
+      setLicenseAlertSending(false);
+      return;
+    }
+    if (licenseAlertDestMode === "email") {
+      const mail = licenseAlertManualEmail.trim();
+      if (!mail || !mail.includes("@")) {
+        setLicenseAlertErr("Inserisci un'email valida.");
+        setLicenseAlertSending(false);
+        return;
+      }
+    }
+    const toOperatore =
+      licenseAlertDestMode === "operatore"
+        ? alertOperatori.find((o) => o.id === licenseAlertToOperatoreId) || null
+        : null;
+    const toEmail =
+      licenseAlertDestMode === "operatore"
+        ? toOperatore?.email ?? ""
+        : licenseAlertManualEmail.trim();
+    const toNome =
+      licenseAlertDestMode === "operatore"
+        ? toOperatore?.nome ?? null
+        : licenseAlertManualName.trim() || null;
+
+    try {
+      await sendAlert({
+        canale: "license_alert",
+        subject: `[Art Tech] Alert licenza – ${cliente || "—"}`,
+        html: `<div>${textToHtml(licenseAlertMsg || "")}</div>`,
+        text: licenseAlertMsg,
+        to_email: toEmail,
+        to_nome: toNome,
+        to_operatore_id: licenseAlertDestMode === "operatore" ? licenseAlertToOperatoreId : null,
+        from_operatore_id: currentOperatoreId,
+        cliente,
+        checklist_id: licenseAlertItem.checklist_id ?? null,
+        meta: { license_id: licenseAlertItem.id },
+        send_email: licenseAlertSendEmail,
+      });
+    } catch (e: any) {
+      const msg = e?.message || "Errore invio alert";
+      setLicenseAlertErr(msg);
+      setLicenseAlertSending(false);
+      return;
+    }
+
+    await fetch("/api/licenses/action", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        action: "SEND_ALERT",
+        licenseId: licenseAlertItem.id,
+        alertTo:
+          licenseAlertDestMode === "operatore"
+            ? licenseAlertToOperatoreId
+            : licenseAlertManualEmail.trim(),
+        alertNote: licenseAlertMsg,
+        updatedByOperatoreId: currentOperatoreId,
+      }),
+    });
+
+    setLicenseAlertSending(false);
+    setLicenseAlertOpen(false);
+    setLicenseAlertSendEmail(true);
+    setLicenzeNotice("Alert licenza inviato.");
+    setLicenseAlertToOperatoreId("");
+    setLicenseAlertManualEmail("");
+    setLicenseAlertManualName("");
+  }
+
   async function sendBulkFatturaAlert() {
     setBulkSending(true);
     setBulkErr(null);
@@ -2763,6 +2971,9 @@ export default function ClientePage({ params }: { params: any }) {
 
       <div style={{ marginTop: 18 }}>
         <h2 style={{ margin: 0 }}>Licenze</h2>
+        {licenzeNotice && (
+          <div style={{ color: "#166534", marginTop: 6 }}>{licenzeNotice}</div>
+        )}
         {licenzeError && (
           <div style={{ color: "crimson", marginTop: 6 }}>{licenzeError}</div>
         )}
@@ -2787,7 +2998,7 @@ export default function ClientePage({ params }: { params: any }) {
               <div
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "2fr 1fr 1fr 1fr 2fr",
+                  gridTemplateColumns: "2fr 1fr 1fr 1fr 2fr 180px",
                   padding: "10px 12px",
                   fontWeight: 800,
                   background: "#fafafa",
@@ -2799,6 +3010,7 @@ export default function ClientePage({ params }: { params: any }) {
                 <div>Scadenza</div>
                 <div>Stato</div>
                 <div>Note</div>
+                <div>Azioni</div>
               </div>
               {licenze.map((l) => {
                 const checklist = l.checklist_id
@@ -2810,7 +3022,7 @@ export default function ClientePage({ params }: { params: any }) {
                     key={l.id}
                     style={{
                       display: "grid",
-                      gridTemplateColumns: "2fr 1fr 1fr 1fr 2fr",
+                      gridTemplateColumns: "2fr 1fr 1fr 1fr 2fr 180px",
                       padding: "10px 12px",
                       borderBottom: "1px solid #f3f4f6",
                       alignItems: "center",
@@ -2831,8 +3043,70 @@ export default function ClientePage({ params }: { params: any }) {
                     <div>
                       {l.scadenza ? new Date(l.scadenza).toLocaleDateString() : "—"}
                     </div>
-                    <div>{renderBadge(getExpiryStatus(l.scadenza))}</div>
+                    <div>{renderLicenseStatusBadge(l.status || l.stato, l.scadenza)}</div>
                     <div>{l.note ?? "—"}</div>
+                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                      <button
+                        type="button"
+                        onClick={() => openLicenseAlertModal(l)}
+                        style={{
+                          padding: "6px 8px",
+                          borderRadius: 8,
+                          border: "1px solid #ddd",
+                          background: "white",
+                          cursor: "pointer",
+                          fontSize: 12,
+                        }}
+                      >
+                        Invia alert
+                      </button>
+                      {canManageLicenzeStatus && (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => setLicenseStatus(l.id, "DA_FATTURARE")}
+                            style={{
+                              padding: "6px 8px",
+                              borderRadius: 8,
+                              border: "1px solid #ddd",
+                              background: "white",
+                              cursor: "pointer",
+                              fontSize: 12,
+                            }}
+                          >
+                            Da fatturare
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setLicenseStatus(l.id, "FATTURATO")}
+                            style={{
+                              padding: "6px 8px",
+                              borderRadius: 8,
+                              border: "1px solid #ddd",
+                              background: "white",
+                              cursor: "pointer",
+                              fontSize: 12,
+                            }}
+                          >
+                            Fatturato
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setLicenseStatus(l.id, "ANNULLATO")}
+                            style={{
+                              padding: "6px 8px",
+                              borderRadius: 8,
+                              border: "1px solid #ddd",
+                              background: "white",
+                              cursor: "pointer",
+                              fontSize: 12,
+                            }}
+                          >
+                            Annullato
+                          </button>
+                        </>
+                      )}
+                    </div>
                   </div>
                 );
               })}
@@ -4390,6 +4664,169 @@ export default function ClientePage({ params }: { params: any }) {
             {sendOk && (
               <div style={{ marginTop: 6, fontSize: 12, color: "#166534" }}>
                 {sendOk}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {licenseAlertOpen && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.35)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 16,
+            zIndex: 50,
+          }}
+          onClick={() => setLicenseAlertOpen(false)}
+        >
+          <div
+            style={{
+              width: "100%",
+              maxWidth: 640,
+              background: "white",
+              borderRadius: 12,
+              padding: 16,
+              boxShadow: "0 10px 30px rgba(0,0,0,0.15)",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <div style={{ fontWeight: 800, fontSize: 18 }}>Invia alert licenza</div>
+              <button
+                type="button"
+                onClick={() => setLicenseAlertOpen(false)}
+                style={{
+                  marginLeft: "auto",
+                  padding: "6px 10px",
+                  borderRadius: 8,
+                  border: "1px solid #ddd",
+                  background: "white",
+                }}
+              >
+                Chiudi
+              </button>
+            </div>
+
+            <div style={{ marginTop: 10 }}>
+              <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 6 }}>Destinatario</div>
+              <div style={{ display: "flex", gap: 12, fontSize: 13, marginBottom: 8 }}>
+                <label>
+                  <input
+                    type="radio"
+                    checked={licenseAlertDestMode === "operatore"}
+                    onChange={() => setLicenseAlertDestMode("operatore")}
+                    style={{ marginRight: 6 }}
+                  />
+                  Operatore
+                </label>
+                <label>
+                  <input
+                    type="radio"
+                    checked={licenseAlertDestMode === "email"}
+                    onChange={() => setLicenseAlertDestMode("email")}
+                    style={{ marginRight: 6 }}
+                  />
+                  Email manuale
+                </label>
+              </div>
+              {licenseAlertDestMode === "operatore" ? (
+                <select
+                  value={licenseAlertToOperatoreId}
+                  onChange={(e) => setLicenseAlertToOperatoreId(e.target.value)}
+                  style={{ width: "100%", padding: 8 }}
+                >
+                  <option value="">—</option>
+                  {getAlertRecipients().map((op) => (
+                    <option key={op.id} value={op.id}>
+                      {op.nome ?? "—"}
+                      {op.ruolo ? ` — ${op.ruolo}` : ""}
+                      {op.email ? ` — ${op.email}` : ""}
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <div style={{ display: "grid", gap: 8 }}>
+                  <input
+                    placeholder="Email"
+                    value={licenseAlertManualEmail}
+                    onChange={(e) => setLicenseAlertManualEmail(e.target.value)}
+                    style={{ width: "100%", padding: 8 }}
+                  />
+                  <input
+                    placeholder="Nome (opzionale)"
+                    value={licenseAlertManualName}
+                    onChange={(e) => setLicenseAlertManualName(e.target.value)}
+                    style={{ width: "100%", padding: 8 }}
+                  />
+                </div>
+              )}
+            </div>
+
+            <label style={{ display: "block", marginTop: 10 }}>
+              Messaggio<br />
+              <textarea
+                value={licenseAlertMsg}
+                onChange={(e) => setLicenseAlertMsg(e.target.value)}
+                rows={6}
+                style={{ width: "100%", padding: 8, marginTop: 6 }}
+              />
+            </label>
+            <label style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 8 }}>
+              <input
+                type="checkbox"
+                checked={licenseAlertSendEmail}
+                onChange={(e) => setLicenseAlertSendEmail(e.target.checked)}
+              />
+              Invia email
+            </label>
+            <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 12 }}>
+              <button
+                type="button"
+                onClick={() => setLicenseAlertOpen(false)}
+                style={{
+                  padding: "8px 12px",
+                  borderRadius: 8,
+                  border: "1px solid #ddd",
+                  background: "white",
+                }}
+              >
+                Annulla
+              </button>
+              <button
+                type="button"
+                onClick={sendLicenseAlert}
+                disabled={
+                  licenseAlertSending ||
+                  (licenseAlertDestMode === "operatore"
+                    ? !licenseAlertToOperatoreId
+                    : !licenseAlertManualEmail.trim())
+                }
+                style={{
+                  padding: "8px 12px",
+                  borderRadius: 8,
+                  border: "1px solid #111",
+                  background: "#111",
+                  color: "white",
+                  opacity:
+                    licenseAlertSending ||
+                    (licenseAlertDestMode === "operatore"
+                      ? !licenseAlertToOperatoreId
+                      : !licenseAlertManualEmail.trim())
+                      ? 0.6
+                      : 1,
+                }}
+              >
+                {licenseAlertSending ? "Invio..." : "Invia"}
+              </button>
+            </div>
+            {licenseAlertErr && (
+              <div style={{ marginTop: 10, fontSize: 12, color: "#b91c1c" }}>
+                {licenseAlertErr}
               </div>
             )}
           </div>
