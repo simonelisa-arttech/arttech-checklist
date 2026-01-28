@@ -11,6 +11,7 @@ alter table if exists licenses
   add column if not exists alert_to text,
   add column if not exists alert_note text,
   add column if not exists updated_by_operatore uuid,
+  add column if not exists intestata_a text,
   add column if not exists ref_univoco text,
   add column if not exists telefono text,
   add column if not exists intestatario text,

@@ -509,6 +509,7 @@ type LicenzaRow = {
   stato: string | null;
   status?: string | null;
   note: string | null;
+  intestata_a?: string | null;
   ref_univoco?: string | null;
   telefono?: string | null;
   intestatario?: string | null;
@@ -805,7 +806,7 @@ export default function ClientePage({ params }: { params: any }) {
         const { data: licData, error: licErr } = await supabase
           .from("licenses")
           .select(
-            "id, checklist_id, tipo, scadenza, stato, status, note, ref_univoco, telefono, intestatario, gestore, fornitore, alert_sent_at, alert_to, alert_note, updated_by_operatore"
+            "id, checklist_id, tipo, scadenza, stato, status, note, intestata_a, ref_univoco, telefono, intestatario, gestore, fornitore, alert_sent_at, alert_to, alert_note, updated_by_operatore"
           )
           .in("checklist_id", checklistIds)
           .order("scadenza", { ascending: true });
@@ -1362,7 +1363,15 @@ export default function ClientePage({ params }: { params: any }) {
       source: "licenze" as const,
       item_tipo: "LICENZA",
       riferimento:
-        [l.ref_univoco, l.telefono, l.intestatario, l.gestore, l.fornitore, l.note]
+        [
+          l.intestata_a ? `Intestata: ${l.intestata_a}` : null,
+          l.ref_univoco,
+          l.telefono,
+          l.intestatario,
+          l.gestore,
+          l.fornitore,
+          l.note,
+        ]
           .filter(Boolean)
           .join(" · ") || l.tipo || "Licenza",
       descrizione: l.note ?? null,
@@ -3383,7 +3392,7 @@ export default function ClientePage({ params }: { params: any }) {
               <div
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "2fr 1fr 1fr 1fr 2fr 2fr 180px",
+                  gridTemplateColumns: "1.6fr 0.8fr 0.9fr 0.9fr 0.9fr 2fr 2fr 180px",
                   padding: "10px 12px",
                   fontWeight: 800,
                   background: "#fafafa",
@@ -3394,6 +3403,7 @@ export default function ClientePage({ params }: { params: any }) {
                 <div>Tipo</div>
                 <div>Scadenza</div>
                 <div>Stato</div>
+                <div>Intestata</div>
                 <div>Note</div>
                 <div>Riferimento</div>
                 <div>Azioni</div>
@@ -3408,7 +3418,7 @@ export default function ClientePage({ params }: { params: any }) {
                     key={l.id}
                     style={{
                       display: "grid",
-                      gridTemplateColumns: "2fr 1fr 1fr 1fr 2fr 2fr 180px",
+                      gridTemplateColumns: "1.6fr 0.8fr 0.9fr 0.9fr 0.9fr 2fr 2fr 180px",
                       padding: "10px 12px",
                       borderBottom: "1px solid #f3f4f6",
                       alignItems: "center",
@@ -3430,27 +3440,62 @@ export default function ClientePage({ params }: { params: any }) {
                       {l.scadenza ? new Date(l.scadenza).toLocaleDateString() : "—"}
                     </div>
                     <div>{renderBadge(getLicenseStatus(l))}</div>
+                    <div>
+                      {l.intestata_a === "ART_TECH"
+                        ? "Art Tech"
+                        : l.intestata_a
+                        ? "Cliente"
+                        : "—"}
+                    </div>
                     <div>{l.note ?? "—"}</div>
                     <div>
-                      {[l.ref_univoco, l.telefono, l.intestatario, l.gestore, l.fornitore]
+                      [
+                        l.intestata_a ? `Intestata: ${l.intestata_a}` : null,
+                        l.ref_univoco,
+                        l.telefono,
+                        l.intestatario,
+                        l.gestore,
+                        l.fornitore,
+                      ]
                         .filter(Boolean)
                         .join(" · ") || "—"}
                     </div>
                     <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                      <button
-                        type="button"
-                        onClick={() => openLicenseAlertModal(l)}
-                        style={{
-                          padding: "6px 8px",
-                          borderRadius: 8,
-                          border: "1px solid #ddd",
-                          background: "white",
-                          cursor: "pointer",
-                          fontSize: 12,
-                        }}
-                      >
-                        Invia alert
-                      </button>
+                      {l.checklist_id ? (
+                        <Link
+                          href={`/checklists/${l.checklist_id}`}
+                          style={{
+                            padding: "6px 8px",
+                            borderRadius: 8,
+                            border: "1px solid #ddd",
+                            background: "white",
+                            cursor: "pointer",
+                            fontSize: 12,
+                            textDecoration: "none",
+                            color: "inherit",
+                            display: "inline-flex",
+                            alignItems: "center",
+                          }}
+                        >
+                          Modifica
+                        </Link>
+                      ) : (
+                        <button
+                          type="button"
+                          disabled
+                          style={{
+                            padding: "6px 8px",
+                            borderRadius: 8,
+                            border: "1px solid #ddd",
+                            background: "#f9fafb",
+                            cursor: "not-allowed",
+                            fontSize: 12,
+                            opacity: 0.6,
+                          }}
+                        >
+                          Modifica
+                        </button>
+                      )}
                     </div>
                   </div>
                 );
@@ -3577,7 +3622,8 @@ export default function ClientePage({ params }: { params: any }) {
               const isTagliando = r.source === "tagliandi";
               const isLicenza = r.source === "licenze";
               const isExtra = String(r.modalita || "").toUpperCase() === "EXTRA";
-              const canStage1 = stato === "DA_AVVISARE";
+              const hasScadenza = Boolean(r.scadenza);
+              const canStage1 = isLicenza ? hasScadenza : stato === "DA_AVVISARE";
               const canConfirm = isTagliando
                 ? true
                 : !["CONFERMATO", "DA_FATTURARE", "FATTURATO", "NON_RINNOVATO"].includes(stato);

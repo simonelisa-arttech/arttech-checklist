@@ -95,6 +95,7 @@ type Licenza = {
   scadenza: string | null;
   stato: string | null;
   note: string | null;
+  intestata_a?: string | null;
   ref_univoco?: string | null;
   telefono?: string | null;
   intestatario?: string | null;
@@ -107,6 +108,7 @@ type NewLicenza = {
   tipo: string;
   scadenza: string;
   note: string;
+  intestata_a: string;
   ref_univoco: string;
   telefono: string;
   intestatario: string;
@@ -433,6 +435,7 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
     tipo: "",
     scadenza: "",
     note: "",
+    intestata_a: "CLIENTE",
     ref_univoco: "",
     telefono: "",
     intestatario: "",
@@ -446,6 +449,7 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
     scadenza: string;
     note: string;
     stato: "attiva" | "disattivata";
+    intestata_a: string;
     ref_univoco: string;
     telefono: string;
     intestatario: string;
@@ -568,7 +572,7 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
     const { data: licenzeData, error: licenzeErr } = await supabase
       .from("licenses")
       .select(
-        "id, checklist_id, tipo, scadenza, stato, note, ref_univoco, telefono, intestatario, gestore, fornitore, created_at"
+        "id, checklist_id, tipo, scadenza, stato, note, intestata_a, ref_univoco, telefono, intestatario, gestore, fornitore, created_at"
       )
       .eq("checklist_id", id)
       .order("created_at", { ascending: false });
@@ -960,6 +964,7 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
       scadenza: scadenzaISO,
       stato: "attiva",
       note: newLicenza.note.trim() ? newLicenza.note.trim() : null,
+      intestata_a: newLicenza.intestata_a.trim() ? newLicenza.intestata_a.trim() : null,
       ref_univoco: newLicenza.ref_univoco.trim()
         ? newLicenza.ref_univoco.trim()
         : null,
@@ -984,6 +989,7 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
       tipo: "",
       scadenza: "",
       note: "",
+      intestata_a: "CLIENTE",
       ref_univoco: "",
       telefono: "",
       intestatario: "",
@@ -1009,6 +1015,7 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
       scadenza?: string | null;
       note?: string | null;
       stato?: "attiva" | "disattivata";
+      intestata_a?: string | null;
       ref_univoco?: string | null;
       telefono?: string | null;
       intestatario?: string | null;
@@ -1037,6 +1044,7 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
       scadenza: l.scadenza ? l.scadenza.slice(0, 10) : "",
       note: l.note ?? "",
       stato: (l.stato ?? "attiva") as "attiva" | "disattivata",
+      intestata_a: l.intestata_a ?? "CLIENTE",
       ref_univoco: l.ref_univoco ?? "",
       telefono: l.telefono ?? "",
       intestatario: l.intestatario ?? "",
@@ -1062,6 +1070,7 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
       scadenza: normalizedScadenza,
       note: editingLicenza.note.trim() ? editingLicenza.note.trim() : null,
       stato: editingLicenza.stato,
+      intestata_a: editingLicenza.intestata_a.trim() ? editingLicenza.intestata_a.trim() : null,
       ref_univoco: editingLicenza.ref_univoco.trim()
         ? editingLicenza.ref_univoco.trim()
         : null,
@@ -2077,6 +2086,7 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
                     (l) => {
                       const parts = [l.tipo ?? "—"];
                       if (l.telefono) parts.push(l.telefono);
+                      if (l.intestata_a) parts.push(`Intestata: ${l.intestata_a}`);
                       if (l.ref_univoco) parts.push(l.ref_univoco);
                       if (l.intestatario) parts.push(l.intestatario);
                       if (l.gestore) parts.push(l.gestore);
@@ -2097,7 +2107,7 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
               <div
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "2fr 1fr 1fr 2fr 2fr 160px",
+                  gridTemplateColumns: "1.4fr 0.8fr 0.8fr 0.9fr 2fr 2fr 160px",
                   gap: 0,
                   padding: "10px 12px",
                   fontWeight: 700,
@@ -2108,6 +2118,7 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
                 <div>Tipo / Piano</div>
                 <div>Scadenza</div>
                 <div>Stato</div>
+                <div>Intestata</div>
                 <div>Note</div>
                 <div>Riferimento</div>
                 <div>Azioni</div>
@@ -2118,7 +2129,7 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
                   key={l.id}
                   style={{
                     display: "grid",
-                    gridTemplateColumns: "2fr 1fr 1fr 2fr 2fr 160px",
+                    gridTemplateColumns: "1.4fr 0.8fr 0.8fr 0.9fr 2fr 2fr 160px",
                     gap: 0,
                     padding: "10px 12px",
                     borderBottom: "1px solid #f5f5f5",
@@ -2188,6 +2199,28 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
                       </select>
                     ) : (
                       renderBadge(getLicenzaStatusLabel(l))
+                    )}
+                  </div>
+                  <div>
+                    {editMode && editingLicenzaId === l.id ? (
+                      <select
+                        value={editingLicenza?.intestata_a ?? "CLIENTE"}
+                        onChange={(e) =>
+                          setEditingLicenza((prev) =>
+                            prev ? { ...prev, intestata_a: e.target.value } : prev
+                          )
+                        }
+                        style={{ width: "100%", padding: 6 }}
+                      >
+                        <option value="CLIENTE">Cliente</option>
+                        <option value="ART_TECH">Art Tech</option>
+                      </select>
+                    ) : (
+                      l.intestata_a === "ART_TECH"
+                        ? "Art Tech"
+                        : l.intestata_a
+                        ? "Cliente"
+                        : "—"
                     )}
                   </div>
                   <div>
@@ -2343,7 +2376,7 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
               <div
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "2fr 1fr 2fr 120px",
+                  gridTemplateColumns: "2fr 1fr 2fr 1fr 120px",
                   gap: 10,
                   alignItems: "end",
                 }}
@@ -2380,6 +2413,19 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
                     onChange={(e) => setNewLicenza({ ...newLicenza, note: e.target.value })}
                     style={{ width: "100%", padding: 10 }}
                   />
+                </label>
+                <label>
+                  Intestata a<br />
+                  <select
+                    value={newLicenza.intestata_a}
+                    onChange={(e) =>
+                      setNewLicenza({ ...newLicenza, intestata_a: e.target.value })
+                    }
+                    style={{ width: "100%", padding: 10 }}
+                  >
+                    <option value="CLIENTE">Cliente</option>
+                    <option value="ART_TECH">Art Tech</option>
+                  </select>
                 </label>
                 <button
                   type="button"
