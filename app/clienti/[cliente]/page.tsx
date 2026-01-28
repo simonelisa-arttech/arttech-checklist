@@ -3449,7 +3449,7 @@ export default function ClientePage({ params }: { params: any }) {
                     </div>
                     <div>{l.note ?? "—"}</div>
                     <div>
-                      [
+                      {[
                         l.intestata_a ? `Intestata: ${l.intestata_a}` : null,
                         l.ref_univoco,
                         l.telefono,
