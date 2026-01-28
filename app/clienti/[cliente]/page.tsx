@@ -24,6 +24,12 @@ function parseLocalDay(value?: string | null): Date | null {
   return dt;
 }
 
+function startOfToday() {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return today;
+}
+
 function escapeHtml(value: string) {
   return value
     .replace(/&/g, "&amp;")
@@ -41,8 +47,7 @@ function textToHtml(text: string) {
 function getExpiryStatus(value?: string | null): "ATTIVA" | "SCADUTA" | "—" {
   const dt = parseLocalDay(value);
   if (!dt) return "—";
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
+  const today = startOfToday();
   return dt < today ? "SCADUTA" : "ATTIVA";
 }
 
@@ -89,6 +94,9 @@ function renderLicenseStatusBadge(status?: string | null, scadenza?: string | nu
   } else if (raw === "ANNULLATO") {
     bg = "#e5e7eb";
     color = "#374151";
+  } else if (raw === "DISATTIVATA") {
+    bg = "#e5e7eb";
+    color = "#374151";
   } else if (raw === "AVVISATO") {
     bg = "#dbeafe";
     color = "#1e3a8a";
@@ -113,8 +121,19 @@ function renderLicenseStatusBadge(status?: string | null, scadenza?: string | nu
   );
 }
 
-function getNextLicenzaScadenza(licenze: Array<{ scadenza?: string | null }>) {
+function getLicenseStatus(lic: { stato?: string | null; scadenza?: string | null }) {
+  const stato = (lic.stato || "").toUpperCase().trim();
+  if (stato === "DISATTIVATA") return "DISATTIVATA";
+  const dt = parseLocalDay(lic.scadenza);
+  if (dt && dt < startOfToday()) return "SCADUTA";
+  return "ATTIVA";
+}
+
+function getNextLicenzaScadenza(
+  licenze: Array<{ scadenza?: string | null; stato?: string | null }>
+) {
   const dates = licenze
+    .filter((l) => getLicenseStatus(l) !== "DISATTIVATA")
     .map((l) => l.scadenza)
     .filter(Boolean)
     .map((d) => String(d));
@@ -3043,7 +3062,7 @@ export default function ClientePage({ params }: { params: any }) {
                     <div>
                       {l.scadenza ? new Date(l.scadenza).toLocaleDateString() : "—"}
                     </div>
-                    <div>{renderLicenseStatusBadge(l.status || l.stato, l.scadenza)}</div>
+                    <div>{renderBadge(getLicenseStatus(l))}</div>
                     <div>{l.note ?? "—"}</div>
                     <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                       <button
