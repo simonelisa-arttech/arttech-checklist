@@ -1884,7 +1884,8 @@ export default function Page() {
                             opacity: 0.85,
                             cursor: c.saas_note ? "pointer" : "default",
                           }}
-                          onClick={() => {
+                          onClick={(e) => {
+                            e.stopPropagation();
                             if (!c.saas_note) return;
                             setExpandedSaasNoteId((prev) => (prev === c.id ? null : c.id));
                           }}
