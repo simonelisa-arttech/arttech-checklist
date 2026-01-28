@@ -291,6 +291,36 @@ function getNextLicenzaScadenza(licenze: Array<{ scadenza?: string | null }>) {
   return dates.slice().sort((a, b) => String(a).localeCompare(String(b)))[0] ?? null;
 }
 
+function saasLabelFromCode(code?: string | null) {
+  const raw = (code || "").trim().toUpperCase();
+  const map: Record<string, string> = {
+    "SAS-PL": "CARE PLUS",
+    "SAS-PR": "CARE PREMIUM",
+    "SAS-UL": "CARE ULTRA",
+    "SAS-PR4": "CARE PREMIUM (H4)",
+    "SAS-PR8": "CARE PREMIUM (H8)",
+    "SAS-PR12": "CARE PREMIUM (H12)",
+    "SAS-PR24": "CARE PREMIUM (H24)",
+    "SAS-PR36": "CARE PREMIUM (H36)",
+    "SAS-UL4": "CARE ULTRA (H4)",
+    "SAS-UL8": "CARE ULTRA (H8)",
+    "SAS-UL12": "CARE ULTRA (H12)",
+    "SAS-UL24": "CARE ULTRA (H24)",
+    "SAS-UL36": "CARE ULTRA (H36)",
+    "SAS-EVTR": "ART TECH EVENT",
+    "SAS-MON": "MONITORAGGIO REMOTO & ALERT",
+    "SAS-TCK": "TICKETING / HELP DESK",
+    "SAS-SIM": "CONNETTIVITÀ SIM DATI",
+    "SAS-CMS": "LICENZA CMS / SOFTWARE TERZI",
+    "SAS-BKP": "BACKUP / RIPRISTINO",
+    "SAS-RPT": "REPORTISTICA",
+    "SAS-SLA": "SLA RIPRISTINO",
+    "SAS-EXT": "ESTENSIONE GARANZIA",
+    "SAS-CYB": "CYBER / HARDENING",
+  };
+  return map[raw] ?? null;
+}
+
 function ServiceRow({
   label,
   left,
@@ -1884,7 +1914,11 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
                 </div>
               ) : (
                 <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
-                  <span>{checklist.saas_piano || "—"}</span>
+                  <span>
+                    {checklist.saas_piano
+                      ? `${checklist.saas_piano} — ${saasLabelFromCode(checklist.saas_piano) ?? "—"}`
+                      : "—"}
+                  </span>
                   <span>
                     {checklist.saas_scadenza
                       ? new Date(checklist.saas_scadenza).toLocaleDateString()
@@ -1902,6 +1936,23 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
                   )
                 : "—"
             }
+          />
+
+          <ServiceRow
+            label="SAAS note"
+            left={
+              editMode && formData ? (
+                <textarea
+                  value={formData.saas_note}
+                  onChange={(e) => setFormData({ ...formData, saas_note: e.target.value })}
+                  rows={3}
+                  style={{ width: "100%", padding: 10 }}
+                />
+              ) : (
+                <div style={{ whiteSpace: "pre-wrap" }}>{checklist.saas_note || "—"}</div>
+              )
+            }
+            right="—"
           />
 
           <ServiceRow

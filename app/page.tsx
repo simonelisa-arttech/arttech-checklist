@@ -280,6 +280,7 @@ export default function Page() {
   const [catalogItems, setCatalogItems] = useState<CatalogItem[]>([]);
   const [operatori, setOperatori] = useState<OperatoreRow[]>([]);
   const [currentOperatoreId, setCurrentOperatoreId] = useState<string>("");
+  const [expandedSaasNoteId, setExpandedSaasNoteId] = useState<string | null>(null);
 
   // campi testata
   const [cliente, setCliente] = useState("");
@@ -1877,8 +1878,35 @@ export default function Page() {
                             ? new Date(c.saas_scadenza).toLocaleDateString()
                             : "—"}
                         </td>
-                        <td style={{ padding: "10px 12px", opacity: 0.85 }}>
-                          {c.saas_note ?? "—"}
+                        <td
+                          style={{
+                            padding: "10px 12px",
+                            opacity: 0.85,
+                            cursor: c.saas_note ? "pointer" : "default",
+                          }}
+                          onClick={() => {
+                            if (!c.saas_note) return;
+                            setExpandedSaasNoteId((prev) => (prev === c.id ? null : c.id));
+                          }}
+                        >
+                          {c.saas_note ? (
+                            <div
+                              style={
+                                expandedSaasNoteId === c.id
+                                  ? { whiteSpace: "pre-wrap" }
+                                  : {
+                                      display: "-webkit-box",
+                                      WebkitLineClamp: 2,
+                                      WebkitBoxOrient: "vertical",
+                                      overflow: "hidden",
+                                    }
+                              }
+                            >
+                              {c.saas_note}
+                            </div>
+                          ) : (
+                            "—"
+                          )}
                         </td>
                         <td style={{ padding: "10px 12px" }}>
                           {renderBadge(getExpiryStatus(c.saas_scadenza))}
