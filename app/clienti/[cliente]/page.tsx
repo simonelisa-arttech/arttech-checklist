@@ -468,6 +468,11 @@ type LicenzaRow = {
   stato: string | null;
   status?: string | null;
   note: string | null;
+  ref_univoco?: string | null;
+  telefono?: string | null;
+  intestatario?: string | null;
+  gestore?: string | null;
+  fornitore?: string | null;
   alert_sent_at?: string | null;
   alert_to?: string | null;
   alert_note?: string | null;
@@ -731,7 +736,7 @@ export default function ClientePage({ params }: { params: any }) {
         const { data: licData, error: licErr } = await supabase
           .from("licenses")
           .select(
-            "id, checklist_id, tipo, scadenza, stato, status, note, alert_sent_at, alert_to, alert_note, updated_by_operatore"
+            "id, checklist_id, tipo, scadenza, stato, status, note, ref_univoco, telefono, intestatario, gestore, fornitore, alert_sent_at, alert_to, alert_note, updated_by_operatore"
           )
           .in("checklist_id", checklistIds)
           .order("scadenza", { ascending: true });
@@ -3017,7 +3022,7 @@ export default function ClientePage({ params }: { params: any }) {
               <div
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "2fr 1fr 1fr 1fr 2fr 180px",
+                  gridTemplateColumns: "2fr 1fr 1fr 1fr 2fr 2fr 180px",
                   padding: "10px 12px",
                   fontWeight: 800,
                   background: "#fafafa",
@@ -3029,6 +3034,7 @@ export default function ClientePage({ params }: { params: any }) {
                 <div>Scadenza</div>
                 <div>Stato</div>
                 <div>Note</div>
+                <div>Riferimento</div>
                 <div>Azioni</div>
               </div>
               {licenze.map((l) => {
@@ -3041,7 +3047,7 @@ export default function ClientePage({ params }: { params: any }) {
                     key={l.id}
                     style={{
                       display: "grid",
-                      gridTemplateColumns: "2fr 1fr 1fr 1fr 2fr 180px",
+                      gridTemplateColumns: "2fr 1fr 1fr 1fr 2fr 2fr 180px",
                       padding: "10px 12px",
                       borderBottom: "1px solid #f3f4f6",
                       alignItems: "center",
@@ -3064,6 +3070,11 @@ export default function ClientePage({ params }: { params: any }) {
                     </div>
                     <div>{renderBadge(getLicenseStatus(l))}</div>
                     <div>{l.note ?? "—"}</div>
+                    <div>
+                      {[l.ref_univoco, l.telefono, l.intestatario, l.gestore, l.fornitore]
+                        .filter(Boolean)
+                        .join(" · ") || "—"}
+                    </div>
                     <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                       <button
                         type="button"

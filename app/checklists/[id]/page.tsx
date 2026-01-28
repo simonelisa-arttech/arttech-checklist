@@ -446,6 +446,11 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
     scadenza: string;
     note: string;
     stato: "attiva" | "disattivata";
+    ref_univoco: string;
+    telefono: string;
+    intestatario: string;
+    gestore: string;
+    fornitore: string;
   } | null>(null);
   const [documents, setDocuments] = useState<ChecklistDocument[]>([]);
   const [docType, setDocType] = useState("");
@@ -1004,6 +1009,11 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
       scadenza?: string | null;
       note?: string | null;
       stato?: "attiva" | "disattivata";
+      ref_univoco?: string | null;
+      telefono?: string | null;
+      intestatario?: string | null;
+      gestore?: string | null;
+      fornitore?: string | null;
     }
   ) {
     if (!id) return;
@@ -1027,6 +1037,11 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
       scadenza: l.scadenza ? l.scadenza.slice(0, 10) : "",
       note: l.note ?? "",
       stato: (l.stato ?? "attiva") as "attiva" | "disattivata",
+      ref_univoco: l.ref_univoco ?? "",
+      telefono: l.telefono ?? "",
+      intestatario: l.intestatario ?? "",
+      gestore: l.gestore ?? "",
+      fornitore: l.fornitore ?? "",
     });
   }
 
@@ -1047,6 +1062,17 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
       scadenza: normalizedScadenza,
       note: editingLicenza.note.trim() ? editingLicenza.note.trim() : null,
       stato: editingLicenza.stato,
+      ref_univoco: editingLicenza.ref_univoco.trim()
+        ? editingLicenza.ref_univoco.trim()
+        : null,
+      telefono: editingLicenza.telefono.trim() ? editingLicenza.telefono.trim() : null,
+      intestatario: editingLicenza.intestatario.trim()
+        ? editingLicenza.intestatario.trim()
+        : null,
+      gestore: editingLicenza.gestore.trim() ? editingLicenza.gestore.trim() : null,
+      fornitore: editingLicenza.fornitore.trim()
+        ? editingLicenza.fornitore.trim()
+        : null,
     });
     setEditingLicenzaId(null);
     setEditingLicenza(null);
@@ -2071,7 +2097,7 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
               <div
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "2fr 1fr 1fr 2fr 160px",
+                  gridTemplateColumns: "2fr 1fr 1fr 2fr 2fr 160px",
                   gap: 0,
                   padding: "10px 12px",
                   fontWeight: 700,
@@ -2083,6 +2109,7 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
                 <div>Scadenza</div>
                 <div>Stato</div>
                 <div>Note</div>
+                <div>Riferimento</div>
                 <div>Azioni</div>
               </div>
 
@@ -2091,7 +2118,7 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
                   key={l.id}
                   style={{
                     display: "grid",
-                    gridTemplateColumns: "2fr 1fr 1fr 2fr 160px",
+                    gridTemplateColumns: "2fr 1fr 1fr 2fr 2fr 160px",
                     gap: 0,
                     padding: "10px 12px",
                     borderBottom: "1px solid #f5f5f5",
@@ -2176,6 +2203,66 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
                       />
                     ) : (
                       l.note ?? "—"
+                    )}
+                  </div>
+                  <div>
+                    {editMode && editingLicenzaId === l.id ? (
+                      <div style={{ display: "grid", gap: 6 }}>
+                        <input
+                          value={editingLicenza?.ref_univoco ?? ""}
+                          onChange={(e) =>
+                            setEditingLicenza((prev) =>
+                              prev ? { ...prev, ref_univoco: e.target.value } : prev
+                            )
+                          }
+                          placeholder="Rif/licenza"
+                          style={{ width: "100%", padding: 6 }}
+                        />
+                        <input
+                          value={editingLicenza?.telefono ?? ""}
+                          onChange={(e) =>
+                            setEditingLicenza((prev) =>
+                              prev ? { ...prev, telefono: e.target.value } : prev
+                            )
+                          }
+                          placeholder="Telefono"
+                          style={{ width: "100%", padding: 6 }}
+                        />
+                        <input
+                          value={editingLicenza?.intestatario ?? ""}
+                          onChange={(e) =>
+                            setEditingLicenza((prev) =>
+                              prev ? { ...prev, intestatario: e.target.value } : prev
+                            )
+                          }
+                          placeholder="Intestatario"
+                          style={{ width: "100%", padding: 6 }}
+                        />
+                        <input
+                          value={editingLicenza?.gestore ?? ""}
+                          onChange={(e) =>
+                            setEditingLicenza((prev) =>
+                              prev ? { ...prev, gestore: e.target.value } : prev
+                            )
+                          }
+                          placeholder="Gestore"
+                          style={{ width: "100%", padding: 6 }}
+                        />
+                        <input
+                          value={editingLicenza?.fornitore ?? ""}
+                          onChange={(e) =>
+                            setEditingLicenza((prev) =>
+                              prev ? { ...prev, fornitore: e.target.value } : prev
+                            )
+                          }
+                          placeholder="Fornitore"
+                          style={{ width: "100%", padding: 6 }}
+                        />
+                      </div>
+                    ) : (
+                      [l.ref_univoco, l.telefono, l.intestatario, l.gestore, l.fornitore]
+                        .filter(Boolean)
+                        .join(" · ") || "—"
                     )}
                   </div>
                   <div style={{ display: "flex", gap: 8 }}>
