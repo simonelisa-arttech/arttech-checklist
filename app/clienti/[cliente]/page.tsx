@@ -587,7 +587,7 @@ type TagliandoRow = {
 
 type ScadenzaItem = {
   id: string;
-  source: "rinnovi" | "tagliandi";
+  source: "rinnovi" | "tagliandi" | "licenze";
   item_tipo?: string | null;
   riferimento?: string | null;
   descrizione?: string | null;
@@ -1357,10 +1357,24 @@ export default function ClientePage({ params }: { params: any }) {
       stato: t.stato ?? null,
       modalita: t.modalita ?? null,
     }));
-    return [...rinnoviMapped, ...tagliandiMapped].sort((a, b) =>
+    const licenzeMapped = licenze.map((l) => ({
+      id: l.id,
+      source: "licenze" as const,
+      item_tipo: "LICENZA",
+      riferimento:
+        [l.ref_univoco, l.telefono, l.intestatario, l.gestore, l.fornitore, l.note]
+          .filter(Boolean)
+          .join(" · ") || l.tipo || "Licenza",
+      descrizione: l.note ?? null,
+      checklist_id: l.checklist_id ?? null,
+      scadenza: l.scadenza ?? null,
+      stato: l.status ?? (l.scadenza ? "DA_AVVISARE" : null),
+      modalita: null,
+    }));
+    return [...rinnoviMapped, ...tagliandiMapped, ...licenzeMapped].sort((a, b) =>
       String(a.scadenza || "").localeCompare(String(b.scadenza || ""))
     );
-  }, [rinnovi, tagliandi]);
+  }, [rinnovi, tagliandi, licenze]);
 
   const filteredRinnovi = useMemo(() => {
     let rows = rinnoviAll;
@@ -1631,11 +1645,6 @@ export default function ClientePage({ params }: { params: any }) {
     if (!currentOperatoreId) return null;
     return alertOperatori.find((o) => o.id === currentOperatoreId) ?? null;
   }, [alertOperatori, currentOperatoreId]);
-
-  const canManageLicenzeStatus = useMemo(() => {
-    const role = String(currentOperatore?.ruolo || "").toUpperCase();
-    return role === "AMMINISTRAZIONE" || role === "SUPERVISORE" || role === "ADMIN";
-  }, [currentOperatore]);
 
   const interventiInclusiUsati = useMemo(() => {
     return interventi.filter((i) => i.incluso).length;
@@ -2347,13 +2356,18 @@ export default function ClientePage({ params }: { params: any }) {
     const checklistId = list.find((r) => r.checklist_id)?.checklist_id ?? null;
     const hasTagliandi = list.some((r) => r.source === "tagliandi");
     const hasRinnovi = list.some((r) => r.source === "rinnovi");
+    const hasLicenze = list.some((r) => r.source === "licenze");
     const canale =
       rinnoviAlertStage === "stage1"
-        ? hasTagliandi && !hasRinnovi
+        ? hasTagliandi && !hasRinnovi && !hasLicenze
           ? "tagliando_stage1"
+          : hasLicenze && !hasRinnovi && !hasTagliandi
+          ? "licenza_stage1"
           : "rinnovo_stage1"
-        : hasTagliandi && !hasRinnovi
+        : hasTagliandi && !hasRinnovi && !hasLicenze
         ? "tagliando_stage2"
+        : hasLicenze && !hasRinnovi && !hasTagliandi
+        ? "licenza_stage2"
         : "rinnovo_stage2";
     const op =
       rinnoviAlertDestMode === "operatore"
@@ -2405,6 +2419,7 @@ export default function ClientePage({ params }: { params: any }) {
     const nowIso = new Date().toISOString();
     const rinnoviIds = list.filter((r) => r.source === "rinnovi").map((r) => r.id);
     const tagliandiIds = list.filter((r) => r.source === "tagliandi").map((r) => r.id);
+    const licenzeIds = list.filter((r) => r.source === "licenze").map((r) => r.id);
     if (rinnoviAlertStage === "stage1") {
       if (rinnoviIds.length > 0) {
         await updateRinnovi(rinnoviIds, {
@@ -2424,6 +2439,27 @@ export default function ClientePage({ params }: { params: any }) {
           })
           .in("id", tagliandiIds);
       }
+      if (licenzeIds.length > 0) {
+        await Promise.all(
+          licenzeIds.map((id) =>
+            fetch("/api/licenses/action", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                action: "SEND_ALERT",
+                licenseId: id,
+                status: "AVVISATO",
+                alertTo:
+                  rinnoviAlertDestMode === "operatore"
+                    ? rinnoviAlertToOperatoreId
+                    : rinnoviAlertManualEmail.trim(),
+                alertNote: rinnoviAlertMsg,
+                updatedByOperatoreId: opId,
+              }),
+            })
+          )
+        );
+      }
     } else {
       if (rinnoviIds.length > 0) {
         await updateRinnovi(rinnoviIds, {
@@ -2442,6 +2478,26 @@ export default function ClientePage({ params }: { params: any }) {
               rinnoviAlertDestMode === "operatore" ? rinnoviAlertToOperatoreId : null,
           })
           .in("id", tagliandiIds);
+      }
+      if (licenzeIds.length > 0) {
+        await Promise.all(
+          licenzeIds.map((id) =>
+            fetch("/api/licenses/action", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                action: "SEND_ALERT",
+                licenseId: id,
+                alertTo:
+                  rinnoviAlertDestMode === "operatore"
+                    ? rinnoviAlertToOperatoreId
+                    : rinnoviAlertManualEmail.trim(),
+                alertNote: rinnoviAlertMsg,
+                updatedByOperatoreId: opId,
+              }),
+            })
+          )
+        );
       }
     }
     const recipientLabel = getRinnoviRecipientLabel();
@@ -2554,6 +2610,64 @@ export default function ClientePage({ params }: { params: any }) {
     }
   }
 
+  async function setLicenzaStatusForScadenze(
+    licenseId: string,
+    status: "DA_AVVISARE" | "AVVISATO" | "CONFERMATO" | "NON_RINNOVATO" | "DA_FATTURARE" | "FATTURATO" | "ANNULLATO"
+  ) {
+    if (!currentOperatoreId) {
+      setRinnoviError("Seleziona l’Operatore corrente (in alto) prima di aggiornare lo stato.");
+      return false;
+    }
+    const res = await fetch("/api/licenses/action", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        action: "SET_STATUS",
+        licenseId,
+        status,
+        updatedByOperatoreId: currentOperatoreId,
+      }),
+    });
+    if (!res.ok) {
+      let msg = "Errore aggiornamento licenza";
+      try {
+        const data = await res.json();
+        msg = data?.error || msg;
+      } catch {
+        // ignore
+      }
+      setRinnoviError(msg);
+      return false;
+    }
+    setLicenze((prev) =>
+      prev.map((l) => (l.id === licenseId ? { ...l, status } : l))
+    );
+    return true;
+  }
+
+  async function markLicenzaConfermata(r: ScadenzaItem) {
+    const ok = await setLicenzaStatusForScadenze(r.id, "CONFERMATO");
+    if (ok) setRinnoviNotice("Licenza confermata.");
+  }
+
+  async function markLicenzaDaFatturare(r: ScadenzaItem) {
+    const ok = await setLicenzaStatusForScadenze(r.id, "DA_FATTURARE");
+    if (ok) {
+      setRinnoviNotice("Licenza segnata DA_FATTURARE.");
+      openRinnoviAlert("stage2", false, [r]);
+    }
+  }
+
+  async function markLicenzaFatturato(r: ScadenzaItem) {
+    const ok = await setLicenzaStatusForScadenze(r.id, "FATTURATO");
+    if (ok) setRinnoviNotice("Licenza fatturata.");
+  }
+
+  async function markLicenzaNonRinnovata(r: ScadenzaItem) {
+    const ok = await setLicenzaStatusForScadenze(r.id, "NON_RINNOVATO");
+    if (ok) setRinnoviNotice("Licenza segnata NON_RINNOVATA.");
+  }
+
   function getFattureDaEmettereList() {
     return interventi.filter((i) => getEsitoFatturazione(i) === "DA_FATTURARE");
   }
@@ -2601,40 +2715,6 @@ export default function ClientePage({ params }: { params: any }) {
       `Scadenza: ${scad}`,
       `Stato: ${(l.status || l.stato || "—").toString().toUpperCase()}`,
     ].join("\n");
-  }
-
-  async function setLicenseStatus(licenseId: string, status: "DA_FATTURARE" | "FATTURATO" | "ANNULLATO") {
-    setLicenzeError(null);
-    setLicenzeNotice(null);
-    if (!currentOperatoreId) {
-      setLicenzeError("Seleziona l’Operatore corrente (in alto) prima di aggiornare lo stato.");
-      return;
-    }
-    const res = await fetch("/api/licenses/action", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        action: "SET_STATUS",
-        licenseId,
-        status,
-        updatedByOperatoreId: currentOperatoreId,
-      }),
-    });
-    if (!res.ok) {
-      let msg = "Errore aggiornamento licenza";
-      try {
-        const data = await res.json();
-        msg = data?.error || msg;
-      } catch {
-        // ignore
-      }
-      setLicenzeError(msg);
-      return;
-    }
-    setLicenze((prev) =>
-      prev.map((l) => (l.id === licenseId ? { ...l, status } : l))
-    );
-    setLicenzeNotice(`Stato licenza aggiornato: ${status}`);
   }
 
   function openLicenseAlertModal(l: LicenzaRow) {
@@ -3371,52 +3451,6 @@ export default function ClientePage({ params }: { params: any }) {
                       >
                         Invia alert
                       </button>
-                      {canManageLicenzeStatus && (
-                        <>
-                          <button
-                            type="button"
-                            onClick={() => setLicenseStatus(l.id, "DA_FATTURARE")}
-                            style={{
-                              padding: "6px 8px",
-                              borderRadius: 8,
-                              border: "1px solid #ddd",
-                              background: "white",
-                              cursor: "pointer",
-                              fontSize: 12,
-                            }}
-                          >
-                            Da fatturare
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setLicenseStatus(l.id, "FATTURATO")}
-                            style={{
-                              padding: "6px 8px",
-                              borderRadius: 8,
-                              border: "1px solid #ddd",
-                              background: "white",
-                              cursor: "pointer",
-                              fontSize: 12,
-                            }}
-                          >
-                            Fatturato
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setLicenseStatus(l.id, "ANNULLATO")}
-                            style={{
-                              padding: "6px 8px",
-                              borderRadius: 8,
-                              border: "1px solid #ddd",
-                              background: "white",
-                              cursor: "pointer",
-                              fontSize: 12,
-                            }}
-                          >
-                            Annullato
-                          </button>
-                        </>
-                      )}
                     </div>
                   </div>
                 );
@@ -3541,6 +3575,7 @@ export default function ClientePage({ params }: { params: any }) {
               const checklistName = checklist?.nome_checklist ?? r.checklist_id?.slice(0, 8);
               const stato = String(r.stato || "").toUpperCase();
               const isTagliando = r.source === "tagliandi";
+              const isLicenza = r.source === "licenze";
               const isExtra = String(r.modalita || "").toUpperCase() === "EXTRA";
               const canStage1 = stato === "DA_AVVISARE";
               const canConfirm = isTagliando
@@ -3614,9 +3649,13 @@ export default function ClientePage({ params }: { params: any }) {
                           if (stato === "DA_FATTURARE") {
                             openRinnoviAlert("stage2", false, [r]);
                           } else {
-                            isTagliando
-                              ? markTagliandoDaFatturare(r)
-                              : markRinnovoDaFatturare(r as RinnovoServizioRow);
+                            if (isTagliando) {
+                              markTagliandoDaFatturare(r);
+                            } else if (isLicenza) {
+                              markLicenzaDaFatturare(r);
+                            } else {
+                              markRinnovoDaFatturare(r as RinnovoServizioRow);
+                            }
                           }
                         }}
                         disabled={!canStage2}
@@ -3645,6 +3684,8 @@ export default function ClientePage({ params }: { params: any }) {
                         onClick={() =>
                           isTagliando
                             ? markTagliandoOk(r)
+                            : isLicenza
+                            ? markLicenzaConfermata(r)
                             : markRinnovoConfermato(r as RinnovoServizioRow)
                         }
                         disabled={!canConfirm}
@@ -3667,7 +3708,11 @@ export default function ClientePage({ params }: { params: any }) {
                       </button>
                       <button
                         type="button"
-                        onClick={() => markRinnovoNonRinnovato(r)}
+                        onClick={() =>
+                          isLicenza
+                            ? markLicenzaNonRinnovata(r)
+                            : markRinnovoNonRinnovato(r)
+                        }
                         disabled={!canNonRinnovato}
                         title={
                           canNonRinnovato
@@ -3691,6 +3736,8 @@ export default function ClientePage({ params }: { params: any }) {
                         onClick={() =>
                           isTagliando
                             ? markTagliandoFatturato(r)
+                            : isLicenza
+                            ? markLicenzaFatturato(r)
                             : markRinnovoFatturato(r as RinnovoServizioRow)
                         }
                         disabled={!canFatturato}
