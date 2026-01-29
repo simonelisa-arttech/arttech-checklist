@@ -791,7 +791,7 @@ export default function ClientePage({ params }: { params: any }) {
         .order("created_at", { ascending: false });
 
       if (clsErr) {
-        setError("Errore caricamento checklists: " + clsErr.message);
+        setError("Errore caricamento PROGETTI: " + clsErr.message);
         setLoading(false);
         return;
       }
@@ -1445,7 +1445,7 @@ export default function ClientePage({ params }: { params: any }) {
         return {
           Data: fmtDate(i.data),
           Cliente: cliente || "",
-          Checklist: checklist?.nome_checklist ?? "",
+          PROGETTO: checklist?.nome_checklist ?? "",
           Proforma: i.proforma || checklist?.proforma || "",
           "Cod. magazzino": i.codice_magazzino || checklist?.magazzino_importazione || "",
           Tipo: i.incluso ? "INCLUSO" : "EXTRA",
@@ -1454,7 +1454,7 @@ export default function ClientePage({ params }: { params: any }) {
           "Fatturato il": fmtDate(i.fatturato_il),
           Descrizione: i.descrizione || "",
           Note: i.note || "",
-          "Checklist ID": i.checklist_id ?? "",
+          "PROGETTO ID": i.checklist_id ?? "",
         };
       });
     const statusOrder: Record<string, number> = {
@@ -1477,7 +1477,7 @@ export default function ClientePage({ params }: { params: any }) {
     const headers = [
       "Data",
       "Cliente",
-      "Checklist",
+      "PROGETTO",
       "Proforma",
       "Cod. magazzino",
       "Tipo",
@@ -1486,7 +1486,7 @@ export default function ClientePage({ params }: { params: any }) {
       "Fatturato il",
       "Descrizione",
       "Note",
-      "Checklist ID",
+      "PROGETTO ID",
     ];
     const csv = toCsv(rows, headers);
     const safeCliente = (cliente || "cliente").replace(/\s+/g, "_");
@@ -1507,14 +1507,14 @@ export default function ClientePage({ params }: { params: any }) {
           "Tipo servizio": String(r.item_tipo || "").toUpperCase(),
           Scadenza: fmtDate(r.scadenza),
           Stato: formatRinnovoStatus(r.stato),
-          Checklist: checklist?.nome_checklist || "",
+          PROGETTO: checklist?.nome_checklist || "",
           Proforma: checklist?.proforma || "",
           "Cod. magazzino": checklist?.magazzino_importazione || "",
           "Avviso inviato il": fmtDate(r.notify_stage1_sent_at),
           "Alert admin inviato il": fmtDate(r.billing_stage2_sent_at),
           "Numero fattura": r.numero_fattura || "",
           Note: r.note_tecniche || "",
-          "Checklist ID": r.checklist_id || "",
+          "PROGETTO ID": r.checklist_id || "",
           "Item ID": r.id || "",
         };
       });
@@ -1537,14 +1537,14 @@ export default function ClientePage({ params }: { params: any }) {
       "Tipo servizio",
       "Scadenza",
       "Stato",
-      "Checklist",
+      "PROGETTO",
       "Proforma",
       "Cod. magazzino",
       "Avviso inviato il",
       "Alert admin inviato il",
       "Numero fattura",
       "Note",
-      "Checklist ID",
+      "PROGETTO ID",
       "Item ID",
     ];
     const csv = toCsv(rows, headers);
@@ -1568,7 +1568,7 @@ export default function ClientePage({ params }: { params: any }) {
           Tipo: i.incluso ? "INCLUSO" : "EXTRA",
           Data: fmtDate(i.data),
           Cliente: cliente || "",
-          Checklist: checklist?.nome_checklist || "",
+          PROGETTO: checklist?.nome_checklist || "",
           Proforma: i.proforma || checklist?.proforma || "",
           "Cod. magazzino": i.codice_magazzino || checklist?.magazzino_importazione || "",
           Descrizione: i.descrizione || "",
@@ -1592,7 +1592,7 @@ export default function ClientePage({ params }: { params: any }) {
           Tipo: formatRinnovoTipo(r.item_tipo),
           Data: fmtDate(r.scadenza),
           Cliente: cliente || "",
-          Checklist: checklist?.nome_checklist || "",
+          PROGETTO: checklist?.nome_checklist || "",
           Proforma: checklist?.proforma || "",
           "Cod. magazzino": checklist?.magazzino_importazione || "",
           Descrizione: descr,
@@ -1621,7 +1621,7 @@ export default function ClientePage({ params }: { params: any }) {
       "Tipo",
       "Data",
       "Cliente",
-      "Checklist",
+      "PROGETTO",
       "Proforma",
       "Cod. magazzino",
       "Descrizione",
@@ -1780,7 +1780,7 @@ export default function ClientePage({ params }: { params: any }) {
       return;
     }
     if (!newIntervento.checklistId) {
-      setInterventiError("Seleziona una checklist per l'intervento.");
+      setInterventiError("Seleziona un PROGETTO per l'intervento.");
       return;
     }
 
@@ -1889,7 +1889,7 @@ export default function ClientePage({ params }: { params: any }) {
     const checklistName = i.checklist?.nome_checklist ?? i.checklist_id ?? "—";
     const proforma = i.proforma || i.checklist?.proforma || "—";
     const dataLabel = i.data ? new Date(i.data).toLocaleDateString() : "—";
-    return `Cliente: ${cliente || "—"} | Checklist: ${checklistName} | Proforma: ${proforma} | Data: ${dataLabel}`;
+    return `Cliente: ${cliente || "—"} | PROGETTO: ${checklistName} | Proforma: ${proforma} | Data: ${dataLabel}`;
   }
 
   function buildFattureAlertMessage(list: InterventoRow[]) {
@@ -1964,7 +1964,7 @@ export default function ClientePage({ params }: { params: any }) {
     return [
       `FATTURE DA EMETTERE — Cliente: ${cliente || "—"}`,
       `Totale interventi: ${list.length}`,
-      `Totale checklists coinvolte: ${sortedChecklistIds.length}`,
+      `Totale PROGETTI coinvolti: ${sortedChecklistIds.length}`,
       `Data invio: ${new Date().toLocaleString()}`,
       "",
       ...lines.filter((l) => l !== ""),
@@ -1977,7 +1977,7 @@ export default function ClientePage({ params }: { params: any }) {
     const parts = [
       "Intervento EXTRA da fatturare",
       `Cliente: ${cliente || "—"}`,
-      `Checklist: ${i.checklist?.nome_checklist ?? i.checklist_id ?? "—"}`,
+      `PROGETTO: ${i.checklist?.nome_checklist ?? i.checklist_id ?? "—"}`,
       `Proforma: ${i.proforma || i.checklist?.proforma || "—"}`,
       `CodMag: ${i.codice_magazzino || i.checklist?.magazzino_importazione || "—"}`,
       `Data: ${i.data ? new Date(i.data).toLocaleDateString() : "—"}`,
@@ -2135,7 +2135,7 @@ export default function ClientePage({ params }: { params: any }) {
       header,
       `Riferimento: ${r.riferimento ?? r.descrizione ?? "—"}`,
       `Scadenza: ${dataLabel}`,
-      `Checklist: ${checklistName}`,
+      `PROGETTO: ${checklistName}`,
       modalita,
       `Stato: ${String(r.stato || "—").toUpperCase()}`,
     ].join("\n");
@@ -2162,7 +2162,7 @@ export default function ClientePage({ params }: { params: any }) {
         const dataLabel = r.scadenza ? new Date(r.scadenza).toLocaleDateString() : "—";
         const checklist = r.checklist_id ? checklistById.get(r.checklist_id) : null;
         const checklistName = checklist?.nome_checklist ?? r.checklist_id?.slice(0, 8) ?? "—";
-        const base = `${dataLabel} | ${r.riferimento ?? "—"} | Checklist: ${checklistName}`;
+        const base = `${dataLabel} | ${r.riferimento ?? "—"} | PROGETTO: ${checklistName}`;
         const stato = r.stato ? ` | Stato: ${String(r.stato).toUpperCase()}` : "";
         lines.push(`- ${base}${stato}`);
       }
@@ -2178,7 +2178,7 @@ export default function ClientePage({ params }: { params: any }) {
         const modalita = r.modalita ? ` | Modalità: ${String(r.modalita).toUpperCase()}` : "";
         const stato = r.stato ? ` | Stato: ${String(r.stato).toUpperCase()}` : "";
         lines.push(
-          `- ${dataLabel} | ${r.riferimento ?? r.descrizione ?? "—"} | Checklist: ${checklistName}${modalita}${stato}`
+          `- ${dataLabel} | ${r.riferimento ?? r.descrizione ?? "—"} | PROGETTO: ${checklistName}${modalita}${stato}`
         );
       }
       lines.push("");
@@ -2204,7 +2204,7 @@ export default function ClientePage({ params }: { params: any }) {
       `Tipo: ${tipo}`,
       `Riferimento: ${getRinnovoReference(r)}`,
       `Scadenza: ${dataLabel}`,
-      `Checklist: ${checklistName} | Link: ${link}`,
+      `PROGETTO: ${checklistName} | Link: ${link}`,
       `Proforma: ${proforma} | CodMag: ${codMag}`,
       `Stato: ${String(r.stato || "—").toUpperCase()}`,
     ].join("\n");
@@ -2230,7 +2230,7 @@ export default function ClientePage({ params }: { params: any }) {
         const checklistName = checklist?.nome_checklist ?? r.checklist_id?.slice(0, 8) ?? "—";
         const proforma = r.proforma || checklist?.proforma || "—";
         const codMag = r.cod_magazzino || checklist?.magazzino_importazione || "—";
-        const base = `${dataLabel} | ${getRinnovoReference(r)} | Checklist: ${checklistName} | Proforma: ${proforma} | CodMag: ${codMag}`;
+        const base = `${dataLabel} | ${getRinnovoReference(r)} | PROGETTO: ${checklistName} | Proforma: ${proforma} | CodMag: ${codMag}`;
         const link = r.checklist_id ? ` | /checklists/${r.checklist_id}` : "";
         const stato = r.stato ? ` | Stato: ${String(r.stato).toUpperCase()}` : "";
         lines.push(`- ${base}${link}${stato}`);
@@ -2406,10 +2406,18 @@ export default function ClientePage({ params }: { params: any }) {
         <p style="font-size:12px;color:#6b7280">Messaggio manuale Art Tech.</p>
       </div>
     `;
+    const message = (rinnoviAlertMsg || "").trim() || rinnoviAlertMsg || "";
     try {
+      console.debug("send-alert payload (rinnovi)", {
+        canale,
+        subject,
+        message,
+        to_email: toEmail || null,
+      });
       await sendAlert({
         canale,
         subject,
+        message,
         text: rinnoviAlertMsg,
         html,
         to_email: toEmail || null,
@@ -2719,7 +2727,7 @@ export default function ClientePage({ params }: { params: any }) {
     const tipo = l.tipo ?? "—";
     return [
       `ALERT LICENZA — Cliente: ${cliente || "—"}`,
-      `Checklist: ${name}`,
+      `PROGETTO: ${name}`,
       `Tipo: ${tipo}`,
       `Scadenza: ${scad}`,
       `Stato: ${(l.status || l.stato || "—").toString().toUpperCase()}`,
@@ -2772,10 +2780,18 @@ export default function ClientePage({ params }: { params: any }) {
         ? toOperatore?.nome ?? null
         : licenseAlertManualName.trim() || null;
 
+    const message = (licenseAlertMsg || "").trim() || licenseAlertMsg || "";
     try {
+      console.debug("send-alert payload (licenza)", {
+        canale: "license_alert",
+        subject: `[Art Tech] Alert licenza – ${cliente || "—"}`,
+        message,
+        to_email: toEmail || null,
+      });
       await sendAlert({
         canale: "license_alert",
         subject: `[Art Tech] Alert licenza – ${cliente || "—"}`,
+        message,
         html: `<div>${textToHtml(licenseAlertMsg || "")}</div>`,
         text: licenseAlertMsg,
         to_email: toEmail,
@@ -2843,7 +2859,7 @@ export default function ClientePage({ params }: { params: any }) {
     });
     const checklistId = list.find((i) => i.checklist_id)?.checklist_id ?? null;
     if (!checklistId) {
-      setBulkErr("Checklist non trovata per l'invio bulk.");
+      setBulkErr("PROGETTO non trovato per l'invio bulk.");
       setBulkSending(false);
       return;
     }
@@ -2862,10 +2878,18 @@ export default function ClientePage({ params }: { params: any }) {
         <p style="font-size:12px;color:#6b7280">Messaggio manuale Art Tech.</p>
       </div>
     `;
+    const message = (bulkMsg || "").trim() || bulkMsg || "";
     try {
+      console.debug("send-alert payload (bulk)", {
+        canale: "fatturazione_bulk",
+        subject,
+        message,
+        to_email: toEmail || null,
+      });
       await sendAlert({
         canale: "fatturazione_bulk",
         subject,
+        message,
         text: bulkMsg,
         html,
         to_email: toEmail || null,
@@ -2929,13 +2953,14 @@ export default function ClientePage({ params }: { params: any }) {
       const nome = op?.nome ?? op?.id ?? "—";
       console.log("ALERT FATTURAZIONE opId=", opId);
       try {
-        await sendAlert({
-          canale: "manual",
-          subject: "Intervento riaperto",
-          text: `Intervento riaperto da ${nome}`,
-          html: `<div><strong>Intervento riaperto</strong><br/>${escapeHtml(
-            `Intervento riaperto da ${nome}`
-          )}</div>`,
+      await sendAlert({
+        canale: "manual",
+        subject: "Intervento riaperto",
+        message: `Intervento riaperto da ${nome}`,
+        text: `Intervento riaperto da ${nome}`,
+        html: `<div><strong>Intervento riaperto</strong><br/>${escapeHtml(
+          `Intervento riaperto da ${nome}`
+        )}</div>`,
           to_email: op?.email ?? null,
           to_nome: op?.nome ?? null,
           to_operatore_id: currentOperatoreId,
@@ -3014,10 +3039,18 @@ export default function ClientePage({ params }: { params: any }) {
         <p style="font-size:12px;color:#6b7280">Messaggio manuale Art Tech.</p>
       </div>
     `;
+    const message = msg || dettagli;
     try {
+      console.debug("send-alert payload (intervento)", {
+        canale: "fatturazione_row",
+        subject,
+        message,
+        to_email: toEmail || null,
+      });
       await sendAlert({
         canale: "fatturazione_row",
         subject,
+        message,
         text: dettagli,
         html,
         to_email: toEmail || null,
@@ -3273,7 +3306,7 @@ export default function ClientePage({ params }: { params: any }) {
                 borderBottom: "1px solid #eee",
               }}
             >
-              <div>Checklist</div>
+              <div>PROGETTO</div>
               <div>Proforma</div>
               <div>SAAS piano</div>
               <div>Scadenza</div>
@@ -3338,7 +3371,7 @@ export default function ClientePage({ params }: { params: any }) {
                 borderBottom: "1px solid #eee",
               }}
             >
-              <div>Checklist</div>
+              <div>PROGETTO</div>
               <div>Scadenza</div>
               <div>Stato</div>
             </div>
@@ -3399,7 +3432,7 @@ export default function ClientePage({ params }: { params: any }) {
                   borderBottom: "1px solid #eee",
                 }}
               >
-                <div>Checklist</div>
+                <div>PROGETTO</div>
                 <div>Tipo</div>
                 <div>Scadenza</div>
                 <div>Stato</div>
@@ -3653,7 +3686,7 @@ export default function ClientePage({ params }: { params: any }) {
                         href={`/checklists/${r.checklist_id}`}
                         style={{ fontSize: 11, color: "#2563eb", textDecoration: "none" }}
                       >
-                        Checklist: {checklistName ?? r.checklist_id.slice(0, 8)}
+                        PROGETTO: {checklistName ?? r.checklist_id.slice(0, 8)}
                       </Link>
                     )}
                   </div>
@@ -4044,7 +4077,7 @@ export default function ClientePage({ params }: { params: any }) {
             </label>
 
             <label>
-              Checklist<br />
+              PROGETTO<br />
               <select
                 value={newIntervento.checklistId}
                 onChange={(e) => {
@@ -4264,7 +4297,7 @@ export default function ClientePage({ params }: { params: any }) {
               }}
             >
               <div style={{ whiteSpace: "nowrap" }}>Data</div>
-              <div style={{ whiteSpace: "nowrap" }}>RIF.</div>
+              <div style={{ whiteSpace: "nowrap" }}>PROGETTO</div>
               <div>Descrizione</div>
               <div style={{ whiteSpace: "nowrap" }}>Tipo</div>
               <div style={{ whiteSpace: "nowrap" }}>Stato</div>
@@ -5610,9 +5643,9 @@ export default function ClientePage({ params }: { params: any }) {
       )}
 
       <div style={{ marginTop: 18 }}>
-        <h2 style={{ margin: 0 }}>Checklist del cliente</h2>
+        <h2 style={{ margin: 0 }}>PROGETTO del cliente</h2>
         {checklists.length === 0 ? (
-          <div style={{ opacity: 0.7 }}>Nessuna checklist trovata</div>
+          <div style={{ opacity: 0.7 }}>Nessun PROGETTO trovato</div>
         ) : (
           <div style={{ marginTop: 10, border: "1px solid #eee", borderRadius: 12, overflow: "hidden" }}>
             <div

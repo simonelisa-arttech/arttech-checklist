@@ -8,6 +8,7 @@ export type SendAlertPayload = {
     | "manual"
     | string;
   subject?: string;
+  message?: string;
   text?: string;
   html?: string;
   to_email?: string | null;
