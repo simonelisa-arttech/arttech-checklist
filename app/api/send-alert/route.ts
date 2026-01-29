@@ -2,192 +2,171 @@ export const runtime = "nodejs";
 
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { sendEmail } from "@/lib/email";
+import { Resend } from "resend";
 
-type SendAlertBody = {
-  canale:
-    | "manual_task"
-    | "fatturazione_row"
-    | "fatturazione_bulk"
-    | "rinnovo_stage1"
-    | "rinnovo_stage2"
-    | "manual"
-    | string;
-  subject?: string;
-  text?: string;
-  html?: string;
-  to_email?: string | null;
-  to_nome?: string | null;
-  to_operatore_id?: string | null;
-  from_operatore_id?: string | null;
-  cliente?: string | null;
-  checklist_id?: string | null;
-  task_id?: string | null;
-  task_template_id?: string | null;
-  intervento_id?: string | null;
-  rinnovo_id?: string | null;
-  meta?: any;
-  send_email?: boolean;
-};
+/**
+ * Payload atteso (tollerante):
+ * {
+ *   checklist_id?: string | null
+ *   intervento_id?: string | null
+ *   tipo?: string | null                // es: "TAGLIANDO" | "LICENZA" | "RINNOVO"
+ *   riferimento?: string | null         // es: "Tagliando annuale impianto" | numero licenza
+ *   scadenza?: string | null            // YYYY-MM-DD oppure dd/mm/yyyy (accettiamo entrambi, lo salviamo come testo)
+ *   modalita?: string | null            // es: "EXTRA" | "INCLUSO" | "AUTORIZZATO_CLIENTE" | null
+ *   stato?: string | null               // es: "DA_AVVISARE" ecc
+ *
+ *   // destinatario:
+ *   destinatario?: string | null        // es: "Nome — RUOLO — email@dominio.it"
+ *   email_manuale?: string | null       // es: "cliente@dominio.it"
+ *
+ *   // contenuto:
+ *   subject?: string | null
+ *   message: string
+ *
+ *   // flags:
+ *   send_email?: boolean                // se true prova a inviare email via Resend
+ * }
+ */
 
-type RateLimitEntry = { count: number; resetAt: number };
-const rateLimitMap = new Map<string, RateLimitEntry>();
-
-function getClientIp(request: Request) {
-  const xfwd = request.headers.get("x-forwarded-for");
-  if (xfwd) return xfwd.split(",")[0].trim();
-  return request.headers.get("x-real-ip") || "unknown";
+function extractEmail(input?: string | null) {
+  if (!input) return null;
+  const m = input.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i);
+  return m?.[0] ?? null;
 }
 
-function allowRateLimit(ip: string, limit = 30, windowMs = 60_000) {
-  const now = Date.now();
-  const entry = rateLimitMap.get(ip);
-  if (!entry || entry.resetAt < now) {
-    rateLimitMap.set(ip, { count: 1, resetAt: now + windowMs });
-    return true;
-  }
-  if (entry.count >= limit) return false;
-  entry.count += 1;
-  return true;
-}
+export async function POST(req: Request) {
+  try {
+    const body = await req.json();
 
-function isAllowedOrigin(request: Request) {
-  const origin = request.headers.get("origin");
-  const host = request.headers.get("host");
-  const referer = request.headers.get("referer");
-  const allowed = (process.env.ALLOWED_ORIGINS || "")
-    .split(",")
-    .map((s) => s.trim())
-    .filter(Boolean);
-  if (origin && allowed.includes(origin)) return true;
-  if (origin && host && (origin === `https://${host}` || origin === `http://${host}`)) return true;
-  if (!origin && referer && host && referer.includes(host)) return true;
-  if (!origin && host) return true;
-  return false;
-}
+    const {
+      checklist_id = null,
+      intervento_id = null,
+      tipo = null,
+      riferimento = null,
+      scadenza = null,
+      modalita = null,
+      stato = null,
 
-function stripHtml(html: string) {
-  return html.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
-}
+      destinatario = null,
+      email_manuale = null,
 
-export async function POST(request: Request) {
-  const cronSecret = process.env.CRON_SECRET;
-  const authHeader = request.headers.get("authorization") || "";
-  const url = new URL(request.url);
-  const querySecret = url.searchParams.get("secret");
-  const hasSecret =
-    cronSecret && (authHeader === `Bearer ${cronSecret}` || querySecret === cronSecret);
+      subject = null,
+      message,
+      send_email = true,
+    } = body ?? {};
 
-  if (!hasSecret) {
-    if (process.env.NODE_ENV !== "production") {
-      // dev ok
-    } else {
-      if (!isAllowedOrigin(request)) {
-        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-      }
-      const ip = getClientIp(request);
-      if (!allowRateLimit(ip)) {
-        return NextResponse.json({ error: "Too many requests" }, { status: 429 });
-      }
+    if (!message || typeof message !== "string") {
+      return NextResponse.json(
+        { ok: false, error: "Missing message" },
+        { status: 400 }
+      );
     }
-  }
 
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
-  const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!supabaseUrl || !supabaseKey) {
+    const supabaseUrl =
+      process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
+    if (!supabaseUrl) {
+      return NextResponse.json(
+        { ok: false, error: "Missing SUPABASE_URL / NEXT_PUBLIC_SUPABASE_URL" },
+        { status: 500 }
+      );
+    }
+
+    const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    if (!serviceRoleKey) {
+      return NextResponse.json(
+        { ok: false, error: "Missing SUPABASE_SERVICE_ROLE_KEY" },
+        { status: 500 }
+      );
+    }
+
+    const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey, {
+      auth: { persistSession: false },
+    });
+
+    const toEmail = extractEmail(email_manuale) || extractEmail(destinatario);
+    const finalSubject =
+      subject ||
+      `AVVISO ${tipo ?? "RINNOVO"} — ${riferimento ?? ""}`.trim();
+
+    const logRow: Record<string, any> = {
+      checklist_id,
+      intervento_id,
+      tipo,
+      riferimento,
+      scadenza,
+      modalita,
+      stato,
+      destinatario: destinatario ?? null,
+      email: toEmail ?? null,
+      subject: finalSubject,
+      messaggio: message,
+      inviato_email: false,
+    };
+
+    const { data: inserted, error: insErr } = await supabaseAdmin
+      .from("checklist_alert_log")
+      .insert(logRow)
+      .select("id")
+      .single();
+
+    if (insErr) {
+      return NextResponse.json(
+        { ok: false, error: `DB log insert failed: ${insErr.message}` },
+        { status: 500 }
+      );
+    }
+
+    const logId = inserted?.id ?? null;
+
+    let emailSent = false;
+    let emailError: string | null = null;
+
+    if (send_email && toEmail) {
+      const resendKey = process.env.RESEND_API_KEY;
+      if (!resendKey) {
+        emailError = "Missing RESEND_API_KEY";
+      } else {
+        try {
+          const resend = new Resend(resendKey);
+
+          const fromEmail =
+            process.env.ALERT_FROM_EMAIL || "onboarding@resend.dev";
+          const fromName = process.env.ALERT_FROM_NAME || "Art Tech";
+          const from = `${fromName} <${fromEmail}>`;
+
+          await resend.emails.send({
+            from,
+            to: [toEmail],
+            subject: finalSubject,
+            text: message,
+          });
+
+          emailSent = true;
+
+          await supabaseAdmin
+            .from("checklist_alert_log")
+            .update({ inviato_email: true })
+            .eq("id", logId);
+        } catch (e: any) {
+          emailError = e?.message ?? "Resend error";
+        }
+      }
+    } else if (send_email && !toEmail) {
+      emailError = "No recipient email (destinatario/email_manuale missing)";
+    }
+
+    return NextResponse.json({
+      ok: true,
+      log_saved: true,
+      log_id: logId,
+      email_sent: emailSent,
+      message: emailSent ? "Email inviata." : "Email non inviata, log salvato.",
+      email_error: emailError,
+    });
+  } catch (err: any) {
     return NextResponse.json(
-      { error: "Missing SUPABASE_SERVICE_ROLE_KEY or SUPABASE_URL" },
+      { ok: false, error: err?.message ?? "Unknown error" },
       { status: 500 }
     );
   }
-
-  let body: SendAlertBody;
-  try {
-    body = (await request.json()) as SendAlertBody;
-  } catch {
-    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
-  }
-
-  const sendEmailFlag = body.send_email !== false;
-  const toEmail = body.to_email?.trim() || null;
-  const subject = (body.subject || "").trim();
-  const html = (body.html || "").trim();
-  const text = (body.text || "").trim() || (html ? stripHtml(html) : "");
-
-  if (!body.canale) {
-    return NextResponse.json({ error: "Missing canale" }, { status: 400 });
-  }
-  if (sendEmailFlag && (!toEmail || !subject || !html)) {
-    return NextResponse.json(
-      { error: "Missing to_email/subject/html" },
-      { status: 400 }
-    );
-  }
-
-  const supabase = createClient(supabaseUrl, supabaseKey);
-  const logPayload = {
-    checklist_id: body.checklist_id ?? null,
-    task_id: body.task_id ?? null,
-    task_template_id: body.task_template_id ?? null,
-    intervento_id: body.intervento_id ?? null,
-    to_operatore_id: body.to_operatore_id ?? null,
-    to_email: toEmail,
-    to_nome: body.to_nome ?? null,
-    from_operatore_id: body.from_operatore_id ?? null,
-    messaggio: subject ? `${subject}\n${text}`.trim() : text || null,
-    canale: body.canale,
-  };
-
-  if (!sendEmailFlag) {
-    const { data: logData, error: logErr } = await supabase
-      .from("checklist_alert_log")
-      .insert(logPayload)
-      .select("id")
-      .single();
-    if (logErr) {
-      return NextResponse.json({ error: logErr.message }, { status: 500 });
-    }
-    return NextResponse.json({
-      ok: true,
-      email_sent: false,
-      log_id: logData?.id ?? null,
-    });
-  }
-
-  try {
-    await sendEmail({ to: toEmail!, subject, text, html });
-  } catch (err) {
-    const errorMsg = err instanceof Error ? err.message : "Email send failed";
-    const { data: logData, error: logErr } = await supabase
-      .from("checklist_alert_log")
-      .insert({
-        ...logPayload,
-        messaggio: `ERRORE INVIO EMAIL: ${errorMsg}\n\n${logPayload.messaggio || ""}`.trim(),
-        canale: `${body.canale}_error`,
-      })
-      .select("id")
-      .single();
-    if (logErr) {
-      return NextResponse.json({ error: logErr.message }, { status: 500 });
-    }
-    return NextResponse.json(
-      { ok: false, email_sent: false, log_id: logData?.id ?? null, error: errorMsg },
-      { status: 502 }
-    );
-  }
-
-  const { data: logData, error: logErr } = await supabase
-    .from("checklist_alert_log")
-    .insert(logPayload)
-    .select("id")
-    .single();
-  if (logErr) {
-    return NextResponse.json({ error: logErr.message }, { status: 500 });
-  }
-
-  return NextResponse.json({
-    ok: true,
-    email_sent: true,
-    log_id: logData?.id ?? null,
-  });
 }
