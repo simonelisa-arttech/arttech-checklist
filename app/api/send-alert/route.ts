@@ -97,7 +97,7 @@ export async function POST(req: Request) {
       modalita,
       stato,
       destinatario: destinatario ?? null,
-      email: toEmail ?? null,
+      to_email: toEmail ?? null,
       subject: finalSubject,
       messaggio: message,
       inviato_email: false,
