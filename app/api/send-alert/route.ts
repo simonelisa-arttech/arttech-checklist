@@ -49,6 +49,10 @@ export async function POST(req: Request) {
 
       destinatario = null,
       email_manuale = null,
+      to_operatore_id = null,
+      toOperatoreId = null,
+      to_email = null,
+      toEmail = null,
 
       subject = null,
       message,
@@ -83,10 +87,22 @@ export async function POST(req: Request) {
       auth: { persistSession: false },
     });
 
-    const toEmail = extractEmail(email_manuale) || extractEmail(destinatario);
+    const toOperatoreId = to_operatore_id ?? toOperatoreId ?? null;
+    const toEmailRaw = to_email ?? toEmail ?? null;
+    const toEmailFromBody = typeof toEmailRaw === "string" ? toEmailRaw.trim() : null;
+    const toEmailFromOther = extractEmail(email_manuale) || extractEmail(destinatario);
+    const toEmailNorm = toEmailFromBody || toEmailFromOther || null;
+    const toEmailOk = toEmailNorm && toEmailNorm.length > 3 ? toEmailNorm : null;
     const finalSubject =
       subject ||
       `AVVISO ${tipo ?? "RINNOVO"} — ${riferimento ?? ""}`.trim();
+
+    if (!toOperatoreId && !toEmailOk) {
+      return NextResponse.json(
+        { error: "Missing recipient" },
+        { status: 400 }
+      );
+    }
 
     const logRow: Record<string, any> = {
       checklist_id,
@@ -97,7 +113,8 @@ export async function POST(req: Request) {
       modalita,
       stato,
       destinatario: destinatario ?? null,
-      to_email: toEmail ?? null,
+      to_operatore_id: toOperatoreId,
+      to_email: toEmailOk,
       subject: finalSubject,
       messaggio: message,
       inviato_email: false,
@@ -121,7 +138,7 @@ export async function POST(req: Request) {
     let emailSent = false;
     let emailError: string | null = null;
 
-    if (send_email && toEmail) {
+    if (send_email && toEmailOk) {
       const resendKey = process.env.RESEND_API_KEY;
       if (!resendKey) {
         emailError = "Missing RESEND_API_KEY";
@@ -136,7 +153,7 @@ export async function POST(req: Request) {
 
           await resend.emails.send({
             from,
-            to: [toEmail],
+            to: [toEmailOk],
             subject: finalSubject,
             text: message,
           });
@@ -151,7 +168,7 @@ export async function POST(req: Request) {
           emailError = e?.message ?? "Resend error";
         }
       }
-    } else if (send_email && !toEmail) {
+    } else if (send_email && !toEmailOk) {
       emailError = "No recipient email (destinatario/email_manuale missing)";
     }
 
