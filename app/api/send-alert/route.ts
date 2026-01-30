@@ -49,10 +49,10 @@ export async function POST(req: Request) {
 
       destinatario = null,
       email_manuale = null,
-      to_operatore_id = null,
-      toOperatoreId = null,
-      to_email = null,
-      toEmail = null,
+      to_operatore_id: toOperatoreIdRaw = null,
+      toOperatoreId: toOperatoreIdAlt = null,
+      to_email: toEmailRaw = null,
+      toEmail: toEmailAlt = null,
 
       subject = null,
       message,
@@ -87,9 +87,9 @@ export async function POST(req: Request) {
       auth: { persistSession: false },
     });
 
-    const toOperatoreId = to_operatore_id ?? toOperatoreId ?? null;
-    const toEmailRaw = to_email ?? toEmail ?? null;
-    const toEmailFromBody = typeof toEmailRaw === "string" ? toEmailRaw.trim() : null;
+    const toOperatoreId = toOperatoreIdRaw ?? toOperatoreIdAlt ?? null;
+    const toEmailInput = toEmailRaw ?? toEmailAlt ?? null;
+    const toEmailFromBody = typeof toEmailInput === "string" ? toEmailInput.trim() : null;
     const toEmailFromOther = extractEmail(email_manuale) || extractEmail(destinatario);
     const toEmailNorm = toEmailFromBody || toEmailFromOther || null;
     const toEmailOk = toEmailNorm && toEmailNorm.length > 3 ? toEmailNorm : null;
