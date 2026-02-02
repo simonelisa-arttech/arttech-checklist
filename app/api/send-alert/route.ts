@@ -146,13 +146,8 @@ export async function POST(req: Request) {
         try {
           const resend = new Resend(resendKey);
 
-          const fromEmail =
-            process.env.ALERT_FROM_EMAIL || "onboarding@resend.dev";
-          const fromName = process.env.ALERT_FROM_NAME || "Art Tech";
-          const from = `${fromName} <${fromEmail}>`;
-
           await resend.emails.send({
-            from,
+            from: "Art Tech <progetti@maxischermiled.it>",
             to: [toEmailOk],
             subject: finalSubject,
             text: message,
