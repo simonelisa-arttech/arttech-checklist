@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import ConfigMancante from "@/components/ConfigMancante";
+import Toast from "@/components/Toast";
 import { isSupabaseConfigured, supabase } from "@/lib/supabaseClient";
 import { sendAlert } from "@/lib/sendAlert";
 
@@ -740,6 +741,10 @@ export default function ClientePage({ params }: { params: any }) {
   const [lastAlertByIntervento, setLastAlertByIntervento] = useState<
     Map<string, { toOperatoreId: string | null; toNome: string | null; createdAt: string }>
   >(new Map());
+  const [toast, setToast] = useState<{ message: string; variant: "success" | "error" } | null>(
+    null
+  );
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const autoFatturazioneSent = useRef<Set<string>>(new Set());
   const autoFatturazioneInFlight = useRef(false);
   const [editIntervento, setEditIntervento] = useState({
@@ -768,6 +773,23 @@ export default function ClientePage({ params }: { params: any }) {
     fatturatoIl: "",
     statoIntervento: "APERTO",
   });
+
+  function showToast(message: string, variant: "success" | "error" = "success", duration = 2500) {
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    setToast({ message, variant });
+    toastTimerRef.current = setTimeout(() => setToast(null), duration);
+  }
+
+  function briefError(err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err ?? "Errore invio");
+    return msg.length > 80 ? `${msg.slice(0, 77)}...` : msg;
+  }
+
+  useEffect(() => {
+    return () => {
+      if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    };
+  }, []);
 
   useEffect(() => {
     let alive = true;
@@ -2428,8 +2450,8 @@ export default function ClientePage({ params }: { params: any }) {
         send_email: rinnoviAlertSendEmail,
       });
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Errore invio alert";
-      setRinnoviAlertErr(msg);
+      console.error("Errore invio alert rinnovi", err);
+      showToast(`❌ Invio fallito: ${briefError(err)}`, "error");
       setRinnoviAlertSending(false);
       return;
     }
@@ -2518,11 +2540,11 @@ export default function ClientePage({ params }: { params: any }) {
       }
     }
     const recipientLabel = getRinnoviRecipientLabel();
-    const esitoLabel = rinnoviAlertSendEmail ? "Email inviata" : "Log registrato";
-    setRinnoviAlertOk(`${esitoLabel} — ${recipientLabel}`);
+    const esitoLabel = rinnoviAlertSendEmail ? "✅ Email inviata" : "✅ Avviso registrato";
+    showToast(esitoLabel, "success");
     setRinnoviNotice(`${esitoLabel} — ${recipientLabel}`);
     setRinnoviAlertSending(false);
-    setRinnoviAlertOpen(false);
+    setTimeout(() => setRinnoviAlertOpen(false), 800);
     setRinnoviAlertSendEmail(true);
     await fetchRinnovi((cliente || "").trim());
     await fetchTagliandi((cliente || "").trim());
@@ -2804,8 +2826,8 @@ export default function ClientePage({ params }: { params: any }) {
         send_email: licenseAlertSendEmail,
       });
     } catch (e: any) {
-      const msg = e?.message || "Errore invio alert";
-      setLicenseAlertErr(msg);
+      console.error("Errore invio alert licenza", e);
+      showToast(`❌ Invio fallito: ${briefError(e)}`, "error");
       setLicenseAlertSending(false);
       return;
     }
@@ -2826,7 +2848,8 @@ export default function ClientePage({ params }: { params: any }) {
     });
 
     setLicenseAlertSending(false);
-    setLicenseAlertOpen(false);
+    showToast(licenseAlertSendEmail ? "✅ Email inviata" : "✅ Avviso registrato", "success");
+    setTimeout(() => setLicenseAlertOpen(false), 800);
     setLicenseAlertSendEmail(true);
     setLicenzeNotice("Alert licenza inviato.");
     setLicenseAlertToOperatoreId("");
@@ -2900,21 +2923,21 @@ export default function ClientePage({ params }: { params: any }) {
         send_email: bulkSendEmail,
       });
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Errore invio alert";
-      setBulkErr(msg);
+      console.error("Errore invio alert bulk", err);
+      showToast(`❌ Invio fallito: ${briefError(err)}`, "error");
       setBulkSending(false);
       return;
     }
     const okCount = list.length;
     const toName =
       alertOperatori.find((o) => o.id === bulkToOperatoreId)?.nome ?? bulkToOperatoreId;
-    const esito = bulkSendEmail ? "Email inviata" : "Log registrato";
-    setBulkOk(`${esito} (${okCount} interventi)`);
+    const esito = bulkSendEmail ? "✅ Email inviata" : "✅ Avviso registrato";
+    showToast(esito, "success");
     setBulkSending(false);
-    setBulkOpen(false);
+    setTimeout(() => setBulkOpen(false), 800);
     setBulkSendEmail(true);
     setInterventiInfo(
-      `✅ ${esito} (${okCount} interventi, destinatario: ${toName}).`
+      `${esito} (${okCount} interventi, destinatario: ${toName}).`
     );
     await fetchLastBulkAlert();
   }
@@ -3062,19 +3085,19 @@ export default function ClientePage({ params }: { params: any }) {
         send_email: alertSendEmail,
       });
     } catch (err) {
-      const errorMsg = err instanceof Error ? err.message : "Errore invio alert";
-      setSendErr(errorMsg);
+      console.error("Errore invio alert intervento", err);
+      showToast(`❌ Invio fallito: ${briefError(err)}`, "error");
       setSending(false);
       return;
     }
-    const esito = alertSendEmail ? "Email inviata" : "Log registrato";
-    setSendOk(esito);
+    const esito = alertSendEmail ? "✅ Email inviata" : "✅ Avviso registrato";
+    showToast(esito, "success");
     setAlertNotice(esito);
     setAlertDestinatarioId("");
     setAlertMessaggio("");
     setAlertSendEmail(true);
     setSending(false);
-    setTimeout(() => setAlertInterventoId(null), 300);
+    setTimeout(() => setAlertInterventoId(null), 800);
 
     if (intervento) {
       setLastAlertByIntervento((prev) => {
@@ -5716,6 +5739,13 @@ export default function ClientePage({ params }: { params: any }) {
           </div>
         )}
       </div>
+      {toast && (
+        <Toast
+          message={toast.message}
+          variant={toast.variant}
+          onClose={() => setToast(null)}
+        />
+      )}
     </div>
   );
 }

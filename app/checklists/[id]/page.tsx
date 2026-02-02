@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import ConfigMancante from "@/components/ConfigMancante";
+import Toast from "@/components/Toast";
 import { isSupabaseConfigured, supabase } from "@/lib/supabaseClient";
 import { sendAlert } from "@/lib/sendAlert";
 
@@ -473,9 +474,30 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
   const [lastAlertByTask, setLastAlertByTask] = useState<
     Map<string, { toOperatoreId: string; createdAt: string }>
   >(new Map());
+  const [toast, setToast] = useState<{ message: string; variant: "success" | "error" } | null>(
+    null
+  );
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [contrattoUltra, setContrattoUltra] = useState<ContrattoRow | null>(null);
   const [contrattoUltraNome, setContrattoUltraNome] = useState<string | null>(null);
   const [interventiInclusiUsati, setInterventiInclusiUsati] = useState<number>(0);
+
+  function showToast(message: string, variant: "success" | "error" = "success", duration = 2500) {
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    setToast({ message, variant });
+    toastTimerRef.current = setTimeout(() => setToast(null), duration);
+  }
+
+  function briefError(err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err ?? "Errore invio");
+    return msg.length > 80 ? `${msg.slice(0, 77)}...` : msg;
+  }
+
+  useEffect(() => {
+    return () => {
+      if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    };
+  }, []);
 
   function normalizeAlertTasks(input: any) {
     if (!input) {
@@ -890,11 +912,12 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
         send_email: alertSendEmail,
       });
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Errore invio alert";
-      alert(msg);
+      console.error("Errore invio alert task", err);
+      showToast(`❌ Invio fallito: ${briefError(err)}`, "error");
       return;
     }
 
+    showToast(alertSendEmail ? "✅ Email inviata" : "✅ Avviso registrato", "success");
     setAlertNotice(
       alertSendEmail ? "✅ Email inviata e log registrato." : "Log registrato (email disattivata)."
     );
@@ -907,7 +930,7 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
       });
       return next;
     });
-    setAlertTask(null);
+    setTimeout(() => setAlertTask(null), 800);
     setAlertDestinatarioId("");
     setAlertMessaggio("");
     setAlertSendEmail(true);
@@ -3127,6 +3150,13 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
             </div>
           </div>
         </div>
+      )}
+      {toast && (
+        <Toast
+          message={toast.message}
+          variant={toast.variant}
+          onClose={() => setToast(null)}
+        />
       )}
     </div>
   );

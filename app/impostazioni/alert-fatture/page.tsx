@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import ConfigMancante from "@/components/ConfigMancante";
+import Toast from "@/components/Toast";
 import { isSupabaseConfigured, supabase } from "@/lib/supabaseClient";
 import { sendAlert } from "@/lib/sendAlert";
 
@@ -92,11 +93,32 @@ export default function AlertFatturePage() {
   const [info, setInfo] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [sendEmail, setSendEmail] = useState(true);
+  const [toast, setToast] = useState<{ message: string; variant: "success" | "error" } | null>(
+    null
+  );
+  const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     const stored =
       typeof window !== "undefined" ? window.localStorage.getItem("current_operatore_id") : null;
     if (stored) setCurrentOperatoreId(stored);
+  }, []);
+
+  function showToast(message: string, variant: "success" | "error" = "success", duration = 2500) {
+    if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    setToast({ message, variant });
+    toastTimerRef.current = setTimeout(() => setToast(null), duration);
+  }
+
+  function briefError(err: unknown) {
+    const msg = err instanceof Error ? err.message : String(err ?? "Errore invio");
+    return msg.length > 80 ? `${msg.slice(0, 77)}...` : msg;
+  }
+
+  useEffect(() => {
+    return () => {
+      if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
+    };
   }, []);
 
   useEffect(() => {
@@ -223,12 +245,14 @@ export default function AlertFatturePage() {
           send_email: sendEmail,
         });
       } catch (err) {
-        const msg = err instanceof Error ? err.message : "Errore invio alert";
-        setError(msg);
+        console.error("Errore invio alert fatture", err);
+        showToast(`❌ Invio fallito: ${briefError(err)}`, "error");
         setRunning(false);
         return;
       }
     }
+
+    showToast(sendEmail ? "✅ Email inviata" : "✅ Avviso registrato", "success");
 
     const nowIso = new Date().toISOString();
     const { error: updErr } = await supabase
@@ -304,6 +328,13 @@ export default function AlertFatturePage() {
           {running ? "Esecuzione..." : "Esegui job adesso"}
         </button>
       </div>
+      {toast && (
+        <Toast
+          message={toast.message}
+          variant={toast.variant}
+          onClose={() => setToast(null)}
+        />
+      )}
     </div>
   );
 }
