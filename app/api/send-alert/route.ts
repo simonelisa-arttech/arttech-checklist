@@ -147,7 +147,7 @@ export async function POST(req: Request) {
           const resend = new Resend(resendKey);
 
           await resend.emails.send({
-            from: "Art Tech <progetti@maxischermiled.it>",
+            from: "Art Tech <noreply@maxischermiled.it>",
             to: [toEmailOk],
             subject: finalSubject,
             text: message,
