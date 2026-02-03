@@ -797,9 +797,18 @@ export default function ClientePage({ params }: { params: any }) {
     return `${t}::${c}::${r}`;
   }
 
+  function alertKeyForLogRow(row: any) {
+    const tipo = String(row?.tipo || "NULL").toUpperCase();
+    const checklistId = row?.checklist_id ?? null;
+    if (tipo === "TAGLIANDO") {
+      return `${tipo}::${checklistId || "NULL"}::TAGLIANDO`;
+    }
+    return alertKey(tipo, checklistId, row?.riferimento ?? null);
+  }
+
   function getAlertKeyForRow(r: ScadenzaItem) {
     if (r.source === "tagliandi") {
-      return alertKey(r.item_tipo ?? null, r.checklist_id ?? null, r.note ?? null);
+      return `${String(r.item_tipo || "TAGLIANDO").toUpperCase()}::${r.checklist_id || "NULL"}::TAGLIANDO`;
     }
     return alertKey(r.item_tipo ?? null, r.checklist_id ?? null, r.riferimento ?? null);
   }
@@ -1513,7 +1522,7 @@ export default function ClientePage({ params }: { params: any }) {
       }
       const map = new Map<string, AlertStats>();
       for (const row of (data || []) as any[]) {
-        const key = alertKey(row.tipo ?? null, row.checklist_id ?? null, row.riferimento ?? null);
+        const key = alertKeyForLogRow(row);
         const prev = map.get(key) || {
           n_avvisi: 0,
           n_operatore: 0,
