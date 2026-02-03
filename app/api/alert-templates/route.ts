@@ -71,11 +71,20 @@ function getSupabaseClient() {
   return createClient(supabaseUrl, supabaseKey);
 }
 
-async function requireAdminOrSupervisor(request: Request, supabase: any) {
+async function requireAdminOrSupervisor(request: Request) {
   const operatoreId = request.headers.get("x-operatore-id");
   if (!operatoreId) {
     return { ok: false, response: NextResponse.json({ error: "Missing operatore id" }, { status: 401 }) };
   }
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!supabaseUrl || !supabaseKey) {
+    return {
+      ok: false,
+      response: NextResponse.json({ error: "Missing SUPABASE_SERVICE_ROLE_KEY" }, { status: 500 }),
+    };
+  }
+  const supabase = createClient(supabaseUrl, supabaseKey);
   const res = await supabase
     .from("operatori")
     .select("id, ruolo, attivo")
@@ -106,7 +115,7 @@ export async function GET(request: Request) {
   if (!supabase) {
     return NextResponse.json({ error: "Missing SUPABASE_SERVICE_ROLE_KEY" }, { status: 500 });
   }
-  const allowed = await requireAdminOrSupervisor(request, supabase);
+  const allowed = await requireAdminOrSupervisor(request);
   if (!allowed.ok) return allowed.response;
 
   const { data, error } = await supabase
@@ -127,7 +136,7 @@ export async function POST(request: Request) {
   if (!supabase) {
     return NextResponse.json({ error: "Missing SUPABASE_SERVICE_ROLE_KEY" }, { status: 500 });
   }
-  const allowed = await requireAdminOrSupervisor(request, supabase);
+  const allowed = await requireAdminOrSupervisor(request);
   if (!allowed.ok) return allowed.response;
 
   let body: AlertTemplatePayload;
@@ -170,7 +179,7 @@ export async function PATCH(request: Request) {
   if (!supabase) {
     return NextResponse.json({ error: "Missing SUPABASE_SERVICE_ROLE_KEY" }, { status: 500 });
   }
-  const allowed = await requireAdminOrSupervisor(request, supabase);
+  const allowed = await requireAdminOrSupervisor(request);
   if (!allowed.ok) return allowed.response;
 
   let body: AlertTemplatePayload;
