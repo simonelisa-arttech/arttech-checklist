@@ -71,39 +71,6 @@ function getSupabaseClient() {
   return createClient(supabaseUrl, supabaseKey);
 }
 
-async function requireAdminOrSupervisor(request: Request) {
-  const operatoreId = request.headers.get("x-operatore-id");
-  if (!operatoreId) {
-    return { ok: false, response: NextResponse.json({ error: "Missing operatore id" }, { status: 401 }) };
-  }
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!supabaseUrl || !supabaseKey) {
-    return {
-      ok: false,
-      response: NextResponse.json({ error: "Missing SUPABASE_SERVICE_ROLE_KEY" }, { status: 500 }),
-    };
-  }
-  const supabase = createClient(supabaseUrl, supabaseKey);
-  const res = await supabase
-    .from("operatori")
-    .select("id, ruolo, attivo")
-    .eq("id", operatoreId)
-    .single();
-  const data = res.data as { id: string; ruolo: string | null; attivo: boolean | null } | null;
-  if (res.error || !data) {
-    return { ok: false, response: NextResponse.json({ error: "Operatore not found" }, { status: 403 }) };
-  }
-  if (data.attivo === false) {
-    return { ok: false, response: NextResponse.json({ error: "Operatore inactive" }, { status: 403 }) };
-  }
-  const role = String(data.ruolo || "").toUpperCase();
-  if (role !== "ADMIN" && role !== "SUPERVISORE") {
-    return { ok: false, response: NextResponse.json({ error: "Forbidden" }, { status: 403 }) };
-  }
-  return { ok: true as const, operatore: data };
-}
-
 const SELECT_FIELDS =
   "id,codice,titolo,tipo,trigger,subject_template,body_template,attivo,created_at,updated_at";
 
@@ -115,8 +82,6 @@ export async function GET(request: Request) {
   if (!supabase) {
     return NextResponse.json({ error: "Missing SUPABASE_SERVICE_ROLE_KEY" }, { status: 500 });
   }
-  const allowed = await requireAdminOrSupervisor(request);
-  if (!allowed.ok) return allowed.response;
 
   const { data, error } = await supabase
     .from("alert_message_templates")
@@ -136,8 +101,6 @@ export async function POST(request: Request) {
   if (!supabase) {
     return NextResponse.json({ error: "Missing SUPABASE_SERVICE_ROLE_KEY" }, { status: 500 });
   }
-  const allowed = await requireAdminOrSupervisor(request);
-  if (!allowed.ok) return allowed.response;
 
   let body: AlertTemplatePayload;
   try {
@@ -179,8 +142,6 @@ export async function PATCH(request: Request) {
   if (!supabase) {
     return NextResponse.json({ error: "Missing SUPABASE_SERVICE_ROLE_KEY" }, { status: 500 });
   }
-  const allowed = await requireAdminOrSupervisor(request);
-  if (!allowed.ok) return allowed.response;
 
   let body: AlertTemplatePayload;
   try {
