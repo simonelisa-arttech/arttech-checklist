@@ -612,6 +612,17 @@ type AlertStats = {
   total_recipients: number;
 };
 
+type AlertMessageTemplate = {
+  id: string;
+  titolo?: string | null;
+  codice?: string | null;
+  tipo?: string | null;
+  trigger?: string | null;
+  subject_template?: string | null;
+  body_template?: string | null;
+  attivo?: boolean | null;
+};
+
 type InterventoFile = {
   id: string;
   intervento_id: string;
@@ -686,6 +697,7 @@ export default function ClientePage({ params }: { params: any }) {
   const [rinnoviAlertOpen, setRinnoviAlertOpen] = useState(false);
   const [rinnoviAlertStage, setRinnoviAlertStage] = useState<"stage1" | "stage2">("stage1");
   const [rinnoviAlertToOperatoreId, setRinnoviAlertToOperatoreId] = useState("");
+  const [rinnoviAlertSubject, setRinnoviAlertSubject] = useState("");
   const [rinnoviAlertMsg, setRinnoviAlertMsg] = useState("");
   const [rinnoviAlertSendEmail, setRinnoviAlertSendEmail] = useState(true);
   const [rinnoviAlertIds, setRinnoviAlertIds] = useState<string[]>([]);
@@ -699,6 +711,8 @@ export default function ClientePage({ params }: { params: any }) {
   const [rinnoviAlertErr, setRinnoviAlertErr] = useState<string | null>(null);
   const [rinnoviAlertOk, setRinnoviAlertOk] = useState<string | null>(null);
   const [rinnoviNotice, setRinnoviNotice] = useState<string | null>(null);
+  const [alertTemplates, setAlertTemplates] = useState<AlertMessageTemplate[]>([]);
+  const [selectedPresetId, setSelectedPresetId] = useState<string>("");
   const [tagliandi, setTagliandi] = useState<TagliandoRow[]>([]);
   const [exportFrom, setExportFrom] = useState("");
   const [exportTo, setExportTo] = useState("");
@@ -895,6 +909,40 @@ export default function ClientePage({ params }: { params: any }) {
         )}
       </span>
     );
+  }
+
+  function applyTemplate(input: string, ctx: Record<string, string>) {
+    return input.replace(/\{(\w+)\}/g, (_, key) => ctx[key] ?? "");
+  }
+
+  function getTemplateContext(list: ScadenzaItem[]) {
+    const first = list[0];
+    const checklist = first?.checklist_id ? checklistById.get(first.checklist_id) : null;
+    const progetto = checklist?.nome_checklist ?? first?.checklist_id?.slice(0, 8) ?? "—";
+    const scadenza = first?.scadenza
+      ? new Date(first.scadenza).toLocaleDateString("it-IT")
+      : "—";
+    const riferimento = first?.riferimento ?? first?.descrizione ?? "—";
+    const stato = String(first?.stato || "—").toUpperCase();
+    const nomeDest =
+      rinnoviAlertDestMode === "operatore"
+        ? alertOperatori.find((o) => o.id === rinnoviAlertToOperatoreId)?.nome ??
+          alertOperatori.find((o) => o.id === rinnoviAlertToOperatoreId)?.email ??
+          ""
+        : rinnoviAlertManualEmail.trim();
+    const lista =
+      list.length > 1
+        ? buildMsgScadenzaBulk(list, rinnoviAlertStage)
+        : buildMsgScadenzaSingle(first as any, rinnoviAlertStage);
+    return {
+      cliente: cliente || "",
+      progetto,
+      scadenza,
+      riferimento,
+      stato,
+      nome_destinatario: nomeDest || "",
+      lista,
+    };
   }
 
   function briefError(err: unknown) {
@@ -1133,6 +1181,26 @@ export default function ClientePage({ params }: { params: any }) {
       alive = false;
     };
   }, [contratto?.id]);
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      const { data, error } = await supabase
+        .from("alert_message_templates")
+        .select("*")
+        .eq("attivo", true)
+        .order("titolo", { ascending: true });
+      if (!alive) return;
+      if (error) {
+        console.error("Errore caricamento template avvisi", error);
+        return;
+      }
+      setAlertTemplates((data || []) as AlertMessageTemplate[]);
+    })();
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   useEffect(() => {
     let alive = true;
@@ -2621,6 +2689,12 @@ export default function ClientePage({ params }: { params: any }) {
     setRinnoviAlertStage(stage);
     setRinnoviAlertIds(list.map((r) => r.id));
     setRinnoviAlertItems(list);
+    const defaultSubject =
+      stage === "stage1"
+        ? `[Art Tech] Scadenze servizi – ${cliente || "—"}`
+        : `[Art Tech] Da fatturare – ${cliente || "—"}`;
+    setRinnoviAlertSubject(defaultSubject);
+    setSelectedPresetId("");
     setRinnoviAlertToOperatoreId(
       stage === "stage1" ? getDefaultOperatoreIdByRole("SUPERVISORE") : getDefaultOperatoreIdByRole("AMMINISTRAZIONE")
     );
@@ -2703,9 +2777,10 @@ export default function ClientePage({ params }: { params: any }) {
       return;
     }
     const subject =
-      rinnoviAlertStage === "stage1"
+      rinnoviAlertSubject ||
+      (rinnoviAlertStage === "stage1"
         ? `[Art Tech] Scadenze servizi – ${cliente || "—"}`
-        : `[Art Tech] Da fatturare – ${cliente || "—"}`;
+        : `[Art Tech] Da fatturare – ${cliente || "—"}`);
     const html = `
       <div>
         <h2>${escapeHtml(subject)}</h2>
@@ -5860,6 +5935,53 @@ export default function ClientePage({ params }: { params: any }) {
             </div>
 
             <div style={{ marginTop: 10 }}>
+              <label style={{ display: "block", marginBottom: 10 }}>
+                Preset<br />
+                <select
+                  value={selectedPresetId}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    setSelectedPresetId(value);
+                    const tpl = alertTemplates.find(
+                      (t) => String(t.id) === value || String(t.codice || "") === value
+                    );
+                    if (!tpl) return;
+                    const ctx = getTemplateContext(rinnoviAlertItems);
+                    const subject = applyTemplate(tpl.subject_template || "", ctx);
+                    const body = applyTemplate(tpl.body_template || "", ctx);
+                    if (subject.trim()) setRinnoviAlertSubject(subject);
+                    if (body.trim()) setRinnoviAlertMsg(body);
+                  }}
+                  style={{ width: "100%", padding: 8 }}
+                >
+                  <option value="">—</option>
+                  {alertTemplates
+                    .filter((t) => String(t.attivo ?? true) !== "false")
+                    .filter((t) => {
+                      const tipo = String(t.tipo || "GENERICO").toUpperCase();
+                      const trigger = String(t.trigger || "MANUALE").toUpperCase();
+                      if (trigger !== "MANUALE") return false;
+                      const hasTagliandi = rinnoviAlertItems.some((r) => r.source === "tagliandi");
+                      const hasLicenze = rinnoviAlertItems.some((r) => r.source === "licenze");
+                      const hasRinnovi = rinnoviAlertItems.some((r) => r.source === "rinnovi");
+                      if (hasTagliandi && !hasLicenze && !hasRinnovi) {
+                        return tipo === "TAGLIANDO" || tipo === "GENERICO";
+                      }
+                      if (hasLicenze && !hasTagliandi && !hasRinnovi) {
+                        return tipo === "LICENZA" || tipo === "GENERICO";
+                      }
+                      return tipo === "GENERICO";
+                    })
+                    .map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {t.titolo || t.codice || t.id}
+                      </option>
+                    ))}
+                </select>
+                <div style={{ fontSize: 11, opacity: 0.6, marginTop: 4 }}>
+                  Seleziona un preset per precompilare il messaggio
+                </div>
+              </label>
               <div style={{ display: "flex", gap: 12, marginBottom: 10, fontSize: 12 }}>
                 <label style={{ display: "flex", gap: 6, alignItems: "center" }}>
                   <input
@@ -5915,6 +6037,14 @@ export default function ClientePage({ params }: { params: any }) {
                     />
                   </div>
                 )}
+              </label>
+              <label style={{ display: "block", marginBottom: 10 }}>
+                Subject<br />
+                <input
+                  value={rinnoviAlertSubject}
+                  onChange={(e) => setRinnoviAlertSubject(e.target.value)}
+                  style={{ width: "100%", padding: 8 }}
+                />
               </label>
               <label style={{ display: "block", marginBottom: 10 }}>
                 Messaggio<br />
