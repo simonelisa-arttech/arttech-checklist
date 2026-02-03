@@ -1187,8 +1187,9 @@ export default function ClientePage({ params }: { params: any }) {
     (async () => {
       const { data, error } = await supabase
         .from("alert_message_templates")
-        .select("*")
+        .select("id,codice,titolo,tipo,trigger,subject_template,body_template,attivo")
         .eq("attivo", true)
+        .eq("trigger", "MANUALE")
         .order("titolo", { ascending: true });
       if (!alive) return;
       if (error) {
@@ -5935,53 +5936,48 @@ export default function ClientePage({ params }: { params: any }) {
             </div>
 
             <div style={{ marginTop: 10 }}>
-              <label style={{ display: "block", marginBottom: 10 }}>
-                Preset<br />
-                <select
-                  value={selectedPresetId}
-                  onChange={(e) => {
-                    const value = e.target.value;
-                    setSelectedPresetId(value);
-                    const tpl = alertTemplates.find(
-                      (t) => String(t.id) === value || String(t.codice || "") === value
-                    );
-                    if (!tpl) return;
-                    const ctx = getTemplateContext(rinnoviAlertItems);
-                    const subject = applyTemplate(tpl.subject_template || "", ctx);
-                    const body = applyTemplate(tpl.body_template || "", ctx);
-                    if (subject.trim()) setRinnoviAlertSubject(subject);
-                    if (body.trim()) setRinnoviAlertMsg(body);
-                  }}
-                  style={{ width: "100%", padding: 8 }}
-                >
-                  <option value="">—</option>
-                  {alertTemplates
-                    .filter((t) => String(t.attivo ?? true) !== "false")
-                    .filter((t) => {
-                      const tipo = String(t.tipo || "GENERICO").toUpperCase();
-                      const trigger = String(t.trigger || "MANUALE").toUpperCase();
-                      if (trigger !== "MANUALE") return false;
-                      const hasTagliandi = rinnoviAlertItems.some((r) => r.source === "tagliandi");
-                      const hasLicenze = rinnoviAlertItems.some((r) => r.source === "licenze");
-                      const hasRinnovi = rinnoviAlertItems.some((r) => r.source === "rinnovi");
-                      if (hasTagliandi && !hasLicenze && !hasRinnovi) {
-                        return tipo === "TAGLIANDO" || tipo === "GENERICO";
-                      }
-                      if (hasLicenze && !hasTagliandi && !hasRinnovi) {
-                        return tipo === "LICENZA" || tipo === "GENERICO";
-                      }
-                      return tipo === "GENERICO";
-                    })
-                    .map((t) => (
-                      <option key={t.id} value={t.id}>
-                        {t.titolo || t.codice || t.id}
-                      </option>
-                    ))}
-                </select>
-                <div style={{ fontSize: 11, opacity: 0.6, marginTop: 4 }}>
-                  Seleziona un preset per precompilare il messaggio
-                </div>
-              </label>
+              {(() => {
+                const hasTagliandi = rinnoviAlertItems.some((r) => r.source === "tagliandi");
+                const hasLicenze = rinnoviAlertItems.some((r) => r.source === "licenze");
+                const currentTipo = hasTagliandi && !hasLicenze ? "TAGLIANDO" : hasLicenze ? "LICENZA" : "GENERICO";
+                const presets = alertTemplates.filter((t) => {
+                  const tipo = String(t.tipo || "GENERICO").toUpperCase();
+                  return tipo === currentTipo || tipo === "GENERICO";
+                });
+                if (presets.length === 0) return null;
+                return (
+                  <label style={{ display: "block", marginBottom: 10 }}>
+                    Preset<br />
+                    <select
+                      value={selectedPresetId}
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        setSelectedPresetId(value);
+                        const tpl = presets.find(
+                          (t) => String(t.id) === value || String(t.codice || "") === value
+                        );
+                        if (!tpl) return;
+                        const ctx = getTemplateContext(rinnoviAlertItems);
+                        const subject = applyTemplate(tpl.subject_template || "", ctx);
+                        const body = applyTemplate(tpl.body_template || "", ctx);
+                        if (subject.trim()) setRinnoviAlertSubject(subject);
+                        if (body.trim()) setRinnoviAlertMsg(body);
+                      }}
+                      style={{ width: "100%", padding: 8 }}
+                    >
+                      <option value="">— Seleziona —</option>
+                      {presets.map((t) => (
+                        <option key={t.id} value={t.id}>
+                          {t.titolo || t.codice || t.id}
+                        </option>
+                      ))}
+                    </select>
+                    <div style={{ fontSize: 11, opacity: 0.6, marginTop: 4 }}>
+                      Seleziona un preset per precompilare il messaggio
+                    </div>
+                  </label>
+                );
+              })()}
               <div style={{ display: "flex", gap: 12, marginBottom: 10, fontSize: 12 }}>
                 <label style={{ display: "flex", gap: 6, alignItems: "center" }}>
                   <input
