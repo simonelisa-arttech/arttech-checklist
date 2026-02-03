@@ -35,6 +35,7 @@ export default function OperatoriPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [rows, setRows] = useState<OperatoreRow[]>([]);
+  const [currentOperatoreId, setCurrentOperatoreId] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [taskTemplates, setTaskTemplates] = useState<
     { id: string; sezione: string | null; titolo: string | null; ordine: number | null }[]
@@ -123,6 +124,19 @@ export default function OperatoriPage() {
     loadOperatori();
     loadTaskTemplates();
   }, []);
+
+  useEffect(() => {
+    const stored =
+      typeof window !== "undefined" ? window.localStorage.getItem("current_operatore_id") : null;
+    if (stored) setCurrentOperatoreId(stored);
+  }, []);
+
+  const canSeePreset = useMemo(() => {
+    if (!currentOperatoreId) return false;
+    const current = rows.find((r) => r.id === currentOperatoreId);
+    const role = String(current?.ruolo || "").toUpperCase();
+    return role === "ADMIN" || role === "SUPERVISORE";
+  }, [currentOperatoreId, rows]);
 
   function addRow() {
     setRows((prev) => [
@@ -384,19 +398,21 @@ export default function OperatoriPage() {
         >
           Gestisci PROGETTO operativo
         </Link>
-        <Link
-          href="/impostazioni/preset-avvisi"
-          style={{
-            padding: "8px 12px",
-            borderRadius: 10,
-            border: "1px solid #ddd",
-            background: "white",
-            textDecoration: "none",
-            color: "inherit",
-          }}
-        >
-          Preset avvisi
-        </Link>
+        {canSeePreset && (
+          <Link
+            href="/impostazioni/preset-avvisi"
+            style={{
+              padding: "8px 12px",
+              borderRadius: 10,
+              border: "1px solid #ddd",
+              background: "white",
+              textDecoration: "none",
+              color: "inherit",
+            }}
+          >
+            Preset avvisi
+          </Link>
+        )}
       </div>
 
       {loading ? (
