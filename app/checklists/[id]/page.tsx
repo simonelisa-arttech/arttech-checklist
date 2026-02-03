@@ -2081,6 +2081,20 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
           />
 
           <ServiceRow
+            label="Garanzia"
+            left={
+              checklist.garanzia_scadenza
+                ? new Date(checklist.garanzia_scadenza).toLocaleDateString()
+                : "—"
+            }
+            right={
+              checklist.garanzia_scadenza
+                ? renderBadge(getExpiryStatus(checklist.garanzia_scadenza))
+                : "—"
+            }
+          />
+
+          <ServiceRow
             label="Licenze"
             left={
               licenze.length === 0
