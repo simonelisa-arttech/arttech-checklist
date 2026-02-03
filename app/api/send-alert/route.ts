@@ -98,7 +98,16 @@ export async function POST(req: Request) {
     const toEmailFromOther = extractEmail(email_manuale) || extractEmail(destinatario);
     const toEmailNorm = toEmailFromBody || toEmailFromOther || null;
     const toEmailOk = toEmailNorm && toEmailNorm.length > 3 ? toEmailNorm : null;
-    const tipoUpper = String(tipo || "").toUpperCase();
+    const tipoRaw = String(tipo || "").trim().toUpperCase();
+    const inferredLicense =
+      Boolean((body as any)?.license_id) ||
+      Boolean((body as any)?.licenza_id) ||
+      tipoRaw === "LICENZA" ||
+      (typeof riferimento === "string" &&
+        riferimento.trim().length > 0 &&
+        !Number.isNaN(Number(riferimento.trim())));
+    const tipoNorm = tipoRaw || (inferredLicense ? "LICENZA" : "GENERICA");
+    const tipoUpper = tipoNorm;
     const tagliandoId = tagliando_id ?? id ?? null;
     const finalSubject =
       subject ||
@@ -121,7 +130,7 @@ export async function POST(req: Request) {
     const logRow: Record<string, any> = {
       checklist_id,
       intervento_id,
-      tipo,
+      tipo: tipoNorm,
       riferimento,
       scadenza,
       modalita,

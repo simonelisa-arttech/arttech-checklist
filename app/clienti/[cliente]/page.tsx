@@ -608,6 +608,7 @@ type AlertStats = {
   n_operatore: number;
   n_email_manual: number;
   last_sent_at: string | null;
+  last_recipients: string[];
 };
 
 type InterventoFile = {
@@ -798,7 +799,7 @@ export default function ClientePage({ params }: { params: any }) {
   }
 
   function alertKeyForLogRow(row: any) {
-    const tipo = String(row?.tipo || "NULL").toUpperCase();
+    const tipo = String(row?.tipo || "LICENZA").toUpperCase();
     const checklistId = row?.checklist_id ?? null;
     if (tipo === "TAGLIANDO") {
       return `${tipo}::${checklistId || "NULL"}::TAGLIANDO`;
@@ -819,8 +820,12 @@ export default function ClientePage({ params }: { params: any }) {
     const lastSent = stats?.last_sent_at
       ? new Date(stats.last_sent_at).toLocaleString()
       : "—";
+    const recipients =
+      stats && stats.last_recipients.length > 0
+        ? `Ultimi destinatari:\n${stats.last_recipients.join("\n")}`
+        : "Ultimi destinatari: —";
     const tooltip = stats
-      ? `Operatori: ${stats.n_operatore}\nEmail manuali: ${stats.n_email_manual}\nUltimo invio: ${lastSent}`
+      ? `Operatori: ${stats.n_operatore}\nEmail manuali: ${stats.n_email_manual}\nUltimo invio: ${lastSent}\n${recipients}`
       : undefined;
     return (
       <span
@@ -1528,6 +1533,7 @@ export default function ClientePage({ params }: { params: any }) {
           n_operatore: 0,
           n_email_manual: 0,
           last_sent_at: null,
+          last_recipients: [],
         };
         const next: AlertStats = { ...prev };
         next.n_avvisi += 1;
@@ -1539,6 +1545,15 @@ export default function ClientePage({ params }: { params: any }) {
         if (!next.last_sent_at || String(row.created_at) > next.last_sent_at) {
           next.last_sent_at = row.created_at ?? null;
         }
+        const recipient =
+          row.to_email ||
+          alertOperatori.find((o) => o.id === row.to_operatore_id)?.email ||
+          alertOperatori.find((o) => o.id === row.to_operatore_id)?.nome ||
+          null;
+        if (recipient) {
+          const list = [recipient, ...next.last_recipients.filter((r) => r !== recipient)];
+          next.last_recipients = list.slice(0, 5);
+        }
         map.set(key, next);
       }
       setAlertStatsMap(map);
@@ -1546,7 +1561,7 @@ export default function ClientePage({ params }: { params: any }) {
     return () => {
       alive = false;
     };
-  }, [rinnoviAll]);
+  }, [rinnoviAll, alertOperatori]);
 
   const exportRangeLabel = useMemo(() => {
     const from = exportFrom ? exportFrom.replaceAll("-", "") : "TUTTO";
