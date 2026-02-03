@@ -704,6 +704,7 @@ export default function ClientePage({ params }: { params: any }) {
   const [exportTo, setExportTo] = useState("");
   const [exportNotice, setExportNotice] = useState<string | null>(null);
   const [exportFattInterventiFirst, setExportFattInterventiFirst] = useState(false);
+  const [exportLogSending, setExportLogSending] = useState(false);
   const [contratto, setContratto] = useState<ContrattoRow | null>(null);
   const [contrattoError, setContrattoError] = useState<string | null>(null);
   const [showContrattoForm, setShowContrattoForm] = useState(false);
@@ -1625,6 +1626,23 @@ export default function ClientePage({ params }: { params: any }) {
     return `${from}-${to}`;
   }, [exportFrom, exportTo]);
 
+  function getLogExportFilename() {
+    const safeCliente = (cliente || "cliente").replace(/\s+/g, "_");
+    const today = new Date().toISOString().slice(0, 10);
+    if (exportFrom && exportTo) {
+      return `log-avvisi_${safeCliente}_${exportFrom}_${exportTo}.csv`;
+    }
+    return `log-avvisi_${safeCliente}_${today}.csv`;
+  }
+
+  function chunkArray<T>(input: T[], size: number) {
+    const out: T[][] = [];
+    for (let i = 0; i < input.length; i += size) {
+      out.push(input.slice(i, i + size));
+    }
+    return out;
+  }
+
   function inDateRange(value?: string | null) {
     if (!value) return false;
     const dt = parseLocalDay(value);
@@ -1839,6 +1857,92 @@ export default function ClientePage({ params }: { params: any }) {
         ? `✅ CSV generato (${rows.length} righe)`
         : "⚠️ Nessun dato nel periodo selezionato"
     );
+  }
+
+  async function exportLogAvvisiCsv() {
+    if (exportLogSending) return;
+    setExportLogSending(true);
+    try {
+      const checklistIds = checklists.map((c) => c.id).filter(Boolean);
+      if (checklistIds.length === 0) {
+        showToast("❌ Export Log Avvisi fallito: nessun PROGETTO", "error");
+        setExportLogSending(false);
+        return;
+      }
+      const rows: Record<string, any>[] = [];
+      const chunks = chunkArray(checklistIds, 500);
+      const today = new Date();
+      const defaultFrom = new Date(today);
+      defaultFrom.setDate(defaultFrom.getDate() - 365);
+      for (const ids of chunks) {
+        let q = supabase
+          .from("checklist_alert_log")
+          .select(
+            "created_at, tipo, riferimento, scadenza, modalita, stato, trigger, inviato_email, to_operatore_id, to_email, to_nome, destinatario, subject, messaggio, checklist_id, intervento_id"
+          )
+          .in("checklist_id", ids)
+          .order("created_at", { ascending: false });
+        if (exportFrom) {
+          q = q.gte("created_at", `${exportFrom}T00:00:00`);
+        } else if (!exportTo) {
+          q = q.gte("created_at", defaultFrom.toISOString());
+        }
+        if (exportTo) {
+          q = q.lte("created_at", `${exportTo}T23:59:59`);
+        }
+        const { data, error } = await q;
+        if (error) throw error;
+        for (const r of (data || []) as any[]) {
+          rows.push({
+            created_at: r.created_at ?? "",
+            tipo: r.tipo ?? "",
+            riferimento: r.riferimento ?? "",
+            scadenza: r.scadenza ?? "",
+            modalita: r.modalita ?? "",
+            stato: r.stato ?? "",
+            trigger: r.trigger ?? "",
+            inviato_email: r.inviato_email ?? "",
+            to_operatore_id: r.to_operatore_id ?? "",
+            to_email: r.to_email ?? "",
+            to_nome: r.to_nome ?? "",
+            destinatario: r.destinatario ?? "",
+            subject: r.subject ?? "",
+            messaggio:
+              typeof r.messaggio === "string" && r.messaggio.length > 300
+                ? `${r.messaggio.slice(0, 300)}…`
+                : r.messaggio ?? "",
+            checklist_id: r.checklist_id ?? "",
+            intervento_id: r.intervento_id ?? "",
+          });
+        }
+      }
+      const headers = [
+        "created_at",
+        "tipo",
+        "riferimento",
+        "scadenza",
+        "modalita",
+        "stato",
+        "trigger",
+        "inviato_email",
+        "to_operatore_id",
+        "to_email",
+        "to_nome",
+        "destinatario",
+        "subject",
+        "messaggio",
+        "checklist_id",
+        "intervento_id",
+      ];
+      const csv = toCsv(rows, headers);
+      downloadCsv(getLogExportFilename(), csv);
+      showToast("✅ CSV Log Avvisi scaricato", "success");
+    } catch (err) {
+      console.error("Export Log Avvisi failed", err);
+      showToast(`❌ Export Log Avvisi fallito: ${briefError(err)}`, "error");
+    } finally {
+      setExportLogSending(false);
+    }
   }
 
   const checklistById = useMemo(() => {
@@ -4157,6 +4261,21 @@ export default function ClientePage({ params }: { params: any }) {
               }}
             >
               ⬇️ Export Fatturazione
+            </button>
+            <button
+              type="button"
+              onClick={exportLogAvvisiCsv}
+              disabled={exportLogSending}
+              style={{
+                padding: "6px 10px",
+                borderRadius: 8,
+                border: "1px solid #111",
+                background: exportLogSending ? "#e5e7eb" : "white",
+                cursor: exportLogSending ? "default" : "pointer",
+                flex: "1 1 220px",
+              }}
+            >
+              {exportLogSending ? "Export in corso..." : "⬇️ Export Log Avvisi"}
             </button>
           </div>
           <label style={{ marginTop: 8, fontSize: 12, display: "flex", gap: 6, alignItems: "center" }}>
