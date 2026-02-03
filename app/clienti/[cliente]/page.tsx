@@ -609,6 +609,7 @@ type AlertStats = {
   n_email_manual: number;
   last_sent_at: string | null;
   last_recipients: string[];
+  total_recipients: number;
 };
 
 type InterventoFile = {
@@ -827,24 +828,70 @@ export default function ClientePage({ params }: { params: any }) {
       stats && stats.last_recipients.length > 0
         ? `Ultimi destinatari:\n${stats.last_recipients.join("\n")}`
         : "Ultimi destinatari: —";
+    const overflow =
+      stats && stats.total_recipients > 5
+        ? `... +${stats.total_recipients - 5} altri`
+        : null;
     const tooltip = stats
-      ? `Operatori: ${stats.n_operatore}\nEmail manuali: ${stats.n_email_manual}\nUltimo invio: ${lastSent}\n${recipients}`
+      ? `Ultimo invio: ${lastSent}\nOperatori: ${stats.n_operatore}\nEmail manuali: ${stats.n_email_manual}\n${recipients}${overflow ? `\n${overflow}` : ""}`
       : undefined;
     return (
       <span
-        title={tooltip}
-        style={{
-          display: "inline-block",
-          padding: "2px 8px",
-          borderRadius: 999,
-          fontSize: 12,
-          fontWeight: 700,
-          background: "#dbeafe",
-          color: "#1d4ed8",
-          whiteSpace: "nowrap",
-        }}
+        className="group"
+        style={{ display: "inline-block", position: "relative" }}
       >
-        {label}
+        <span
+          title={tooltip}
+          style={{
+            display: "inline-block",
+            padding: "2px 8px",
+            borderRadius: 999,
+            fontSize: 12,
+            fontWeight: 700,
+            background: "#dbeafe",
+            color: "#1d4ed8",
+            whiteSpace: "nowrap",
+            position: "relative",
+          }}
+        >
+          {label}
+        </span>
+        {stats && (
+          <div
+            className="group-hover:block"
+            style={{
+              position: "absolute",
+              top: "calc(100% + 6px)",
+              left: 0,
+              zIndex: 9999,
+              background: "white",
+              border: "1px solid #e5e7eb",
+              borderRadius: 8,
+              padding: "8px 10px",
+              boxShadow: "0 10px 24px rgba(0,0,0,0.12)",
+              minWidth: 220,
+              maxWidth: 320,
+              fontSize: 12,
+              color: "#111",
+              display: "none",
+              whiteSpace: "pre-wrap",
+            }}
+          >
+            <div style={{ fontWeight: 700, marginBottom: 4 }}>Dettagli avvisi</div>
+            <div>Ultimo invio: {lastSent}</div>
+            <div>Operatori: {stats.n_operatore}</div>
+            <div>Email manuali: {stats.n_email_manual}</div>
+            <div style={{ marginTop: 6, fontWeight: 600 }}>Ultimi destinatari</div>
+            {stats.last_recipients.length === 0 ? (
+              <div>—</div>
+            ) : (
+              <div style={{ whiteSpace: "pre-wrap" }}>
+                {stats.last_recipients.slice(0, 5).join("\n")}
+                {overflow ? `\n${overflow}` : ""}
+              </div>
+            )}
+          </div>
+        )}
       </span>
     );
   }
@@ -1529,6 +1576,7 @@ export default function ClientePage({ params }: { params: any }) {
         return;
       }
       const map = new Map<string, AlertStats>();
+      const recipientTotal = new Map<string, Set<string>>();
       for (const row of (data || []) as any[]) {
         const key = alertKeyForLogRow(row);
         const prev = map.get(key) || {
@@ -1537,6 +1585,7 @@ export default function ClientePage({ params }: { params: any }) {
           n_email_manual: 0,
           last_sent_at: null,
           last_recipients: [],
+          total_recipients: 0,
         };
         const next: AlertStats = { ...prev };
         next.n_avvisi += 1;
@@ -1548,14 +1597,18 @@ export default function ClientePage({ params }: { params: any }) {
         if (!next.last_sent_at || String(row.created_at) > next.last_sent_at) {
           next.last_sent_at = row.created_at ?? null;
         }
+        const op = alertOperatori.find((o) => o.id === row.to_operatore_id);
         const recipient =
           row.to_email ||
-          alertOperatori.find((o) => o.id === row.to_operatore_id)?.email ||
-          alertOperatori.find((o) => o.id === row.to_operatore_id)?.nome ||
+          (op?.nome || op?.email ? `👤 ${op?.nome ?? "Operatore"}${op?.email ? ` (${op.email})` : ""}` : null) ||
           null;
         if (recipient) {
           const list = [recipient, ...next.last_recipients.filter((r) => r !== recipient)];
           next.last_recipients = list.slice(0, 5);
+          const set = recipientTotal.get(key) || new Set<string>();
+          set.add(recipient);
+          recipientTotal.set(key, set);
+          next.total_recipients = set.size;
         }
         map.set(key, next);
       }
@@ -3865,7 +3918,7 @@ export default function ClientePage({ params }: { params: any }) {
                     <div>{r.scadenza ? new Date(r.scadenza).toLocaleDateString() : "—"}</div>
                     {renderScadenzaBadge(r.scadenza)}
                   </div>
-                  <div>
+                  <div style={{ overflow: "visible" }}>
                     {stato === "AVVISATO"
                       ? renderAvvisatoBadge(alertStatsMap.get(getAlertKeyForRow(r)) || null)
                       : isTagliando
