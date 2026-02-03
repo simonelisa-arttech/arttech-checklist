@@ -97,6 +97,8 @@ export async function POST(req: Request) {
     const toEmailFromOther = extractEmail(email_manuale) || extractEmail(destinatario);
     const toEmailNorm = toEmailFromBody || toEmailFromOther || null;
     const toEmailOk = toEmailNorm && toEmailNorm.length > 3 ? toEmailNorm : null;
+    const tipoUpper = String(tipo || "").toUpperCase();
+    const tagliandoId = tagliando_id ?? id ?? null;
     const finalSubject =
       subject ||
       `AVVISO ${tipo ?? "RINNOVO"} — ${riferimento ?? ""}`.trim();
@@ -104,6 +106,12 @@ export async function POST(req: Request) {
     if (!toOperatoreId && !toEmailOk) {
       return NextResponse.json(
         { error: "Missing recipient" },
+        { status: 400 }
+      );
+    }
+    if (tipoUpper === "TAGLIANDO" && !tagliandoId) {
+      return NextResponse.json(
+        { error: "Missing tagliando_id for TAGLIANDO" },
         { status: 400 }
       );
     }
@@ -171,30 +179,31 @@ export async function POST(req: Request) {
       emailError = "No recipient email (destinatario/email_manuale missing)";
     }
 
-    let tagliandoUpdated = false;
-    if ((!send_email || emailSent) && (tagliando_id || id || tipo?.toUpperCase() === "TAGLIANDO")) {
-      const tagliandoId = tagliando_id ?? id ?? null;
+    let updated: { tipo: "TAGLIANDO"; id: string; stato: "AVVISATO" } | null = null;
+    if (tipoUpper === "TAGLIANDO" && (!send_email || emailSent)) {
       const updatePayload = {
         stato: "AVVISATO",
         alert_last_sent_at: new Date().toISOString(),
         alert_last_sent_by_operatore: from_operatore_id ?? null,
       };
-      if (tagliandoId) {
-        const { error: updErr } = await supabaseAdmin
-          .from("tagliandi")
-          .update(updatePayload)
-          .eq("id", tagliandoId);
-        if (!updErr) tagliandoUpdated = true;
-      } else if (checklist_id && scadenza && modalita && note != null) {
-        const { error: updErr } = await supabaseAdmin
-          .from("tagliandi")
-          .update(updatePayload)
-          .eq("checklist_id", checklist_id)
-          .eq("scadenza", scadenza)
-          .eq("modalita", modalita)
-          .eq("note", note);
-        if (!updErr) tagliandoUpdated = true;
+      const { data: updData, error: updErr } = await supabaseAdmin
+        .from("tagliandi")
+        .update(updatePayload)
+        .eq("id", tagliandoId)
+        .select("id");
+      if (updErr) {
+        return NextResponse.json(
+          { ok: false, error: `Tagliando update failed: ${updErr.message}` },
+          { status: 500 }
+        );
       }
+      if (!updData || updData.length === 0) {
+        return NextResponse.json(
+          { ok: false, error: "Tagliando not found for id" },
+          { status: 500 }
+        );
+      }
+      updated = { tipo: "TAGLIANDO", id: tagliandoId, stato: "AVVISATO" };
     }
 
     return NextResponse.json({
@@ -204,7 +213,7 @@ export async function POST(req: Request) {
       email_sent: emailSent,
       message: emailSent ? "Email inviata." : "Email non inviata, log salvato.",
       email_error: emailError,
-      updatedStato: tagliandoUpdated ? "AVVISATO" : null,
+      updated,
     });
   } catch (err: any) {
     return NextResponse.json(
