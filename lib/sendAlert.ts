@@ -22,6 +22,7 @@ export type SendAlertPayload = {
   modalita?: string | null;
   note?: string | null;
   tipo?: string | null;
+  trigger?: string | null;
   task_id?: string | null;
   task_template_id?: string | null;
   intervento_id?: string | null;

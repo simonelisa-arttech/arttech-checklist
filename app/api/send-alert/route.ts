@@ -49,6 +49,7 @@ export async function POST(req: Request) {
       note = null,
       tagliando_id = null,
       id = null,
+      trigger = null,
 
       destinatario = null,
       email_manuale = null,
@@ -102,6 +103,7 @@ export async function POST(req: Request) {
     const finalSubject =
       subject ||
       `AVVISO ${tipo ?? "RINNOVO"} — ${riferimento ?? ""}`.trim();
+    const triggerValue = trigger || "manual";
 
     if (!toOperatoreId && !toEmailOk) {
       return NextResponse.json(
@@ -130,6 +132,7 @@ export async function POST(req: Request) {
       subject: finalSubject,
       messaggio: message,
       inviato_email: false,
+      trigger: triggerValue,
     };
 
     const { data: inserted, error: insErr } = await supabaseAdmin

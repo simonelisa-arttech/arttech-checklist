@@ -119,6 +119,24 @@ function renderTagliandoStatoBadge(value?: string | null) {
   if (!raw) return renderBadge("—");
   if (raw === "OK") return renderBadge("ATTIVA");
   if (raw === "SCADUTO") return renderBadge("SCADUTA");
+  if (raw === "AVVISATO") {
+    return (
+      <span
+        style={{
+          display: "inline-block",
+          padding: "2px 8px",
+          borderRadius: 999,
+          fontSize: 12,
+          fontWeight: 700,
+          background: "#dbeafe",
+          color: "#1d4ed8",
+          whiteSpace: "nowrap",
+        }}
+      >
+        {raw}
+      </span>
+    );
+  }
   return renderBadge(raw);
 }
 
@@ -3701,7 +3719,9 @@ export default function ClientePage({ params }: { params: any }) {
               const isLicenza = r.source === "licenze";
               const isExtra = String(r.modalita || "").toUpperCase() === "EXTRA";
               const hasScadenza = Boolean(r.scadenza);
-              const canStage1 = isLicenza ? hasScadenza : stato === "DA_AVVISARE";
+              const canStage1 = isLicenza
+                ? hasScadenza
+                : ["DA_AVVISARE", "AVVISATO"].includes(stato);
               const canConfirm = isTagliando
                 ? true
                 : !["CONFERMATO", "DA_FATTURARE", "FATTURATO", "NON_RINNOVATO"].includes(stato);
@@ -3752,7 +3772,7 @@ export default function ClientePage({ params }: { params: any }) {
                         title={
                           canStage1
                             ? "Invia avviso (stage1)"
-                            : "Disponibile solo per stato DA_AVVISARE"
+                            : "Disponibile solo per stato DA_AVVISARE o AVVISATO"
                         }
                         style={{
                           padding: "4px 8px",
@@ -3765,7 +3785,7 @@ export default function ClientePage({ params }: { params: any }) {
                           opacity: canStage1 ? 1 : 0.5,
                         }}
                       >
-                        Invia avviso
+                        {stato === "AVVISATO" ? "Invia nuovo avviso" : "Invia avviso"}
                       </button>
                       <button
                         type="button"
