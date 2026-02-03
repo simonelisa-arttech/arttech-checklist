@@ -26,7 +26,10 @@ type LicenzaRow = {
   intestatario?: string | null;
   gestore?: string | null;
   fornitore?: string | null;
-  checklists?: { cliente: string | null; nome_checklist: string | null } | null;
+  checklists?:
+    | { cliente: string | null; nome_checklist: string | null }
+    | { cliente: string | null; nome_checklist: string | null }[]
+    | null;
 };
 
 type TagliandoRow = {
@@ -37,7 +40,10 @@ type TagliandoRow = {
   stato: string | null;
   note: string | null;
   modalita: string | null;
-  checklists?: { nome_checklist: string | null } | null;
+  checklists?:
+    | { nome_checklist: string | null }
+    | { nome_checklist: string | null }[]
+    | null;
 };
 
 const REMINDER_DAYS = [60, 30, 15];
@@ -54,6 +60,11 @@ function parseDate(value?: string | null) {
   if (Number.isNaN(dt.getTime())) return null;
   dt.setHours(0, 0, 0, 0);
   return dt;
+}
+
+function firstChecklist<T>(value: T | T[] | null | undefined): T | null {
+  if (!value) return null;
+  return Array.isArray(value) ? value[0] ?? null : value;
 }
 
 function daysUntil(target: Date, today: Date) {
@@ -195,8 +206,9 @@ export async function GET(request: Request) {
       skippedCount += 1;
       continue;
     }
-    const clienteLabel = l.checklists?.cliente ?? "—";
-    const progetto = l.checklists?.nome_checklist ?? l.checklist_id ?? "—";
+    const checklist = firstChecklist(l.checklists);
+    const clienteLabel = checklist?.cliente ?? "—";
+    const progetto = checklist?.nome_checklist ?? l.checklist_id ?? "—";
     const subject = `[Art Tech] Reminder ${diff}gg – ${clienteLabel}`;
     const refParts = [
       l.ref_univoco,
@@ -271,8 +283,9 @@ export async function GET(request: Request) {
       skippedCount += 1;
       continue;
     }
+    const checklist = firstChecklist(t.checklists);
     const clienteLabel = t.cliente ?? "—";
-    const progetto = t.checklists?.nome_checklist ?? t.checklist_id ?? "—";
+    const progetto = checklist?.nome_checklist ?? t.checklist_id ?? "—";
     const subject = `[Art Tech] Reminder ${diff}gg – ${clienteLabel}`;
     const modalita = t.modalita ? `Modalità: ${String(t.modalita).toUpperCase()}` : "";
     const message = [
