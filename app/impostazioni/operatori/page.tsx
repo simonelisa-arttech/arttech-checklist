@@ -382,7 +382,20 @@ export default function OperatoriPage() {
             color: "inherit",
           }}
         >
-          Gestisci checklist operativa
+          Gestisci PROGETTO operativo
+        </Link>
+        <Link
+          href="/impostazioni/preset-avvisi"
+          style={{
+            padding: "8px 12px",
+            borderRadius: 10,
+            border: "1px solid #ddd",
+            background: "white",
+            textDecoration: "none",
+            color: "inherit",
+          }}
+        >
+          Preset avvisi
         </Link>
       </div>
 
