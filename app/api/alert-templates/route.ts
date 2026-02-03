@@ -80,7 +80,7 @@ async function requireAdminOrSupervisor(request: Request, supabase: ReturnType<t
     .from("operatori")
     .select("id, ruolo, attivo")
     .eq("id", operatoreId)
-    .single();
+    .single<{ id: string; ruolo: string | null; attivo: boolean | null }>();
   if (error || !data) {
     return { ok: false, response: NextResponse.json({ error: "Operatore not found" }, { status: 403 }) };
   }
