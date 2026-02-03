@@ -71,7 +71,7 @@ function getSupabaseClient() {
   return createClient(supabaseUrl, supabaseKey);
 }
 
-async function requireAdminOrSupervisor(request: Request, supabase: ReturnType<typeof createClient>) {
+async function requireAdminOrSupervisor(request: Request, supabase: any) {
   const operatoreId = request.headers.get("x-operatore-id");
   if (!operatoreId) {
     return { ok: false, response: NextResponse.json({ error: "Missing operatore id" }, { status: 401 }) };
