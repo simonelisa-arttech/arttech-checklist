@@ -76,12 +76,13 @@ async function requireAdminOrSupervisor(request: Request, supabase: ReturnType<t
   if (!operatoreId) {
     return { ok: false, response: NextResponse.json({ error: "Missing operatore id" }, { status: 401 }) };
   }
-  const { data, error } = await supabase
+  const res = await supabase
     .from("operatori")
     .select("id, ruolo, attivo")
     .eq("id", operatoreId)
-    .single<{ id: string; ruolo: string | null; attivo: boolean | null }>();
-  if (error || !data) {
+    .single();
+  const data = res.data as { id: string; ruolo: string | null; attivo: boolean | null } | null;
+  if (res.error || !data) {
     return { ok: false, response: NextResponse.json({ error: "Operatore not found" }, { status: 403 }) };
   }
   if (data.attivo === false) {
