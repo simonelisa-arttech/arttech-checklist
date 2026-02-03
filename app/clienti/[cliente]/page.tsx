@@ -119,24 +119,6 @@ function renderTagliandoStatoBadge(value?: string | null) {
   if (!raw) return renderBadge("—");
   if (raw === "OK") return renderBadge("ATTIVA");
   if (raw === "SCADUTO") return renderBadge("SCADUTA");
-  if (raw === "AVVISATO") {
-    return (
-      <span
-        style={{
-          display: "inline-block",
-          padding: "2px 8px",
-          borderRadius: 999,
-          fontSize: 12,
-          fontWeight: 700,
-          background: "#dbeafe",
-          color: "#1d4ed8",
-          whiteSpace: "nowrap",
-        }}
-      >
-        {raw}
-      </span>
-    );
-  }
   return renderBadge(raw);
 }
 
@@ -621,6 +603,13 @@ type ScadenzaItem = {
   modalita?: string | null;
 };
 
+type AlertStats = {
+  n_avvisi: number;
+  n_operatore: number;
+  n_email_manual: number;
+  last_sent_at: string | null;
+};
+
 type InterventoFile = {
   id: string;
   intervento_id: string;
@@ -761,6 +750,7 @@ export default function ClientePage({ params }: { params: any }) {
   const [lastAlertByIntervento, setLastAlertByIntervento] = useState<
     Map<string, { toOperatoreId: string | null; toNome: string | null; createdAt: string }>
   >(new Map());
+  const [alertStatsMap, setAlertStatsMap] = useState<Map<string, AlertStats>>(new Map());
   const [toast, setToast] = useState<{ message: string; variant: "success" | "error" } | null>(
     null
   );
@@ -798,6 +788,48 @@ export default function ClientePage({ params }: { params: any }) {
     if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
     setToast({ message, variant });
     toastTimerRef.current = setTimeout(() => setToast(null), duration);
+  }
+
+  function alertKey(tipo?: string | null, checklistId?: string | null, riferimento?: string | null) {
+    const t = String(tipo || "NULL").toUpperCase();
+    const c = checklistId || "NULL";
+    const r = riferimento ?? "NULL";
+    return `${t}::${c}::${r}`;
+  }
+
+  function getAlertKeyForRow(r: ScadenzaItem) {
+    if (r.source === "tagliandi") {
+      return alertKey(r.item_tipo ?? null, r.checklist_id ?? null, r.note ?? null);
+    }
+    return alertKey(r.item_tipo ?? null, r.checklist_id ?? null, r.riferimento ?? null);
+  }
+
+  function renderAvvisatoBadge(stats?: AlertStats | null) {
+    const count = stats?.n_avvisi ?? null;
+    const label = count != null ? `AVVISATO (${count})` : "AVVISATO";
+    const lastSent = stats?.last_sent_at
+      ? new Date(stats.last_sent_at).toLocaleString()
+      : "—";
+    const tooltip = stats
+      ? `Operatori: ${stats.n_operatore}\nEmail manuali: ${stats.n_email_manual}\nUltimo invio: ${lastSent}`
+      : undefined;
+    return (
+      <span
+        title={tooltip}
+        style={{
+          display: "inline-block",
+          padding: "2px 8px",
+          borderRadius: 999,
+          fontSize: 12,
+          fontWeight: 700,
+          background: "#dbeafe",
+          color: "#1d4ed8",
+          whiteSpace: "nowrap",
+        }}
+      >
+        {label}
+      </span>
+    );
   }
 
   function briefError(err: unknown) {
@@ -1458,6 +1490,53 @@ export default function ClientePage({ params }: { params: any }) {
       const diff = Math.ceil((dt.getTime() - today.getTime()) / (24 * 60 * 60 * 1000));
       return diff >= 0 && diff <= 30;
     }).length;
+  }, [rinnoviAll]);
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      const checklistIds = Array.from(
+        new Set(rinnoviAll.map((r) => r.checklist_id).filter(Boolean))
+      ) as string[];
+      if (checklistIds.length === 0) {
+        if (alive) setAlertStatsMap(new Map());
+        return;
+      }
+      const { data, error } = await supabase
+        .from("checklist_alert_log")
+        .select("checklist_id, tipo, riferimento, to_operatore_id, to_email, created_at")
+        .in("checklist_id", checklistIds);
+      if (!alive) return;
+      if (error) {
+        console.error("Errore lettura alert log scadenze", error);
+        return;
+      }
+      const map = new Map<string, AlertStats>();
+      for (const row of (data || []) as any[]) {
+        const key = alertKey(row.tipo ?? null, row.checklist_id ?? null, row.riferimento ?? null);
+        const prev = map.get(key) || {
+          n_avvisi: 0,
+          n_operatore: 0,
+          n_email_manual: 0,
+          last_sent_at: null,
+        };
+        const next: AlertStats = { ...prev };
+        next.n_avvisi += 1;
+        if (row.to_operatore_id) {
+          next.n_operatore += 1;
+        } else if (row.to_email) {
+          next.n_email_manual += 1;
+        }
+        if (!next.last_sent_at || String(row.created_at) > next.last_sent_at) {
+          next.last_sent_at = row.created_at ?? null;
+        }
+        map.set(key, next);
+      }
+      setAlertStatsMap(map);
+    })();
+    return () => {
+      alive = false;
+    };
   }, [rinnoviAll]);
 
   const exportRangeLabel = useMemo(() => {
@@ -3760,7 +3839,11 @@ export default function ClientePage({ params }: { params: any }) {
                     {renderScadenzaBadge(r.scadenza)}
                   </div>
                   <div>
-                    {isTagliando ? renderTagliandoStatoBadge(r.stato) : renderRinnovoStatoBadge(r.stato)}
+                    {stato === "AVVISATO"
+                      ? renderAvvisatoBadge(alertStatsMap.get(getAlertKeyForRow(r)) || null)
+                      : isTagliando
+                      ? renderTagliandoStatoBadge(r.stato)
+                      : renderRinnovoStatoBadge(r.stato)}
                   </div>
                   <div>{isTagliando ? renderModalitaBadge(r.modalita) : "—"}</div>
                   <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
