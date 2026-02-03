@@ -17,6 +17,11 @@ export type SendAlertPayload = {
   from_operatore_id?: string | null;
   cliente?: string | null;
   checklist_id?: string | null;
+  tagliando_id?: string | null;
+  scadenza?: string | null;
+  modalita?: string | null;
+  note?: string | null;
+  tipo?: string | null;
   task_id?: string | null;
   task_template_id?: string | null;
   intervento_id?: string | null;

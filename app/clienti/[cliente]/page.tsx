@@ -593,6 +593,7 @@ type ScadenzaItem = {
   item_tipo?: string | null;
   riferimento?: string | null;
   descrizione?: string | null;
+  note?: string | null;
   checklist_id?: string | null;
   scadenza?: string | null;
   stato?: string | null;
@@ -1375,6 +1376,7 @@ export default function ClientePage({ params }: { params: any }) {
       item_tipo: "TAGLIANDO",
       riferimento: t.note || "Tagliando annuale",
       descrizione: t.note ?? null,
+      note: t.note ?? null,
       checklist_id: t.checklist_id ?? null,
       scadenza: t.scadenza ?? null,
       stato: t.stato ?? null,
@@ -2429,6 +2431,8 @@ export default function ClientePage({ params }: { params: any }) {
       </div>
     `;
     const message = (rinnoviAlertMsg || "").trim() || rinnoviAlertMsg || "";
+    const singleTagliando =
+      list.length === 1 && list[0]?.source === "tagliandi" ? list[0] : null;
     try {
       console.debug("send-alert payload (rinnovi)", {
         canale,
@@ -2447,6 +2451,11 @@ export default function ClientePage({ params }: { params: any }) {
         to_operatore_id: rinnoviAlertDestMode === "operatore" ? rinnoviAlertToOperatoreId : null,
         from_operatore_id: opId,
         checklist_id: checklistId,
+        tagliando_id: singleTagliando?.id ?? null,
+        scadenza: singleTagliando?.scadenza ?? null,
+        modalita: singleTagliando?.modalita ?? null,
+        note: singleTagliando?.note ?? null,
+        tipo: singleTagliando ? "TAGLIANDO" : null,
         send_email: rinnoviAlertSendEmail,
       });
     } catch (err) {
@@ -2472,6 +2481,7 @@ export default function ClientePage({ params }: { params: any }) {
         await supabase
           .from("tagliandi")
           .update({
+            stato: "AVVISATO",
             alert_last_sent_at: nowIso,
             alert_last_sent_by_operatore:
               rinnoviAlertDestMode === "operatore" ? rinnoviAlertToOperatoreId : null,
@@ -2512,6 +2522,7 @@ export default function ClientePage({ params }: { params: any }) {
         await supabase
           .from("tagliandi")
           .update({
+            stato: "AVVISATO",
             alert_last_sent_at: nowIso,
             alert_last_sent_by_operatore:
               rinnoviAlertDestMode === "operatore" ? rinnoviAlertToOperatoreId : null,
@@ -2543,6 +2554,20 @@ export default function ClientePage({ params }: { params: any }) {
     const esitoLabel = rinnoviAlertSendEmail ? "✅ Email inviata" : "✅ Avviso registrato";
     showToast(esitoLabel, "success");
     setRinnoviNotice(`${esitoLabel} — ${recipientLabel}`);
+    if (tagliandiIds.length > 0) {
+      setTagliandi((prev) =>
+        prev.map((t) =>
+          tagliandiIds.includes(t.id)
+            ? {
+                ...t,
+                stato: "AVVISATO",
+                alert_last_sent_at: nowIso,
+                alert_last_sent_by_operatore: opId ?? t.alert_last_sent_by_operatore,
+              }
+            : t
+        )
+      );
+    }
     setRinnoviAlertSending(false);
     setTimeout(() => setRinnoviAlertOpen(false), 800);
     setRinnoviAlertSendEmail(true);
