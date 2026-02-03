@@ -801,8 +801,8 @@ export default function ClientePage({ params }: { params: any }) {
   function alertKeyForLogRow(row: any) {
     const tipo = String(row?.tipo || "LICENZA").toUpperCase();
     const checklistId = row?.checklist_id ?? null;
-    if (tipo === "TAGLIANDO") {
-      return `${tipo}::${checklistId || "NULL"}::TAGLIANDO`;
+    if (tipo === "TAGLIANDO" || tipo === "LICENZA") {
+      return `${tipo}::${checklistId || "NULL"}::${tipo}`;
     }
     return alertKey(tipo, checklistId, row?.riferimento ?? null);
   }
@@ -810,6 +810,9 @@ export default function ClientePage({ params }: { params: any }) {
   function getAlertKeyForRow(r: ScadenzaItem) {
     if (r.source === "tagliandi") {
       return `${String(r.item_tipo || "TAGLIANDO").toUpperCase()}::${r.checklist_id || "NULL"}::TAGLIANDO`;
+    }
+    if (r.source === "licenze") {
+      return `LICENZA::${r.checklist_id || "NULL"}::LICENZA`;
     }
     return alertKey(r.item_tipo ?? null, r.checklist_id ?? null, r.riferimento ?? null);
   }
