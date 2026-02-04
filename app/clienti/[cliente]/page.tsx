@@ -2748,6 +2748,7 @@ export default function ClientePage({ params }: { params: any }) {
     const hasTagliandi = list.some((r) => r.source === "tagliandi");
     const hasRinnovi = list.some((r) => r.source === "rinnovi");
     const hasLicenze = list.some((r) => r.source === "licenze");
+    const currentTipo = hasTagliandi && !hasLicenze ? "TAGLIANDO" : hasLicenze ? "LICENZA" : "GENERICO";
     const canale =
       rinnoviAlertStage === "stage1"
         ? hasTagliandi && !hasRinnovi && !hasLicenze
@@ -2816,6 +2817,7 @@ export default function ClientePage({ params }: { params: any }) {
             checklist_id: checklistId,
             tagliando_id: t.tagliando_id ?? t.id ?? null,
             tipo: "TAGLIANDO",
+            trigger: "MANUALE",
             send_email: i === 0 ? rinnoviAlertSendEmail : false,
           });
           if (res?.updated?.id) updatedIds.push(res.updated.id);
@@ -2846,6 +2848,8 @@ export default function ClientePage({ params }: { params: any }) {
           to_operatore_id: rinnoviAlertDestMode === "operatore" ? rinnoviAlertToOperatoreId : null,
           from_operatore_id: opId,
           checklist_id: checklistId,
+          tipo: currentTipo,
+          trigger: "MANUALE",
           send_email: rinnoviAlertSendEmail,
         });
       }
@@ -3201,6 +3205,8 @@ export default function ClientePage({ params }: { params: any }) {
         from_operatore_id: currentOperatoreId,
         cliente,
         checklist_id: licenseAlertItem.checklist_id ?? null,
+        tipo: "LICENZA",
+        trigger: "MANUALE",
         meta: { license_id: licenseAlertItem.id },
         send_email: licenseAlertSendEmail,
       });
@@ -3299,6 +3305,8 @@ export default function ClientePage({ params }: { params: any }) {
         to_operatore_id: bulkToOperatoreId,
         from_operatore_id: opId,
         checklist_id: checklistId,
+        tipo: "GENERICO",
+        trigger: "MANUALE",
         send_email: bulkSendEmail,
       });
     } catch (err) {
@@ -3461,6 +3469,8 @@ export default function ClientePage({ params }: { params: any }) {
         from_operatore_id: opId,
         checklist_id: checklistId,
         intervento_id: alertInterventoId,
+        tipo: "GENERICO",
+        trigger: "MANUALE",
         send_email: alertSendEmail,
       });
     } catch (err) {
@@ -5941,7 +5951,9 @@ export default function ClientePage({ params }: { params: any }) {
                 const hasLicenze = rinnoviAlertItems.some((r) => r.source === "licenze");
                 const currentTipo = hasTagliandi && !hasLicenze ? "TAGLIANDO" : hasLicenze ? "LICENZA" : "GENERICO";
                 const presets = alertTemplates.filter((t) => {
-                  const tipo = String(t.tipo || "GENERICO").toUpperCase();
+                  if (t.attivo !== true) return false;
+                  if (String(t.trigger || "") !== "MANUALE") return false;
+                  const tipo = String(t.tipo || "");
                   return tipo === currentTipo || tipo === "GENERICO";
                 });
                 if (presets.length === 0) return null;

@@ -112,7 +112,7 @@ export async function POST(req: Request) {
     const finalSubject =
       subject ||
       `AVVISO ${tipo ?? "RINNOVO"} — ${riferimento ?? ""}`.trim();
-    const triggerValue = trigger || "manual";
+    const triggerValue = String(trigger || "MANUALE").trim().toUpperCase();
 
     if (!toOperatoreId && !toEmailOk) {
       return NextResponse.json(
