@@ -14,6 +14,9 @@ type AlertTemplatePayload = {
   attivo: boolean;
 };
 
+const ALLOWED_TIPI = new Set(["LICENZA", "TAGLIANDO", "GENERICO"]);
+const ALLOWED_TRIGGER = new Set(["MANUALE", "60GG", "30GG", "15GG"]);
+
 type RateLimitEntry = { count: number; resetAt: number };
 const rateLimitMap = new Map<string, RateLimitEntry>();
 
@@ -122,6 +125,12 @@ export async function POST(request: Request) {
   if (!payload.codice || !payload.titolo) {
     return NextResponse.json({ error: "Missing codice or titolo" }, { status: 400 });
   }
+  if (!payload.tipo || !ALLOWED_TIPI.has(payload.tipo)) {
+    return NextResponse.json({ error: "Invalid tipo" }, { status: 400 });
+  }
+  if (!payload.trigger || !ALLOWED_TRIGGER.has(payload.trigger)) {
+    return NextResponse.json({ error: "Invalid trigger" }, { status: 400 });
+  }
 
   const { data, error } = await supabase
     .from("alert_message_templates")
@@ -166,6 +175,12 @@ export async function PATCH(request: Request) {
 
   if (!payload.codice || !payload.titolo) {
     return NextResponse.json({ error: "Missing codice or titolo" }, { status: 400 });
+  }
+  if (!payload.tipo || !ALLOWED_TIPI.has(payload.tipo)) {
+    return NextResponse.json({ error: "Invalid tipo" }, { status: 400 });
+  }
+  if (!payload.trigger || !ALLOWED_TRIGGER.has(payload.trigger)) {
+    return NextResponse.json({ error: "Invalid trigger" }, { status: 400 });
   }
 
   const { data, error } = await supabase

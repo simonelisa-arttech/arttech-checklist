@@ -39,6 +39,9 @@ const EMPTY_TEMPLATE: AlertTemplate = {
   updated_at: null,
 };
 
+const TIPO_OPTIONS = ["LICENZA", "TAGLIANDO", "GENERICO"];
+const TRIGGER_OPTIONS = ["MANUALE", "60GG", "30GG", "15GG"];
+
 export default function PresetAvvisiPage() {
   if (!isSupabaseConfigured) {
     return <ConfigMancante />;
@@ -117,21 +120,8 @@ export default function PresetAvvisiPage() {
     }
   }, [currentOperatoreId]);
 
-  const tipoOptions = useMemo(() => {
-    const set = new Set<string>();
-    templates.forEach((t) => {
-      if (t.tipo) set.add(String(t.tipo));
-    });
-    return Array.from(set).sort();
-  }, [templates]);
-
-  const triggerOptions = useMemo(() => {
-    const set = new Set<string>();
-    templates.forEach((t) => {
-      if (t.trigger) set.add(String(t.trigger));
-    });
-    return Array.from(set).sort();
-  }, [templates]);
+  const tipoOptions = useMemo(() => TIPO_OPTIONS, []);
+  const triggerOptions = useMemo(() => TRIGGER_OPTIONS, []);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -548,21 +538,31 @@ export default function PresetAvvisiPage() {
               <div style={{ display: "grid", gap: 6, gridTemplateColumns: "1fr 1fr" }}>
                 <div style={{ display: "grid", gap: 6 }}>
                   <label style={{ fontSize: 12, fontWeight: 700 }}>Tipo</label>
-                  <input
-                    value={modal.data.tipo || ""}
+                  <select
+                    value={modal.data.tipo || "GENERICO"}
                     onChange={(e) => updateModal({ tipo: e.target.value })}
                     style={{ width: "100%", padding: 8 }}
-                    placeholder="LICENZA / TAGLIANDO / GENERICO"
-                  />
+                  >
+                    {TIPO_OPTIONS.map((t) => (
+                      <option key={t} value={t}>
+                        {t}
+                      </option>
+                    ))}
+                  </select>
                 </div>
                 <div style={{ display: "grid", gap: 6 }}>
                   <label style={{ fontSize: 12, fontWeight: 700 }}>Trigger</label>
-                  <input
-                    value={modal.data.trigger || ""}
+                  <select
+                    value={modal.data.trigger || "MANUALE"}
                     onChange={(e) => updateModal({ trigger: e.target.value })}
                     style={{ width: "100%", padding: 8 }}
-                    placeholder="MANUALE / AUTO_60 / AUTO_30 / AUTO_15"
-                  />
+                  >
+                    {TRIGGER_OPTIONS.map((t) => (
+                      <option key={t} value={t}>
+                        {t}
+                      </option>
+                    ))}
+                  </select>
                 </div>
               </div>
               <div style={{ display: "grid", gap: 6 }}>
