@@ -15,11 +15,11 @@ const SAAS_PIANI = [
   { code: "SAS-PR12", label: "CARE PREMIUM (ASSISTENZA AVANZATA / H12)" },
   { code: "SAS-PR24", label: "CARE PREMIUM (ASSISTENZA AVANZATA / H24)" },
   { code: "SAS-PR36", label: "CARE PREMIUM (ASSISTENZA AVANZATA / H36)" },
-  { code: "SAS-UL4", label: "CARE ULTRA (ASSISTENZA PRIORITARIA / H4)" },
-  { code: "SAS-UL8", label: "CARE ULTRA (ASSISTENZA PRIORITARIA / H8A)" },
-  { code: "SAS-UL12", label: "CARE ULTRA (ASSISTENZA PRIORITARIA / H12A)" },
-  { code: "SAS-UL24", label: "CARE ULTRA (ASSISTENZA PRIORITARIA / H24A)" },
-  { code: "SAS-UL36", label: "CARE ULTRA (ASSISTENZA PRIORITARIA / H36)" },
+  { code: "SAS-UL4", label: "CARE ULTRA (ASSISTENZA PRIORITARIA)" },
+  { code: "SAS-UL8", label: "CARE ULTRA (ASSISTENZA PRIORITARIA)" },
+  { code: "SAS-UL12", label: "CARE ULTRA (ASSISTENZA PRIORITARIA)" },
+  { code: "SAS-UL24", label: "CARE ULTRA (ASSISTENZA PRIORITARIA)" },
+  { code: "SAS-UL36", label: "CARE ULTRA (ASSISTENZA PRIORITARIA)" },
   { code: "SAS-EVTF", label: "ART TECH EVENT (assistenza remota durante eventi)" },
   { code: "SAS-EVTO", label: "ART TECH EVENT (assistenza onsite durante eventi)" },
   { code: "SAS-MON", label: "MONITORAGGIO REMOTO & ALERT" },
@@ -40,6 +40,7 @@ type ChecklistItem = {
   qty: string;
   note: string;
   search?: string;
+  categoria_filter?: string;
 };
 
 type DraftLicenza = {
@@ -53,8 +54,17 @@ type CatalogItem = {
   codice: string | null;
   descrizione: string | null;
   tipo: string | null;
+  categoria?: string | null;
   attivo: boolean;
 };
+
+const CATEGORIE_VOCI = [
+  "Elettronica",
+  "SaaS/Servizi",
+  "Prodotti",
+  "Strutture",
+  "Ricambi",
+];
 
 function parseLocalDay(value?: string | null): Date | null {
   if (!value) return null;
@@ -189,7 +199,7 @@ export default function NuovaChecklistPage() {
   const [ultraInclusi, setUltraInclusi] = useState<string>("");
 
   const [rows, setRows] = useState<ChecklistItem[]>([
-    { codice: "", descrizione: "", qty: "", note: "", search: "" },
+    { codice: "", descrizione: "", qty: "", note: "", search: "", categoria_filter: "" },
   ]);
   const [draftLicenze, setDraftLicenze] = useState<DraftLicenza[]>([]);
   const [newLicenza, setNewLicenza] = useState<DraftLicenza>({
@@ -223,7 +233,7 @@ export default function NuovaChecklistPage() {
     (async () => {
       const { data: catalogItems, error: catalogErr } = await supabase
         .from("catalog_items")
-        .select("id, codice, descrizione, tipo, attivo")
+        .select("id, codice, descrizione, tipo, categoria, attivo")
         .eq("attivo", true)
         .order("descrizione", { ascending: true });
 
@@ -238,7 +248,7 @@ export default function NuovaChecklistPage() {
   function addRow() {
     setRows((prev) => [
       ...prev,
-      { codice: "", descrizione: "", qty: "", note: "", search: "" },
+      { codice: "", descrizione: "", qty: "", note: "", search: "", categoria_filter: "" },
     ]);
   }
 
@@ -954,13 +964,28 @@ export default function NuovaChecklistPage() {
 
                 <label>
                   Descrizione<br />
-                  <input
-                    type="text"
-                    placeholder="Cerca per codice o descrizione (es. SRV-, TEC-SC, LED...)"
-                    value={r.search ?? ""}
-                    onChange={(e) => updateRowFields(idx, { search: e.target.value })}
-                    style={{ width: "100%", padding: 10, marginBottom: 8 }}
-                  />
+                  <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+                    <input
+                      type="text"
+                      placeholder="Cerca per codice o descrizione (es. SRV-, TEC-SC, LED...)"
+                      value={r.search ?? ""}
+                      onChange={(e) => updateRowFields(idx, { search: e.target.value })}
+                      style={{ flex: 1, padding: 10 }}
+                    />
+                    <select
+                      value={r.categoria_filter ?? ""}
+                      onChange={(e) => updateRowFields(idx, { categoria_filter: e.target.value })}
+                      style={{ padding: 10, minWidth: 160 }}
+                    >
+                      <option value="">Tutte le categorie</option>
+                      {CATEGORIE_VOCI.map((c) => (
+                        <option key={c} value={c}>
+                          {c}
+                        </option>
+                      ))}
+                      <option value="__EMPTY__">(vuoto)</option>
+                    </select>
+                  </div>
                   <select
                     value={r.descrizione ?? ""}
                     onChange={(e) => {
@@ -992,6 +1017,14 @@ export default function NuovaChecklistPage() {
                         const descr = (item.descrizione ?? "").toLowerCase();
                         const code = (item.codice ?? "").toLowerCase();
                         return `${code} ${descr}`.includes(s);
+                      })
+                      .filter((item) => {
+                        const cat = (r.categoria_filter ?? "").trim();
+                        if (!cat) return true;
+                        if (cat === "__EMPTY__") {
+                          return !item.categoria || item.categoria.trim() === "";
+                        }
+                        return String(item.categoria || "") === cat;
                       })
                       .slice(0, 200)
                       .map((item) => (

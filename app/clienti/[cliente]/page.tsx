@@ -589,7 +589,7 @@ type TagliandoRow = {
 
 type ScadenzaItem = {
   id: string;
-  source: "rinnovi" | "tagliandi" | "licenze";
+  source: "rinnovi" | "tagliandi" | "licenze" | "saas" | "garanzie";
   tagliando_id?: string | null;
   item_tipo?: string | null;
   riferimento?: string | null;
@@ -601,6 +601,18 @@ type ScadenzaItem = {
   proforma?: string | null;
   cod_magazzino?: string | null;
   modalita?: string | null;
+};
+
+type EditScadenzaForm = {
+  tipo: "LICENZA" | "TAGLIANDO" | "SAAS" | "GARANZIA" | "RINNOVO";
+  scadenza: string;
+  stato: string;
+  modalita: string;
+  note: string;
+  fornitore: string;
+  intestato_a: string;
+  descrizione: string;
+  saas_piano: string;
 };
 
 type AlertStats = {
@@ -711,6 +723,13 @@ export default function ClientePage({ params }: { params: any }) {
   const [rinnoviAlertErr, setRinnoviAlertErr] = useState<string | null>(null);
   const [rinnoviAlertOk, setRinnoviAlertOk] = useState<string | null>(null);
   const [rinnoviNotice, setRinnoviNotice] = useState<string | null>(null);
+  const [editScadenzaOpen, setEditScadenzaOpen] = useState(false);
+  const [editScadenzaItem, setEditScadenzaItem] = useState<ScadenzaItem | null>(null);
+  const [editScadenzaForm, setEditScadenzaForm] = useState<EditScadenzaForm | null>(
+    null
+  );
+  const [editScadenzaSaving, setEditScadenzaSaving] = useState(false);
+  const [editScadenzaErr, setEditScadenzaErr] = useState<string | null>(null);
   const [alertTemplates, setAlertTemplates] = useState<AlertMessageTemplate[]>([]);
   const [selectedPresetId, setSelectedPresetId] = useState<string>("");
   const [tagliandi, setTagliandi] = useState<TagliandoRow[]>([]);
@@ -735,6 +754,9 @@ export default function ClientePage({ params }: { params: any }) {
   const [interventoFilesById, setInterventoFilesById] = useState<Map<string, InterventoFile[]>>(
     new Map()
   );
+  const [proformaDocsByProforma, setProformaDocsByProforma] = useState<
+    Map<string, { filename: string; storage_path: string }>
+  >(new Map());
   const [currentOperatoreId, setCurrentOperatoreId] = useState<string | null>(null);
   const [interventoUploadFiles, setInterventoUploadFiles] = useState<Record<string, File[]>>(
     {}
@@ -986,6 +1008,36 @@ export default function ClientePage({ params }: { params: any }) {
       const list = (cls || []) as ChecklistRow[];
       setChecklists(list);
       const checklistIds = list.map((c) => c.id).filter(Boolean);
+      if (checklistIds.length > 0) {
+        const { data: docsData, error: docsErr } = await supabase
+          .from("checklist_documents")
+          .select("checklist_id, tipo, filename, storage_path, uploaded_at")
+          .in("checklist_id", checklistIds)
+          .order("uploaded_at", { ascending: false });
+        if (!docsErr) {
+          const byChecklist = new Map<string, string>();
+          for (const c of list) {
+            if (c.id) {
+              const p = (c.proforma || "").trim();
+              if (p) byChecklist.set(c.id, p);
+            }
+          }
+          const map = new Map<string, { filename: string; storage_path: string }>();
+          for (const d of (docsData || []) as any[]) {
+            const tipo = String(d.tipo || "").toUpperCase();
+            if (tipo !== "PROFORMA" && tipo !== "FATTURA_PROFORMA") continue;
+            const p = d.checklist_id ? byChecklist.get(d.checklist_id) : null;
+            if (!p) continue;
+            if (!map.has(p) && d.storage_path) {
+              map.set(p, {
+                filename: d.filename || "proforma",
+                storage_path: d.storage_path,
+              });
+            }
+          }
+          setProformaDocsByProforma(map);
+        }
+      }
       if (checklistIds.length === 0) {
         setLicenze([]);
         setLicenzeError(null);
@@ -1489,6 +1541,17 @@ export default function ClientePage({ params }: { params: any }) {
     window.open(data.signedUrl, "_blank");
   }
 
+  async function openProformaDoc(doc: { filename: string; storage_path: string }) {
+    const { data, error: urlErr } = await supabase.storage
+      .from("checklist-documents")
+      .createSignedUrl(doc.storage_path, 60 * 5);
+    if (urlErr || !data?.signedUrl) {
+      setInterventiError("Errore apertura proforma: " + (urlErr?.message || "URL non disponibile"));
+      return;
+    }
+    window.open(data.signedUrl, "_blank");
+  }
+
   async function deleteInterventoFile(file: InterventoFile) {
     const ok = window.confirm("Eliminare questo file?");
     if (!ok) return;
@@ -1590,10 +1653,32 @@ export default function ClientePage({ params }: { params: any }) {
       stato: l.status ?? (l.scadenza ? "DA_AVVISARE" : null),
       modalita: null,
     }));
-    return [...rinnoviMapped, ...tagliandiMapped, ...licenzeMapped].sort((a, b) =>
-      String(a.scadenza || "").localeCompare(String(b.scadenza || ""))
+    const saasMapped = saasPerImpiantoRows.map((c) => ({
+      id: `saas:${c.id}`,
+      source: "saas" as const,
+      item_tipo: "SAAS",
+      riferimento: c.saas_piano ?? "SaaS",
+      descrizione: c.saas_note ?? null,
+      checklist_id: c.id,
+      scadenza: c.saas_scadenza ?? null,
+      stato: c.saas_scadenza ? getExpiryStatus(c.saas_scadenza) : null,
+      modalita: null,
+    }));
+    const garanzieMapped = garanzieRows.map((c) => ({
+      id: `garanzia:${c.id}`,
+      source: "garanzie" as const,
+      item_tipo: "GARANZIA",
+      riferimento: "Garanzia impianto",
+      descrizione: null,
+      checklist_id: c.id,
+      scadenza: c.garanzia_scadenza ?? null,
+      stato: c.garanzia_scadenza ? getExpiryStatus(c.garanzia_scadenza) : null,
+      modalita: null,
+    }));
+    return [...rinnoviMapped, ...tagliandiMapped, ...licenzeMapped, ...saasMapped, ...garanzieMapped].sort(
+      (a, b) => String(a.scadenza || "").localeCompare(String(b.scadenza || ""))
     );
-  }, [rinnovi, tagliandi, licenze]);
+  }, [rinnovi, tagliandi, licenze, saasPerImpiantoRows, garanzieRows]);
 
   const filteredRinnovi = useMemo(() => {
     let rows = rinnoviAll;
@@ -2644,6 +2729,215 @@ export default function ClientePage({ params }: { params: any }) {
       return false;
     }
     return true;
+  }
+
+  const LICENZA_STATI = [
+    "DA_AVVISARE",
+    "AVVISATO",
+    "CONFERMATO",
+    "DA_FATTURARE",
+    "FATTURATO",
+    "NON_RINNOVATO",
+    "ANNULLATO",
+  ];
+  const TAGLIANDO_STATI = ["DA_AVVISARE", "AVVISATO", "OK", "DA_FATTURARE", "FATTURATO", "NON_RINNOVATO"];
+  const RINNOVO_STATI = ["DA_AVVISARE", "AVVISATO", "CONFERMATO", "DA_FATTURARE", "FATTURATO", "NON_RINNOVATO"];
+  const TAGLIANDO_MODALITA = ["INCLUSO", "EXTRA", "AUTORIZZATO_CLIENTE"];
+
+  function openEditScadenza(r: ScadenzaItem) {
+    setEditScadenzaErr(null);
+    let form: EditScadenzaForm = {
+      tipo: "RINNOVO",
+      scadenza: r.scadenza ?? "",
+      stato: String(r.stato || "").toUpperCase(),
+      modalita: String(r.modalita || ""),
+      note: r.note ?? "",
+      fornitore: "",
+      intestato_a: "",
+      descrizione: r.descrizione ?? "",
+      saas_piano: "",
+    };
+    if (r.source === "licenze") {
+      const l = licenze.find((x) => x.id === r.id);
+      form = {
+        ...form,
+        tipo: "LICENZA",
+        scadenza: l?.scadenza ?? r.scadenza ?? "",
+        stato: String(l?.status || l?.stato || r.stato || "").toUpperCase(),
+        note: l?.note ?? "",
+        fornitore: l?.fornitore ?? "",
+        intestato_a: l?.intestata_a ?? "",
+      };
+    } else if (r.source === "tagliandi") {
+      const t = tagliandi.find((x) => x.id === r.id);
+      form = {
+        ...form,
+        tipo: "TAGLIANDO",
+        scadenza: t?.scadenza ?? r.scadenza ?? "",
+        stato: String(t?.stato || r.stato || "").toUpperCase(),
+        modalita: String(t?.modalita || r.modalita || ""),
+        note: t?.note ?? "",
+      };
+    } else if (r.source === "saas") {
+      const c = r.checklist_id ? checklistById.get(r.checklist_id) : null;
+      form = {
+        ...form,
+        tipo: "SAAS",
+        scadenza: c?.saas_scadenza ?? r.scadenza ?? "",
+        stato: "",
+        note: c?.saas_note ?? "",
+        saas_piano: c?.saas_piano ?? "",
+      };
+    } else if (r.source === "garanzie") {
+      const c = r.checklist_id ? checklistById.get(r.checklist_id) : null;
+      form = {
+        ...form,
+        tipo: "GARANZIA",
+        scadenza: c?.garanzia_scadenza ?? r.scadenza ?? "",
+        stato: "",
+        note: "",
+      };
+    } else {
+      const rr = rinnovi.find((x) => x.id === r.id);
+      form = {
+        ...form,
+        tipo: "RINNOVO",
+        scadenza: rr?.scadenza ?? r.scadenza ?? "",
+        stato: String(rr?.stato || r.stato || "").toUpperCase(),
+        descrizione: rr?.descrizione ?? r.descrizione ?? "",
+      };
+    }
+    setEditScadenzaItem(r);
+    setEditScadenzaForm(form);
+    setEditScadenzaOpen(true);
+  }
+
+  async function saveEditScadenza() {
+    if (!editScadenzaItem || !editScadenzaForm) return;
+    setEditScadenzaSaving(true);
+    setEditScadenzaErr(null);
+    try {
+      if (editScadenzaForm.tipo === "LICENZA") {
+        const { error } = await supabase
+          .from("licenses")
+          .update({
+            scadenza: editScadenzaForm.scadenza || null,
+            status: editScadenzaForm.stato || null,
+            note: editScadenzaForm.note || null,
+            fornitore: editScadenzaForm.fornitore || null,
+            intestata_a: editScadenzaForm.intestato_a || null,
+          })
+          .eq("id", editScadenzaItem.id);
+        if (error) throw new Error(error.message);
+        setLicenze((prev) =>
+          prev.map((l) =>
+            l.id === editScadenzaItem.id
+              ? {
+                  ...l,
+                  scadenza: editScadenzaForm.scadenza || null,
+                  status: editScadenzaForm.stato || null,
+                  note: editScadenzaForm.note || null,
+                  fornitore: editScadenzaForm.fornitore || null,
+                  intestata_a: editScadenzaForm.intestato_a || null,
+                }
+              : l
+          )
+        );
+      } else if (editScadenzaForm.tipo === "TAGLIANDO") {
+        const { error } = await supabase
+          .from("tagliandi")
+          .update({
+            scadenza: editScadenzaForm.scadenza || null,
+            stato: editScadenzaForm.stato || null,
+            modalita: editScadenzaForm.modalita || null,
+            note: editScadenzaForm.note || null,
+          })
+          .eq("id", editScadenzaItem.id);
+        if (error) throw new Error(error.message);
+        setTagliandi((prev) =>
+          prev.map((t) =>
+            t.id === editScadenzaItem.id
+              ? {
+                  ...t,
+                  scadenza: editScadenzaForm.scadenza || null,
+                  stato: editScadenzaForm.stato || null,
+                  modalita: editScadenzaForm.modalita || null,
+                  note: editScadenzaForm.note || null,
+                }
+              : t
+          )
+        );
+      } else if (editScadenzaForm.tipo === "SAAS") {
+        const checklistId = editScadenzaItem.checklist_id;
+        if (!checklistId) throw new Error("Checklist non trovata");
+        const { error } = await supabase
+          .from("checklists")
+          .update({
+            saas_scadenza: editScadenzaForm.scadenza || null,
+            saas_note: editScadenzaForm.note || null,
+          })
+          .eq("id", checklistId);
+        if (error) throw new Error(error.message);
+        setChecklists((prev) =>
+          prev.map((c) =>
+            c.id === checklistId
+              ? {
+                  ...c,
+                  saas_scadenza: editScadenzaForm.scadenza || null,
+                  saas_note: editScadenzaForm.note || null,
+                }
+              : c
+          )
+        );
+      } else if (editScadenzaForm.tipo === "GARANZIA") {
+        const checklistId = editScadenzaItem.checklist_id;
+        if (!checklistId) throw new Error("Checklist non trovata");
+        const { error } = await supabase
+          .from("checklists")
+          .update({
+            garanzia_scadenza: editScadenzaForm.scadenza || null,
+          })
+          .eq("id", checklistId);
+        if (error) throw new Error(error.message);
+        setChecklists((prev) =>
+          prev.map((c) =>
+            c.id === checklistId
+              ? {
+                  ...c,
+                  garanzia_scadenza: editScadenzaForm.scadenza || null,
+                }
+              : c
+          )
+        );
+      } else {
+        const ok = await updateRinnovi([editScadenzaItem.id], {
+          scadenza: editScadenzaForm.scadenza || null,
+          stato: editScadenzaForm.stato || null,
+          descrizione: editScadenzaForm.descrizione || null,
+        });
+        if (!ok) throw new Error("Errore aggiornamento rinnovo");
+        setRinnovi((prev) =>
+          prev.map((r) =>
+            r.id === editScadenzaItem.id
+              ? {
+                  ...r,
+                  scadenza: editScadenzaForm.scadenza || null,
+                  stato: editScadenzaForm.stato || null,
+                  descrizione: editScadenzaForm.descrizione || null,
+                }
+              : r
+          )
+        );
+      }
+      showToast("✅ Modifica salvata", "success");
+      setEditScadenzaOpen(false);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err ?? "Errore salvataggio");
+      setEditScadenzaErr(msg);
+      showToast(`❌ Salvataggio fallito: ${briefError(err)}`, "error");
+    } finally {
+      setEditScadenzaSaving(false);
+    }
   }
 
   function getRinnoviStageList(stage: "stage1" | "stage2", onlyWithin30Days = false) {
@@ -3837,7 +4131,8 @@ export default function ClientePage({ params }: { params: any }) {
               <div
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "1.6fr 0.8fr 0.9fr 0.9fr 0.9fr 2fr 2fr 180px",
+                  gridTemplateColumns:
+                    "1.6fr 0.8fr 0.9fr 0.9fr 1fr 1fr 2fr 2fr 180px",
                   padding: "10px 12px",
                   fontWeight: 800,
                   background: "#fafafa",
@@ -3848,7 +4143,8 @@ export default function ClientePage({ params }: { params: any }) {
                 <div>Tipo</div>
                 <div>Scadenza</div>
                 <div>Stato</div>
-                <div>Intestata</div>
+                <div>Intestato a</div>
+                <div>Fornitore</div>
                 <div>Note</div>
                 <div>Riferimento</div>
                 <div>Azioni</div>
@@ -3863,7 +4159,8 @@ export default function ClientePage({ params }: { params: any }) {
                     key={l.id}
                     style={{
                       display: "grid",
-                      gridTemplateColumns: "1.6fr 0.8fr 0.9fr 0.9fr 0.9fr 2fr 2fr 180px",
+                      gridTemplateColumns:
+                        "1.6fr 0.8fr 0.9fr 0.9fr 1fr 1fr 2fr 2fr 180px",
                       padding: "10px 12px",
                       borderBottom: "1px solid #f3f4f6",
                       alignItems: "center",
@@ -3888,10 +4185,9 @@ export default function ClientePage({ params }: { params: any }) {
                     <div>
                       {l.intestata_a === "ART_TECH"
                         ? "Art Tech"
-                        : l.intestata_a
-                        ? "Cliente"
-                        : "—"}
+                        : l.intestata_a ?? "—"}
                     </div>
+                    <div>{l.fornitore ?? "—"}</div>
                     <div>{l.note ?? "—"}</div>
                     <div>
                       {[
@@ -3956,20 +4252,44 @@ export default function ClientePage({ params }: { params: any }) {
           <div style={{ opacity: 0.7 }}>Nessuna proforma trovata</div>
         ) : (
           <div style={{ marginTop: 8, display: "flex", gap: 8, flexWrap: "wrap" }}>
-            {proforme.map(([p, count]) => (
-              <span
-                key={p}
-                style={{
-                  padding: "6px 10px",
-                  border: "1px solid #eee",
-                  borderRadius: 999,
-                  background: "#fafafa",
-                  fontSize: 13,
-                }}
-              >
-                {p} ({count})
-              </span>
-            ))}
+            {proforme.map(([p, count]) => {
+              const doc = proformaDocsByProforma.get(p);
+              const hasDoc = Boolean(doc);
+              return (
+                <button
+                  key={p}
+                  type="button"
+                  onClick={() => {
+                    if (doc) openProformaDoc(doc);
+                  }}
+                  disabled={!hasDoc}
+                  style={{
+                    padding: "6px 10px",
+                    border: "1px solid #eee",
+                    borderRadius: 999,
+                    background: "#fafafa",
+                    fontSize: 13,
+                    cursor: hasDoc ? "pointer" : "default",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 6,
+                    opacity: hasDoc ? 1 : 0.7,
+                  }}
+                  title={hasDoc ? "Apri proforma" : "File mancante"}
+                >
+                  <span
+                    style={{
+                      width: 8,
+                      height: 8,
+                      borderRadius: 999,
+                      background: hasDoc ? "#22c55e" : "#ef4444",
+                      display: "inline-block",
+                    }}
+                  />
+                  {p} ({count})
+                </button>
+              );
+            })}
           </div>
         )}
       </div>
@@ -4066,18 +4386,24 @@ export default function ClientePage({ params }: { params: any }) {
               const stato = String(r.stato || "").toUpperCase();
               const isTagliando = r.source === "tagliandi";
               const isLicenza = r.source === "licenze";
+              const isSaas = r.source === "saas";
+              const isGaranzia = r.source === "garanzie";
               const isExtra = String(r.modalita || "").toUpperCase() === "EXTRA";
+              const isExpiryOnly = isSaas || isGaranzia;
               const hasScadenza = Boolean(r.scadenza);
               const canStage1 = isLicenza
                 ? hasScadenza
-                : ["DA_AVVISARE", "AVVISATO"].includes(stato);
+                : !isExpiryOnly && ["DA_AVVISARE", "AVVISATO"].includes(stato);
               const canConfirm = isTagliando
                 ? true
+                : isExpiryOnly
+                ? false
                 : !["CONFERMATO", "DA_FATTURARE", "FATTURATO", "NON_RINNOVATO"].includes(stato);
               const canStage2 = isTagliando
                 ? isExtra && (stato === "DA_FATTURARE" || stato === "OK")
-                : stato === "CONFERMATO" || stato === "DA_FATTURARE";
-              const canNonRinnovato = !isTagliando && !["FATTURATO", "NON_RINNOVATO"].includes(stato);
+                : !isExpiryOnly && (stato === "CONFERMATO" || stato === "DA_FATTURARE");
+              const canNonRinnovato =
+                !isTagliando && !isExpiryOnly && !["FATTURATO", "NON_RINNOVATO"].includes(stato);
               const canFatturato = isTagliando ? isExtra && stato === "DA_FATTURARE" : stato === "DA_FATTURARE";
               return (
                 <div
@@ -4109,7 +4435,9 @@ export default function ClientePage({ params }: { params: any }) {
                     {renderScadenzaBadge(r.scadenza)}
                   </div>
                   <div style={{ overflow: "visible" }}>
-                    {stato === "AVVISATO"
+                    {isExpiryOnly
+                      ? renderBadge(getExpiryStatus(r.scadenza))
+                      : stato === "AVVISATO"
                       ? renderAvvisatoBadge(alertStatsMap.get(getAlertKeyForRow(r)) || null)
                       : isTagliando
                       ? renderTagliandoStatoBadge(r.stato)
@@ -4117,7 +4445,8 @@ export default function ClientePage({ params }: { params: any }) {
                   </div>
                   <div>{isTagliando ? renderModalitaBadge(r.modalita) : "—"}</div>
                   <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                    {!isExpiryOnly && (
+                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                       <button
                         type="button"
                         onClick={() => openRinnoviAlert("stage1", false, [r])}
@@ -4175,7 +4504,9 @@ export default function ClientePage({ params }: { params: any }) {
                         Invia admin
                       </button>
                     </div>
-                    <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                    )}
+                    {!isExpiryOnly && (
+                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                       <button
                         type="button"
                         onClick={() =>
@@ -4254,6 +4585,24 @@ export default function ClientePage({ params }: { params: any }) {
                         }}
                       >
                         FATTURATO
+                      </button>
+                    </div>
+                    )}
+                    <div>
+                      <button
+                        type="button"
+                        onClick={() => openEditScadenza(r)}
+                        style={{
+                          padding: "4px 8px",
+                          borderRadius: 6,
+                          border: "1px solid #111",
+                          background: "white",
+                          cursor: "pointer",
+                          fontSize: 12,
+                          fontWeight: 700,
+                        }}
+                      >
+                        Modifica
                       </button>
                     </div>
                   </div>
@@ -5554,6 +5903,263 @@ export default function ClientePage({ params }: { params: any }) {
                 {sendOk}
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {editScadenzaOpen && editScadenzaForm && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.35)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 16,
+            zIndex: 50,
+          }}
+          onClick={() => setEditScadenzaOpen(false)}
+        >
+          <div
+            style={{
+              width: "100%",
+              maxWidth: 640,
+              background: "white",
+              borderRadius: 12,
+              padding: 16,
+              boxShadow: "0 10px 30px rgba(0,0,0,0.15)",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <div style={{ fontWeight: 800, fontSize: 18 }}>
+                Modifica {editScadenzaForm.tipo}
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditScadenzaOpen(false)}
+                style={{
+                  marginLeft: "auto",
+                  padding: "6px 10px",
+                  borderRadius: 8,
+                  border: "1px solid #ddd",
+                  background: "white",
+                }}
+              >
+                Chiudi
+              </button>
+            </div>
+
+            <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
+              <label>
+                Scadenza<br />
+                <input
+                  type="date"
+                  value={editScadenzaForm.scadenza || ""}
+                  onChange={(e) =>
+                    setEditScadenzaForm({ ...editScadenzaForm, scadenza: e.target.value })
+                  }
+                  style={{ width: "100%", padding: 8 }}
+                />
+              </label>
+
+              {editScadenzaForm.tipo === "SAAS" && (
+                <label>
+                  Piano<br />
+                  <input
+                    value={editScadenzaForm.saas_piano || "—"}
+                    readOnly
+                    style={{ width: "100%", padding: 8, background: "#f9fafb" }}
+                  />
+                </label>
+              )}
+
+              {editScadenzaForm.tipo === "LICENZA" && (
+                <>
+                  <label>
+                    Stato<br />
+                    <select
+                      value={editScadenzaForm.stato}
+                      onChange={(e) =>
+                        setEditScadenzaForm({ ...editScadenzaForm, stato: e.target.value })
+                      }
+                      style={{ width: "100%", padding: 8 }}
+                    >
+                      {LICENZA_STATI.map((s) => (
+                        <option key={s} value={s}>
+                          {s}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label>
+                    Fornitore<br />
+                    <input
+                      value={editScadenzaForm.fornitore}
+                      onChange={(e) =>
+                        setEditScadenzaForm({ ...editScadenzaForm, fornitore: e.target.value })
+                      }
+                      style={{ width: "100%", padding: 8 }}
+                    />
+                  </label>
+                  <label>
+                    Intestato a<br />
+                    <input
+                      value={editScadenzaForm.intestato_a}
+                      onChange={(e) =>
+                        setEditScadenzaForm({ ...editScadenzaForm, intestato_a: e.target.value })
+                      }
+                      style={{ width: "100%", padding: 8 }}
+                    />
+                  </label>
+                  <label>
+                    Note<br />
+                    <input
+                      value={editScadenzaForm.note}
+                      onChange={(e) =>
+                        setEditScadenzaForm({ ...editScadenzaForm, note: e.target.value })
+                      }
+                      style={{ width: "100%", padding: 8 }}
+                    />
+                  </label>
+                </>
+              )}
+
+              {editScadenzaForm.tipo === "TAGLIANDO" && (
+                <>
+                  <label>
+                    Stato<br />
+                    <select
+                      value={editScadenzaForm.stato}
+                      onChange={(e) =>
+                        setEditScadenzaForm({ ...editScadenzaForm, stato: e.target.value })
+                      }
+                      style={{ width: "100%", padding: 8 }}
+                    >
+                      {TAGLIANDO_STATI.map((s) => (
+                        <option key={s} value={s}>
+                          {s}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label>
+                    Modalità<br />
+                    <select
+                      value={editScadenzaForm.modalita}
+                      onChange={(e) =>
+                        setEditScadenzaForm({ ...editScadenzaForm, modalita: e.target.value })
+                      }
+                      style={{ width: "100%", padding: 8 }}
+                    >
+                      <option value="">—</option>
+                      {TAGLIANDO_MODALITA.map((s) => (
+                        <option key={s} value={s}>
+                          {s}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label>
+                    Note<br />
+                    <input
+                      value={editScadenzaForm.note}
+                      onChange={(e) =>
+                        setEditScadenzaForm({ ...editScadenzaForm, note: e.target.value })
+                      }
+                      style={{ width: "100%", padding: 8 }}
+                    />
+                  </label>
+                </>
+              )}
+
+              {editScadenzaForm.tipo === "RINNOVO" && (
+                <>
+                  <label>
+                    Stato<br />
+                    <select
+                      value={editScadenzaForm.stato}
+                      onChange={(e) =>
+                        setEditScadenzaForm({ ...editScadenzaForm, stato: e.target.value })
+                      }
+                      style={{ width: "100%", padding: 8 }}
+                    >
+                      {RINNOVO_STATI.map((s) => (
+                        <option key={s} value={s}>
+                          {s}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label>
+                    Descrizione<br />
+                    <input
+                      value={editScadenzaForm.descrizione}
+                      onChange={(e) =>
+                        setEditScadenzaForm({ ...editScadenzaForm, descrizione: e.target.value })
+                      }
+                      style={{ width: "100%", padding: 8 }}
+                    />
+                  </label>
+                </>
+              )}
+
+              {editScadenzaForm.tipo === "SAAS" && (
+                <label>
+                  Note<br />
+                  <input
+                    value={editScadenzaForm.note}
+                    onChange={(e) =>
+                      setEditScadenzaForm({ ...editScadenzaForm, note: e.target.value })
+                    }
+                    style={{ width: "100%", padding: 8 }}
+                  />
+                </label>
+              )}
+
+              {editScadenzaForm.tipo === "GARANZIA" && (
+                <div style={{ fontSize: 12, opacity: 0.7 }}>
+                  Modifica solo la data di scadenza.
+                </div>
+              )}
+            </div>
+
+            {editScadenzaErr && (
+              <div style={{ marginTop: 10, fontSize: 12, color: "#b91c1c" }}>
+                {editScadenzaErr}
+              </div>
+            )}
+
+            <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 12 }}>
+              <button
+                type="button"
+                onClick={() => setEditScadenzaOpen(false)}
+                style={{
+                  padding: "8px 12px",
+                  borderRadius: 8,
+                  border: "1px solid #ddd",
+                  background: "white",
+                }}
+              >
+                Annulla
+              </button>
+              <button
+                type="button"
+                onClick={saveEditScadenza}
+                disabled={editScadenzaSaving}
+                style={{
+                  padding: "8px 12px",
+                  borderRadius: 8,
+                  border: "1px solid #111",
+                  background: "#111",
+                  color: "white",
+                  opacity: editScadenzaSaving ? 0.6 : 1,
+                }}
+              >
+                {editScadenzaSaving ? "Salvataggio..." : "Salva"}
+              </button>
+            </div>
           </div>
         </div>
       )}

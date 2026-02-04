@@ -86,6 +86,7 @@ type CatalogItem = {
   codice: string | null;
   descrizione: string | null;
   tipo: string | null;
+  categoria?: string | null;
   attivo: boolean;
 };
 
@@ -315,11 +316,11 @@ function saasLabelFromCode(code?: string | null) {
     "SAS-PR12": "CARE PREMIUM (H12)",
     "SAS-PR24": "CARE PREMIUM (H24)",
     "SAS-PR36": "CARE PREMIUM (H36)",
-    "SAS-UL4": "CARE ULTRA (H4)",
-    "SAS-UL8": "CARE ULTRA (H8)",
-    "SAS-UL12": "CARE ULTRA (H12)",
-    "SAS-UL24": "CARE ULTRA (H24)",
-    "SAS-UL36": "CARE ULTRA (H36)",
+    "SAS-UL4": "CARE ULTRA",
+    "SAS-UL8": "CARE ULTRA",
+    "SAS-UL12": "CARE ULTRA",
+    "SAS-UL24": "CARE ULTRA",
+    "SAS-UL36": "CARE ULTRA",
     "SAS-EVTR": "ART TECH EVENT",
     "SAS-MON": "MONITORAGGIO REMOTO & ALERT",
     "SAS-TCK": "TICKETING / HELP DESK",
@@ -622,7 +623,7 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
     if (!catalogLoaded) {
       const { data: catalogData, error: catalogErr } = await supabase
         .from("catalog_items")
-        .select("id, codice, descrizione, tipo, attivo")
+        .select("id, codice, descrizione, tipo, categoria, attivo")
         .eq("attivo", true)
         .order("descrizione", { ascending: true });
 
@@ -1980,11 +1981,11 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
                     <option value="SAS-PR12">SAS-PR12 — CARE PREMIUM (H12)</option>
                     <option value="SAS-PR24">SAS-PR24 — CARE PREMIUM (H24)</option>
                     <option value="SAS-PR36">SAS-PR36 — CARE PREMIUM (H36)</option>
-                    <option value="SAS-UL4">SAS-UL4 — CARE ULTRA (H4)</option>
-                    <option value="SAS-UL8">SAS-UL8 — CARE ULTRA (H8)</option>
-                    <option value="SAS-UL12">SAS-UL12 — CARE ULTRA (H12)</option>
-                    <option value="SAS-UL24">SAS-UL24 — CARE ULTRA (H24)</option>
-                    <option value="SAS-UL36">SAS-UL36 — CARE ULTRA (H36)</option>
+                    <option value="SAS-UL4">SAS-UL4 — CARE ULTRA</option>
+                    <option value="SAS-UL8">SAS-UL8 — CARE ULTRA</option>
+                    <option value="SAS-UL12">SAS-UL12 — CARE ULTRA</option>
+                    <option value="SAS-UL24">SAS-UL24 — CARE ULTRA</option>
+                    <option value="SAS-UL36">SAS-UL36 — CARE ULTRA</option>
                     <option value="SAS-EVTR">SAS-EVTR — ART TECH EVENT</option>
                     <option value="SAS-MON">SAS-MON — MONITORAGGIO REMOTO & ALERT</option>
                     <option value="SAS-TCK">SAS-TCK — TICKETING / HELP DESK</option>

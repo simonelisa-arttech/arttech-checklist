@@ -15,11 +15,11 @@ const SAAS_PIANI = [
   { code: "SAS-PR12", label: "CARE PREMIUM (ASSISTENZA AVANZATA / H12)" },
   { code: "SAS-PR24", label: "CARE PREMIUM (ASSISTENZA AVANZATA / H24)" },
   { code: "SAS-PR36", label: "CARE PREMIUM (ASSISTENZA AVANZATA / H36)" },
-  { code: "SAS-UL4", label: "CARE ULTRA (ASSISTENZA PRIORITARIA / H4)" },
-  { code: "SAS-UL8", label: "CARE ULTRA (ASSISTENZA PRIORITARIA / H8A)" },
-  { code: "SAS-UL12", label: "CARE ULTRA (ASSISTENZA PRIORITARIA / H12A)" },
-  { code: "SAS-UL24", label: "CARE ULTRA (ASSISTENZA PRIORITARIA / H24A)" },
-  { code: "SAS-UL36", label: "CARE ULTRA (ASSISTENZA PRIORITARIA / H36)" },
+  { code: "SAS-UL4", label: "CARE ULTRA (ASSISTENZA PRIORITARIA)" },
+  { code: "SAS-UL8", label: "CARE ULTRA (ASSISTENZA PRIORITARIA)" },
+  { code: "SAS-UL12", label: "CARE ULTRA (ASSISTENZA PRIORITARIA)" },
+  { code: "SAS-UL24", label: "CARE ULTRA (ASSISTENZA PRIORITARIA)" },
+  { code: "SAS-UL36", label: "CARE ULTRA (ASSISTENZA PRIORITARIA)" },
   { code: "SAS-EVTF", label: "ART TECH EVENT (assistenza remota durante eventi)" },
   { code: "SAS-EVTO", label: "ART TECH EVENT (assistenza onsite durante eventi)" },
   { code: "SAS-MON", label: "MONITORAGGIO REMOTO & ALERT" },
@@ -233,6 +233,7 @@ type CatalogItem = {
   codice: string | null;
   descrizione: string | null;
   tipo: string | null;
+  categoria?: string | null;
   attivo: boolean;
 };
 
@@ -620,7 +621,7 @@ export default function Page() {
 
     const { data: catalogItems, error: catalogErr } = await supabase
       .from("catalog_items")
-      .select("id, codice, descrizione, tipo, attivo")
+      .select("id, codice, descrizione, tipo, categoria, attivo")
       .eq("attivo", true)
       .order("descrizione", { ascending: true });
 
@@ -712,7 +713,7 @@ export default function Page() {
   async function onCreate() {
     try {
     if (!canCreate) {
-      alert("Compila almeno Cliente e Nome checklist.");
+      alert("Compila almeno Cliente e Nome PROGETTO.");
       return;
     }
 
@@ -757,11 +758,11 @@ export default function Page() {
 
     if (errCreate) {
       const info = logSupabaseError(errCreate);
-      alert("Errore insert checklist: " + (info || errCreate.message));
+      alert("Errore insert PROGETTO: " + (info || errCreate.message));
       return;
     }
     if (!created?.id) {
-      alert("Errore: id checklist non ricevuto");
+      alert("Errore: id PROGETTO non ricevuto");
       return;
     }
 
@@ -843,8 +844,8 @@ export default function Page() {
 
     if (tmplErr) {
       const info = logSupabaseError(tmplErr);
-      console.error("ERRORE LOAD checklist_template_items", tmplErr);
-      alert("Errore seed checklist template: " + (info || tmplErr.message));
+      console.error("ERRORE LOAD progetto_template_items", tmplErr);
+      alert("Errore seed template PROGETTO: " + (info || tmplErr.message));
     } else if (tmpl && tmpl.length > 0) {
       const payloadChecks = (tmpl as any[]).map((r) => ({
         checklist_id: checklistId,
@@ -860,8 +861,8 @@ export default function Page() {
 
       if (seedErr) {
         const info = logSupabaseError(seedErr);
-        console.error("ERRORE INSERT checklist_checks", seedErr);
-        alert("Errore seed checklist template: " + (info || seedErr.message));
+        console.error("ERRORE INSERT progetto_checks", seedErr);
+        alert("Errore seed template PROGETTO: " + (info || seedErr.message));
       }
     }
 
@@ -918,7 +919,7 @@ export default function Page() {
 
       if (errItems) {
         const info = logSupabaseError(errItems);
-        console.error("ERRORE INSERT checklist_items", errItems);
+        console.error("ERRORE INSERT progetto_items", errItems);
         alert(
           "Errore insert righe: " +
             (info || errItems.message || "") +
@@ -960,7 +961,7 @@ export default function Page() {
   }
 
   async function backupAndDeleteChecklist(checklistId: string) {
-    const ok = window.confirm("Eliminare questa checklist? Verrà salvata in backup per 30 giorni.");
+    const ok = window.confirm("Eliminare questo PROGETTO? Verrà salvato in backup per 30 giorni.");
     if (!ok) return;
 
     const { data: checklist, error: checklistErr } = await supabase
@@ -970,7 +971,7 @@ export default function Page() {
       .single();
 
     if (checklistErr || !checklist) {
-      alert("Errore lettura checklist: " + (checklistErr?.message || "Checklist non trovata"));
+      alert("Errore lettura PROGETTO: " + (checklistErr?.message || "PROGETTO non trovato"));
       return;
     }
 
@@ -1004,7 +1005,7 @@ export default function Page() {
       .insert(backupChecklist);
 
     if (backupChecklistErr) {
-      alert("Errore backup checklist: " + backupChecklistErr.message);
+      alert("Errore backup PROGETTO: " + backupChecklistErr.message);
       return;
     }
 
@@ -1102,7 +1103,7 @@ export default function Page() {
       .delete()
       .eq("id", checklistId);
     if (delChecklistErr) {
-      alert("Errore eliminazione checklist: " + delChecklistErr.message);
+      alert("Errore eliminazione PROGETTO: " + delChecklistErr.message);
       return;
     }
 
@@ -1174,7 +1175,7 @@ export default function Page() {
               color: "inherit",
             }}
           >
-            + Nuova checklist
+            + Nuovo PROGETTO
           </Link>
         </div>
       </div>
@@ -1192,7 +1193,7 @@ export default function Page() {
           {loading ? (
             <div>Caricamento…</div>
           ) : items.length === 0 ? (
-            <div>Nessuna checklist presente</div>
+            <div>Nessun PROGETTO presente</div>
           ) : (
             <div style={{ display: "grid", gap: 12 }}>
               <div
@@ -1276,7 +1277,7 @@ export default function Page() {
                   <tr>
                     <th
                       onClick={() => toggleSort("nome_checklist")}
-                      title="Ordina per Nome checklist"
+                      title="Ordina per Nome PROGETTO"
                       style={{
                         textAlign: "left",
                         padding: "10px 12px",
@@ -1288,7 +1289,7 @@ export default function Page() {
                         boxShadow: "0 2px 6px rgba(0, 0, 0, 0.06)",
                       }}
                     >
-                      RIF
+                      PROGETTO
                       {sortIcon("nome_checklist")}
                     </th>
                     <th
