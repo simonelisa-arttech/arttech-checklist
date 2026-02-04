@@ -279,6 +279,19 @@ export default function PresetAvvisiPage() {
         >
           ← Operatori
         </Link>
+        <Link
+          href="/"
+          style={{
+            padding: "6px 10px",
+            borderRadius: 10,
+            border: "1px solid #ddd",
+            textDecoration: "none",
+            color: "inherit",
+            background: "white",
+          }}
+        >
+          ← Dashboard
+        </Link>
       </div>
 
       <div
@@ -384,12 +397,13 @@ export default function PresetAvvisiPage() {
               style={{
                 display: "grid",
                 gridTemplateColumns:
-                  "minmax(200px, 1.6fr) minmax(140px, 1fr) minmax(120px, 0.8fr) minmax(120px, 0.8fr) 100px minmax(160px, 1fr) minmax(180px, 1fr)",
+                  "minmax(240px, 2fr) minmax(260px, 1.6fr) minmax(120px, 0.8fr) minmax(120px, 0.8fr) 110px minmax(180px, 1fr) minmax(200px, 1fr)",
                 padding: "10px 12px",
                 fontWeight: 700,
                 background: "#fafafa",
                 borderBottom: "1px solid #eee",
                 fontSize: 13,
+                columnGap: 10,
               }}
             >
               <div>Titolo</div>
@@ -415,18 +429,27 @@ export default function PresetAvvisiPage() {
                     style={{
                       display: "grid",
                       gridTemplateColumns:
-                        "minmax(200px, 1.6fr) minmax(140px, 1fr) minmax(120px, 0.8fr) minmax(120px, 0.8fr) 100px minmax(160px, 1fr) minmax(180px, 1fr)",
+                        "minmax(240px, 2fr) minmax(260px, 1.6fr) minmax(120px, 0.8fr) minmax(120px, 0.8fr) 110px minmax(180px, 1fr) minmax(200px, 1fr)",
                       padding: "10px 12px",
                       borderBottom: "1px solid #f1f1f1",
                       fontSize: 13,
                       alignItems: "center",
-                      gap: 8,
+                      columnGap: 10,
                     }}
                   >
-                    <div>{row.titolo || "—"}</div>
-                    <div>{row.codice || "—"}</div>
-                    <div>{row.tipo || "—"}</div>
-                    <div>{row.trigger || "—"}</div>
+                    <div style={{ lineHeight: 1.3 }}>{row.titolo || "—"}</div>
+                    <div
+                      style={{
+                        fontFamily: "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace",
+                        fontSize: 12,
+                        wordBreak: "break-all",
+                      }}
+                      title={row.codice || ""}
+                    >
+                      {row.codice || "—"}
+                    </div>
+                    <div style={{ fontWeight: 600 }}>{row.tipo || "—"}</div>
+                    <div style={{ fontWeight: 600 }}>{row.trigger || "—"}</div>
                     <div>
                       <span
                         style={{
