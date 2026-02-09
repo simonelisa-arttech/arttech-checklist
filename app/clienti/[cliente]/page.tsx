@@ -2199,6 +2199,7 @@ export default function ClientePage({ params }: { params: any }) {
       illimitati: contrattoForm.illimitati,
     };
 
+    let savedContratto: ContrattoRow | null = null;
     if (contratto?.id) {
       const { data, error: updErr } = await supabase
         .from("saas_contratti")
@@ -2211,7 +2212,8 @@ export default function ClientePage({ params }: { params: any }) {
         setContrattoError("Errore salvataggio contratto: " + updErr.message);
         return;
       }
-      setContratto(data as ContrattoRow);
+      savedContratto = data as ContrattoRow;
+      setContratto(savedContratto);
     } else {
       const { data, error: insErr } = await supabase
         .from("saas_contratti")
@@ -2223,7 +2225,42 @@ export default function ClientePage({ params }: { params: any }) {
         setContrattoError("Errore creazione contratto: " + insErr.message);
         return;
       }
-      setContratto(data as ContrattoRow);
+      savedContratto = data as ContrattoRow;
+      setContratto(savedContratto);
+    }
+
+    if (savedContratto?.id) {
+      const rinnovoPayload: Record<string, any> = {
+        cliente: clienteKey,
+        item_tipo: "SAAS",
+        subtipo: "ULTRA",
+        riferimento: savedContratto.id,
+        scadenza: savedContratto.scadenza ?? null,
+        stato: "ATTIVA",
+        descrizione: "ULTRA",
+      };
+
+      const { data: existing, error: findErr } = await supabase
+        .from("rinnovi_servizi")
+        .select("id")
+        .eq("item_tipo", "SAAS")
+        .eq("riferimento", savedContratto.id)
+        .maybeSingle();
+
+      if (findErr) {
+        console.error("Errore lookup rinnovo SAAS", findErr);
+      } else if (existing?.id) {
+        const { error: updErr } = await supabase
+          .from("rinnovi_servizi")
+          .update(rinnovoPayload)
+          .eq("id", existing.id);
+        if (updErr) console.error("Errore update rinnovo SAAS", updErr);
+      } else {
+        const { error: insErr } = await supabase
+          .from("rinnovi_servizi")
+          .insert(rinnovoPayload);
+        if (insErr) console.error("Errore insert rinnovo SAAS", insErr);
+      }
     }
 
     setContrattoError(null);
