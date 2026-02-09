@@ -2001,11 +2001,11 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
                     <option value="SAS-PR12">SAS-PR12 — CARE PREMIUM (H12)</option>
                     <option value="SAS-PR24">SAS-PR24 — CARE PREMIUM (H24)</option>
                     <option value="SAS-PR36">SAS-PR36 — CARE PREMIUM (H36)</option>
-                    <option value="SAS-UL4">SAS-UL4 — CARE ULTRA</option>
-                    <option value="SAS-UL8">SAS-UL8 — CARE ULTRA</option>
-                    <option value="SAS-UL12">SAS-UL12 — CARE ULTRA</option>
-                    <option value="SAS-UL24">SAS-UL24 — CARE ULTRA</option>
-                    <option value="SAS-UL36">SAS-UL36 — CARE ULTRA</option>
+                    <option value="SAS-UL4">SAS-UL4 — CARE ULTRA (H4)</option>
+                    <option value="SAS-UL8">SAS-UL8 — CARE ULTRA (H8)</option>
+                    <option value="SAS-UL12">SAS-UL12 — CARE ULTRA (H12)</option>
+                    <option value="SAS-UL24">SAS-UL24 — CARE ULTRA (H24)</option>
+                    <option value="SAS-UL36">SAS-UL36 — CARE ULTRA (H36)</option>
                     <option value="SAS-EVTR">SAS-EVTR — ART TECH EVENT</option>
                     <option value="SAS-MON">SAS-MON — MONITORAGGIO REMOTO & ALERT</option>
                     <option value="SAS-TCK">SAS-TCK — TICKETING / HELP DESK</option>
