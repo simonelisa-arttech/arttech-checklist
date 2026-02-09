@@ -3990,7 +3990,7 @@ export default function ClientePage({ params }: { params: any }) {
         </div>
       )}
 
-      {saasPerImpiantoRows.length > 0 && (
+      {false && (
         <div
           style={{
             marginTop: 12,
@@ -4050,6 +4050,7 @@ export default function ClientePage({ params }: { params: any }) {
         </div>
       )}
 
+      {false && (
       <div style={{ marginTop: 18 }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <h2 style={{ margin: 0 }}>Garanzie</h2>
@@ -4101,7 +4102,9 @@ export default function ClientePage({ params }: { params: any }) {
           </div>
         )}
       </div>
+      )}
 
+      {false && (
       <div style={{ marginTop: 18 }}>
         <h2 style={{ margin: 0 }}>Licenze</h2>
         {licenzeNotice && (
@@ -4245,7 +4248,9 @@ export default function ClientePage({ params }: { params: any }) {
           </>
         )}
       </div>
+      )}
 
+      {false && (
       <div style={{ marginTop: 18 }}>
         <h2 style={{ margin: 0 }}>Proforme</h2>
         {proforme.length === 0 ? (
@@ -4293,6 +4298,7 @@ export default function ClientePage({ params }: { params: any }) {
           </div>
         )}
       </div>
+      )}
 
       <div style={{ marginTop: 18 }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
