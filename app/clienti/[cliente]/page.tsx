@@ -4364,7 +4364,7 @@ export default function ClientePage({ params }: { params: any }) {
             <div
               style={{
                 display: "grid",
-                gridTemplateColumns: "120px 1fr 160px 140px 160px 240px",
+                gridTemplateColumns: "120px 1fr 160px 140px 160px 320px",
                 padding: "10px 12px",
                 fontWeight: 800,
                 background: "#fafafa",
@@ -4410,7 +4410,7 @@ export default function ClientePage({ params }: { params: any }) {
                   key={r.id}
                   style={{
                     display: "grid",
-                    gridTemplateColumns: "120px 1fr 160px 140px 160px 240px",
+                    gridTemplateColumns: "120px 1fr 160px 140px 160px 320px",
                     padding: "10px 12px",
                     borderBottom: "1px solid #f3f4f6",
                     alignItems: "center",
@@ -4506,7 +4506,7 @@ export default function ClientePage({ params }: { params: any }) {
                     </div>
                     )}
                     {!isExpiryOnly && (
-                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                      <div style={{ display: "flex", gap: 6, flexWrap: "nowrap" }}>
                       <button
                         type="button"
                         onClick={() =>
