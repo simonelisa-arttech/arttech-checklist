@@ -589,8 +589,9 @@ type TagliandoRow = {
 
 type ScadenzaItem = {
   id: string;
-  source: "rinnovi" | "tagliandi" | "licenze" | "saas" | "garanzie";
+  source: "rinnovi" | "tagliandi" | "licenze" | "saas" | "garanzie" | "saas_contratto";
   tagliando_id?: string | null;
+  contratto_id?: string | null;
   item_tipo?: string | null;
   riferimento?: string | null;
   descrizione?: string | null;
@@ -604,7 +605,7 @@ type ScadenzaItem = {
 };
 
 type EditScadenzaForm = {
-  tipo: "LICENZA" | "TAGLIANDO" | "SAAS" | "GARANZIA" | "RINNOVO";
+  tipo: "LICENZA" | "TAGLIANDO" | "SAAS" | "GARANZIA" | "RINNOVO" | "SAAS_ULTRA";
   scadenza: string;
   stato: string;
   modalita: string;
@@ -739,6 +740,7 @@ export default function ClientePage({ params }: { params: any }) {
   const [exportFattInterventiFirst, setExportFattInterventiFirst] = useState(false);
   const [exportLogSending, setExportLogSending] = useState(false);
   const [contratto, setContratto] = useState<ContrattoRow | null>(null);
+  const [contrattiRows, setContrattiRows] = useState<ContrattoRow[]>([]);
   const [contrattoError, setContrattoError] = useState<string | null>(null);
   const [showContrattoForm, setShowContrattoForm] = useState(false);
   const [ultraPiani, setUltraPiani] = useState<PianoUltraRow[]>([]);
@@ -1081,6 +1083,7 @@ export default function ClientePage({ params }: { params: any }) {
           }) || (rows.length > 0 ? rows[0] : null);
 
         setContratto(active);
+        setContrattiRows(rows);
         setContrattoError(null);
         if (active) {
           setContrattoForm({
@@ -1664,6 +1667,18 @@ export default function ClientePage({ params }: { params: any }) {
       stato: c.saas_scadenza ? getExpiryStatus(c.saas_scadenza) : null,
       modalita: null,
     }));
+    const contrattiMapped = contrattiRows.map((c) => ({
+      id: `saas_contratto:${c.id}`,
+      source: "saas_contratto" as const,
+      item_tipo: "SAAS_ULTRA",
+      riferimento: c.piano_codice ?? "ULTRA",
+      descrizione: "Contratto ULTRA cliente",
+      checklist_id: null,
+      contratto_id: c.id,
+      scadenza: c.scadenza ?? null,
+      stato: c.scadenza ? getExpiryStatus(c.scadenza) : "ATTIVA",
+      modalita: null,
+    }));
     const garanzieMapped = garanzieRows.map((c) => ({
       id: `garanzia:${c.id}`,
       source: "garanzie" as const,
@@ -1675,10 +1690,17 @@ export default function ClientePage({ params }: { params: any }) {
       stato: c.garanzia_scadenza ? getExpiryStatus(c.garanzia_scadenza) : null,
       modalita: null,
     }));
-    return [...rinnoviMapped, ...tagliandiMapped, ...licenzeMapped, ...saasMapped, ...garanzieMapped].sort(
+    return [
+      ...rinnoviMapped,
+      ...tagliandiMapped,
+      ...licenzeMapped,
+      ...saasMapped,
+      ...contrattiMapped,
+      ...garanzieMapped,
+    ].sort(
       (a, b) => String(a.scadenza || "").localeCompare(String(b.scadenza || ""))
     );
-  }, [rinnovi, tagliandi, licenze, saasPerImpiantoRows, garanzieRows]);
+  }, [rinnovi, tagliandi, licenze, saasPerImpiantoRows, contrattiRows, garanzieRows]);
 
   const filteredRinnovi = useMemo(() => {
     let rows = rinnoviAll;
@@ -2825,6 +2847,16 @@ export default function ClientePage({ params }: { params: any }) {
         note: c?.saas_note ?? "",
         saas_piano: c?.saas_piano ?? "",
       };
+    } else if (r.source === "saas_contratto") {
+      const c = r.contratto_id ? contrattiRows.find((x) => x.id === r.contratto_id) : null;
+      form = {
+        ...form,
+        tipo: "SAAS_ULTRA",
+        scadenza: c?.scadenza ?? r.scadenza ?? "",
+        stato: "",
+        note: "",
+        saas_piano: c?.piano_codice ?? r.riferimento ?? "",
+      };
     } else if (r.source === "garanzie") {
       const c = r.checklist_id ? checklistById.get(r.checklist_id) : null;
       form = {
@@ -2926,6 +2958,36 @@ export default function ClientePage({ params }: { params: any }) {
               : c
           )
         );
+      } else if (editScadenzaForm.tipo === "SAAS_ULTRA") {
+        const contrattoId = editScadenzaItem.contratto_id;
+        if (!contrattoId) throw new Error("Contratto non trovato");
+        const { error } = await supabase
+          .from("saas_contratti")
+          .update({
+            scadenza: editScadenzaForm.scadenza || null,
+          })
+          .eq("id", contrattoId);
+        if (error) throw new Error(error.message);
+        setContrattiRows((prev) =>
+          prev.map((c) =>
+            c.id === contrattoId
+              ? {
+                  ...c,
+                  scadenza: editScadenzaForm.scadenza || null,
+                }
+              : c
+          )
+        );
+        if (contratto?.id === contrattoId) {
+          setContratto((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  scadenza: editScadenzaForm.scadenza || null,
+                }
+              : prev
+          );
+        }
       } else if (editScadenzaForm.tipo === "GARANZIA") {
         const checklistId = editScadenzaItem.checklist_id;
         if (!checklistId) throw new Error("Checklist non trovata");
@@ -4439,7 +4501,7 @@ export default function ClientePage({ params }: { params: any }) {
               const stato = String(r.stato || "").toUpperCase();
               const isTagliando = r.source === "tagliandi";
               const isLicenza = r.source === "licenze";
-              const isSaas = r.source === "saas";
+              const isSaas = r.source === "saas" || r.source === "saas_contratto";
               const isGaranzia = r.source === "garanzie";
               const isExtra = String(r.modalita || "").toUpperCase() === "EXTRA";
               const isExpiryOnly = isSaas || isGaranzia;
@@ -6044,6 +6106,16 @@ export default function ClientePage({ params }: { params: any }) {
                   />
                 </label>
               )}
+              {editScadenzaForm.tipo === "SAAS_ULTRA" && (
+                <label>
+                  Piano ULTRA<br />
+                  <input
+                    value={editScadenzaForm.saas_piano || "—"}
+                    readOnly
+                    style={{ width: "100%", padding: 8, background: "#f9fafb" }}
+                  />
+                </label>
+              )}
 
               {editScadenzaForm.tipo === "LICENZA" && (
                 <>
@@ -6186,6 +6258,11 @@ export default function ClientePage({ params }: { params: any }) {
                     style={{ width: "100%", padding: 8 }}
                   />
                 </label>
+              )}
+              {editScadenzaForm.tipo === "SAAS_ULTRA" && (
+                <div style={{ fontSize: 12, opacity: 0.7 }}>
+                  Modifica solo la data di scadenza.
+                </div>
               )}
 
               {editScadenzaForm.tipo === "GARANZIA" && (
