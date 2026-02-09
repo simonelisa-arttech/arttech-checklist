@@ -1754,6 +1754,8 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
                         setDimensioniLocal(value);
                         setFormData((prev) => (prev ? { ...prev, dimensioni: value } : prev));
                       }}
+                      readOnly={false}
+                      disabled={false}
                       placeholder="Es: 3x2"
                       style={{ width: "100%", padding: 10 }}
                     />
