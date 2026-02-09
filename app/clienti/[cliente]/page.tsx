@@ -3903,10 +3903,20 @@ export default function ClientePage({ params }: { params: any }) {
                 style={{ width: "100%", padding: 8 }}
               >
                 <option value="">—</option>
-                {ultraPiani.map((p) => (
+                {[
+                  ...ultraPiani,
+                  ...(ultraPiani.some((p) => p.codice === "SAS-UL8")
+                    ? []
+                    : [
+                        {
+                          codice: "SAS-UL8",
+                          nome: "CARE ULTRA (H8)",
+                          interventi_inclusi: null,
+                        },
+                      ]),
+                ].map((p) => (
                   <option key={p.codice} value={p.codice}>
                     {p.codice} — {p.nome ?? "—"}
-                    {p.interventi_inclusi != null ? ` (${p.interventi_inclusi})` : ""}
                   </option>
                 ))}
               </select>
