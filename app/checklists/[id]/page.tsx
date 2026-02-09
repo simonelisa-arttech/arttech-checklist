@@ -427,6 +427,7 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
   const [formData, setFormData] = useState<FormData | null>(null);
   const [originalData, setOriginalData] = useState<FormData | null>(null);
   const [editMode, setEditMode] = useState(false);
+  const [dimensioniLocal, setDimensioniLocal] = useState("");
   const [rows, setRows] = useState<ChecklistItemRow[]>([]);
   const [originalRowIds, setOriginalRowIds] = useState<string[]>([]);
   const [tasks, setTasks] = useState<ChecklistTask[]>([]);
@@ -499,6 +500,10 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
       if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
     };
   }, []);
+
+  useEffect(() => {
+    setDimensioniLocal(formData?.dimensioni ?? "");
+  }, [formData?.dimensioni]);
 
   function normalizeAlertTasks(input: any) {
     if (!input) {
@@ -1743,10 +1748,12 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
                 isEdit ? (
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 140px", gap: 10 }}>
                     <input
-                      value={formData.dimensioni}
-                      onChange={(e) =>
-                        setFormData((prev) => (prev ? { ...prev, dimensioni: e.target.value } : prev))
-                      }
+                      value={dimensioniLocal}
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        setDimensioniLocal(value);
+                        setFormData((prev) => (prev ? { ...prev, dimensioni: value } : prev));
+                      }}
                       placeholder="Es: 3x2"
                       style={{ width: "100%", padding: 10 }}
                     />
