@@ -4120,7 +4120,7 @@ export default function ClientePage({ params }: { params: any }) {
             <div style={{ marginTop: 6, fontSize: 12, opacity: 0.7 }}>
               Totale: {licenze.length} — Prossima scadenza:{" "}
               {nextLicenzaScadenza
-                ? new Date(nextLicenzaScadenza).toLocaleDateString()
+                ? new Date(String(nextLicenzaScadenza)).toLocaleDateString()
                 : "—"}
             </div>
             <div
