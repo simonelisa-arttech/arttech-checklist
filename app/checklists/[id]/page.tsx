@@ -311,6 +311,7 @@ function saasLabelFromCode(code?: string | null) {
     "SAS-PL": "CARE PLUS",
     "SAS-PR": "CARE PREMIUM",
     "SAS-UL": "CARE ULTRA",
+    "SAS-UL-ILL": "CARE ULTRA (illimitato)",
     "SAS-PR4": "CARE PREMIUM (H4)",
     "SAS-PR8": "CARE PREMIUM (H8)",
     "SAS-PR12": "CARE PREMIUM (H12)",
@@ -1996,6 +1997,7 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
                     <option value="SAS-PL">SAS-PL — CARE PLUS</option>
                     <option value="SAS-PR">SAS-PR — CARE PREMIUM</option>
                     <option value="SAS-UL">SAS-UL — CARE ULTRA</option>
+                    <option value="SAS-UL-ILL">SAS-UL-ILL — CARE ULTRA (illimitato)</option>
                     <option value="SAS-PR4">SAS-PR4 — CARE PREMIUM (H4)</option>
                     <option value="SAS-PR8">SAS-PR8 — CARE PREMIUM (H8)</option>
                     <option value="SAS-PR12">SAS-PR12 — CARE PREMIUM (H12)</option>
