@@ -1062,51 +1062,12 @@ export default function ClientePage({ params }: { params: any }) {
       await fetchRinnovi(clienteKey);
       await fetchTagliandi(clienteKey);
 
-      const { data: contrattiData, error: contrattiErr } = await supabase
-        .from("saas_contratti")
-        .select("id, cliente, piano_codice, scadenza, interventi_annui, illimitati, created_at")
-        .ilike("cliente", `%${clienteKey}%`)
-        .order("created_at", { ascending: false });
-
-      if (contrattiErr) {
-        setContrattoError("Errore caricamento contratto: " + contrattiErr.message);
-        setContratto(null);
-      } else {
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        const rows = (contrattiData || []) as ContrattoRow[];
-        const active =
-          rows.find((r) => {
-            if (!r.scadenza) return true;
-            const dt = parseLocalDay(r.scadenza);
-            return dt != null && dt >= today;
-          }) || (rows.length > 0 ? rows[0] : null);
-
-        setContratto(active);
-        setContrattiRows(rows);
-        setContrattoError(null);
-        if (active) {
-          setContrattoForm({
-            piano_codice: active.piano_codice ?? "",
-            scadenza: active.scadenza ?? "",
-            interventi_annui:
-              active.interventi_annui != null ? String(active.interventi_annui) : "",
-            illimitati: Boolean(active.illimitati),
-          });
-        } else {
-          setContrattoForm({
-            piano_codice: "",
-            scadenza: "",
-            interventi_annui: "",
-            illimitati: false,
-          });
-        }
-      }
+      await fetchSaasContratti(clienteKey);
 
       const { data: pianiData, error: pianiErr } = await supabase
         .from("saas_piani")
         .select("codice, nome, interventi_inclusi")
-        .ilike("codice", "%UL%")
+        .ilike("codice", "SAS-UL%")
         .order("codice", { ascending: true });
 
       if (!pianiErr) {
@@ -2190,6 +2151,54 @@ export default function ClientePage({ params }: { params: any }) {
     );
   }
 
+  async function fetchSaasContratti(clienteKey: string) {
+    const key = (clienteKey || "").trim();
+    if (!key) return [];
+    const { data: contrattiData, error: contrattiErr } = await supabase
+      .from("saas_contratti")
+      .select("id, cliente, piano_codice, scadenza, interventi_annui, illimitati, created_at")
+      .ilike("cliente", `%${key}%`)
+      .order("created_at", { ascending: false });
+
+    if (contrattiErr) {
+      setContrattoError("Errore caricamento contratto: " + contrattiErr.message);
+      setContratto(null);
+      setContrattiRows([]);
+      return [];
+    }
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const rows = (contrattiData || []) as ContrattoRow[];
+    const active =
+      rows.find((r) => {
+        if (!r.scadenza) return true;
+        const dt = parseLocalDay(r.scadenza);
+        return dt != null && dt >= today;
+      }) || (rows.length > 0 ? rows[0] : null);
+
+    setContratto(active);
+    setContrattiRows(rows);
+    setContrattoError(null);
+    if (active) {
+      setContrattoForm({
+        piano_codice: active.piano_codice ?? "",
+        scadenza: active.scadenza ?? "",
+        interventi_annui: active.interventi_annui != null ? String(active.interventi_annui) : "",
+        illimitati: Boolean(active.illimitati),
+      });
+    } else {
+      setContrattoForm({
+        piano_codice: "",
+        scadenza: "",
+        interventi_annui: "",
+        illimitati: false,
+      });
+    }
+
+    return rows;
+  }
+
   async function saveContratto() {
     const clienteKey = (cliente || "").trim();
     if (!clienteKey) return;
@@ -2285,7 +2294,9 @@ export default function ClientePage({ params }: { params: any }) {
       }
     }
 
+    await fetchSaasContratti(clienteKey);
     setContrattoError(null);
+    showToast("✅ Contratto salvato", "success");
   }
 
   async function addIntervento() {
@@ -3034,6 +3045,31 @@ export default function ClientePage({ params }: { params: any }) {
       const msg = err instanceof Error ? err.message : String(err ?? "Errore salvataggio");
       setEditScadenzaErr(msg);
       showToast(`❌ Salvataggio fallito: ${briefError(err)}`, "error");
+    } finally {
+      setEditScadenzaSaving(false);
+    }
+  }
+
+  async function deleteContrattoFromScadenza() {
+    if (!editScadenzaItem?.contratto_id) {
+      setEditScadenzaErr("Contratto non trovato");
+      return;
+    }
+    const clienteKey = (cliente || "").trim();
+    setEditScadenzaSaving(true);
+    setEditScadenzaErr(null);
+    try {
+      const { error } = await supabase
+        .from("saas_contratti")
+        .delete()
+        .eq("id", editScadenzaItem.contratto_id);
+      if (error) throw new Error(error.message);
+      await fetchSaasContratti(clienteKey);
+      setEditScadenzaOpen(false);
+      showToast("✅ Contratto eliminato", "success");
+    } catch (err: any) {
+      setEditScadenzaErr(briefError(err));
+      showToast(`❌ Eliminazione fallita: ${briefError(err)}`, "error");
     } finally {
       setEditScadenzaSaving(false);
     }
@@ -3989,14 +4025,9 @@ export default function ClientePage({ params }: { params: any }) {
                 value={contrattoForm.piano_codice}
                 onChange={(e) => {
                   const next = e.target.value;
-                  const selected = ultraPiani.find((p) => p.codice === next);
                   setContrattoForm((prev) => ({
                     ...prev,
                     piano_codice: next,
-                    interventi_annui:
-                      selected && selected.interventi_inclusi != null
-                        ? String(selected.interventi_inclusi)
-                        : prev.interventi_annui,
                   }));
                 }}
                 style={{ width: "100%", padding: 8 }}
@@ -4075,7 +4106,7 @@ export default function ClientePage({ params }: { params: any }) {
                 cursor: "pointer",
               }}
             >
-              Salva contratto
+              {contratto?.id ? "Aggiorna contratto" : "Salva contratto"}
             </button>
           </div>
         </div>
@@ -6279,6 +6310,25 @@ export default function ClientePage({ params }: { params: any }) {
             )}
 
             <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 12 }}>
+              {editScadenzaForm.tipo === "SAAS_ULTRA" && (
+                <button
+                  type="button"
+                  onClick={deleteContrattoFromScadenza}
+                  disabled={editScadenzaSaving}
+                  style={{
+                    marginRight: "auto",
+                    padding: "8px 12px",
+                    borderRadius: 8,
+                    border: "1px solid #b91c1c",
+                    background: "white",
+                    color: "#b91c1c",
+                    cursor: "pointer",
+                    opacity: editScadenzaSaving ? 0.6 : 1,
+                  }}
+                >
+                  Elimina contratto
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => setEditScadenzaOpen(false)}
