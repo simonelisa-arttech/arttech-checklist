@@ -4503,6 +4503,21 @@ export default function ClientePage({ params }: { params: any }) {
                       >
                         Invia admin
                       </button>
+                      <button
+                        type="button"
+                        onClick={() => openEditScadenza(r)}
+                        style={{
+                          padding: "3px 6px",
+                          borderRadius: 6,
+                          border: "1px solid #111",
+                          background: "white",
+                          cursor: "pointer",
+                          fontSize: 11,
+                          fontWeight: 700,
+                        }}
+                      >
+                        Modifica
+                      </button>
                     </div>
                     )}
                     {!isExpiryOnly && (
@@ -4585,21 +4600,6 @@ export default function ClientePage({ params }: { params: any }) {
                         }}
                       >
                         FATTURATO
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => openEditScadenza(r)}
-                        style={{
-                          padding: "4px 8px",
-                          borderRadius: 6,
-                          border: "1px solid #111",
-                          background: "white",
-                          cursor: "pointer",
-                          fontSize: 12,
-                          fontWeight: 700,
-                        }}
-                      >
-                        Modifica
                       </button>
                     </div>
                     )}
