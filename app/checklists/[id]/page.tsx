@@ -1744,7 +1744,9 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 140px", gap: 10 }}>
                     <input
                       value={formData.dimensioni}
-                      onChange={(e) => setFormData({ ...formData, dimensioni: e.target.value })}
+                      onChange={(e) =>
+                        setFormData((prev) => (prev ? { ...prev, dimensioni: e.target.value } : prev))
+                      }
                       style={{ width: "100%", padding: 10 }}
                     />
                     <input
