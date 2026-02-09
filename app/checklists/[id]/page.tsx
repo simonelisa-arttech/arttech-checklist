@@ -1747,17 +1747,26 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
                       onChange={(e) =>
                         setFormData((prev) => (prev ? { ...prev, dimensioni: e.target.value } : prev))
                       }
+                      placeholder="Es: 3x2"
                       style={{ width: "100%", padding: 10 }}
                     />
-                    <input
-                      value={
-                        calcM2(formData.dimensioni) != null
-                          ? calcM2(formData.dimensioni)!.toFixed(2)
-                          : ""
-                      }
-                      readOnly
-                      style={{ width: "100%", padding: 10, background: "#f7f7f7" }}
-                    />
+                    <div
+                      style={{
+                        width: "100%",
+                        padding: 10,
+                        background: "#f7f7f7",
+                        borderRadius: 6,
+                        border: "1px solid #e5e7eb",
+                        fontSize: 13,
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "flex-start",
+                      }}
+                    >
+                      {calcM2(formData.dimensioni) != null
+                        ? calcM2(formData.dimensioni)!.toFixed(2)
+                        : ""}
+                    </div>
                   </div>
                 ) : undefined
               }
