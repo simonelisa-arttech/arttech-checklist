@@ -172,13 +172,18 @@ export default function StoricoAvvisiPage() {
 
   const searchParams = useSearchParams();
   const clienteParam = searchParams?.get("cliente") || "";
+  const checklistParam = searchParams?.get("checklist_id") || "";
+  const tipoParam = searchParams?.get("tipo") || "";
 
   const [rows, setRows] = useState<AlertLogRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const [clienteFilter, setClienteFilter] = useState(clienteParam);
-  const [tipoFilter, setTipoFilter] = useState<string[]>([]);
+  const [checklistIdFilter, setChecklistIdFilter] = useState(checklistParam);
+  const [tipoFilter, setTipoFilter] = useState<string[]>(
+    tipoParam ? [String(tipoParam).toUpperCase()] : []
+  );
   const [triggerFilter, setTriggerFilter] = useState("");
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
@@ -188,7 +193,16 @@ export default function StoricoAvvisiPage() {
     if (clienteParam && clienteParam !== clienteFilter) {
       setClienteFilter(clienteParam);
     }
-  }, [clienteParam]);
+    if (checklistParam && checklistParam !== checklistIdFilter) {
+      setChecklistIdFilter(checklistParam);
+    }
+    if (tipoParam) {
+      const upper = String(tipoParam).toUpperCase();
+      if (!tipoFilter.includes(upper)) {
+        setTipoFilter([upper]);
+      }
+    }
+  }, [clienteParam, checklistParam, tipoParam]);
 
   useEffect(() => {
     let alive = true;
@@ -253,6 +267,9 @@ export default function StoricoAvvisiPage() {
         const c = String(r.checklist?.cliente || "").toLowerCase();
         if (!c.includes(clienteFilter.toLowerCase())) return false;
       }
+      if (checklistIdFilter) {
+        if (String(r.checklist_id || "") !== checklistIdFilter) return false;
+      }
       if (tipoFilter.length > 0) {
         const t = String(r.tipo || "").toUpperCase();
         if (!tipoFilter.includes(t)) return false;
@@ -311,6 +328,14 @@ export default function StoricoAvvisiPage() {
   if (loading) return <div style={{ padding: 20 }}>Caricamento…</div>;
   if (error) return <div style={{ padding: 20, color: "crimson" }}>{error}</div>;
 
+  function applyQuickRange(days: number) {
+    const to = new Date();
+    const from = new Date();
+    from.setDate(from.getDate() - days);
+    setFromDate(from.toISOString().slice(0, 10));
+    setToDate(to.toISOString().slice(0, 10));
+  }
+
   return (
     <div style={{ maxWidth: 1200, margin: "40px auto", padding: 16 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
@@ -344,7 +369,7 @@ export default function StoricoAvvisiPage() {
           border: "1px solid #eee",
           background: "white",
           display: "grid",
-          gridTemplateColumns: "1.3fr 1.4fr 1fr 1fr 1fr",
+          gridTemplateColumns: "1.3fr 1.3fr 1.4fr 1fr 1fr 1fr",
           gap: 10,
           fontSize: 12,
         }}
@@ -363,6 +388,16 @@ export default function StoricoAvvisiPage() {
               <option key={c} value={c} />
             ))}
           </datalist>
+        </label>
+
+        <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          Checklist ID
+          <input
+            value={checklistIdFilter}
+            onChange={(e) => setChecklistIdFilter(e.target.value)}
+            placeholder="ID checklist..."
+            style={{ padding: "6px 8px" }}
+          />
         </label>
 
         <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
@@ -412,6 +447,25 @@ export default function StoricoAvvisiPage() {
             onChange={(e) => setToDate(e.target.value)}
             style={{ padding: "6px 8px" }}
           />
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            {[7, 30, 90].map((d) => (
+              <button
+                key={d}
+                type="button"
+                onClick={() => applyQuickRange(d)}
+                style={{
+                  padding: "4px 8px",
+                  borderRadius: 999,
+                  border: "1px solid #e5e7eb",
+                  background: "#fafafa",
+                  fontSize: 11,
+                  cursor: "pointer",
+                }}
+              >
+                {d}gg
+              </button>
+            ))}
+          </div>
         </label>
 
         <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>

@@ -857,7 +857,10 @@ export default function ClientePage({ params }: { params: any }) {
     return alertKey(r.item_tipo ?? null, r.checklist_id ?? null, r.riferimento ?? null);
   }
 
-  function renderAvvisatoBadge(stats?: AlertStats | null) {
+  function renderAvvisatoBadge(
+    stats?: AlertStats | null,
+    link?: { cliente?: string | null; checklist_id?: string | null; tipo?: string | null }
+  ) {
     const count = stats?.n_avvisi ?? null;
     const label = count != null ? `AVVISATO (${count})` : "AVVISATO";
     const lastSent = stats?.last_sent_at
@@ -874,27 +877,56 @@ export default function ClientePage({ params }: { params: any }) {
     const tooltip = stats
       ? `Ultimo invio: ${lastSent}\nOperatori: ${stats.n_operatore}\nEmail manuali: ${stats.n_email_manual}\n${recipients}${overflow ? `\n${overflow}` : ""}`
       : undefined;
+    const href =
+      link?.checklist_id || link?.cliente || link?.tipo
+        ? `/avvisi?${new URLSearchParams({
+            ...(link?.cliente ? { cliente: link.cliente } : {}),
+            ...(link?.checklist_id ? { checklist_id: link.checklist_id } : {}),
+            ...(link?.tipo ? { tipo: link.tipo } : {}),
+          }).toString()}`
+        : null;
     return (
       <span
         className="group"
         style={{ display: "inline-block", position: "relative" }}
       >
-        <span
-          title={tooltip}
-          style={{
-            display: "inline-block",
-            padding: "2px 8px",
-            borderRadius: 999,
-            fontSize: 12,
-            fontWeight: 700,
-            background: "#dbeafe",
-            color: "#1d4ed8",
-            whiteSpace: "nowrap",
-            position: "relative",
-          }}
-        >
-          {label}
-        </span>
+        {href ? (
+          <Link
+            href={href}
+            title={tooltip}
+            style={{
+              display: "inline-block",
+              padding: "2px 8px",
+              borderRadius: 999,
+              fontSize: 12,
+              fontWeight: 700,
+              background: "#dbeafe",
+              color: "#1d4ed8",
+              whiteSpace: "nowrap",
+              position: "relative",
+              textDecoration: "none",
+            }}
+          >
+            {label}
+          </Link>
+        ) : (
+          <span
+            title={tooltip}
+            style={{
+              display: "inline-block",
+              padding: "2px 8px",
+              borderRadius: 999,
+              fontSize: 12,
+              fontWeight: 700,
+              background: "#dbeafe",
+              color: "#1d4ed8",
+              whiteSpace: "nowrap",
+              position: "relative",
+            }}
+          >
+            {label}
+          </span>
+        )}
         {stats && (
           <div
             className="group-hover:block"
@@ -4597,25 +4629,26 @@ ${rinnovi30ggBreakdown.debugSample
             }}
           >
             <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "120px 1fr 160px 140px 160px 320px",
-                padding: "10px 12px",
-                fontWeight: 800,
-                background: "#fafafa",
-                borderBottom: "1px solid #eee",
-                fontSize: 12,
-              }}
-            >
-              <div>Tipo</div>
-              <div>Riferimento</div>
-              <div>Scadenza</div>
-              <div>Stato</div>
-              <div>Modalità</div>
-              <div>Azioni</div>
-            </div>
+            style={{
+              display: "grid",
+              gridTemplateColumns: "120px 1fr 160px 140px 160px 160px 320px",
+              padding: "10px 12px",
+              fontWeight: 800,
+              background: "#fafafa",
+              borderBottom: "1px solid #eee",
+              fontSize: 12,
+            }}
+          >
+            <div>Tipo</div>
+            <div>Riferimento</div>
+            <div>Scadenza</div>
+            <div>Stato</div>
+            <div>Ultimo invio</div>
+            <div>Modalità</div>
+            <div>Azioni</div>
+          </div>
 
-            {filteredRinnovi.map((r) => {
+          {filteredRinnovi.map((r) => {
               const checklist = r.checklist_id ? checklistById.get(r.checklist_id) : null;
               const checklistName = checklist?.nome_checklist ?? r.checklist_id?.slice(0, 8);
               const stato = String(r.stato || "").toUpperCase();
@@ -4637,22 +4670,29 @@ ${rinnovi30ggBreakdown.debugSample
               const canStage2 = isTagliando
                 ? isExtra && (stato === "DA_FATTURARE" || stato === "OK")
                 : !isExpiryOnly && (stato === "CONFERMATO" || stato === "DA_FATTURARE");
-              const canNonRinnovato =
-                !isTagliando && !isExpiryOnly && !["FATTURATO", "NON_RINNOVATO"].includes(stato);
-              const canFatturato = isTagliando ? isExtra && stato === "DA_FATTURARE" : stato === "DA_FATTURARE";
-              return (
-                <div
-                  key={r.id}
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "120px 1fr 160px 140px 160px 320px",
-                    padding: "10px 12px",
-                    borderBottom: "1px solid #f3f4f6",
-                    alignItems: "center",
-                    fontSize: 12,
-                    columnGap: 12,
-                  }}
-                >
+            const canNonRinnovato =
+              !isTagliando && !isExpiryOnly && !["FATTURATO", "NON_RINNOVATO"].includes(stato);
+            const canFatturato = isTagliando ? isExtra && stato === "DA_FATTURARE" : stato === "DA_FATTURARE";
+            const alertStats = alertStatsMap.get(getAlertKeyForRow(r)) || null;
+            const lastSent = alertStats?.last_sent_at
+              ? new Date(alertStats.last_sent_at).toLocaleString()
+              : "—";
+            const lastSentTooltip = alertStats
+              ? `Totale invii: ${alertStats.n_avvisi}\nUltimo invio: ${lastSent}`
+              : "Nessun invio";
+            return (
+              <div
+                key={r.id}
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "120px 1fr 160px 140px 160px 160px 320px",
+                  padding: "10px 12px",
+                  borderBottom: "1px solid #f3f4f6",
+                  alignItems: "center",
+                  fontSize: 12,
+                  columnGap: 12,
+                }}
+              >
                   <div>{String(r.item_tipo || "—").toUpperCase()}</div>
                   <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                     <div>{r.riferimento ?? r.descrizione ?? "—"}</div>
@@ -4669,16 +4709,21 @@ ${rinnovi30ggBreakdown.debugSample
                     <div>{r.scadenza ? new Date(r.scadenza).toLocaleDateString() : "—"}</div>
                     {renderScadenzaBadge(r.scadenza)}
                   </div>
-                  <div style={{ overflow: "visible" }}>
-                    {isExpiryOnly
-                      ? renderBadge(getExpiryStatus(r.scadenza))
-                      : stato === "AVVISATO"
-                      ? renderAvvisatoBadge(alertStatsMap.get(getAlertKeyForRow(r)) || null)
-                      : isTagliando
-                      ? renderTagliandoStatoBadge(r.stato)
-                      : renderRinnovoStatoBadge(r.stato)}
-                  </div>
-                  <div>{isTagliando ? renderModalitaBadge(r.modalita) : "—"}</div>
+                <div style={{ overflow: "visible" }}>
+                  {isExpiryOnly
+                    ? renderBadge(getExpiryStatus(r.scadenza))
+                    : stato === "AVVISATO"
+                    ? renderAvvisatoBadge(alertStats, {
+                        cliente,
+                        checklist_id: r.checklist_id ?? null,
+                        tipo: r.item_tipo ?? null,
+                      })
+                    : isTagliando
+                    ? renderTagliandoStatoBadge(r.stato)
+                    : renderRinnovoStatoBadge(r.stato)}
+                </div>
+                <div title={lastSentTooltip}>{lastSent}</div>
+                <div>{isTagliando ? renderModalitaBadge(r.modalita) : "—"}</div>
                   <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                     {!isExpiryOnly && (
                       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
