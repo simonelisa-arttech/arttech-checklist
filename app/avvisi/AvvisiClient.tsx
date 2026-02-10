@@ -212,7 +212,7 @@ export default function AvvisiClient() {
       const { data, error: err } = await supabase
         .from("checklist_alert_log")
         .select(
-          "id, created_at, tipo, riferimento, to_nome, to_email, trigger, subject, inviato_email, checklist_id, checklist:checklists(cliente)"
+          "id, created_at, tipo, riferimento, to_nome, to_email, trigger, subject, inviato_email, checklist_id"
         )
         .order("created_at", { ascending: false })
         .limit(200);
@@ -221,7 +221,27 @@ export default function AvvisiClient() {
         setError("Errore caricamento storico avvisi: " + err.message);
         setRows([]);
       } else {
-        setRows((data || []) as AlertLogRow[]);
+        const baseRows = (data || []) as AlertLogRow[];
+        const checklistIds = Array.from(
+          new Set(baseRows.map((r) => r.checklist_id).filter(Boolean))
+        ) as string[];
+        let checklistMap = new Map<string, { cliente?: string | null }>();
+        if (checklistIds.length > 0) {
+          const { data: checklistsData, error: checklistsErr } = await supabase
+            .from("checklists")
+            .select("id, cliente")
+            .in("id", checklistIds);
+          if (!checklistsErr && checklistsData) {
+            for (const c of checklistsData as any[]) {
+              checklistMap.set(c.id, { cliente: c.cliente ?? null });
+            }
+          }
+        }
+        const merged = baseRows.map((r) => ({
+          ...r,
+          checklist: r.checklist_id ? checklistMap.get(r.checklist_id) ?? null : null,
+        }));
+        setRows(merged);
       }
       setLoading(false);
     })();
