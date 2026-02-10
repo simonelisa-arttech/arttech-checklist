@@ -413,18 +413,18 @@ export default function AvvisiClient() {
       >
         <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
           Cliente
-          <input
-            list="clienti-list"
+          <select
             value={clienteFilter}
             onChange={(e) => setClienteFilter(e.target.value)}
-            placeholder="Cerca cliente..."
             style={{ padding: "6px 8px" }}
-          />
-          <datalist id="clienti-list">
+          >
+            <option value="">Tutti</option>
             {clienteOptions.map((c) => (
-              <option key={c} value={c} />
+              <option key={c} value={c}>
+                {c}
+              </option>
             ))}
-          </datalist>
+          </select>
         </label>
 
         <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
