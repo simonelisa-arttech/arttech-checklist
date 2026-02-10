@@ -195,6 +195,17 @@ export default function NuovaChecklistPage() {
   const [tipoImpianto, setTipoImpianto] = useState<"INDOOR" | "OUTDOOR" | "">("");
   const [dimensioni, setDimensioni] = useState("");
   const [garanziaScadenza, setGaranziaScadenza] = useState("");
+  const [serialControlInput, setSerialControlInput] = useState("");
+  const [serialControlNote, setSerialControlNote] = useState("");
+  const [serialModuleInput, setSerialModuleInput] = useState("");
+  const [serialModuleNote, setSerialModuleNote] = useState("");
+  const [serialiControllo, setSerialiControllo] = useState<{ seriale: string; note: string }[]>(
+    []
+  );
+  const [serialiModuli, setSerialiModuli] = useState<{ seriale: string; note: string }[]>(
+    []
+  );
+  const [serialsError, setSerialsError] = useState<string | null>(null);
   const [ultraScope, setUltraScope] = useState<"CLIENTE" | "CHECKLIST">("CLIENTE");
   const [ultraInclusi, setUltraInclusi] = useState<string>("");
 
@@ -281,6 +292,40 @@ export default function NuovaChecklistPage() {
       return parsed.toISOString().slice(0, 10);
     }
     return raw;
+  }
+
+  function normalizeSerial(input: string) {
+    return input.trim().toUpperCase().replace(/\s+/g, " ");
+  }
+
+  function addSerial(tipo: "CONTROLLO" | "MODULO_LED") {
+    const raw = tipo === "CONTROLLO" ? serialControlInput : serialModuleInput;
+    const noteRaw = tipo === "CONTROLLO" ? serialControlNote : serialModuleNote;
+    const seriale = normalizeSerial(raw);
+    if (!seriale) {
+      setSerialsError("Inserisci un seriale valido.");
+      return;
+    }
+    setSerialsError(null);
+    if (tipo === "CONTROLLO") {
+      if (serialiControllo.some((s) => s.seriale === seriale)) return;
+      setSerialiControllo((prev) => [...prev, { seriale, note: noteRaw.trim() }]);
+      setSerialControlInput("");
+      setSerialControlNote("");
+    } else {
+      if (serialiModuli.some((s) => s.seriale === seriale)) return;
+      setSerialiModuli((prev) => [...prev, { seriale, note: noteRaw.trim() }]);
+      setSerialModuleInput("");
+      setSerialModuleNote("");
+    }
+  }
+
+  function removeSerial(tipo: "CONTROLLO" | "MODULO_LED", seriale: string) {
+    if (tipo === "CONTROLLO") {
+      setSerialiControllo((prev) => prev.filter((s) => s.seriale !== seriale));
+    } else {
+      setSerialiModuli((prev) => prev.filter((s) => s.seriale !== seriale));
+    }
   }
 
   function addDraftLicenza() {
@@ -516,6 +561,33 @@ export default function NuovaChecklistPage() {
         }
       }
 
+      const serialPayload = [
+        ...serialiControllo.map((s) => ({
+          checklist_id: checklistId,
+          tipo: "CONTROLLO",
+          seriale: normalizeSerial(s.seriale),
+          note: s.note ? s.note.trim() : null,
+        })),
+        ...serialiModuli.map((s) => ({
+          checklist_id: checklistId,
+          tipo: "MODULO_LED",
+          seriale: normalizeSerial(s.seriale),
+          note: s.note ? s.note.trim() : null,
+        })),
+      ];
+      if (serialPayload.length > 0) {
+        const { error: serialErr } = await supabase.from("asset_serials").insert(serialPayload);
+        if (serialErr) {
+          const code = (serialErr as any)?.code;
+          const msg =
+            code === "23505"
+              ? "Seriale CONTROLLO già associato ad un altro impianto/progetto."
+              : serialErr.message;
+          alert("Errore inserimento seriali: " + msg);
+          return;
+        }
+      }
+
       router.push(`/checklists/${checklistId}`);
     } catch (err: any) {
       const info = logSupabaseError(err);
@@ -597,6 +669,176 @@ export default function NuovaChecklistPage() {
               style={{ width: "100%", padding: 10 }}
             />
           </label>
+
+          <div
+            style={{
+              gridColumn: "1 / -1",
+              display: "grid",
+              gridTemplateColumns: "1fr 1fr",
+              gap: 12,
+              marginTop: 6,
+            }}
+          >
+            <div style={{ border: "1px solid #eee", borderRadius: 10, padding: 10 }}>
+              <div style={{ fontWeight: 700, marginBottom: 6 }}>
+                Seriali elettroniche di controllo
+              </div>
+              <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+                <input
+                  value={serialControlInput}
+                  onChange={(e) => setSerialControlInput(e.target.value)}
+                  placeholder="Aggiungi seriale CONTROLLO"
+                  style={{ width: "100%", padding: 8 }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") addSerial("CONTROLLO");
+                  }}
+                />
+                <input
+                  value={serialControlNote}
+                  onChange={(e) => setSerialControlNote(e.target.value)}
+                  placeholder="Note (modello/device)"
+                  style={{ width: "100%", padding: 8 }}
+                />
+                <button
+                  type="button"
+                  onClick={() => addSerial("CONTROLLO")}
+                  style={{
+                    padding: "6px 10px",
+                    borderRadius: 8,
+                    border: "1px solid #111",
+                    background: "white",
+                    cursor: "pointer",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  Aggiungi
+                </button>
+              </div>
+              {serialsError && (
+                <div style={{ color: "crimson", fontSize: 12, marginBottom: 6 }}>
+                  {serialsError}
+                </div>
+              )}
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                {serialiControllo.length === 0 ? (
+                  <span style={{ opacity: 0.6 }}>—</span>
+                ) : (
+                  serialiControllo.map((s) => (
+                    <span
+                      key={s.seriale}
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 6,
+                        padding: "4px 8px",
+                        borderRadius: 999,
+                        background: "#f3f4f6",
+                        fontSize: 12,
+                        fontWeight: 600,
+                      }}
+                    >
+                      {s.seriale}
+                      {s.note ? (
+                        <span style={{ opacity: 0.7, fontWeight: 500 }}>{s.note}</span>
+                      ) : null}
+                      <button
+                        type="button"
+                        onClick={() => removeSerial("CONTROLLO", s.seriale)}
+                        style={{
+                          border: "none",
+                          background: "transparent",
+                          cursor: "pointer",
+                          fontWeight: 700,
+                        }}
+                        title="Rimuovi"
+                      >
+                        ×
+                      </button>
+                    </span>
+                  ))
+                )}
+              </div>
+            </div>
+
+            <div style={{ border: "1px solid #eee", borderRadius: 10, padding: 10 }}>
+              <div style={{ fontWeight: 700, marginBottom: 6 }}>Seriali moduli LED</div>
+              <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+                <input
+                  value={serialModuleInput}
+                  onChange={(e) => setSerialModuleInput(e.target.value)}
+                  placeholder="Aggiungi seriale MODULO_LED"
+                  style={{ width: "100%", padding: 8 }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") addSerial("MODULO_LED");
+                  }}
+                />
+                <input
+                  value={serialModuleNote}
+                  onChange={(e) => setSerialModuleNote(e.target.value)}
+                  placeholder="Note (modello/device)"
+                  style={{ width: "100%", padding: 8 }}
+                />
+                <button
+                  type="button"
+                  onClick={() => addSerial("MODULO_LED")}
+                  style={{
+                    padding: "6px 10px",
+                    borderRadius: 8,
+                    border: "1px solid #111",
+                    background: "white",
+                    cursor: "pointer",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  Aggiungi
+                </button>
+              </div>
+              {serialsError && (
+                <div style={{ color: "crimson", fontSize: 12, marginBottom: 6 }}>
+                  {serialsError}
+                </div>
+              )}
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                {serialiModuli.length === 0 ? (
+                  <span style={{ opacity: 0.6 }}>—</span>
+                ) : (
+                  serialiModuli.map((s) => (
+                    <span
+                      key={s.seriale}
+                      style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 6,
+                        padding: "4px 8px",
+                        borderRadius: 999,
+                        background: "#f3f4f6",
+                        fontSize: 12,
+                        fontWeight: 600,
+                      }}
+                    >
+                      {s.seriale}
+                      {s.note ? (
+                        <span style={{ opacity: 0.7, fontWeight: 500 }}>{s.note}</span>
+                      ) : null}
+                      <button
+                        type="button"
+                        onClick={() => removeSerial("MODULO_LED", s.seriale)}
+                        style={{
+                          border: "none",
+                          background: "transparent",
+                          cursor: "pointer",
+                          fontWeight: 700,
+                        }}
+                        title="Rimuovi"
+                      >
+                        ×
+                      </button>
+                    </span>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
 
           <label>
             Dimensioni<br />

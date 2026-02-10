@@ -128,6 +128,16 @@ type ChecklistDocument = {
   uploaded_by_operatore: string | null;
 };
 
+type AssetSerial = {
+  id: string;
+  checklist_id: string;
+  tipo: "CONTROLLO" | "MODULO_LED";
+  seriale: string;
+  note: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+};
+
 type AlertOperatore = {
   id: string;
   nome: string | null;
@@ -460,6 +470,19 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
     gestore: string;
     fornitore: string;
   } | null>(null);
+  const [assetSerials, setAssetSerials] = useState<AssetSerial[]>([]);
+  const [serialControlInput, setSerialControlInput] = useState("");
+  const [serialModuleInput, setSerialModuleInput] = useState("");
+  const [serialControlNote, setSerialControlNote] = useState("");
+  const [serialModuleNote, setSerialModuleNote] = useState("");
+  const [serialsError, setSerialsError] = useState<string | null>(null);
+  const [serialUsageOpen, setSerialUsageOpen] = useState<{
+    tipo: "CONTROLLO" | "MODULO_LED";
+    seriale: string;
+  } | null>(null);
+  const [serialUsageRows, setSerialUsageRows] = useState<
+    { checklist_id: string; cliente: string | null; nome_checklist: string | null }[]
+  >([]);
   const [documents, setDocuments] = useState<ChecklistDocument[]>([]);
   const [docType, setDocType] = useState("");
   const [docFile, setDocFile] = useState<File | null>(null);
@@ -494,6 +517,91 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
   function briefError(err: unknown) {
     const msg = err instanceof Error ? err.message : String(err ?? "Errore invio");
     return msg.length > 80 ? `${msg.slice(0, 77)}...` : msg;
+  }
+
+  function normalizeSerial(input: string) {
+    return input.trim().toUpperCase().replace(/\s+/g, " ");
+  }
+
+  async function addSerial(
+    tipo: "CONTROLLO" | "MODULO_LED",
+    raw: string,
+    noteRaw: string
+  ) {
+    if (!id) return;
+    const seriale = normalizeSerial(raw);
+    if (!seriale) {
+      setSerialsError("Inserisci un seriale valido.");
+      return;
+    }
+    if (assetSerials.some((s) => s.tipo === tipo && s.seriale === seriale)) {
+      setSerialsError("Seriale già presente per questo tipo.");
+      return;
+    }
+    setSerialsError(null);
+    const { data, error: err } = await supabase
+      .from("asset_serials")
+      .insert({ checklist_id: id, tipo, seriale, note: noteRaw?.trim() || null })
+      .select("*")
+      .single();
+    if (err) {
+      const code = (err as any)?.code;
+      const msg =
+        tipo === "CONTROLLO" && code === "23505"
+          ? "Seriale CONTROLLO già associato ad un altro impianto/progetto."
+          : err.message;
+      setSerialsError(msg);
+      return;
+    }
+    setAssetSerials((prev) => [...prev, data as AssetSerial]);
+    if (tipo === "CONTROLLO") setSerialControlInput("");
+    if (tipo === "CONTROLLO") setSerialControlNote("");
+    if (tipo === "MODULO_LED") setSerialModuleInput("");
+    if (tipo === "MODULO_LED") setSerialModuleNote("");
+    showToast("Seriale aggiunto");
+  }
+
+  async function removeSerial(serial: AssetSerial) {
+    const { error: err } = await supabase.from("asset_serials").delete().eq("id", serial.id);
+    if (err) {
+      setSerialsError(err.message);
+      return;
+    }
+    setAssetSerials((prev) => prev.filter((s) => s.id !== serial.id));
+    showToast("Seriale rimosso");
+  }
+
+  async function openSerialUsage(tipo: "CONTROLLO" | "MODULO_LED", seriale: string) {
+    if (!id) return;
+    setSerialUsageOpen({ tipo, seriale });
+    const { data, error: err } = await supabase
+      .from("asset_serials")
+      .select("checklist_id")
+      .eq("tipo", tipo)
+      .eq("seriale", seriale);
+    if (err) {
+      setSerialUsageRows([]);
+      return;
+    }
+    const checklistIds = Array.from(
+      new Set((data || []).map((r: any) => r.checklist_id).filter(Boolean))
+    ) as string[];
+    const others = checklistIds.filter((cid) => cid !== id);
+    if (others.length === 0) {
+      setSerialUsageRows([]);
+      return;
+    }
+    const { data: checklistsData } = await supabase
+      .from("checklists")
+      .select("id, cliente, nome_checklist")
+      .in("id", others);
+    setSerialUsageRows(
+      (checklistsData || []).map((r: any) => ({
+        checklist_id: r.id,
+        cliente: r.cliente ?? null,
+        nome_checklist: r.nome_checklist ?? null,
+      }))
+    );
   }
 
   useEffect(() => {
@@ -626,6 +734,18 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
       return;
     }
 
+    const { data: serialsData, error: serialsErr } = await supabase
+      .from("asset_serials")
+      .select("*")
+      .eq("checklist_id", id)
+      .order("created_at", { ascending: true });
+
+    if (serialsErr) {
+      setError("Errore caricamento seriali: " + serialsErr.message);
+      setLoading(false);
+      return;
+    }
+
     if (!catalogLoaded) {
       const { data: catalogData, error: catalogErr } = await supabase
         .from("catalog_items")
@@ -709,6 +829,7 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
     setTasks((tasks || []) as unknown as ChecklistTask[]);
     setLicenze((licenzeData || []) as Licenza[]);
     setDocuments((docsData || []) as ChecklistDocument[]);
+    setAssetSerials((serialsData || []) as AssetSerial[]);
 
     const { data: alertData, error: alertErr } = await supabase
       .from("checklist_alert_log")
@@ -798,6 +919,8 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
     const code = (item.codice ?? "").toUpperCase();
     return code.startsWith("STR-") || code === "TEC-STRCT";
   });
+  const serialiControllo = assetSerials.filter((s) => s.tipo === "CONTROLLO");
+  const serialiModuli = assetSerials.filter((s) => s.tipo === "MODULO_LED");
 
   function updateRowFields(idx: number, patch: Partial<ChecklistItemRow>) {
     setRows((prev) => {
@@ -1977,6 +2100,278 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
           </div>
         </div>
       </div>
+      <div style={{ marginTop: 12 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+          <div
+            style={{
+              border: "1px solid #eee",
+              borderRadius: 12,
+              padding: 12,
+              background: "white",
+            }}
+          >
+            <div style={{ fontWeight: 800, marginBottom: 6 }}>
+              Seriali elettroniche di controllo
+            </div>
+            {editMode && (
+              <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+                <input
+                  value={serialControlInput}
+                  onChange={(e) => setSerialControlInput(e.target.value)}
+                  placeholder="Aggiungi seriale CONTROLLO"
+                  style={{ width: "100%", padding: 8 }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter")
+                      addSerial("CONTROLLO", serialControlInput, serialControlNote);
+                  }}
+                />
+                <input
+                  value={serialControlNote}
+                  onChange={(e) => setSerialControlNote(e.target.value)}
+                  placeholder="Note (modello/device)"
+                  style={{ width: "100%", padding: 8 }}
+                />
+                <button
+                  type="button"
+                  onClick={() => addSerial("CONTROLLO", serialControlInput, serialControlNote)}
+                  style={{
+                    padding: "6px 10px",
+                    borderRadius: 8,
+                    border: "1px solid #111",
+                    background: "white",
+                    cursor: "pointer",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  Aggiungi
+                </button>
+              </div>
+            )}
+            {serialsError && (
+              <div style={{ color: "crimson", fontSize: 12, marginBottom: 6 }}>
+                {serialsError}
+              </div>
+            )}
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+              {serialiControllo.length === 0 ? (
+                <span style={{ opacity: 0.6 }}>—</span>
+              ) : (
+                serialiControllo.map((s) => (
+                  <span
+                    key={s.id}
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 6,
+                      padding: "4px 8px",
+                      borderRadius: 999,
+                      background: "#f3f4f6",
+                      fontSize: 12,
+                      fontWeight: 600,
+                    }}
+                  >
+                    {s.seriale}
+                    {s.note ? (
+                      <span style={{ opacity: 0.7, fontWeight: 500 }}>{s.note}</span>
+                    ) : null}
+                    <button
+                      type="button"
+                      onClick={() => openSerialUsage("CONTROLLO", s.seriale)}
+                      style={{
+                        border: "none",
+                        background: "transparent",
+                        cursor: "pointer",
+                        fontWeight: 700,
+                      }}
+                      title="Usato anche in..."
+                    >
+                      ?
+                    </button>
+                    {editMode && (
+                      <button
+                        type="button"
+                        onClick={() => removeSerial(s)}
+                        style={{
+                          border: "none",
+                          background: "transparent",
+                          cursor: "pointer",
+                          fontWeight: 700,
+                        }}
+                        title="Rimuovi"
+                      >
+                        ×
+                      </button>
+                    )}
+                  </span>
+                ))
+              )}
+            </div>
+          </div>
+
+          <div
+            style={{
+              border: "1px solid #eee",
+              borderRadius: 12,
+              padding: 12,
+              background: "white",
+            }}
+          >
+            <div style={{ fontWeight: 800, marginBottom: 6 }}>Seriali moduli LED</div>
+            {editMode && (
+              <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+                <input
+                  value={serialModuleInput}
+                  onChange={(e) => setSerialModuleInput(e.target.value)}
+                  placeholder="Aggiungi seriale MODULO_LED"
+                  style={{ width: "100%", padding: 8 }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter")
+                      addSerial("MODULO_LED", serialModuleInput, serialModuleNote);
+                  }}
+                />
+                <input
+                  value={serialModuleNote}
+                  onChange={(e) => setSerialModuleNote(e.target.value)}
+                  placeholder="Note (modello/device)"
+                  style={{ width: "100%", padding: 8 }}
+                />
+                <button
+                  type="button"
+                  onClick={() => addSerial("MODULO_LED", serialModuleInput, serialModuleNote)}
+                  style={{
+                    padding: "6px 10px",
+                    borderRadius: 8,
+                    border: "1px solid #111",
+                    background: "white",
+                    cursor: "pointer",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  Aggiungi
+                </button>
+              </div>
+            )}
+            {serialsError && (
+              <div style={{ color: "crimson", fontSize: 12, marginBottom: 6 }}>
+                {serialsError}
+              </div>
+            )}
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+              {serialiModuli.length === 0 ? (
+                <span style={{ opacity: 0.6 }}>—</span>
+              ) : (
+                serialiModuli.map((s) => (
+                  <span
+                    key={s.id}
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 6,
+                      padding: "4px 8px",
+                      borderRadius: 999,
+                      background: "#f3f4f6",
+                      fontSize: 12,
+                      fontWeight: 600,
+                    }}
+                  >
+                    {s.seriale}
+                    {s.note ? (
+                      <span style={{ opacity: 0.7, fontWeight: 500 }}>{s.note}</span>
+                    ) : null}
+                    <button
+                      type="button"
+                      onClick={() => openSerialUsage("MODULO_LED", s.seriale)}
+                      style={{
+                        border: "none",
+                        background: "transparent",
+                        cursor: "pointer",
+                        fontWeight: 700,
+                      }}
+                      title="Usato anche in..."
+                    >
+                      ?
+                    </button>
+                    {editMode && (
+                      <button
+                        type="button"
+                        onClick={() => removeSerial(s)}
+                        style={{
+                          border: "none",
+                          background: "transparent",
+                          cursor: "pointer",
+                          fontWeight: 700,
+                        }}
+                        title="Rimuovi"
+                      >
+                        ×
+                      </button>
+                    )}
+                  </span>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+      {serialUsageOpen && (
+        <div
+          onClick={() => setSerialUsageOpen(null)}
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.3)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 1000,
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              background: "white",
+              borderRadius: 12,
+              border: "1px solid #eee",
+              padding: 16,
+              width: 380,
+              maxWidth: "90vw",
+            }}
+          >
+            <div style={{ fontWeight: 800, marginBottom: 6 }}>Usato anche in…</div>
+            <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 10 }}>
+              {serialUsageOpen.tipo} — {serialUsageOpen.seriale}
+            </div>
+            {serialUsageRows.length === 0 ? (
+              <div style={{ opacity: 0.7 }}>Nessun altro progetto</div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {serialUsageRows.map((r) => (
+                  <div
+                    key={r.checklist_id}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      gap: 10,
+                      padding: "6px 8px",
+                      borderRadius: 8,
+                      background: "#f9fafb",
+                      border: "1px solid #eee",
+                      fontSize: 12,
+                    }}
+                  >
+                    <div>
+                      <div style={{ fontWeight: 700 }}>{r.cliente ?? "—"}</div>
+                      <div style={{ opacity: 0.7 }}>{r.nome_checklist ?? "—"}</div>
+                    </div>
+                    <Link href={`/checklists/${r.checklist_id}`}>Apri</Link>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
       <div style={{ marginTop: 22 }}>
         <h2 style={{ marginTop: 0 }}>SERVIZI</h2>
 

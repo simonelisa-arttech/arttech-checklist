@@ -283,6 +283,9 @@ export default function Page() {
   const [operatori, setOperatori] = useState<OperatoreRow[]>([]);
   const [currentOperatoreId, setCurrentOperatoreId] = useState<string>("");
   const [expandedSaasNoteId, setExpandedSaasNoteId] = useState<string | null>(null);
+  const [serialsByChecklistId, setSerialsByChecklistId] = useState<
+    Record<string, { seriali: string[] }>
+  >({});
 
   // campi testata
   const [cliente, setCliente] = useState("");
@@ -438,6 +441,7 @@ export default function Page() {
       if (proformaFilter === true && !hasProforma) return false;
       if (proformaFilter === false && hasProforma) return false;
       if (!needle) return true;
+      const serials = serialsByChecklistId[c.id]?.seriali || [];
       const hay = [
         c.nome_checklist,
         c.cliente,
@@ -475,6 +479,7 @@ export default function Page() {
         c.licenze_dettaglio ?? "",
         c.license_search ?? "",
         c.updated_at ?? "",
+        ...serials,
       ]
         .join(" ")
         .toLowerCase();
@@ -495,7 +500,7 @@ export default function Page() {
     });
 
     return sorted;
-  }, [items, q, sortKey, sortDir]);
+  }, [items, q, sortKey, sortDir, serialsByChecklistId]);
 
   async function load() {
     setLoading(true);
@@ -531,6 +536,10 @@ export default function Page() {
     const { data: mainItems, error: mainItemsErr } = await supabase
       .from("checklist_main_item_view")
       .select("checklist_id, codice, descrizione");
+
+    const { data: serialsData, error: serialsErr } = await supabase
+      .from("asset_serials")
+      .select("checklist_id, seriale");
 
     const sectionsByChecklistId: Record<string, Partial<Checklist>> = {};
     if (!sectionsErr && sections) {
@@ -578,6 +587,19 @@ export default function Page() {
           };
         }
       }
+    }
+
+    if (serialsErr) {
+      console.error("Errore caricamento seriali", serialsErr);
+    } else if (serialsData) {
+      const map: Record<string, { seriali: string[] }> = {};
+      for (const r of serialsData as any[]) {
+        const checklistId = String(r.checklist_id ?? "");
+        if (!checklistId) continue;
+        if (!map[checklistId]) map[checklistId] = { seriali: [] };
+        if (r.seriale) map[checklistId].seriali.push(String(r.seriale));
+      }
+      setSerialsByChecklistId(map);
     }
 
     if (!error && data) {
