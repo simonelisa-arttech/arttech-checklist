@@ -8,6 +8,9 @@ import Toast from "@/components/Toast";
 import { isSupabaseConfigured, supabase } from "@/lib/supabaseClient";
 import { sendAlert } from "@/lib/sendAlert";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 function parseLocalDay(value?: string | null): Date | null {
   if (!value) return null;
   const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(value);
@@ -1682,17 +1685,45 @@ export default function ClientePage({ params }: { params: any }) {
     return rows;
   }, [rinnoviAll, rinnoviFilterDaAvvisare, rinnoviFilterDaFatturare, rinnoviFilterScaduti]);
 
-  const rinnovi30ggCount = useMemo(() => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    return rinnoviAll.filter((r) => {
-      if (String(r.stato || "").toUpperCase() !== "DA_AVVISARE") return false;
+  const rinnovi30ggBreakdown = useMemo(() => {
+    const from = startOfToday();
+    from.setDate(from.getDate() - 30);
+    const to = startOfToday();
+    to.setDate(to.getDate() + 30);
+    to.setHours(23, 59, 59, 999);
+    const tipi = ["LICENZA", "TAGLIANDO", "SAAS", "GARANZIA", "SAAS_ULTRA"] as const;
+    const countsByTipo: Record<string, number> = {};
+    for (const t of tipi) countsByTipo[t] = 0;
+    let total = 0;
+    for (const r of rinnoviAll) {
       const dt = parseLocalDay(r.scadenza);
-      if (!dt) return false;
-      const diff = Math.ceil((dt.getTime() - today.getTime()) / (24 * 60 * 60 * 1000));
-      return diff >= 0 && diff <= 30;
-    }).length;
+      if (!dt) continue;
+      if (dt < from || dt > to) continue;
+      const tipo = String(r.item_tipo || "—").toUpperCase();
+      countsByTipo[tipo] = (countsByTipo[tipo] ?? 0) + 1;
+      total += 1;
+    }
+    const tooltipLines = [
+      ...tipi.map((t) => `${t}: ${countsByTipo[t] ?? 0}`),
+      `Totale: ${total}`,
+    ];
+    const debugSample = rinnoviAll.slice(0, 5).map((r) => ({
+      tipo: String(r.item_tipo || "—").toUpperCase(),
+      scadenza: r.scadenza ?? "—",
+    }));
+    return {
+      total,
+      countsByTipo,
+      tooltip: tooltipLines.join("\n"),
+      tooltipLines,
+      from,
+      to,
+      debugSample,
+      totalRows: rinnoviAll.length,
+    };
   }, [rinnoviAll]);
+
+  const rinnovi30ggCount = rinnovi30ggBreakdown.total;
 
   useEffect(() => {
     let alive = true;
@@ -3958,6 +3989,9 @@ export default function ClientePage({ params }: { params: any }) {
       </div>
 
       <h2 style={{ marginTop: 12, marginBottom: 6 }}>Cliente: {cliente}</h2>
+      <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 6 }}>
+        Build: {process.env.NEXT_PUBLIC_VERCEL_GIT_COMMIT_SHA ?? "no-sha"}
+      </div>
       <div
         style={{
           marginTop: 6,
@@ -3973,17 +4007,62 @@ export default function ClientePage({ params }: { params: any }) {
       >
         <strong>Scadenze entro 30gg</strong>
         <span
-          style={{
-            padding: "2px 8px",
-            borderRadius: 999,
-            background: rinnovi30ggCount > 0 ? "#fee2e2" : "#e5e7eb",
-            color: rinnovi30ggCount > 0 ? "#991b1b" : "#374151",
-            fontWeight: 700,
-          }}
+          className="group"
+          style={{ display: "inline-block", position: "relative" }}
         >
-          {rinnovi30ggCount}
+          <span
+            title={rinnovi30ggBreakdown.tooltip}
+            style={{
+              padding: "2px 8px",
+              borderRadius: 999,
+              background: rinnovi30ggCount > 0 ? "#fee2e2" : "#e5e7eb",
+              color: rinnovi30ggCount > 0 ? "#991b1b" : "#374151",
+              fontWeight: 700,
+              display: "inline-block",
+              whiteSpace: "nowrap",
+            }}
+          >
+            {rinnovi30ggCount}
+          </span>
+          <div
+            className="group-hover:block"
+            style={{
+              position: "absolute",
+              top: "calc(100% + 6px)",
+              left: 0,
+              zIndex: 9999,
+              background: "white",
+              border: "1px solid #e5e7eb",
+              borderRadius: 8,
+              padding: "8px 10px",
+              boxShadow: "0 10px 24px rgba(0,0,0,0.12)",
+              minWidth: 180,
+              maxWidth: 280,
+              fontSize: 12,
+              color: "#111",
+              display: "none",
+              whiteSpace: "pre-wrap",
+            }}
+          >
+            <div style={{ fontWeight: 700, marginBottom: 4 }}>Dettaglio scadenze</div>
+            {rinnovi30ggBreakdown.tooltipLines.map((line) => (
+              <div key={line}>{line}</div>
+            ))}
+          </div>
         </span>
       </div>
+      {process.env.NEXT_PUBLIC_DEBUG_BADGE === "1" && (
+        <div style={{ marginTop: 6, fontSize: 11, opacity: 0.7, whiteSpace: "pre-wrap" }}>
+          {`Badge debug:
+from: ${rinnovi30ggBreakdown.from.toISOString()}
+to: ${rinnovi30ggBreakdown.to.toISOString()}
+totale righe: ${rinnovi30ggBreakdown.totalRows}
+prime 5:
+${rinnovi30ggBreakdown.debugSample
+  .map((r) => `${r.tipo} — ${r.scadenza}`)
+  .join("\n")}`}
+        </div>
+      )}
 
       {(contratto || showContrattoForm) && (
         <div
