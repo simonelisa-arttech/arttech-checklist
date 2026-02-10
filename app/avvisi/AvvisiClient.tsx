@@ -17,7 +17,7 @@ type AlertLogRow = {
   subject: string | null;
   inviato_email: boolean | null;
   checklist_id: string | null;
-  checklist?: { cliente?: string | null } | null;
+  checklist?: { cliente?: string | null; nome_checklist?: string | null } | null;
 };
 
 function parseLocalDay(value?: string | null): Date | null {
@@ -230,11 +230,14 @@ export default function AvvisiClient() {
         if (checklistIds.length > 0) {
           const { data: checklistsData, error: checklistsErr } = await supabase
             .from("checklists")
-            .select("id, cliente")
+            .select("id, cliente, nome_checklist")
             .in("id", checklistIds);
           if (!checklistsErr && checklistsData) {
             for (const c of checklistsData as any[]) {
-              checklistMap.set(c.id, { cliente: c.cliente ?? null });
+              checklistMap.set(c.id, {
+                cliente: c.cliente ?? null,
+                nome_checklist: c.nome_checklist ?? null,
+              });
             }
           }
         }
@@ -338,6 +341,7 @@ export default function AvvisiClient() {
     const csvRows = filteredRows.map((r) => ({
       DataInvio: r.created_at ? new Date(r.created_at).toLocaleString("it-IT") : "",
       Cliente: r.checklist?.cliente ?? "",
+      Progetto: r.checklist?.nome_checklist ?? "",
       Tipo: String(r.tipo || "").toUpperCase(),
       Riferimento: r.riferimento ?? "",
       Destinatario: r.to_nome ?? "",
@@ -350,6 +354,7 @@ export default function AvvisiClient() {
     const csv = toCsv(csvRows, [
       "DataInvio",
       "Cliente",
+      "Progetto",
       "Tipo",
       "Riferimento",
       "Destinatario",
@@ -551,10 +556,13 @@ export default function AvvisiClient() {
                 <th className="w-[120px]" style={{ textAlign: "left", padding: "10px 12px" }}>
                   Cliente
                 </th>
+                <th className="w-[180px]" style={{ textAlign: "left", padding: "10px 12px" }}>
+                  Progetto
+                </th>
                 <th className="w-[90px]" style={{ textAlign: "left", padding: "10px 12px" }}>
                   Tipo
                 </th>
-                <th className="w-[220px]" style={{ textAlign: "left", padding: "10px 12px" }}>
+                <th className="w-[200px]" style={{ textAlign: "left", padding: "10px 12px" }}>
                   Riferimento / Destinatario
                 </th>
                 <th className="w-[90px]" style={{ textAlign: "left", padding: "10px 12px" }}>
@@ -596,6 +604,15 @@ export default function AvvisiClient() {
                     </td>
                     <td style={{ padding: "10px 12px", fontSize: 12, fontWeight: 600 }}>
                       {cliente}
+                    </td>
+                    <td style={{ padding: "10px 12px", fontSize: 12 }}>
+                      {r.checklist_id ? (
+                        <Link href={`/checklists/${r.checklist_id}`} style={{ color: "#111" }}>
+                          {r.checklist?.nome_checklist ?? "—"}
+                        </Link>
+                      ) : (
+                        "—"
+                      )}
                     </td>
                     <td style={{ padding: "10px 12px", fontSize: 12 }}>
                       {renderTipoBadge(r.tipo)}

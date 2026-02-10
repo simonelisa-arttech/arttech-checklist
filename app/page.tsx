@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import ConfigMancante from "@/components/ConfigMancante";
@@ -283,6 +283,8 @@ export default function Page() {
   const [operatori, setOperatori] = useState<OperatoreRow[]>([]);
   const [currentOperatoreId, setCurrentOperatoreId] = useState<string>("");
   const [expandedSaasNoteId, setExpandedSaasNoteId] = useState<string | null>(null);
+  const scrollTopRef = useRef<HTMLDivElement | null>(null);
+  const scrollBodyRef = useRef<HTMLDivElement | null>(null);
   const [serialsByChecklistId, setSerialsByChecklistId] = useState<
     Record<string, { seriali: string[] }>
   >({});
@@ -671,6 +673,24 @@ export default function Page() {
 
   useEffect(() => {
     load();
+  }, []);
+
+  useEffect(() => {
+    const top = scrollTopRef.current;
+    const body = scrollBodyRef.current;
+    if (!top || !body) return;
+    const syncFromTop = () => {
+      if (body.scrollLeft !== top.scrollLeft) body.scrollLeft = top.scrollLeft;
+    };
+    const syncFromBody = () => {
+      if (top.scrollLeft !== body.scrollLeft) top.scrollLeft = body.scrollLeft;
+    };
+    top.addEventListener("scroll", syncFromTop);
+    body.addEventListener("scroll", syncFromBody);
+    return () => {
+      top.removeEventListener("scroll", syncFromTop);
+      body.removeEventListener("scroll", syncFromBody);
+    };
   }, []);
 
   useEffect(() => {
@@ -1247,19 +1267,29 @@ export default function Page() {
                 style={{
                   border: "1px solid #eee",
                   borderRadius: 14,
-                  overflowX: "auto",
                   background: "white",
                 }}
               >
-                <table
+                <div
+                  ref={scrollTopRef}
                   style={{
-                    width: "100%",
-                    minWidth: 4480,
-                    tableLayout: "fixed",
-                    borderCollapse: "collapse",
-                    fontSize: 13,
+                    overflowX: "auto",
+                    overflowY: "hidden",
+                    borderBottom: "1px solid #f3f4f6",
                   }}
                 >
+                  <div style={{ width: 4480, height: 10 }} />
+                </div>
+                <div ref={scrollBodyRef} style={{ overflowX: "auto" }}>
+                  <table
+                    style={{
+                      width: "100%",
+                      minWidth: 4480,
+                      tableLayout: "fixed",
+                      borderCollapse: "collapse",
+                      fontSize: 13,
+                    }}
+                  >
                 <colgroup>
                   <col style={{ width: 220 }} />
                   <col style={{ width: 160 }} />
@@ -2075,7 +2105,8 @@ export default function Page() {
                     );
                   })}
                 </tbody>
-              </table>
+                  </table>
+                </div>
 
                 {displayRows.length === 0 && (
                   <div style={{ padding: 14, opacity: 0.7 }}>Nessun risultato</div>
