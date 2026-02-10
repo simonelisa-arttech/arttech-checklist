@@ -3985,9 +3985,6 @@ export default function ClientePage({ params }: { params: any }) {
       </div>
 
       <h2 style={{ marginTop: 12, marginBottom: 6 }}>Cliente: {cliente}</h2>
-      <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 6 }}>
-        Build: {process.env.NEXT_PUBLIC_VERCEL_GIT_COMMIT_SHA ?? "no-sha"}
-      </div>
       <div
         style={{
           marginTop: 6,
