@@ -4759,7 +4759,7 @@ ${rinnovi30ggBreakdown.debugSample
                 <div
                   style={{
                     display: "grid",
-                    gridTemplateColumns: "repeat(3, max-content)",
+                    gridTemplateColumns: "repeat(3, 130px)",
                     justifyContent: "center",
                     alignContent: "center",
                     gap: 6,
@@ -4783,6 +4783,7 @@ ${rinnovi30ggBreakdown.debugSample
                         }
                         style={{
                           padding: "4px 8px",
+                          width: 130,
                           borderRadius: 6,
                           border: "1px solid #111",
                           background: "white",
@@ -4790,6 +4791,7 @@ ${rinnovi30ggBreakdown.debugSample
                           fontSize: 12,
                           fontWeight: 700,
                           opacity: canStage1 ? 1 : 0.5,
+                          textAlign: "center",
                         }}
                       >
                         {stato === "AVVISATO" ? "Invia nuovo avviso" : "Invia avviso"}
@@ -4817,6 +4819,7 @@ ${rinnovi30ggBreakdown.debugSample
                         }
                         style={{
                           padding: "4px 8px",
+                          width: 130,
                           borderRadius: 6,
                           border: "1px solid #111",
                           background: "white",
@@ -4824,6 +4827,7 @@ ${rinnovi30ggBreakdown.debugSample
                           fontSize: 12,
                           fontWeight: 700,
                           opacity: canStage2 ? 1 : 0.5,
+                          textAlign: "center",
                         }}
                       >
                         Invia admin
@@ -4832,13 +4836,15 @@ ${rinnovi30ggBreakdown.debugSample
                         type="button"
                         onClick={() => openEditScadenza(r)}
                         style={{
-                          padding: "3px 6px",
+                          padding: "4px 8px",
+                          width: 130,
                           borderRadius: 6,
                           border: "1px solid #111",
                           background: "white",
                           cursor: "pointer",
                           fontSize: 11,
                           fontWeight: 700,
+                          textAlign: "center",
                         }}
                       >
                         Modifica
@@ -4868,12 +4874,14 @@ ${rinnovi30ggBreakdown.debugSample
                         }
                         style={{
                           padding: "4px 6px",
+                          width: 130,
                           borderRadius: 6,
                           border: "1px solid #ddd",
                           background: "#f9fafb",
                           cursor: canConfirm ? "pointer" : "not-allowed",
                           fontSize: 12,
                           opacity: canConfirm ? 1 : 0.5,
+                          textAlign: "center",
                         }}
                       >
                         Confermato
@@ -4893,12 +4901,14 @@ ${rinnovi30ggBreakdown.debugSample
                         }
                         style={{
                           padding: "4px 6px",
+                          width: 130,
                           borderRadius: 6,
                           border: "1px solid #ddd",
                           background: "#f9fafb",
                           cursor: canNonRinnovato ? "pointer" : "not-allowed",
                           fontSize: 12,
                           opacity: canNonRinnovato ? 1 : 0.5,
+                          textAlign: "center",
                         }}
                       >
                         NON_RINNOVATO
@@ -4920,12 +4930,14 @@ ${rinnovi30ggBreakdown.debugSample
                         }
                         style={{
                           padding: "4px 6px",
+                          width: 130,
                           borderRadius: 6,
                           border: "1px solid #ddd",
                           background: "#f9fafb",
                           cursor: canFatturato ? "pointer" : "not-allowed",
                           fontSize: 12,
                           opacity: canFatturato ? 1 : 0.5,
+                          textAlign: "center",
                         }}
                       >
                         FATTURATO
