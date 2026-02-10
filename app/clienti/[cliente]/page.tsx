@@ -4762,10 +4762,19 @@ ${rinnovi30ggBreakdown.debugSample
                     flexDirection: "column",
                     gap: 8,
                     alignItems: "center",
+                    width: "100%",
                   }}
                 >
                     {!isExpiryOnly && (
-                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                      <div
+                        style={{
+                          display: "flex",
+                          gap: 6,
+                          flexWrap: "wrap",
+                          justifyContent: "center",
+                          width: "100%",
+                        }}
+                      >
                       <button
                         type="button"
                         onClick={() => openRinnoviAlert("stage1", false, [r])}
@@ -4840,7 +4849,15 @@ ${rinnovi30ggBreakdown.debugSample
                     </div>
                     )}
                     {!isExpiryOnly && (
-                      <div style={{ display: "flex", gap: 6, flexWrap: "nowrap" }}>
+                      <div
+                        style={{
+                          display: "flex",
+                          gap: 6,
+                          flexWrap: "nowrap",
+                          justifyContent: "center",
+                          width: "100%",
+                        }}
+                      >
                       <button
                         type="button"
                         onClick={() =>
