@@ -4631,7 +4631,7 @@ ${rinnovi30ggBreakdown.debugSample
             <div
             style={{
               display: "grid",
-              gridTemplateColumns: "110px 1.7fr 130px 140px 150px 120px 360px",
+              gridTemplateColumns: "90px 1.2fr 110px 120px 120px 90px 380px",
               padding: "10px 12px",
               fontWeight: 800,
               background: "#fafafa",
@@ -4641,7 +4641,7 @@ ${rinnovi30ggBreakdown.debugSample
             }}
           >
             <div style={{ textAlign: "center" }}>Tipo</div>
-            <div>Riferimento</div>
+            <div style={{ textAlign: "center" }}>Riferimento</div>
             <div style={{ textAlign: "center" }}>Scadenza</div>
             <div style={{ textAlign: "center" }}>Stato</div>
             <div style={{ textAlign: "center" }}>Ultimo invio</div>
@@ -4686,7 +4686,7 @@ ${rinnovi30ggBreakdown.debugSample
                 key={r.id}
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "110px 1.7fr 130px 140px 150px 120px 360px",
+                  gridTemplateColumns: "90px 1.2fr 110px 120px 120px 90px 380px",
                   padding: "10px 12px",
                   borderBottom: "1px solid #f3f4f6",
                   alignItems: "center",
@@ -4694,8 +4694,18 @@ ${rinnovi30ggBreakdown.debugSample
                   columnGap: 12,
                 }}
               >
-                <div style={{ textAlign: "center" }}>{String(r.item_tipo || "—").toUpperCase()}</div>
-                <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                <div style={{ textAlign: "center" }}>
+                  {String(r.item_tipo || "—").toUpperCase()}
+                </div>
+                <div
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 4,
+                    alignItems: "center",
+                    textAlign: "center",
+                  }}
+                >
                   <div>{r.riferimento ?? r.descrizione ?? "—"}</div>
                   {r.checklist_id && (
                       <Link
@@ -4712,12 +4722,19 @@ ${rinnovi30ggBreakdown.debugSample
                     flexDirection: "column",
                     gap: 6,
                     alignItems: "center",
+                    textAlign: "center",
                   }}
                 >
                   <div>{r.scadenza ? new Date(r.scadenza).toLocaleDateString() : "—"}</div>
                   {renderScadenzaBadge(r.scadenza)}
                 </div>
-                <div style={{ overflow: "visible", display: "flex", justifyContent: "center" }}>
+                <div
+                  style={{
+                    overflow: "visible",
+                    display: "flex",
+                    justifyContent: "center",
+                  }}
+                >
                   {isExpiryOnly
                     ? renderBadge(getExpiryStatus(r.scadenza))
                     : stato === "AVVISATO"
@@ -4730,7 +4747,10 @@ ${rinnovi30ggBreakdown.debugSample
                     ? renderTagliandoStatoBadge(r.stato)
                     : renderRinnovoStatoBadge(r.stato)}
                 </div>
-                <div title={lastSentTooltip} style={{ textAlign: "center" }}>
+                <div
+                  title={lastSentTooltip}
+                  style={{ textAlign: "center", display: "flex", justifyContent: "center" }}
+                >
                   {lastSent}
                 </div>
                 <div style={{ display: "flex", justifyContent: "center" }}>
@@ -4741,7 +4761,7 @@ ${rinnovi30ggBreakdown.debugSample
                     display: "flex",
                     flexDirection: "column",
                     gap: 8,
-                    alignItems: "flex-start",
+                    alignItems: "center",
                   }}
                 >
                     {!isExpiryOnly && (
