@@ -556,6 +556,7 @@ type RinnovoServizioRow = {
   id: string;
   cliente?: string | null;
   item_tipo?: string | null;
+  subtipo?: string | null;
   riferimento?: string | null;
   descrizione?: string | null;
   checklist_id?: string | null;
@@ -1698,10 +1699,10 @@ export default function ClientePage({ params }: { params: any }) {
   const filteredRinnovi = useMemo(() => {
     let rows = rinnoviAll;
     if (rinnoviFilterDaAvvisare) {
-      rows = rows.filter((r) => String(r.stato || "").toUpperCase() === "DA_AVVISARE");
+      rows = rows.filter((r) => getWorkflowStato(r) === "DA_AVVISARE");
     }
     if (rinnoviFilterDaFatturare) {
-      rows = rows.filter((r) => String(r.stato || "").toUpperCase() === "DA_FATTURARE");
+      rows = rows.filter((r) => getWorkflowStato(r) === "DA_FATTURARE");
     }
     if (rinnoviFilterScaduti) {
       const today = new Date();
@@ -1712,7 +1713,13 @@ export default function ClientePage({ params }: { params: any }) {
       });
     }
     return rows;
-  }, [rinnoviAll, rinnoviFilterDaAvvisare, rinnoviFilterDaFatturare, rinnoviFilterScaduti]);
+  }, [
+    rinnoviAll,
+    rinnoviFilterDaAvvisare,
+    rinnoviFilterDaFatturare,
+    rinnoviFilterScaduti,
+    rinnovi,
+  ]);
 
   const rinnovi30ggBreakdown = useMemo(() => {
     const now = startOfToday();
@@ -3520,6 +3527,14 @@ export default function ClientePage({ params }: { params: any }) {
     }
   }
 
+  async function markTagliandoNonRinnovato(r: ScadenzaItem) {
+    const ok = await updateTagliando(r.id, { stato: "NON_RINNOVATO" });
+    if (ok) {
+      setRinnoviNotice("Tagliando segnato NON_RINNOVATO.");
+      await fetchTagliandi((cliente || "").trim());
+    }
+  }
+
   async function setLicenzaStatusForScadenze(
     licenseId: string,
     status: "DA_AVVISARE" | "AVVISATO" | "CONFERMATO" | "NON_RINNOVATO" | "DA_FATTURARE" | "FATTURATO" | "ANNULLATO"
@@ -3580,6 +3595,110 @@ export default function ClientePage({ params }: { params: any }) {
 
   function getFattureDaEmettereList() {
     return interventi.filter((i) => getEsitoFatturazione(i) === "DA_FATTURARE");
+  }
+
+  const ACTIONS_BY_TIPO: Record<
+    string,
+    { avviso: boolean; conferma: boolean; non_rinnovato: boolean; fattura: boolean }
+  > = {
+    LICENZA: { avviso: true, conferma: true, non_rinnovato: true, fattura: true },
+    TAGLIANDO: { avviso: true, conferma: true, non_rinnovato: true, fattura: true },
+    SAAS: { avviso: true, conferma: true, non_rinnovato: true, fattura: false },
+    GARANZIA: { avviso: true, conferma: true, non_rinnovato: true, fattura: false },
+    SAAS_ULTRA: { avviso: true, conferma: true, non_rinnovato: true, fattura: false },
+    RINNOVO: { avviso: true, conferma: true, non_rinnovato: true, fattura: true },
+  };
+
+  function getRinnovoMatch(r: ScadenzaItem) {
+    if (r.source === "rinnovi") {
+      return rinnovi.find((x) => x.id === r.id) || null;
+    }
+    const tipo = String(r.item_tipo || "").toUpperCase();
+    if (tipo === "SAAS_ULTRA") {
+      return (
+        rinnovi.find(
+          (x) =>
+            String(x.item_tipo || "").toUpperCase() === "SAAS_ULTRA" &&
+            String(x.riferimento || "") === String(r.contratto_id || "")
+        ) ||
+        rinnovi.find(
+          (x) =>
+            String(x.item_tipo || "").toUpperCase() === "SAAS" &&
+            String(x.subtipo || "").toUpperCase() === "ULTRA" &&
+            String(x.riferimento || "") === String(r.contratto_id || "")
+        ) ||
+        null
+      );
+    }
+    if (!r.checklist_id) return null;
+    return (
+      rinnovi.find(
+        (x) =>
+          String(x.item_tipo || "").toUpperCase() === tipo &&
+          String(x.checklist_id || "") === String(r.checklist_id || "")
+      ) || null
+    );
+  }
+
+  function getWorkflowStato(r: ScadenzaItem) {
+    const tipo = String(r.item_tipo || "").toUpperCase();
+    if (tipo === "SAAS" || tipo === "GARANZIA" || tipo === "SAAS_ULTRA") {
+      const match = getRinnovoMatch(r);
+      return String(match?.stato || "DA_AVVISARE").toUpperCase();
+    }
+    return String(r.stato || "").toUpperCase();
+  }
+
+  async function ensureRinnovoForItem(r: ScadenzaItem) {
+    const existing = getRinnovoMatch(r);
+    if (existing) return existing;
+    const tipo = String(r.item_tipo || "").toUpperCase();
+    const clienteKey = (cliente || "").trim();
+    if (!clienteKey) return null;
+    const payload: Record<string, any> = {
+      cliente: clienteKey,
+      item_tipo: tipo,
+      checklist_id: r.checklist_id ?? null,
+      riferimento: r.contratto_id ?? r.riferimento ?? null,
+      scadenza: r.scadenza ?? null,
+      stato: "DA_AVVISARE",
+    };
+    if (tipo === "SAAS_ULTRA") {
+      payload.item_tipo = "SAAS_ULTRA";
+      payload.checklist_id = null;
+      payload.riferimento = r.contratto_id ?? r.riferimento ?? null;
+    }
+    const { data, error } = await supabase
+      .from("rinnovi_servizi")
+      .insert(payload)
+      .select("*")
+      .single();
+    if (error) {
+      setRinnoviError("Errore creazione rinnovo: " + error.message);
+      return null;
+    }
+    await fetchRinnovi(clienteKey);
+    return (data || null) as RinnovoServizioRow | null;
+  }
+
+  async function markWorkflowConfermato(r: ScadenzaItem) {
+    const row = await ensureRinnovoForItem(r);
+    if (!row) return;
+    const ok = await updateRinnovo(row.id, { stato: "CONFERMATO" });
+    if (ok) {
+      setRinnoviNotice("Riga aggiornata: CONFERMATO.");
+      await fetchRinnovi((cliente || "").trim());
+    }
+  }
+
+  async function markWorkflowNonRinnovato(r: ScadenzaItem) {
+    const row = await ensureRinnovoForItem(r);
+    if (!row) return;
+    const ok = await updateRinnovo(row.id, { stato: "NON_RINNOVATO" });
+    if (ok) {
+      setRinnoviNotice("Riga aggiornata: NON_RINNOVATO.");
+      await fetchRinnovi((cliente || "").trim());
+    }
   }
 
   async function fetchLastBulkAlert() {
@@ -4650,30 +4769,40 @@ ${rinnovi30ggBreakdown.debugSample
           </div>
 
           {filteredRinnovi.map((r) => {
-              const checklist = r.checklist_id ? checklistById.get(r.checklist_id) : null;
-              const checklistName = checklist?.nome_checklist ?? r.checklist_id?.slice(0, 8);
-              const stato = String(r.stato || "").toUpperCase();
-              const isTagliando = r.source === "tagliandi";
-              const isLicenza = r.source === "licenze";
-              const isSaas = r.source === "saas" || r.source === "saas_contratto";
-              const isGaranzia = r.source === "garanzie";
-              const isExtra = String(r.modalita || "").toUpperCase() === "EXTRA";
-              const isExpiryOnly = isSaas || isGaranzia;
-              const hasScadenza = Boolean(r.scadenza);
-              const canStage1 = isLicenza
-                ? hasScadenza
-                : !isExpiryOnly && ["DA_AVVISARE", "AVVISATO"].includes(stato);
-              const canConfirm = isTagliando
-                ? true
-                : isExpiryOnly
-                ? false
-                : !["CONFERMATO", "DA_FATTURARE", "FATTURATO", "NON_RINNOVATO"].includes(stato);
-              const canStage2 = isTagliando
-                ? isExtra && (stato === "DA_FATTURARE" || stato === "OK")
-                : !isExpiryOnly && (stato === "CONFERMATO" || stato === "DA_FATTURARE");
-            const canNonRinnovato =
-              !isTagliando && !isExpiryOnly && !["FATTURATO", "NON_RINNOVATO"].includes(stato);
-            const canFatturato = isTagliando ? isExtra && stato === "DA_FATTURARE" : stato === "DA_FATTURARE";
+            const checklist = r.checklist_id ? checklistById.get(r.checklist_id) : null;
+            const checklistName = checklist?.nome_checklist ?? r.checklist_id?.slice(0, 8);
+            const stato = getWorkflowStato(r);
+            const isTagliando = r.source === "tagliandi";
+            const isLicenza = r.source === "licenze";
+            const isSaas = r.source === "saas" || r.source === "saas_contratto";
+            const isGaranzia = r.source === "garanzie";
+            const tipoUpper = String(r.item_tipo || "").toUpperCase();
+            const actions = ACTIONS_BY_TIPO[tipoUpper] || {
+              avviso: !isGaranzia,
+              conferma: !isGaranzia,
+              non_rinnovato: !isGaranzia,
+              fattura: !isGaranzia,
+            };
+            const isExtra = String(r.modalita || "").toUpperCase() === "EXTRA";
+            const isExpiryOnly = false;
+            const hasScadenza = Boolean(r.scadenza);
+            const canStage1 = actions.avviso && (isLicenza ? hasScadenza : ["DA_AVVISARE", "AVVISATO"].includes(stato));
+            const canConfirm = actions.conferma
+                ? isTagliando
+                  ? true
+                  : !["CONFERMATO", "DA_FATTURARE", "FATTURATO", "NON_RINNOVATO"].includes(stato)
+                : false;
+            const canStage2 = actions.fattura
+                ? isTagliando
+                  ? isExtra && (stato === "DA_FATTURARE" || stato === "OK")
+                  : stato === "CONFERMATO" || stato === "DA_FATTURARE"
+                : false;
+            const canNonRinnovato = actions.non_rinnovato
+                ? isTagliando
+                  ? !["FATTURATO", "NON_RINNOVATO"].includes(stato)
+                  : !["FATTURATO", "NON_RINNOVATO"].includes(stato)
+                : false;
+            const canFatturato = actions.fattura ? (isTagliando ? isExtra && stato === "DA_FATTURARE" : stato === "DA_FATTURARE") : false;
             const alertStats = alertStatsMap.get(getAlertKeyForRow(r)) || null;
             const lastSent = alertStats?.last_sent_at
               ? new Date(alertStats.last_sent_at).toLocaleString()
@@ -4735,17 +4864,15 @@ ${rinnovi30ggBreakdown.debugSample
                     justifyContent: "center",
                   }}
                 >
-                  {isExpiryOnly
-                    ? renderBadge(getExpiryStatus(r.scadenza))
+                  {isTagliando
+                    ? renderTagliandoStatoBadge(r.stato)
                     : stato === "AVVISATO"
                     ? renderAvvisatoBadge(alertStats, {
                         cliente,
                         checklist_id: r.checklist_id ?? null,
                         tipo: r.item_tipo ?? null,
                       })
-                    : isTagliando
-                    ? renderTagliandoStatoBadge(r.stato)
-                    : renderRinnovoStatoBadge(r.stato)}
+                    : renderRinnovoStatoBadge(stato)}
                 </div>
                 <div
                   title={lastSentTooltip}
@@ -4766,7 +4893,7 @@ ${rinnovi30ggBreakdown.debugSample
                     width: "100%",
                   }}
                 >
-                    {!isExpiryOnly && (
+                    {actions.avviso && (
                       <div
                         style={{
                           display: "contents",
@@ -4796,42 +4923,44 @@ ${rinnovi30ggBreakdown.debugSample
                       >
                         {stato === "AVVISATO" ? "Invia nuovo avviso" : "Invia avviso"}
                       </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          if (stato === "DA_FATTURARE") {
-                            openRinnoviAlert("stage2", false, [r]);
-                          } else {
-                            if (isTagliando) {
-                              markTagliandoDaFatturare(r);
-                            } else if (isLicenza) {
-                              markLicenzaDaFatturare(r);
+                      {actions.fattura && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (stato === "DA_FATTURARE") {
+                              openRinnoviAlert("stage2", false, [r]);
                             } else {
-                              markRinnovoDaFatturare(r as RinnovoServizioRow);
+                              if (isTagliando) {
+                                markTagliandoDaFatturare(r);
+                              } else if (isLicenza) {
+                                markLicenzaDaFatturare(r);
+                              } else {
+                                markRinnovoDaFatturare(r as RinnovoServizioRow);
+                              }
                             }
+                          }}
+                          disabled={!canStage2}
+                          title={
+                            canStage2
+                              ? "Invia admin (stage2)"
+                              : "Disponibile solo dopo CONFERMATO"
                           }
-                        }}
-                        disabled={!canStage2}
-                        title={
-                          canStage2
-                            ? "Invia admin (stage2)"
-                            : "Disponibile solo dopo CONFERMATO"
-                        }
-                        style={{
-                          padding: "4px 8px",
-                          width: 110,
-                          borderRadius: 6,
-                          border: "1px solid #111",
-                          background: "white",
-                          cursor: canStage2 ? "pointer" : "not-allowed",
-                          fontSize: 12,
-                          fontWeight: 700,
-                          opacity: canStage2 ? 1 : 0.5,
-                          textAlign: "center",
-                        }}
-                      >
-                        Invia admin
-                      </button>
+                          style={{
+                            padding: "4px 8px",
+                            width: 110,
+                            borderRadius: 6,
+                            border: "1px solid #111",
+                            background: "white",
+                            cursor: canStage2 ? "pointer" : "not-allowed",
+                            fontSize: 12,
+                            fontWeight: 700,
+                            opacity: canStage2 ? 1 : 0.5,
+                            textAlign: "center",
+                          }}
+                        >
+                          Invia admin
+                        </button>
+                      )}
                       <button
                         type="button"
                         onClick={() => openEditScadenza(r)}
@@ -4851,99 +4980,107 @@ ${rinnovi30ggBreakdown.debugSample
                       </button>
                     </div>
                     )}
-                    {!isExpiryOnly && (
+                    {actions.conferma || actions.non_rinnovato || actions.fattura ? (
                       <div
                         style={{
                           display: "contents",
                         }}
                       >
-                      <button
-                        type="button"
-                        onClick={() =>
-                          isTagliando
-                            ? markTagliandoOk(r)
-                            : isLicenza
-                            ? markLicenzaConfermata(r)
-                            : markRinnovoConfermato(r as RinnovoServizioRow)
-                        }
-                        disabled={!canConfirm}
-                        title={
-                          canConfirm
-                            ? "Segna come CONFERMATO"
-                            : "Stato già CONFERMATO o oltre"
-                        }
-                        style={{
-                          padding: "4px 6px",
-                          width: 110,
-                          borderRadius: 6,
-                          border: "1px solid #ddd",
-                          background: "#f9fafb",
-                          cursor: canConfirm ? "pointer" : "not-allowed",
-                          fontSize: 12,
-                          opacity: canConfirm ? 1 : 0.5,
-                          textAlign: "center",
-                        }}
-                      >
-                        Confermato
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          isLicenza
-                            ? markLicenzaNonRinnovata(r)
-                            : markRinnovoNonRinnovato(r)
-                        }
-                        disabled={!canNonRinnovato}
-                        title={
-                          canNonRinnovato
-                            ? "Segna come NON_RINNOVATO"
-                            : "Non disponibile se già FATTURATO/NON_RINNOVATO"
-                        }
-                        style={{
-                          padding: "4px 6px",
-                          width: 110,
-                          borderRadius: 6,
-                          border: "1px solid #ddd",
-                          background: "#f9fafb",
-                          cursor: canNonRinnovato ? "pointer" : "not-allowed",
-                          fontSize: 12,
-                          opacity: canNonRinnovato ? 1 : 0.5,
-                          textAlign: "center",
-                        }}
-                      >
-                        NON_RINNOVATO
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          isTagliando
-                            ? markTagliandoFatturato(r)
-                            : isLicenza
-                            ? markLicenzaFatturato(r)
-                            : markRinnovoFatturato(r as RinnovoServizioRow)
-                        }
-                        disabled={!canFatturato}
-                        title={
-                          canFatturato
-                            ? "Segna come FATTURATO"
-                            : "Disponibile solo per stato DA_FATTURARE"
-                        }
-                        style={{
-                          padding: "3px 6px",
-                          width: 110,
-                          borderRadius: 6,
-                          border: "1px solid #ddd",
-                          background: "#f9fafb",
-                          cursor: canFatturato ? "pointer" : "not-allowed",
-                          fontSize: 11,
-                          opacity: canFatturato ? 1 : 0.5,
-                          textAlign: "center",
-                        }}
-                      >
-                        FATTURATO
-                      </button>
+                      {actions.conferma && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            isTagliando
+                              ? markTagliandoOk(r)
+                              : isLicenza
+                              ? markLicenzaConfermata(r)
+                              : markWorkflowConfermato(r)
+                          }
+                          disabled={!canConfirm}
+                          title={
+                            canConfirm
+                              ? "Segna come CONFERMATO"
+                              : "Stato già CONFERMATO o oltre"
+                          }
+                          style={{
+                            padding: "4px 6px",
+                            width: 110,
+                            borderRadius: 6,
+                            border: "1px solid #ddd",
+                            background: "#f9fafb",
+                            cursor: canConfirm ? "pointer" : "not-allowed",
+                            fontSize: 12,
+                            opacity: canConfirm ? 1 : 0.5,
+                            textAlign: "center",
+                          }}
+                        >
+                          Confermato
+                        </button>
+                      )}
+                      {actions.non_rinnovato && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            isLicenza
+                              ? markLicenzaNonRinnovata(r)
+                              : isTagliando
+                              ? markTagliandoNonRinnovato(r)
+                              : markWorkflowNonRinnovato(r)
+                          }
+                          disabled={!canNonRinnovato}
+                          title={
+                            canNonRinnovato
+                              ? "Segna come NON_RINNOVATO"
+                              : "Non disponibile se già FATTURATO/NON_RINNOVATO"
+                          }
+                          style={{
+                            padding: "4px 6px",
+                            width: 110,
+                            borderRadius: 6,
+                            border: "1px solid #ddd",
+                            background: "#f9fafb",
+                            cursor: canNonRinnovato ? "pointer" : "not-allowed",
+                            fontSize: 12,
+                            opacity: canNonRinnovato ? 1 : 0.5,
+                            textAlign: "center",
+                          }}
+                        >
+                          NON_RINNOVATO
+                        </button>
+                      )}
+                      {actions.fattura && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            isTagliando
+                              ? markTagliandoFatturato(r)
+                              : isLicenza
+                              ? markLicenzaFatturato(r)
+                              : markRinnovoFatturato(r as RinnovoServizioRow)
+                          }
+                          disabled={!canFatturato}
+                          title={
+                            canFatturato
+                              ? "Segna come FATTURATO"
+                              : "Disponibile solo per stato DA_FATTURARE"
+                          }
+                          style={{
+                            padding: "3px 6px",
+                            width: 110,
+                            borderRadius: 6,
+                            border: "1px solid #ddd",
+                            background: "#f9fafb",
+                            cursor: canFatturato ? "pointer" : "not-allowed",
+                            fontSize: 11,
+                            opacity: canFatturato ? 1 : 0.5,
+                            textAlign: "center",
+                          }}
+                        >
+                          FATTURATO
+                        </button>
+                      )}
                     </div>
-                    )}
+                    ) : null}
                     {isExpiryOnly && (
                       <div>
                         <button
