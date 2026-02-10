@@ -4631,7 +4631,7 @@ ${rinnovi30ggBreakdown.debugSample
             <div
             style={{
               display: "grid",
-              gridTemplateColumns: "90px 1.2fr 110px 120px 120px 90px 380px",
+              gridTemplateColumns: "90px 1.1fr 110px 120px 120px 90px 330px",
               padding: "10px 12px",
               fontWeight: 800,
               background: "#fafafa",
@@ -4686,7 +4686,7 @@ ${rinnovi30ggBreakdown.debugSample
                 key={r.id}
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "90px 1.2fr 110px 120px 120px 90px 380px",
+                  gridTemplateColumns: "90px 1.1fr 110px 120px 120px 90px 330px",
                   padding: "10px 12px",
                   borderBottom: "1px solid #f3f4f6",
                   alignItems: "center",
@@ -4759,7 +4759,7 @@ ${rinnovi30ggBreakdown.debugSample
                 <div
                   style={{
                     display: "grid",
-                    gridTemplateColumns: "repeat(3, 130px)",
+                    gridTemplateColumns: "repeat(3, 110px)",
                     justifyContent: "center",
                     alignContent: "center",
                     gap: 6,
@@ -4783,7 +4783,7 @@ ${rinnovi30ggBreakdown.debugSample
                         }
                         style={{
                           padding: "4px 8px",
-                          width: 130,
+                          width: 110,
                           borderRadius: 6,
                           border: "1px solid #111",
                           background: "white",
@@ -4819,7 +4819,7 @@ ${rinnovi30ggBreakdown.debugSample
                         }
                         style={{
                           padding: "4px 8px",
-                          width: 130,
+                          width: 110,
                           borderRadius: 6,
                           border: "1px solid #111",
                           background: "white",
@@ -4836,8 +4836,8 @@ ${rinnovi30ggBreakdown.debugSample
                         type="button"
                         onClick={() => openEditScadenza(r)}
                         style={{
-                          padding: "4px 8px",
-                          width: 130,
+                          padding: "3px 6px",
+                          width: 110,
                           borderRadius: 6,
                           border: "1px solid #111",
                           background: "white",
@@ -4874,7 +4874,7 @@ ${rinnovi30ggBreakdown.debugSample
                         }
                         style={{
                           padding: "4px 6px",
-                          width: 130,
+                          width: 110,
                           borderRadius: 6,
                           border: "1px solid #ddd",
                           background: "#f9fafb",
@@ -4901,7 +4901,7 @@ ${rinnovi30ggBreakdown.debugSample
                         }
                         style={{
                           padding: "4px 6px",
-                          width: 130,
+                          width: 110,
                           borderRadius: 6,
                           border: "1px solid #ddd",
                           background: "#f9fafb",
@@ -4929,13 +4929,13 @@ ${rinnovi30ggBreakdown.debugSample
                             : "Disponibile solo per stato DA_FATTURARE"
                         }
                         style={{
-                          padding: "4px 6px",
-                          width: 130,
+                          padding: "3px 6px",
+                          width: 110,
                           borderRadius: 6,
                           border: "1px solid #ddd",
                           background: "#f9fafb",
                           cursor: canFatturato ? "pointer" : "not-allowed",
-                          fontSize: 12,
+                          fontSize: 11,
                           opacity: canFatturato ? 1 : 0.5,
                           textAlign: "center",
                         }}
