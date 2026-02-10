@@ -2331,7 +2331,6 @@ export default function ClientePage({ params }: { params: any }) {
         cliente: clienteKey,
         item_tipo: "SAAS",
         subtipo: "ULTRA",
-        riferimento: savedContratto.id,
         scadenza: savedContratto.scadenza ?? null,
         stato: "ATTIVA",
         descrizione: "ULTRA",
@@ -2341,7 +2340,8 @@ export default function ClientePage({ params }: { params: any }) {
         .from("rinnovi_servizi")
         .select("id")
         .eq("item_tipo", "SAAS")
-        .eq("riferimento", savedContratto.id)
+        .eq("subtipo", "ULTRA")
+        .eq("cliente", clienteKey)
         .maybeSingle();
 
       if (findErr) {
@@ -3603,9 +3603,9 @@ export default function ClientePage({ params }: { params: any }) {
   > = {
     LICENZA: { avviso: true, conferma: true, non_rinnovato: true, fattura: true },
     TAGLIANDO: { avviso: true, conferma: true, non_rinnovato: true, fattura: true },
-    SAAS: { avviso: true, conferma: true, non_rinnovato: true, fattura: false },
-    GARANZIA: { avviso: true, conferma: true, non_rinnovato: true, fattura: false },
-    SAAS_ULTRA: { avviso: true, conferma: true, non_rinnovato: true, fattura: false },
+    SAAS: { avviso: true, conferma: true, non_rinnovato: true, fattura: true },
+    GARANZIA: { avviso: true, conferma: true, non_rinnovato: true, fattura: true },
+    SAAS_ULTRA: { avviso: true, conferma: true, non_rinnovato: true, fattura: true },
     RINNOVO: { avviso: true, conferma: true, non_rinnovato: true, fattura: true },
   };
 
@@ -3618,16 +3618,13 @@ export default function ClientePage({ params }: { params: any }) {
       return (
         rinnovi.find(
           (x) =>
-            String(x.item_tipo || "").toUpperCase() === "SAAS_ULTRA" &&
-            String(x.riferimento || "") === String(r.contratto_id || "")
-        ) ||
-        rinnovi.find(
-          (x) =>
-            String(x.item_tipo || "").toUpperCase() === "SAAS" &&
-            String(x.subtipo || "").toUpperCase() === "ULTRA" &&
-            String(x.riferimento || "") === String(r.contratto_id || "")
-        ) ||
-        null
+            (String(x.item_tipo || "").toUpperCase() === "SAAS_ULTRA" ||
+              (String(x.item_tipo || "").toUpperCase() === "SAAS" &&
+                String(x.subtipo || "").toUpperCase() === "ULTRA")) &&
+            String(x.checklist_id || "") === "" &&
+            String(x.scadenza || "") === String(r.scadenza || "") &&
+            String(x.cliente || "").trim() === String(cliente || "").trim()
+        ) || null
       );
     }
     if (!r.checklist_id) return null;
@@ -3659,14 +3656,13 @@ export default function ClientePage({ params }: { params: any }) {
       cliente: clienteKey,
       item_tipo: tipo,
       checklist_id: r.checklist_id ?? null,
-      riferimento: r.contratto_id ?? r.riferimento ?? null,
       scadenza: r.scadenza ?? null,
       stato: "DA_AVVISARE",
     };
     if (tipo === "SAAS_ULTRA") {
-      payload.item_tipo = "SAAS_ULTRA";
+      payload.item_tipo = "SAAS";
+      payload.subtipo = "ULTRA";
       payload.checklist_id = null;
-      payload.riferimento = r.contratto_id ?? r.riferimento ?? null;
     }
     const { data, error } = await supabase
       .from("rinnovi_servizi")
