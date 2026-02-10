@@ -4631,21 +4631,22 @@ ${rinnovi30ggBreakdown.debugSample
             <div
             style={{
               display: "grid",
-              gridTemplateColumns: "120px 1fr 160px 140px 160px 160px 320px",
+              gridTemplateColumns: "110px 1.6fr 130px 140px 140px 120px 300px",
               padding: "10px 12px",
               fontWeight: 800,
               background: "#fafafa",
               borderBottom: "1px solid #eee",
               fontSize: 12,
+              columnGap: 12,
             }}
           >
-            <div>Tipo</div>
+            <div style={{ textAlign: "center" }}>Tipo</div>
             <div>Riferimento</div>
-            <div>Scadenza</div>
-            <div>Stato</div>
-            <div>Ultimo invio</div>
-            <div>Modalità</div>
-            <div>Azioni</div>
+            <div style={{ textAlign: "center" }}>Scadenza</div>
+            <div style={{ textAlign: "center" }}>Stato</div>
+            <div style={{ textAlign: "center" }}>Ultimo invio</div>
+            <div style={{ textAlign: "center" }}>Modalità</div>
+            <div style={{ textAlign: "center" }}>Azioni</div>
           </div>
 
           {filteredRinnovi.map((r) => {
@@ -4685,7 +4686,7 @@ ${rinnovi30ggBreakdown.debugSample
                 key={r.id}
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "120px 1fr 160px 140px 160px 160px 320px",
+                  gridTemplateColumns: "110px 1.6fr 130px 140px 140px 120px 300px",
                   padding: "10px 12px",
                   borderBottom: "1px solid #f3f4f6",
                   alignItems: "center",
@@ -4693,10 +4694,10 @@ ${rinnovi30ggBreakdown.debugSample
                   columnGap: 12,
                 }}
               >
-                  <div>{String(r.item_tipo || "—").toUpperCase()}</div>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-                    <div>{r.riferimento ?? r.descrizione ?? "—"}</div>
-                    {r.checklist_id && (
+                <div style={{ textAlign: "center" }}>{String(r.item_tipo || "—").toUpperCase()}</div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                  <div>{r.riferimento ?? r.descrizione ?? "—"}</div>
+                  {r.checklist_id && (
                       <Link
                         href={`/checklists/${r.checklist_id}`}
                         style={{ fontSize: 11, color: "#2563eb", textDecoration: "none" }}
@@ -4705,11 +4706,18 @@ ${rinnovi30ggBreakdown.debugSample
                       </Link>
                     )}
                   </div>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                    <div>{r.scadenza ? new Date(r.scadenza).toLocaleDateString() : "—"}</div>
-                    {renderScadenzaBadge(r.scadenza)}
-                  </div>
-                <div style={{ overflow: "visible" }}>
+                <div
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 6,
+                    alignItems: "center",
+                  }}
+                >
+                  <div>{r.scadenza ? new Date(r.scadenza).toLocaleDateString() : "—"}</div>
+                  {renderScadenzaBadge(r.scadenza)}
+                </div>
+                <div style={{ overflow: "visible", display: "flex", justifyContent: "center" }}>
                   {isExpiryOnly
                     ? renderBadge(getExpiryStatus(r.scadenza))
                     : stato === "AVVISATO"
@@ -4722,9 +4730,13 @@ ${rinnovi30ggBreakdown.debugSample
                     ? renderTagliandoStatoBadge(r.stato)
                     : renderRinnovoStatoBadge(r.stato)}
                 </div>
-                <div title={lastSentTooltip}>{lastSent}</div>
-                <div>{isTagliando ? renderModalitaBadge(r.modalita) : "—"}</div>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                <div title={lastSentTooltip} style={{ textAlign: "center" }}>
+                  {lastSent}
+                </div>
+                <div style={{ display: "flex", justifyContent: "center" }}>
+                  {isTagliando ? renderModalitaBadge(r.modalita) : "—"}
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                     {!isExpiryOnly && (
                       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                       <button
