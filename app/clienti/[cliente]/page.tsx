@@ -4515,20 +4515,37 @@ ${rinnovi30ggBreakdown.debugSample
       <div style={{ marginTop: 18 }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <h2 style={{ margin: 0 }}>Scadenze &amp; Rinnovi</h2>
-          <button
-            type="button"
-            onClick={() => openRinnoviAlert("stage1", true)}
-            style={{
-              padding: "6px 10px",
-              borderRadius: 8,
-              border: "1px solid #111",
-              background: "white",
-              cursor: "pointer",
-              whiteSpace: "nowrap",
-            }}
-          >
-            Invia avviso rapido
-          </button>
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <Link
+              href={`/avvisi?cliente=${encodeURIComponent(cliente || "")}`}
+              style={{
+                padding: "6px 10px",
+                borderRadius: 8,
+                border: "1px solid #111",
+                background: "white",
+                cursor: "pointer",
+                whiteSpace: "nowrap",
+                textDecoration: "none",
+                color: "inherit",
+              }}
+            >
+              Storico avvisi cliente
+            </Link>
+            <button
+              type="button"
+              onClick={() => openRinnoviAlert("stage1", true)}
+              style={{
+                padding: "6px 10px",
+                borderRadius: 8,
+                border: "1px solid #111",
+                background: "white",
+                cursor: "pointer",
+                whiteSpace: "nowrap",
+              }}
+            >
+              Invia avviso rapido
+            </button>
+          </div>
         </div>
 
         <div style={{ marginTop: 8, display: "flex", gap: 12, flexWrap: "wrap", fontSize: 12 }}>
