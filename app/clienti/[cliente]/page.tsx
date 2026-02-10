@@ -1683,8 +1683,7 @@ export default function ClientePage({ params }: { params: any }) {
   }, [rinnoviAll, rinnoviFilterDaAvvisare, rinnoviFilterDaFatturare, rinnoviFilterScaduti]);
 
   const rinnovi30ggBreakdown = useMemo(() => {
-    const from = startOfToday();
-    from.setDate(from.getDate() - 30);
+    const now = startOfToday();
     const to = startOfToday();
     to.setDate(to.getDate() + 30);
     to.setHours(23, 59, 59, 999);
@@ -1695,7 +1694,7 @@ export default function ClientePage({ params }: { params: any }) {
     for (const r of rinnoviAll) {
       const dt = parseLocalDay(r.scadenza);
       if (!dt) continue;
-      if (dt < from || dt > to) continue;
+      if (dt < now || dt > to) continue;
       const tipo = String(r.item_tipo || "—").toUpperCase();
       countsByTipo[tipo] = (countsByTipo[tipo] ?? 0) + 1;
       total += 1;
@@ -1713,7 +1712,7 @@ export default function ClientePage({ params }: { params: any }) {
       countsByTipo,
       tooltip: tooltipLines.join("\n"),
       tooltipLines,
-      from,
+      from: now,
       to,
       debugSample,
       totalRows: rinnoviAll.length,
