@@ -4758,21 +4758,18 @@ ${rinnovi30ggBreakdown.debugSample
                 </div>
                 <div
                   style={{
-                    display: "flex",
-                    flexDirection: "column",
-                    gap: 8,
-                    alignItems: "center",
+                    display: "grid",
+                    gridTemplateColumns: "repeat(3, max-content)",
+                    justifyContent: "center",
+                    alignContent: "center",
+                    gap: 6,
                     width: "100%",
                   }}
                 >
                     {!isExpiryOnly && (
                       <div
                         style={{
-                          display: "flex",
-                          gap: 6,
-                          flexWrap: "wrap",
-                          justifyContent: "center",
-                          width: "100%",
+                          display: "contents",
                         }}
                       >
                       <button
@@ -4851,11 +4848,7 @@ ${rinnovi30ggBreakdown.debugSample
                     {!isExpiryOnly && (
                       <div
                         style={{
-                          display: "flex",
-                          gap: 6,
-                          flexWrap: "nowrap",
-                          justifyContent: "center",
-                          width: "100%",
+                          display: "contents",
                         }}
                       >
                       <button
