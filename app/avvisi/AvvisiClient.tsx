@@ -226,7 +226,10 @@ export default function AvvisiClient() {
         const checklistIds = Array.from(
           new Set(baseRows.map((r) => r.checklist_id).filter(Boolean))
         ) as string[];
-        let checklistMap = new Map<string, { cliente?: string | null }>();
+        let checklistMap = new Map<
+          string,
+          { cliente?: string | null; nome_checklist?: string | null }
+        >();
         if (checklistIds.length > 0) {
           const { data: checklistsData, error: checklistsErr } = await supabase
             .from("checklists")
