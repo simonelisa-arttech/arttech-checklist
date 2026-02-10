@@ -4631,7 +4631,7 @@ ${rinnovi30ggBreakdown.debugSample
             <div
             style={{
               display: "grid",
-              gridTemplateColumns: "110px 1.6fr 130px 140px 140px 120px 300px",
+              gridTemplateColumns: "110px 1.7fr 130px 140px 150px 120px 360px",
               padding: "10px 12px",
               fontWeight: 800,
               background: "#fafafa",
@@ -4686,7 +4686,7 @@ ${rinnovi30ggBreakdown.debugSample
                 key={r.id}
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "110px 1.6fr 130px 140px 140px 120px 300px",
+                  gridTemplateColumns: "110px 1.7fr 130px 140px 150px 120px 360px",
                   padding: "10px 12px",
                   borderBottom: "1px solid #f3f4f6",
                   alignItems: "center",
@@ -4736,7 +4736,14 @@ ${rinnovi30ggBreakdown.debugSample
                 <div style={{ display: "flex", justifyContent: "center" }}>
                   {isTagliando ? renderModalitaBadge(r.modalita) : "—"}
                 </div>
-                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                <div
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 8,
+                    alignItems: "flex-start",
+                  }}
+                >
                     {!isExpiryOnly && (
                       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                       <button
