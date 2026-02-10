@@ -143,6 +143,8 @@ type AlertOperatore = {
   nome: string | null;
   email?: string | null;
   attivo: boolean;
+  cliente?: string | null;
+  ruolo?: string | null;
   alert_enabled: boolean;
   alert_tasks: {
     task_template_ids: string[];
@@ -496,6 +498,10 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
   const [alertDestinatarioId, setAlertDestinatarioId] = useState("");
   const [alertMessaggio, setAlertMessaggio] = useState("");
   const [alertSendEmail, setAlertSendEmail] = useState(true);
+  const [alertManualMode, setAlertManualMode] = useState(false);
+  const [alertManualEmail, setAlertManualEmail] = useState("");
+  const [alertManualName, setAlertManualName] = useState("");
+  const [alertFormError, setAlertFormError] = useState<string | null>(null);
   const [alertNotice, setAlertNotice] = useState<string | null>(null);
   const [lastAlertByTask, setLastAlertByTask] = useState<
     Map<string, { toOperatoreId: string; createdAt: string }>
@@ -517,6 +523,10 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
   function briefError(err: unknown) {
     const msg = err instanceof Error ? err.message : String(err ?? "Errore invio");
     return msg.length > 80 ? `${msg.slice(0, 77)}...` : msg;
+  }
+
+  function isValidEmail(email: string) {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
   }
 
   function normalizeSerial(input: string) {
@@ -889,7 +899,7 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
     (async () => {
       const { data, error: opErr } = await supabase
         .from("operatori")
-        .select("id, nome, email, attivo, alert_enabled, alert_tasks");
+        .select("id, nome, email, attivo, alert_enabled, alert_tasks, cliente, ruolo");
       if (opErr) {
         console.error("Errore caricamento operatori", opErr);
         return;
@@ -900,6 +910,8 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
         nome: o.nome ?? null,
         email: o.email ?? null,
         attivo: Boolean(o.attivo),
+        cliente: o.cliente ?? null,
+        ruolo: o.ruolo ?? null,
         alert_enabled: Boolean(o.alert_enabled),
         alert_tasks: normalizeAlertTasks(o.alert_tasks),
       }));
@@ -934,6 +946,9 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
     if (!task) return [];
     return alertOperatori.filter((o) => {
       if (!o.attivo || !o.alert_enabled) return false;
+      if (checklist?.cliente && o.cliente && String(o.cliente).trim() !== String(checklist.cliente).trim()) {
+        return false;
+      }
       if (o.alert_tasks?.all_task_status_change) return true;
       if (!task.task_template_id) return true;
       return o.alert_tasks?.task_template_ids?.includes(task.task_template_id);
@@ -942,20 +957,27 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
 
   async function handleSendAlert() {
     if (!alertTask || !checklist) return;
-    if (!alertDestinatarioId) {
-      alert("Seleziona un destinatario.");
+    setAlertFormError(null);
+    const manualEmail = alertManualEmail.trim();
+    if (alertManualMode) {
+      if (!isValidEmail(manualEmail)) {
+        setAlertFormError("Inserisci un'email valida.");
+        return;
+      }
+    } else if (!alertDestinatarioId) {
+      setAlertFormError("Seleziona un destinatario.");
       return;
     }
     const destinatario = alertOperatori.find((o) => o.id === alertDestinatarioId);
-    if (alertSendEmail && !destinatario?.email) {
-      alert("Il destinatario non ha un'email configurata.");
+    if (!alertManualMode && alertSendEmail && !destinatario?.email) {
+      setAlertFormError("Il destinatario non ha un'email configurata.");
       return;
     }
     const opId =
       currentOperatoreId ??
       (typeof window !== "undefined" ? window.localStorage.getItem("current_operatore_id") : null);
     if (!opId) {
-      alert("Seleziona un operatore corrente in dashboard prima di inviare.");
+      setAlertFormError("Seleziona un operatore corrente in dashboard prima di inviare.");
       return;
     }
 
@@ -1032,9 +1054,9 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
         subject,
         text: dettagli,
         html,
-        to_email: destinatario?.email ?? null,
-        to_nome: destinatario?.nome ?? null,
-        to_operatore_id: alertDestinatarioId,
+        to_email: alertManualMode ? manualEmail : destinatario?.email ?? null,
+        to_nome: alertManualMode ? (alertManualName.trim() || null) : destinatario?.nome ?? null,
+        to_operatore_id: alertManualMode ? null : alertDestinatarioId,
         from_operatore_id: opId,
         checklist_id: checklist.id,
         task_id: alertTask.id,
@@ -1064,6 +1086,9 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
     setAlertDestinatarioId("");
     setAlertMessaggio("");
     setAlertSendEmail(true);
+    setAlertManualMode(false);
+    setAlertManualEmail("");
+    setAlertManualName("");
   }
 
   function addRow() {
@@ -3521,21 +3546,61 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
             <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 10 }}>
               Task: {alertTask.titolo}
             </div>
+            <label style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 10 }}>
+              <input
+                type="checkbox"
+                checked={alertManualMode}
+                onChange={(e) => {
+                  setAlertManualMode(e.target.checked);
+                  setAlertFormError(null);
+                  if (e.target.checked) setAlertDestinatarioId("");
+                }}
+              />
+              Email manuale
+            </label>
             <label style={{ display: "block", marginBottom: 10 }}>
               Destinatario<br />
-              <select
-                value={alertDestinatarioId}
-                onChange={(e) => setAlertDestinatarioId(e.target.value)}
-                style={{ width: "100%", padding: 8 }}
-              >
-                <option value="">—</option>
-                {getEligibleOperatori(alertTask).map((o) => (
-                  <option key={o.id} value={o.id}>
-                    {o.nome ?? o.id}
-                  </option>
-                ))}
-              </select>
+              {alertManualMode ? (
+                <div style={{ display: "flex", gap: 8 }}>
+                  <input
+                    value={alertManualEmail}
+                    onChange={(e) => setAlertManualEmail(e.target.value)}
+                    placeholder="email@dominio.it"
+                    style={{ width: "100%", padding: 8 }}
+                  />
+                  <input
+                    value={alertManualName}
+                    onChange={(e) => setAlertManualName(e.target.value)}
+                    placeholder="Nome (opzionale)"
+                    style={{ width: "100%", padding: 8 }}
+                  />
+                </div>
+              ) : (
+                <select
+                  value={alertDestinatarioId}
+                  onChange={(e) => setAlertDestinatarioId(e.target.value)}
+                  style={{ width: "100%", padding: 8 }}
+                  disabled={getEligibleOperatori(alertTask).length === 0}
+                >
+                  <option value="">—</option>
+                  {getEligibleOperatori(alertTask).map((o) => (
+                    <option key={o.id} value={o.id}>
+                      {o.nome ?? o.id}
+                    </option>
+                  ))}
+                </select>
+              )}
             </label>
+            {!alertManualMode && getEligibleOperatori(alertTask).length === 0 && (
+              <div style={{ fontSize: 12, color: "#b91c1c", marginBottom: 10 }}>
+                Nessun contatto disponibile
+              </div>
+            )}
+            {alertFormError && (
+              <div style={{ fontSize: 12, color: "#b91c1c", marginBottom: 10 }}>
+                {alertFormError}
+              </div>
+            )}
             <label style={{ display: "block", marginBottom: 12 }}>
               Messaggio (opzionale)<br />
               <textarea
@@ -3569,12 +3634,25 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
               <button
                 type="button"
                 onClick={handleSendAlert}
+                disabled={
+                  alertManualMode
+                    ? !isValidEmail(alertManualEmail)
+                    : !alertDestinatarioId
+                }
                 style={{
                   padding: "8px 12px",
                   borderRadius: 8,
                   border: "1px solid #111",
                   background: "#111",
                   color: "white",
+                  opacity:
+                    alertManualMode
+                      ? isValidEmail(alertManualEmail)
+                        ? 1
+                        : 0.5
+                      : alertDestinatarioId
+                      ? 1
+                      : 0.5,
                 }}
               >
                 Invia
