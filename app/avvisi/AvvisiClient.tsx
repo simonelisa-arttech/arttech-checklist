@@ -178,6 +178,7 @@ export default function AvvisiClient() {
   const [rows, setRows] = useState<AlertLogRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [clienteOptions, setClienteOptions] = useState<string[]>([]);
 
   const [clienteFilter, setClienteFilter] = useState(clienteParam);
   const [checklistIdFilter, setChecklistIdFilter] = useState(checklistParam);
@@ -250,14 +251,30 @@ export default function AvvisiClient() {
     };
   }, []);
 
-  const clienteOptions = useMemo(() => {
-    const set = new Set<string>();
-    for (const r of rows) {
-      const c = r.checklist?.cliente || "";
-      if (c) set.add(c);
-    }
-    return Array.from(set.values()).sort((a, b) => a.localeCompare(b));
-  }, [rows]);
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      const { data, error: err } = await supabase
+        .from("checklists")
+        .select("cliente")
+        .not("cliente", "is", null)
+        .neq("cliente", "")
+        .order("cliente", { ascending: true });
+      if (!alive) return;
+      if (err) {
+        console.error("Errore caricamento clienti", err);
+        return;
+      }
+      const set = new Set<string>();
+      for (const row of (data || []) as any[]) {
+        if (row?.cliente) set.add(String(row.cliente));
+      }
+      setClienteOptions(Array.from(set.values()));
+    })();
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   const tipoOptions = useMemo(() => {
     const base = ["LICENZA", "TAGLIANDO", "SAAS", "GARANZIA", "SAAS_ULTRA", "GENERICA"];
