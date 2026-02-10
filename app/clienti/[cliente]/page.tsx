@@ -8,9 +8,6 @@ import Toast from "@/components/Toast";
 import { isSupabaseConfigured, supabase } from "@/lib/supabaseClient";
 import { sendAlert } from "@/lib/sendAlert";
 
-export const dynamic = "force-dynamic";
-export const revalidate = 0;
-
 function parseLocalDay(value?: string | null): Date | null {
   if (!value) return null;
   const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(value);
