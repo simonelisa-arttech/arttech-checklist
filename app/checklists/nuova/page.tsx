@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import ConfigMancante from "@/components/ConfigMancante";
 import { isSupabaseConfigured, supabase } from "@/lib/supabaseClient";
+import { sendAlert } from "@/lib/sendAlert";
 
 const SAAS_PIANI = [
   { code: "SAS-PL", label: "CARE PLUS (ASSISTENZA BASE)" },
@@ -585,6 +586,82 @@ export default function NuovaChecklistPage() {
               : serialErr.message;
           alert("Errore inserimento seriali: " + msg);
           return;
+        }
+      }
+
+      const { data: taskRows, error: taskRowsErr } = await supabase
+        .from("checklist_tasks")
+        .select("id, titolo, stato")
+        .eq("checklist_id", checklistId)
+        .eq("stato", "DA_FARE");
+
+      if (taskRowsErr) {
+        console.error("Errore caricamento task per notifiche", taskRowsErr);
+      } else if (taskRows && taskRows.length > 0) {
+        const jobPayload = taskRows.map((t: any) => ({
+          checklist_id: checklistId,
+          task_id: t.id,
+          stato: "PENDING",
+        }));
+        const { error: jobErr } = await supabase.from("notification_jobs").insert(jobPayload);
+        if (jobErr) {
+          console.error("Errore inserimento notification_jobs", jobErr);
+        }
+
+        const { data: ops } = await supabase
+          .from("operatori")
+          .select("id, nome, email, ruolo, attivo, cliente")
+          .eq("cliente", cliente.trim())
+          .in("ruolo", ["TECNICO", "MAGAZZINO"])
+          .eq("attivo", true);
+
+        const recipients = (ops || []).filter(
+          (o: any) => o?.email && String(o.email).includes("@")
+        );
+
+        if (recipients.length > 0) {
+          const subject = `[Art Tech] Attività operative da completare – ${nomeChecklist.trim()}`;
+          const link = `/checklists/${checklistId}`;
+          const list = taskRows.map((t: any) => `- ${t.titolo}`).join("\n");
+          const text = [
+            `Cliente: ${cliente.trim()}`,
+            `Progetto: ${nomeChecklist.trim()}`,
+            "Attività DA_FARE:",
+            list,
+            `Link: ${link}`,
+          ].join("\n");
+          const html = `
+            <div>
+              <h2>Attività operative da completare</h2>
+              <ul>
+                <li><strong>Cliente:</strong> ${cliente.trim()}</li>
+                <li><strong>Progetto:</strong> ${nomeChecklist.trim()}</li>
+              </ul>
+              <p><strong>Attività DA_FARE:</strong></p>
+              <ul>
+                ${taskRows.map((t: any) => `<li>${t.titolo}</li>`).join("")}
+              </ul>
+              <p><a href="${link}">Apri checklist</a></p>
+            </div>
+          `;
+          for (const op of recipients) {
+            try {
+              await sendAlert({
+                canale: "auto_task",
+                subject,
+                text,
+                html,
+                to_email: op.email,
+                to_nome: op.nome ?? null,
+                to_operatore_id: op.id,
+                checklist_id: checklistId,
+                trigger: "AUTO",
+                send_email: true,
+              });
+            } catch (err) {
+              console.error("Errore invio alert automatico", err);
+            }
+          }
         }
       }
 
