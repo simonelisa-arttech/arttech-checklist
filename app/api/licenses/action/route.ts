@@ -58,7 +58,16 @@ function getSupabaseClient() {
 function isValidStatus(status?: string) {
   if (!status) return false;
   const s = status.toUpperCase();
-  return ["ATTIVA", "AVVISATO", "DA_FATTURARE", "FATTURATO", "ANNULLATO"].includes(s);
+  return [
+    "DA_AVVISARE",
+    "ATTIVA",
+    "AVVISATO",
+    "CONFERMATO",
+    "NON_RINNOVATO",
+    "DA_FATTURARE",
+    "FATTURATO",
+    "ANNULLATO",
+  ].includes(s);
 }
 
 export async function POST(request: Request) {
