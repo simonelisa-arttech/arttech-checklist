@@ -524,88 +524,96 @@ export default function AvvisiClient() {
       {filteredRows.length === 0 ? (
         <div style={{ marginTop: 12, opacity: 0.7 }}>Nessun avviso trovato</div>
       ) : (
-        <div
-          style={{
-            marginTop: 10,
-            border: "1px solid #eee",
-            borderRadius: 12,
-            overflow: "hidden",
-            background: "white",
-          }}
-        >
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "140px 160px 120px 1fr 200px 120px 1.5fr 120px 120px",
-              padding: "10px 12px",
-              fontWeight: 800,
-              background: "#fafafa",
-              borderBottom: "1px solid #eee",
-              fontSize: 12,
-            }}
-          >
-            <div>Data invio</div>
-            <div>Cliente</div>
-            <div>Tipo</div>
-            <div>Riferimento</div>
-            <div>Destinatario</div>
-            <div>Trigger</div>
-            <div>Oggetto email</div>
-            <div>Stato</div>
-            <div>Azioni</div>
-          </div>
-
-          {filteredRows.map((r) => {
-            const cliente = r.checklist?.cliente ?? "—";
-            const subject = r.subject || "—";
-            const created = r.created_at ? new Date(r.created_at).toLocaleString("it-IT") : "—";
-            return (
-              <div
-                key={r.id}
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "140px 160px 120px 1fr 200px 120px 1.5fr 120px 120px",
-                  padding: "10px 12px",
-                  borderBottom: "1px solid #f3f4f6",
-                  alignItems: "center",
-                  fontSize: 12,
-                  columnGap: 12,
-                }}
-              >
-                <div>{created}</div>
-                <div style={{ fontWeight: 600 }}>{cliente}</div>
-                <div>{renderTipoBadge(r.tipo)}</div>
-                <div>{r.riferimento ?? "—"}</div>
-                <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-                  <div>{r.to_nome ?? "—"}</div>
-                  <div style={{ opacity: 0.7 }}>{r.to_email ?? "—"}</div>
-                </div>
-                <div>{renderTriggerBadge(r.trigger)}</div>
-                <div title={subject}>
-                  <div
-                    style={{
-                      maxWidth: 360,
-                      overflow: "hidden",
-                      textOverflow: "ellipsis",
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    {subject}
-                  </div>
-                </div>
-                <div>{renderStatoBadge(r.inviato_email)}</div>
-                <div>
-                  {r.checklist_id ? (
-                    <Link href={`/checklists/${r.checklist_id}`} style={{ color: "#111" }}>
-                      Apri checklist
-                    </Link>
-                  ) : (
-                    "—"
-                  )}
-                </div>
-              </div>
-            );
-          })}
+        <div className="overflow-x-auto" style={{ marginTop: 10 }}>
+          <table className="w-full table-fixed" style={{ borderCollapse: "collapse" }}>
+            <thead className="sticky top-0 bg-white z-10">
+              <tr style={{ background: "#fafafa" }}>
+                <th className="w-[140px]" style={{ textAlign: "left", padding: "10px 12px" }}>
+                  Data invio
+                </th>
+                <th className="w-[120px]" style={{ textAlign: "left", padding: "10px 12px" }}>
+                  Cliente
+                </th>
+                <th className="w-[110px]" style={{ textAlign: "left", padding: "10px 12px" }}>
+                  Tipo
+                </th>
+                <th className="w-[200px]" style={{ textAlign: "left", padding: "10px 12px" }}>
+                  Riferimento / Destinatario
+                </th>
+                <th className="w-[110px]" style={{ textAlign: "left", padding: "10px 12px" }}>
+                  Trigger
+                </th>
+                <th className="w-[260px]" style={{ textAlign: "left", padding: "10px 12px" }}>
+                  Oggetto email
+                </th>
+                <th className="w-[110px]" style={{ textAlign: "left", padding: "10px 12px" }}>
+                  Stato
+                </th>
+                <th
+                  className="w-[90px] text-right"
+                  style={{ textAlign: "right", padding: "10px 12px" }}
+                >
+                  Azioni
+                </th>
+              </tr>
+            </thead>
+            <tbody>
+              {filteredRows.map((r) => {
+                const cliente = r.checklist?.cliente ?? "—";
+                const subject = r.subject || "—";
+                const created = r.created_at
+                  ? new Date(r.created_at).toLocaleString("it-IT")
+                  : "—";
+                return (
+                  <tr key={r.id} style={{ borderBottom: "1px solid #f3f4f6" }}>
+                    <td style={{ padding: "10px 12px", fontSize: 12 }}>{created}</td>
+                    <td style={{ padding: "10px 12px", fontSize: 12, fontWeight: 600 }}>
+                      {cliente}
+                    </td>
+                    <td style={{ padding: "10px 12px", fontSize: 12 }}>
+                      {renderTipoBadge(r.tipo)}
+                    </td>
+                    <td style={{ padding: "10px 12px", fontSize: 12 }}>
+                      <div className="truncate max-w-[200px]" title={r.riferimento ?? "—"}>
+                        {r.riferimento ?? "—"}
+                      </div>
+                      <div style={{ marginTop: 4 }}>{r.to_nome ?? "—"}</div>
+                      <div
+                        className="truncate max-w-[200px]"
+                        title={r.to_email ?? "—"}
+                        style={{ opacity: 0.7 }}
+                      >
+                        {r.to_email ?? "—"}
+                      </div>
+                    </td>
+                    <td style={{ padding: "10px 12px", fontSize: 12 }}>
+                      {renderTriggerBadge(r.trigger)}
+                    </td>
+                    <td style={{ padding: "10px 12px", fontSize: 12 }}>
+                      <div className="truncate max-w-[260px]" title={subject}>
+                        {subject}
+                      </div>
+                    </td>
+                    <td style={{ padding: "10px 12px", fontSize: 12 }}>
+                      {renderStatoBadge(r.inviato_email)}
+                    </td>
+                    <td
+                      className="text-right whitespace-nowrap"
+                      style={{ padding: "10px 12px", fontSize: 12 }}
+                    >
+                      {r.checklist_id ? (
+                        <Link href={`/checklists/${r.checklist_id}`} style={{ color: "#111" }}>
+                          Apri
+                        </Link>
+                      ) : (
+                        "—"
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
       )}
     </div>
