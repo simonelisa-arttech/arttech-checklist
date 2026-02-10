@@ -151,9 +151,9 @@ function renderStatoBadge(value?: boolean | null) {
     <span
       style={{
         display: "inline-block",
-        padding: "2px 8px",
+        padding: "2px 6px",
         borderRadius: 999,
-        fontSize: 12,
+        fontSize: 11,
         fontWeight: 700,
         background: bg,
         color,
@@ -528,29 +528,32 @@ export default function AvvisiClient() {
           <table className="w-full table-fixed" style={{ borderCollapse: "collapse" }}>
             <thead className="sticky top-0 bg-white z-10">
               <tr style={{ background: "#fafafa" }}>
-                <th className="w-[140px]" style={{ textAlign: "left", padding: "10px 12px" }}>
+                <th className="w-[110px]" style={{ textAlign: "left", padding: "10px 12px" }}>
                   Data invio
                 </th>
                 <th className="w-[120px]" style={{ textAlign: "left", padding: "10px 12px" }}>
                   Cliente
                 </th>
-                <th className="w-[110px]" style={{ textAlign: "left", padding: "10px 12px" }}>
+                <th className="w-[90px]" style={{ textAlign: "left", padding: "10px 12px" }}>
                   Tipo
                 </th>
-                <th className="w-[200px]" style={{ textAlign: "left", padding: "10px 12px" }}>
+                <th className="w-[220px]" style={{ textAlign: "left", padding: "10px 12px" }}>
                   Riferimento / Destinatario
                 </th>
-                <th className="w-[110px]" style={{ textAlign: "left", padding: "10px 12px" }}>
+                <th className="w-[90px]" style={{ textAlign: "left", padding: "10px 12px" }}>
                   Trigger
                 </th>
-                <th className="w-[260px]" style={{ textAlign: "left", padding: "10px 12px" }}>
+                <th className="w-[280px]" style={{ textAlign: "left", padding: "10px 12px" }}>
                   Oggetto email
                 </th>
-                <th className="w-[110px]" style={{ textAlign: "left", padding: "10px 12px" }}>
+                <th
+                  className="w-[90px] text-center"
+                  style={{ textAlign: "center", padding: "10px 12px" }}
+                >
                   Stato
                 </th>
                 <th
-                  className="w-[90px] text-right"
+                  className="w-[80px] text-right"
                   style={{ textAlign: "right", padding: "10px 12px" }}
                 >
                   Azioni
@@ -561,12 +564,19 @@ export default function AvvisiClient() {
               {filteredRows.map((r) => {
                 const cliente = r.checklist?.cliente ?? "—";
                 const subject = r.subject || "—";
-                const created = r.created_at
-                  ? new Date(r.created_at).toLocaleString("it-IT")
+                const createdDate = r.created_at ? new Date(r.created_at) : null;
+                const createdDay = createdDate
+                  ? createdDate.toLocaleDateString("it-IT")
+                  : "—";
+                const createdTime = createdDate
+                  ? createdDate.toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" })
                   : "—";
                 return (
                   <tr key={r.id} style={{ borderBottom: "1px solid #f3f4f6" }}>
-                    <td style={{ padding: "10px 12px", fontSize: 12 }}>{created}</td>
+                    <td style={{ padding: "10px 12px", fontSize: 11, lineHeight: 1.2 }}>
+                      <div>{createdDay}</div>
+                      <div style={{ color: "#6b7280" }}>{createdTime}</div>
+                    </td>
                     <td style={{ padding: "10px 12px", fontSize: 12, fontWeight: 600 }}>
                       {cliente}
                     </td>
@@ -595,14 +605,26 @@ export default function AvvisiClient() {
                       </div>
                     </td>
                     <td style={{ padding: "10px 12px", fontSize: 12 }}>
-                      {renderStatoBadge(r.inviato_email)}
+                      <div style={{ display: "flex", justifyContent: "center" }}>
+                        {renderStatoBadge(r.inviato_email)}
+                      </div>
                     </td>
                     <td
                       className="text-right whitespace-nowrap"
                       style={{ padding: "10px 12px", fontSize: 12 }}
                     >
                       {r.checklist_id ? (
-                        <Link href={`/checklists/${r.checklist_id}`} style={{ color: "#111" }}>
+                        <Link
+                          href={`/checklists/${r.checklist_id}`}
+                          style={{
+                            color: "#111",
+                            border: "1px solid #e5e7eb",
+                            borderRadius: 6,
+                            padding: "2px 6px",
+                            fontSize: 11,
+                            display: "inline-block",
+                          }}
+                        >
                           Apri
                         </Link>
                       ) : (
