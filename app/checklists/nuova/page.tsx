@@ -194,6 +194,7 @@ export default function NuovaChecklistPage() {
   const [tipoStruttura, setTipoStruttura] = useState("");
   const [passo, setPasso] = useState("");
   const [tipoImpianto, setTipoImpianto] = useState<"INDOOR" | "OUTDOOR" | "">("");
+  const [impiantoIndirizzo, setImpiantoIndirizzo] = useState("");
   const [dimensioni, setDimensioni] = useState("");
   const [garanziaScadenza, setGaranziaScadenza] = useState("");
   const [serialControlInput, setSerialControlInput] = useState("");
@@ -388,9 +389,10 @@ export default function NuovaChecklistPage() {
           : null,
         noleggio_vendita: noleggioVendita.trim() ? noleggioVendita.trim() : null,
         tipo_struttura: tipoStruttura.trim() ? tipoStruttura.trim() : null,
-        passo: passo.trim() ? passo.trim() : null,
-        tipo_impianto: tipoImpianto || null,
-        dimensioni: dimensioni.trim() ? dimensioni.trim() : null,
+      passo: passo.trim() ? passo.trim() : null,
+      tipo_impianto: tipoImpianto || null,
+      impianto_indirizzo: impiantoIndirizzo.trim() ? impiantoIndirizzo.trim() : null,
+      dimensioni: dimensioni.trim() ? dimensioni.trim() : null,
         m2_inclusi: null,
         m2_allocati: null,
         garanzia_scadenza: garanziaScadenza.trim() ? garanziaScadenza.trim() : null,
@@ -958,6 +960,15 @@ export default function NuovaChecklistPage() {
               <option value="SEMIOUTDOOR">SEMIOUTDOOR</option>
               <option value="DA DEFINIRE">DA DEFINIRE</option>
             </select>
+          </label>
+          <label>
+            Indirizzo impianto<br />
+            <input
+              value={impiantoIndirizzo}
+              onChange={(e) => setImpiantoIndirizzo(e.target.value)}
+              placeholder="Es. Via Roma 10, Milano"
+              style={{ width: "100%", padding: 10 }}
+            />
           </label>
 
           <label>

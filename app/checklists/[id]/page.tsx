@@ -27,6 +27,7 @@ type Checklist = {
   data_prevista: string | null;
   data_tassativa: string | null;
   tipo_impianto: string | null;
+  impianto_indirizzo: string | null;
   dimensioni: string | null;
   passo: string | null;
   note: string | null;
@@ -175,6 +176,7 @@ type FormData = {
   data_prevista: string;
   data_tassativa: string;
   tipo_impianto: string;
+  impianto_indirizzo: string;
   dimensioni: string;
   passo: string;
   note: string;
@@ -658,6 +660,7 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
       data_prevista: toDateInput(c.data_prevista),
       data_tassativa: toDateInput(c.data_tassativa),
       tipo_impianto: c.tipo_impianto ?? "",
+      impianto_indirizzo: c.impianto_indirizzo ?? "",
       dimensioni: c.dimensioni ?? "",
       passo: c.passo ?? "",
       note: c.note ?? "",
@@ -1390,6 +1393,9 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
       tipo_impianto: formData.tipo_impianto.trim()
         ? formData.tipo_impianto.trim()
         : null,
+      impianto_indirizzo: formData.impianto_indirizzo.trim()
+        ? formData.impianto_indirizzo.trim()
+        : null,
       dimensioni: formData.dimensioni.trim() ? formData.dimensioni.trim() : null,
       passo: formData.passo.trim() ? formData.passo.trim() : null,
       note: formData.note.trim() ? formData.note.trim() : null,
@@ -1962,6 +1968,23 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
                     <option value="SEMIOUTDOOR">SEMIOUTDOOR</option>
                     <option value="DA DEFINIRE">DA DEFINIRE</option>
                   </select>
+                ) : undefined
+              }
+              isEdit={isEdit}
+            />
+            <FieldRow
+              label="Indirizzo impianto"
+              view={checklist.impianto_indirizzo || "—"}
+              edit={
+                isEdit ? (
+                  <input
+                    value={formData.impianto_indirizzo}
+                    onChange={(e) =>
+                      setFormData({ ...formData, impianto_indirizzo: e.target.value })
+                    }
+                    placeholder="Es. Via Roma 10, Milano"
+                    style={{ width: "100%", padding: 10 }}
+                  />
                 ) : undefined
               }
               isEdit={isEdit}

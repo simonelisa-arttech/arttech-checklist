@@ -175,6 +175,7 @@ type Checklist = {
   data_prevista: string | null;
   data_tassativa: string | null;
   tipo_impianto: string | null;
+  impianto_indirizzo: string | null;
   dimensioni: string | null;
   passo: string | null;
   note: string | null;
@@ -348,6 +349,7 @@ export default function Page() {
     | "descrizione"
     | "passo"
     | "tipo_impianto"
+    | "impianto_indirizzo"
     | "dimensioni"
     | "m2_calcolati"
     | "proforma"
@@ -451,6 +453,7 @@ export default function Page() {
         c.descrizione ?? "",
         c.passo ?? "",
         c.tipo_impianto ?? "",
+        c.impianto_indirizzo ?? "",
         c.dimensioni ?? "",
         calcM2(c.dimensioni) != null ? calcM2(c.dimensioni)?.toFixed(2) ?? "" : "",
         c.proforma ?? "",
@@ -1464,6 +1467,23 @@ export default function Page() {
                       {sortIcon("tipo_impianto")}
                     </th>
                     <th
+                      onClick={() => toggleSort("impianto_indirizzo")}
+                      title="Ordina per Indirizzo impianto"
+                      style={{
+                        textAlign: "left",
+                        padding: "10px 12px",
+                        cursor: "pointer",
+                        position: "sticky",
+                        top: 0,
+                        background: "white",
+                        zIndex: 2,
+                        boxShadow: "0 2px 6px rgba(0, 0, 0, 0.06)",
+                      }}
+                    >
+                      Indirizzo impianto
+                      {sortIcon("impianto_indirizzo")}
+                    </th>
+                    <th
                       onClick={() => toggleSort("data_prevista")}
                       title="Ordina per Data installazione prevista"
                       style={{
@@ -1940,6 +1960,9 @@ export default function Page() {
                         </td>
                         <td style={{ padding: "10px 12px", opacity: 0.85 }}>
                           {c.tipo_impianto ?? "—"}
+                        </td>
+                        <td style={{ padding: "10px 12px", opacity: 0.85 }}>
+                          {c.impianto_indirizzo ?? "—"}
                         </td>
                         <td style={{ padding: "10px 12px", opacity: 0.85 }}>
                           {c.data_prevista
