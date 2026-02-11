@@ -3820,13 +3820,22 @@ export default function ClientePage({ params }: { params: any }) {
     const opId =
       currentOperatoreId ??
       (typeof window !== "undefined" ? window.localStorage.getItem("current_operatore_id") : null);
+    const nowIso = new Date().toISOString();
     const ok = await updateRinnovo(row.id, {
       stato: "DA_FATTURARE",
       scadenza: nextScadenza,
-      confirmed_at: new Date().toISOString(),
+      confirmed_at: nowIso,
       confirmed_by_operatore_id: opId,
     });
     if (ok) {
+      // Optimistic update rinnovi state per aggiornare badge subito
+      setRinnovi((prev) =>
+        prev.map((x) =>
+          x.id === row.id
+            ? { ...x, stato: "DA_FATTURARE", scadenza: nextScadenza, confirmed_at: nowIso, confirmed_by_operatore_id: opId }
+            : x
+        )
+      );
       await updateSourceScadenza(r, nextScadenza);
       setRinnoviNotice("Riga aggiornata: DA_FATTURARE.");
       await fetchRinnovi((cliente || "").trim());
@@ -3838,6 +3847,10 @@ export default function ClientePage({ params }: { params: any }) {
     if (!row) return;
     const ok = await updateRinnovo(row.id, { stato: "NON_RINNOVATO" });
     if (ok) {
+      // Optimistic update rinnovi state per aggiornare badge subito
+      setRinnovi((prev) =>
+        prev.map((x) => (x.id === row.id ? { ...x, stato: "NON_RINNOVATO" } : x))
+      );
       setRinnoviNotice("Riga aggiornata: NON_RINNOVATO.");
       await fetchRinnovi((cliente || "").trim());
     }
