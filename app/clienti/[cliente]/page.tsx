@@ -2876,7 +2876,7 @@ export default function ClientePage({ params }: { params: any }) {
     "NON_RINNOVATO",
     "ANNULLATO",
   ];
-  const TAGLIANDO_STATI = ["DA_AVVISARE", "AVVISATO", "OK", "DA_FATTURARE", "FATTURATO", "NON_RINNOVATO"];
+  const TAGLIANDO_STATI = ["DA_AVVISARE", "AVVISATO", "OK", "SCADUTO", "DA_FATTURARE", "FATTURATO"];
   const RINNOVO_STATI = ["DA_AVVISARE", "AVVISATO", "CONFERMATO", "DA_FATTURARE", "FATTURATO", "NON_RINNOVATO"];
   const TAGLIANDO_MODALITA = ["INCLUSO", "EXTRA", "AUTORIZZATO_CLIENTE"];
 
@@ -3146,13 +3146,7 @@ export default function ClientePage({ params }: { params: any }) {
       stage === "stage1"
         ? rinnoviAll.filter((r) => String(r.stato || "").toUpperCase() === "DA_AVVISARE")
         : rinnoviAll.filter((r) => String(r.stato || "").toUpperCase() === "DA_FATTURARE");
-    if (stage === "stage2") {
-      list = list.filter((r) =>
-        r.source === "tagliandi"
-          ? String(r.modalita || "").toUpperCase() === "EXTRA"
-          : true
-      );
-    }
+    // Tutti i tagliandi (INCLUSO, EXTRA, AUTORIZZATO_CLIENTE) possono passare a DA_FATTURARE/FATTURATO
     if (onlyWithin30Days) {
       const today = new Date();
       today.setHours(0, 0, 0, 0);
@@ -3429,7 +3423,6 @@ export default function ClientePage({ params }: { params: any }) {
   }
 
   async function markRinnovoConfermato(r: RinnovoServizioRow) {
-    console.log("CONFIRM CLICK", r.id);
     const opId =
       currentOperatoreId ??
       (typeof window !== "undefined" ? window.localStorage.getItem("current_operatore_id") : null);
@@ -3437,13 +3430,16 @@ export default function ClientePage({ params }: { params: any }) {
       setRinnoviError("Seleziona l’Operatore corrente (in alto) prima di confermare.");
       return;
     }
+    const nextScadenza = promptNextScadenza(r.scadenza ?? null);
+    if (!nextScadenza) return;
     const ok = await updateRinnovo(r.id, {
-      stato: "CONFERMATO",
+      stato: "DA_FATTURARE",
+      scadenza: nextScadenza,
       confirmed_at: new Date().toISOString(),
       confirmed_by_operatore_id: opId,
     });
     if (ok) {
-      setRinnoviNotice("Riga confermata.");
+      setRinnoviNotice("Riga aggiornata: DA_FATTURARE.");
       await fetchRinnovi((cliente || "").trim());
     }
   }
@@ -3495,18 +3491,19 @@ export default function ClientePage({ params }: { params: any }) {
   }
 
   async function markTagliandoOk(r: ScadenzaItem) {
-    const ok = await updateTagliando(r.id, { stato: "OK" });
+    const nextScadenza = promptNextScadenza(r.scadenza ?? null);
+    if (!nextScadenza) return;
+    const ok = await updateTagliando(r.id, { stato: "DA_FATTURARE", scadenza: nextScadenza });
     if (ok) {
-      setRinnoviNotice("Tagliando confermato.");
+      setTagliandi((prev) =>
+        prev.map((t) => (t.id === r.id ? { ...t, scadenza: nextScadenza, stato: "DA_FATTURARE" } : t))
+      );
+      setRinnoviNotice("Tagliando confermato: DA_FATTURARE.");
       await fetchTagliandi((cliente || "").trim());
     }
   }
 
   async function markTagliandoDaFatturare(r: ScadenzaItem) {
-    if (String(r.modalita || "").toUpperCase() !== "EXTRA") {
-      setRinnoviError("Puoi fatturare solo tagliandi EXTRA.");
-      return;
-    }
     const ok = await updateTagliando(r.id, { stato: "DA_FATTURARE" });
     if (ok) {
       setRinnoviNotice("Tagliando segnato DA_FATTURARE.");
@@ -3516,10 +3513,6 @@ export default function ClientePage({ params }: { params: any }) {
   }
 
   async function markTagliandoFatturato(r: ScadenzaItem) {
-    if (String(r.modalita || "").toUpperCase() !== "EXTRA") {
-      setRinnoviError("Puoi fatturare solo tagliandi EXTRA.");
-      return;
-    }
     const ok = await updateTagliando(r.id, { stato: "FATTURATO" });
     if (ok) {
       setRinnoviNotice("Tagliando fatturato.");
@@ -3528,9 +3521,9 @@ export default function ClientePage({ params }: { params: any }) {
   }
 
   async function markTagliandoNonRinnovato(r: ScadenzaItem) {
-    const ok = await updateTagliando(r.id, { stato: "NON_RINNOVATO" });
+    const ok = await updateTagliando(r.id, { stato: "SCADUTO" });
     if (ok) {
-      setRinnoviNotice("Tagliando segnato NON_RINNOVATO.");
+      setRinnoviNotice("Tagliando segnato SCADUTO.");
       await fetchTagliandi((cliente || "").trim());
     }
   }
@@ -3571,8 +3564,19 @@ export default function ClientePage({ params }: { params: any }) {
   }
 
   async function markLicenzaConfermata(r: ScadenzaItem) {
-    const ok = await setLicenzaStatusForScadenze(r.id, "CONFERMATO");
-    if (ok) setRinnoviNotice("Licenza confermata.");
+    const nextScadenza = promptNextScadenza(r.scadenza ?? null);
+    if (!nextScadenza) return;
+    const updated = await updateSourceScadenza(r, nextScadenza);
+    if (!updated) return;
+    const ok = await setLicenzaStatusForScadenze(r.id, "DA_FATTURARE");
+    if (ok) {
+      setLicenze((prev) =>
+        prev.map((l) =>
+          l.id === r.id ? { ...l, scadenza: nextScadenza, status: "DA_FATTURARE" } : l
+        )
+      );
+      setRinnoviNotice("Licenza confermata: DA_FATTURARE.");
+    }
   }
 
   async function markLicenzaDaFatturare(r: ScadenzaItem) {
@@ -3609,6 +3613,35 @@ export default function ClientePage({ params }: { params: any }) {
     RINNOVO: { avviso: true, conferma: true, non_rinnovato: true, fattura: true },
   };
 
+  function suggestNextScadenza(value?: string | null) {
+    const dt = parseLocalDay(value ?? null);
+    if (!dt) return "";
+    const next = new Date(dt);
+    next.setFullYear(next.getFullYear() + 1);
+    return next.toISOString().slice(0, 10);
+  }
+
+  function promptNextScadenza(value?: string | null) {
+    if (typeof window === "undefined") return null;
+    const suggested = suggestNextScadenza(value);
+    const input = window.prompt("Nuova scadenza (YYYY-MM-DD):", suggested);
+    if (!input) return null;
+    const dt = parseLocalDay(input.trim());
+    if (!dt) {
+      setRinnoviError("Data scadenza non valida. Usa formato YYYY-MM-DD.");
+      return null;
+    }
+    return dt.toISOString().slice(0, 10);
+  }
+
+  function mapRinnovoTipo(tipo: string) {
+    const upper = String(tipo || "").toUpperCase();
+    if (upper === "SAAS_ULTRA") return { item_tipo: "SAAS", subtipo: "ULTRA" };
+    if (upper === "GARANZIA") return { item_tipo: "SAAS", subtipo: "GARANZIA" };
+    if (upper === "SAAS") return { item_tipo: "SAAS", subtipo: null };
+    return { item_tipo: upper, subtipo: null };
+  }
+
   function getRinnovoMatch(r: ScadenzaItem) {
     if (r.source === "rinnovi") {
       return rinnovi.find((x) => x.id === r.id) || null;
@@ -3624,6 +3657,28 @@ export default function ClientePage({ params }: { params: any }) {
             String(x.checklist_id || "") === "" &&
             String(x.scadenza || "") === String(r.scadenza || "") &&
             String(x.cliente || "").trim() === String(cliente || "").trim()
+        ) || null
+      );
+    }
+    if (tipo === "GARANZIA") {
+      return (
+        rinnovi.find(
+          (x) =>
+            ((String(x.item_tipo || "").toUpperCase() === "GARANZIA" &&
+              !String(x.subtipo || "").trim()) ||
+              (String(x.item_tipo || "").toUpperCase() === "SAAS" &&
+                String(x.subtipo || "").toUpperCase() === "GARANZIA")) &&
+            String(x.checklist_id || "") === String(r.checklist_id || "")
+        ) || null
+      );
+    }
+    if (tipo === "SAAS") {
+      return (
+        rinnovi.find(
+          (x) =>
+            String(x.item_tipo || "").toUpperCase() === "SAAS" &&
+            !["ULTRA", "GARANZIA"].includes(String(x.subtipo || "").toUpperCase()) &&
+            String(x.checklist_id || "") === String(r.checklist_id || "")
         ) || null
       );
     }
@@ -3652,16 +3707,16 @@ export default function ClientePage({ params }: { params: any }) {
     const tipo = String(r.item_tipo || "").toUpperCase();
     const clienteKey = (cliente || "").trim();
     if (!clienteKey) return null;
+    const mapped = mapRinnovoTipo(tipo);
     const payload: Record<string, any> = {
       cliente: clienteKey,
-      item_tipo: tipo,
+      item_tipo: mapped.item_tipo,
+      subtipo: mapped.subtipo,
       checklist_id: r.checklist_id ?? null,
       scadenza: r.scadenza ?? null,
       stato: "DA_AVVISARE",
     };
     if (tipo === "SAAS_ULTRA") {
-      payload.item_tipo = "SAAS";
-      payload.subtipo = "ULTRA";
       payload.checklist_id = null;
     }
     const { data, error } = await supabase
@@ -3677,12 +3732,91 @@ export default function ClientePage({ params }: { params: any }) {
     return (data || null) as RinnovoServizioRow | null;
   }
 
+  async function updateSourceScadenza(r: ScadenzaItem, newDate: string) {
+    if (r.source === "tagliandi") {
+      const { error } = await supabase.from("tagliandi").update({ scadenza: newDate }).eq("id", r.id);
+      if (error) {
+        setRinnoviError("Errore aggiornamento scadenza tagliando: " + error.message);
+        return false;
+      }
+      return true;
+    }
+    if (r.source === "licenze") {
+      const { error } = await supabase.from("licenses").update({ scadenza: newDate }).eq("id", r.id);
+      if (error) {
+        setRinnoviError("Errore aggiornamento scadenza licenza: " + error.message);
+        return false;
+      }
+      return true;
+    }
+    if (r.source === "saas") {
+      const { error } = await supabase.from("checklists").update({ saas_scadenza: newDate }).eq("id", r.checklist_id);
+      if (error) {
+        setRinnoviError("Errore aggiornamento scadenza SAAS: " + error.message);
+        return false;
+      }
+      setChecklists((prev) =>
+        prev.map((c) => (c.id === r.checklist_id ? { ...c, saas_scadenza: newDate } : c))
+      );
+      return true;
+    }
+    if (r.source === "garanzie") {
+      const { error } = await supabase
+        .from("checklists")
+        .update({ garanzia_scadenza: newDate })
+        .eq("id", r.checklist_id);
+      if (error) {
+        setRinnoviError("Errore aggiornamento scadenza GARANZIA: " + error.message);
+        return false;
+      }
+      setChecklists((prev) =>
+        prev.map((c) => (c.id === r.checklist_id ? { ...c, garanzia_scadenza: newDate } : c))
+      );
+      return true;
+    }
+    if (r.source === "saas_contratto") {
+      const contrattoId = r.contratto_id ?? String(r.id || "").replace("saas_contratto:", "");
+      const { error } = await supabase
+        .from("saas_contratti")
+        .update({ scadenza: newDate })
+        .eq("id", contrattoId);
+      if (error) {
+        setRinnoviError("Errore aggiornamento scadenza SAAS_ULTRA: " + error.message);
+        return false;
+      }
+      setContrattiRows((prev) =>
+        prev.map((c) => (String(c.id) === String(contrattoId) ? { ...c, scadenza: newDate } : c))
+      );
+      return true;
+    }
+    if (r.source === "rinnovi") {
+      const { error } = await supabase.from("rinnovi_servizi").update({ scadenza: newDate }).eq("id", r.id);
+      if (error) {
+        setRinnoviError("Errore aggiornamento scadenza rinnovo: " + error.message);
+        return false;
+      }
+      return true;
+    }
+    return true;
+  }
+
   async function markWorkflowConfermato(r: ScadenzaItem) {
+    const nextScadenza = promptNextScadenza(r.scadenza ?? null);
+    if (!nextScadenza) return;
     const row = await ensureRinnovoForItem(r);
     if (!row) return;
-    const ok = await updateRinnovo(row.id, { stato: "CONFERMATO" });
+    const opId =
+      currentOperatoreId ??
+      (typeof window !== "undefined" ? window.localStorage.getItem("current_operatore_id") : null);
+    const ok = await updateRinnovo(row.id, {
+      stato: "DA_FATTURARE",
+      scadenza: nextScadenza,
+      confirmed_at: new Date().toISOString(),
+      confirmed_by_operatore_id: opId,
+    });
     if (ok) {
-      setRinnoviNotice("Riga aggiornata: CONFERMATO.");
+      await updateSourceScadenza(r, nextScadenza);
+      setRinnoviNotice("Riga aggiornata: DA_FATTURARE.");
       await fetchRinnovi((cliente || "").trim());
     }
   }
@@ -4779,26 +4913,25 @@ ${rinnovi30ggBreakdown.debugSample
               non_rinnovato: !isGaranzia,
               fattura: !isGaranzia,
             };
-            const isExtra = String(r.modalita || "").toUpperCase() === "EXTRA";
             const isExpiryOnly = false;
             const hasScadenza = Boolean(r.scadenza);
             const canStage1 = actions.avviso && (isLicenza ? hasScadenza : ["DA_AVVISARE", "AVVISATO"].includes(stato));
             const canConfirm = actions.conferma
                 ? isTagliando
-                  ? true
+                  ? !["DA_FATTURARE", "FATTURATO", "SCADUTO"].includes(stato)
                   : !["CONFERMATO", "DA_FATTURARE", "FATTURATO", "NON_RINNOVATO"].includes(stato)
                 : false;
             const canStage2 = actions.fattura
                 ? isTagliando
-                  ? isExtra && (stato === "DA_FATTURARE" || stato === "OK")
+                  ? stato === "DA_FATTURARE" || stato === "OK"
                   : stato === "CONFERMATO" || stato === "DA_FATTURARE"
                 : false;
             const canNonRinnovato = actions.non_rinnovato
                 ? isTagliando
-                  ? !["FATTURATO", "NON_RINNOVATO"].includes(stato)
+                  ? !["FATTURATO", "SCADUTO"].includes(stato)
                   : !["FATTURATO", "NON_RINNOVATO"].includes(stato)
                 : false;
-            const canFatturato = actions.fattura ? (isTagliando ? isExtra && stato === "DA_FATTURARE" : stato === "DA_FATTURARE") : false;
+            const canFatturato = actions.fattura ? (isTagliando ? stato === "DA_FATTURARE" : stato === "DA_FATTURARE") : false;
             const alertStats = alertStatsMap.get(getAlertKeyForRow(r)) || null;
             const lastSent = alertStats?.last_sent_at
               ? new Date(alertStats.last_sent_at).toLocaleString()
