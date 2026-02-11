@@ -170,8 +170,9 @@ export async function POST(req: Request) {
         try {
           const resend = new Resend(resendKey);
 
+          const emailFrom = process.env.EMAIL_FROM || "Art Tech <noreply@maxischermiled.it>";
           await resend.emails.send({
-            from: "Art Tech <noreply@maxischermiled.it>",
+            from: emailFrom,
             to: [toEmailOk],
             subject: finalSubject,
             text: message,
