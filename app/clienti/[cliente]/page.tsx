@@ -3427,10 +3427,10 @@ export default function ClientePage({ params }: { params: any }) {
       currentOperatoreId ??
       (typeof window !== "undefined" ? window.localStorage.getItem("current_operatore_id") : null);
     if (!opId) {
-      setRinnoviError("Seleziona l’Operatore corrente (in alto) prima di confermare.");
+      setRinnoviError("Seleziona l'Operatore corrente (in alto) prima di confermare.");
       return;
     }
-    const nextScadenza = promptNextScadenza(r.scadenza ?? null);
+    const nextScadenza = promptNextScadenza(r.scadenza ?? null, r.item_tipo);
     if (!nextScadenza) return;
     const ok = await updateRinnovo(r.id, {
       stato: "DA_FATTURARE",
@@ -3491,7 +3491,7 @@ export default function ClientePage({ params }: { params: any }) {
   }
 
   async function markTagliandoOk(r: ScadenzaItem) {
-    const nextScadenza = promptNextScadenza(r.scadenza ?? null);
+    const nextScadenza = promptNextScadenza(r.scadenza ?? null, "TAGLIANDO");
     if (!nextScadenza) return;
     const ok = await updateTagliando(r.id, { stato: "DA_FATTURARE", scadenza: nextScadenza });
     if (ok) {
@@ -3564,7 +3564,7 @@ export default function ClientePage({ params }: { params: any }) {
   }
 
   async function markLicenzaConfermata(r: ScadenzaItem) {
-    const nextScadenza = promptNextScadenza(r.scadenza ?? null);
+    const nextScadenza = promptNextScadenza(r.scadenza ?? null, "LICENZA");
     if (!nextScadenza) return;
     const updated = await updateSourceScadenza(r, nextScadenza);
     if (!updated) return;
@@ -3613,18 +3613,30 @@ export default function ClientePage({ params }: { params: any }) {
     RINNOVO: { avviso: true, conferma: true, non_rinnovato: true, fattura: true },
   };
 
-  function suggestNextScadenza(value?: string | null) {
+  // Mappa configurabile: mesi di rinnovo di default per tipo
+  const RENEWAL_DEFAULTS_MONTHS: Record<string, number> = {
+    LICENZA: 12,
+    TAGLIANDO: 12,
+    SAAS: 12,
+    GARANZIA: 24,
+    SAAS_ULTRA: 12,
+    RINNOVO: 12,
+  };
+
+  function suggestNextScadenza(value?: string | null, tipo?: string | null) {
     const dt = parseLocalDay(value ?? null);
     if (!dt) return "";
+    const months = RENEWAL_DEFAULTS_MONTHS[String(tipo || "").toUpperCase()] ?? 12;
     const next = new Date(dt);
-    next.setFullYear(next.getFullYear() + 1);
+    next.setMonth(next.getMonth() + months);
     return next.toISOString().slice(0, 10);
   }
 
-  function promptNextScadenza(value?: string | null) {
+  function promptNextScadenza(value?: string | null, tipo?: string | null) {
     if (typeof window === "undefined") return null;
-    const suggested = suggestNextScadenza(value);
-    const input = window.prompt("Nuova scadenza (YYYY-MM-DD):", suggested);
+    const months = RENEWAL_DEFAULTS_MONTHS[String(tipo || "").toUpperCase()] ?? 12;
+    const suggested = suggestNextScadenza(value, tipo);
+    const input = window.prompt(`Nuova scadenza (YYYY-MM-DD) — default +${months} mesi:`, suggested);
     if (!input) return null;
     const dt = parseLocalDay(input.trim());
     if (!dt) {
@@ -3801,7 +3813,7 @@ export default function ClientePage({ params }: { params: any }) {
   }
 
   async function markWorkflowConfermato(r: ScadenzaItem) {
-    const nextScadenza = promptNextScadenza(r.scadenza ?? null);
+    const nextScadenza = promptNextScadenza(r.scadenza ?? null, r.item_tipo);
     if (!nextScadenza) return;
     const row = await ensureRinnovoForItem(r);
     if (!row) return;
