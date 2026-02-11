@@ -1278,12 +1278,20 @@ export default function Page() {
                   style={{
                     overflowX: "auto",
                     overflowY: "hidden",
+                    position: "sticky",
+                    top: 0,
+                    zIndex: 5,
+                    background: "white",
                     borderBottom: "1px solid #f3f4f6",
                   }}
                 >
-                  <div style={{ width: 4480, height: 10 }} />
+                  <div style={{ width: 4480, height: 14 }} />
                 </div>
-                <div ref={scrollBodyRef} style={{ overflowX: "auto" }}>
+                <div
+                  ref={scrollBodyRef}
+                  className="dashboard-scroll-body"
+                  style={{ overflowX: "auto" }}
+                >
                   <table
                     style={{
                       width: "100%",

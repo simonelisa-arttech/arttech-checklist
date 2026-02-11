@@ -1,1 +1,20 @@
 @import "tailwindcss";
+
+/* Dashboard: scrollbar orizzontale sempre visibile */
+.dashboard-scroll-body {
+  scrollbar-gutter: stable;
+}
+.dashboard-scroll-body::-webkit-scrollbar {
+  height: 12px;
+}
+.dashboard-scroll-body::-webkit-scrollbar-track {
+  background: #f3f4f6;
+  border-radius: 6px;
+}
+.dashboard-scroll-body::-webkit-scrollbar-thumb {
+  background: #d1d5db;
+  border-radius: 6px;
+}
+.dashboard-scroll-body::-webkit-scrollbar-thumb:hover {
+  background: #9ca3af;
+}
