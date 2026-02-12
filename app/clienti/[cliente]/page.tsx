@@ -3673,7 +3673,7 @@ export default function ClientePage({ params }: { params: any }) {
   function mapRinnovoTipo(tipo: string) {
     const upper = String(tipo || "").toUpperCase();
     if (upper === "SAAS_ULTRA") return { item_tipo: "SAAS", subtipo: "ULTRA" };
-    if (upper === "GARANZIA") return { item_tipo: "SAAS", subtipo: "GARANZIA" };
+    if (upper === "GARANZIA") return { item_tipo: "GARANZIA", subtipo: null };
     if (upper === "SAAS") return { item_tipo: "SAAS", subtipo: null };
     return { item_tipo: upper, subtipo: null };
   }
@@ -3700,10 +3700,7 @@ export default function ClientePage({ params }: { params: any }) {
       return (
         rinnovi.find(
           (x) =>
-            ((String(x.item_tipo || "").toUpperCase() === "GARANZIA" &&
-              !String(x.subtipo || "").trim()) ||
-              (String(x.item_tipo || "").toUpperCase() === "SAAS" &&
-                String(x.subtipo || "").toUpperCase() === "GARANZIA")) &&
+            String(x.item_tipo || "").toUpperCase() === "GARANZIA" &&
             String(x.checklist_id || "") === String(r.checklist_id || "")
         ) || null
       );
@@ -3713,7 +3710,7 @@ export default function ClientePage({ params }: { params: any }) {
         rinnovi.find(
           (x) =>
             String(x.item_tipo || "").toUpperCase() === "SAAS" &&
-            !["ULTRA", "GARANZIA"].includes(String(x.subtipo || "").toUpperCase()) &&
+            !["ULTRA"].includes(String(x.subtipo || "").toUpperCase()) &&
             String(x.checklist_id || "") === String(r.checklist_id || "")
         ) || null
       );
