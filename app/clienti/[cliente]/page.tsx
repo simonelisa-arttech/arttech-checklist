@@ -1673,7 +1673,15 @@ export default function ClientePage({ params }: { params: any }) {
       stato: c.scadenza ? getExpiryStatus(c.scadenza) : "ATTIVA",
       modalita: null,
     }));
-    const garanzieMapped = garanzieRows.map((c) => ({
+    const rinnoviGaranziaChecklistIds = new Set(
+      rinnovi
+        .filter((r) => String(r.item_tipo || "").toUpperCase() === "GARANZIA")
+        .map((r) => String(r.checklist_id || ""))
+        .filter(Boolean)
+    );
+    const garanzieMapped = garanzieRows
+      .filter((c) => !rinnoviGaranziaChecklistIds.has(String(c.id)))
+      .map((c) => ({
       id: `garanzia:${c.id}`,
       source: "garanzie" as const,
       item_tipo: "GARANZIA",
