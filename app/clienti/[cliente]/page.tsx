@@ -3361,6 +3361,39 @@ export default function ClientePage({ params }: { params: any }) {
       return;
     }
     const nowIso = new Date().toISOString();
+    if (rinnoviAlertStage === "stage1") {
+      const pairs = new Map<string, { checklistId: string; itemTipo: string }>();
+      for (const r of list) {
+        if (!r.checklist_id) continue;
+        const tipoRaw = String(r.item_tipo || "").toUpperCase();
+        const mapped = mapRinnovoTipo(tipoRaw);
+        const itemTipo = String(mapped.item_tipo || "").toUpperCase();
+        if (!itemTipo) continue;
+        const key = `${r.checklist_id}::${itemTipo}`;
+        pairs.set(key, { checklistId: r.checklist_id, itemTipo });
+      }
+      for (const { checklistId, itemTipo } of pairs.values()) {
+        await supabase
+          .from("rinnovi_servizi")
+          .update({ stato: "AVVISATO", updated_at: nowIso })
+          .eq("checklist_id", checklistId)
+          .eq("item_tipo", itemTipo);
+        setRinnovi((prev) =>
+          prev.map((row) =>
+            String(row.checklist_id || "") === String(checklistId) &&
+            String(row.item_tipo || "").toUpperCase() === itemTipo
+              ? {
+                  ...row,
+                  stato: "AVVISATO",
+                  notify_stage1_sent_at: nowIso,
+                  notify_stage1_to_operatore_id:
+                    rinnoviAlertDestMode === "operatore" ? rinnoviAlertToOperatoreId : null,
+                }
+              : row
+          )
+        );
+      }
+    }
     const rinnoviIds = list.filter((r) => r.source === "rinnovi").map((r) => r.id);
     const licenzeIds = list.filter((r) => r.source === "licenze").map((r) => r.id);
     // Righe SAAS/SAAS_ULTRA/GARANZIA: assicura record rinnovi_servizi e aggiorna stato
