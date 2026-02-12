@@ -3351,6 +3351,30 @@ export default function ClientePage({ params }: { params: any }) {
     const nowIso = new Date().toISOString();
     const rinnoviIds = list.filter((r) => r.source === "rinnovi").map((r) => r.id);
     const licenzeIds = list.filter((r) => r.source === "licenze").map((r) => r.id);
+    // Righe SAAS/SAAS_ULTRA/GARANZIA: assicura record rinnovi_servizi e aggiorna stato
+    const workflowItems = list.filter((r) =>
+      ["saas", "saas_contratto", "garanzie"].includes(r.source)
+    );
+    for (const r of workflowItems) {
+      const rinnovo = await ensureRinnovoForItem(r);
+      if (rinnovo) {
+        const updPayload: Record<string, any> =
+          rinnoviAlertStage === "stage1"
+            ? {
+                stato: "AVVISATO",
+                notify_stage1_sent_at: nowIso,
+                notify_stage1_to_operatore_id:
+                  rinnoviAlertDestMode === "operatore" ? rinnoviAlertToOperatoreId : null,
+              }
+            : {
+                billing_notified_at: nowIso,
+                billing_stage2_sent_at: nowIso,
+                billing_stage2_to_operatore_id:
+                  rinnoviAlertDestMode === "operatore" ? rinnoviAlertToOperatoreId : null,
+              };
+        await updateRinnovo(rinnovo.id, updPayload);
+      }
+    }
     if (rinnoviAlertStage === "stage1") {
       if (rinnoviIds.length > 0) {
         await updateRinnovi(rinnoviIds, {
