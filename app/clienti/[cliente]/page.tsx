@@ -3805,11 +3805,19 @@ export default function ClientePage({ params }: { params: any }) {
     if (tipo === "SAAS_ULTRA") {
       payload.checklist_id = null;
     }
-    const { data, error } = await supabase
-      .from("rinnovi_servizi")
-      .insert(payload)
-      .select("*")
-      .single();
+    const isGaranzia =
+      String(mapped.item_tipo || "").toUpperCase() === "GARANZIA" && payload.checklist_id;
+    const { data, error } = isGaranzia
+      ? await supabase
+          .from("rinnovi_servizi")
+          .upsert(payload, { onConflict: "checklist_id,item_tipo" })
+          .select("*")
+          .single()
+      : await supabase
+          .from("rinnovi_servizi")
+          .insert(payload)
+          .select("*")
+          .single();
     if (error) {
       setRinnoviError("Errore creazione rinnovo: " + error.message);
       return null;
