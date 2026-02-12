@@ -3237,7 +3237,15 @@ export default function ClientePage({ params }: { params: any }) {
     const hasTagliandi = list.some((r) => r.source === "tagliandi");
     const hasRinnovi = list.some((r) => r.source === "rinnovi");
     const hasLicenze = list.some((r) => r.source === "licenze");
-    const currentTipo = hasTagliandi && !hasLicenze ? "TAGLIANDO" : hasLicenze ? "LICENZA" : "GENERICO";
+    const singleItem = list.length === 1 ? list[0] : null;
+    const currentTipo =
+      singleItem?.item_tipo
+        ? String(singleItem.item_tipo).toUpperCase()
+        : hasTagliandi && !hasLicenze
+        ? "TAGLIANDO"
+        : hasLicenze
+        ? "LICENZA"
+        : "RINNOVO";
     const canale =
       rinnoviAlertStage === "stage1"
         ? hasTagliandi && !hasRinnovi && !hasLicenze
@@ -3305,7 +3313,9 @@ export default function ClientePage({ params }: { params: any }) {
             from_operatore_id: opId,
             checklist_id: checklistId,
             tagliando_id: t.tagliando_id ?? t.id ?? null,
-            tipo: "TAGLIANDO",
+            tipo: String(t.item_tipo || "TAGLIANDO").toUpperCase(),
+            riferimento: t.riferimento ?? null,
+            stato: t.stato ?? null,
             trigger: "MANUALE",
             send_email: i === 0 ? rinnoviAlertSendEmail : false,
           });
@@ -3338,6 +3348,8 @@ export default function ClientePage({ params }: { params: any }) {
           from_operatore_id: opId,
           checklist_id: checklistId,
           tipo: currentTipo,
+          riferimento: singleItem?.riferimento ?? null,
+          stato: singleItem?.stato ?? null,
           trigger: "MANUALE",
           send_email: rinnoviAlertSendEmail,
         });

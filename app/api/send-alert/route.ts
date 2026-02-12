@@ -106,12 +106,12 @@ export async function POST(req: Request) {
       (typeof riferimento === "string" &&
         riferimento.trim().length > 0 &&
         !Number.isNaN(Number(riferimento.trim())));
-    const tipoNorm = tipoRaw || (inferredLicense ? "LICENZA" : "GENERICA");
-    const tipoUpper = tipoNorm;
+    const tipoNorm = tipoRaw || (inferredLicense ? "LICENZA" : null);
+    const tipoUpper = String(tipoNorm || "");
     const tagliandoId = tagliando_id ?? id ?? null;
     const finalSubject =
       subject ||
-      `AVVISO ${tipo ?? "RINNOVO"} — ${riferimento ?? ""}`.trim();
+      `AVVISO ${tipoNorm ?? "RINNOVO"} — ${riferimento ?? ""}`.trim();
     const triggerValue = String(trigger || "MANUALE").trim().toUpperCase();
 
     if (!toOperatoreId && !toEmailOk) {
@@ -131,10 +131,10 @@ export async function POST(req: Request) {
       checklist_id,
       intervento_id,
       tipo: tipoNorm,
-      riferimento,
+      riferimento: riferimento ?? null,
       scadenza,
       modalita,
-      stato,
+      stato: stato ?? null,
       destinatario: destinatario ?? null,
       to_operatore_id: toOperatoreId,
       to_email: toEmailOk,
