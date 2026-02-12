@@ -3723,11 +3723,11 @@ export default function ClientePage({ params }: { params: any }) {
     const payload: Record<string, any> = {
       cliente: clienteKey,
       item_tipo: mapped.item_tipo,
-      subtipo: mapped.subtipo,
       checklist_id: r.checklist_id ?? null,
       scadenza: r.scadenza ?? null,
       stato: "DA_AVVISARE",
     };
+    if (mapped.subtipo) payload.subtipo = mapped.subtipo;
     if (tipo === "SAAS_ULTRA") {
       payload.checklist_id = null;
     }
