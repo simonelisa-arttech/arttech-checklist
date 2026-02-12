@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import ConfigMancante from "@/components/ConfigMancante";
+import Toast from "@/components/Toast";
 import { isSupabaseConfigured, supabase } from "@/lib/supabaseClient";
 
 const SAAS_PIANI = [
@@ -289,6 +290,14 @@ export default function Page() {
   const [serialsByChecklistId, setSerialsByChecklistId] = useState<
     Record<string, { seriali: string[] }>
   >({});
+
+  // duplicazione progetto
+  const [dupModalOpen, setDupModalOpen] = useState(false);
+  const [dupSourceId, setDupSourceId] = useState<string | null>(null);
+  const [dupNewName, setDupNewName] = useState("");
+  const [dupSaving, setDupSaving] = useState(false);
+  const [dupError, setDupError] = useState<string | null>(null);
+  const [toastMsg, setToastMsg] = useState<string | null>(null);
 
   // campi testata
   const [cliente, setCliente] = useState("");
@@ -1005,6 +1014,111 @@ export default function Page() {
     }
   }
 
+  function openDuplicateModal(checklistId: string) {
+    const source = items.find((c) => c.id === checklistId);
+    if (!source) return;
+    setDupSourceId(checklistId);
+    setDupNewName(`COPIA - ${source.nome_checklist || "Senza nome"}`);
+    setDupError(null);
+    setDupModalOpen(true);
+  }
+
+  async function duplicateChecklist() {
+    if (!dupSourceId || !dupNewName.trim()) return;
+    setDupSaving(true);
+    setDupError(null);
+    try {
+      const { data: source, error: srcErr } = await supabase
+        .from("checklists")
+        .select("*")
+        .eq("id", dupSourceId)
+        .single();
+      if (srcErr || !source) throw new Error(srcErr?.message || "Progetto non trovato");
+
+      // Campi da copiare (progetto/impianto), escludendo id, timestamps, stato operativo
+      const {
+        id: _id,
+        created_at: _ca,
+        updated_at: _ua,
+        stato_progetto: _sp,
+        created_by_operatore: _cbo,
+        updated_by_operatore: _ubo,
+        checklist_documents: _docs,
+        // campi vista/aggregazione che non fanno parte della tabella
+        sezione_documenti: _sd,
+        sezione_1: _s1,
+        sezione_2: _s2,
+        sezione_3: _s3,
+        stato_complessivo: _sc,
+        pct_complessivo: _pc,
+        license_count: _lc,
+        next_license_expiry: _nle,
+        main_item_codice: _mic,
+        main_item_descrizione: _mid,
+        ...copyFields
+      } = source as any;
+
+      const payload: Record<string, any> = {
+        ...copyFields,
+        nome_checklist: dupNewName.trim(),
+        stato_progetto: "IN_CORSO",
+        created_by_operatore: currentOperatoreId || null,
+        updated_by_operatore: currentOperatoreId || null,
+      };
+
+      const { data: created, error: insErr } = await supabase
+        .from("checklists")
+        .insert(payload)
+        .select("id")
+        .single();
+      if (insErr) throw new Error(insErr.message);
+      if (!created?.id) throw new Error("ID non ricevuto");
+
+      const newId = created.id as string;
+
+      // Duplica checklist_items (BOM)
+      const { data: srcItems } = await supabase
+        .from("checklist_items")
+        .select("codice, descrizione, quantita, note")
+        .eq("checklist_id", dupSourceId);
+      if (srcItems && srcItems.length > 0) {
+        const itemRows = srcItems.map((r: any) => ({
+          checklist_id: newId,
+          codice: r.codice,
+          descrizione: r.descrizione,
+          quantita: r.quantita,
+          note: r.note,
+        }));
+        await supabase.from("checklist_items").insert(itemRows);
+      }
+
+      // Duplica checklist_tasks (attività da template)
+      const { data: srcTasks } = await supabase
+        .from("checklist_tasks")
+        .select("sezione, ordine, titolo, task_template_id")
+        .eq("checklist_id", dupSourceId);
+      if (srcTasks && srcTasks.length > 0) {
+        const taskRows = srcTasks.map((r: any) => ({
+          checklist_id: newId,
+          sezione: r.sezione,
+          ordine: r.ordine,
+          titolo: r.titolo,
+          stato: "DA_FARE",
+          task_template_id: r.task_template_id,
+        }));
+        await supabase.from("checklist_tasks").insert(taskRows);
+      }
+
+      setDupModalOpen(false);
+      setToastMsg("✅ Progetto duplicato");
+      setTimeout(() => router.push(`/checklists/${newId}`), 800);
+    } catch (err: any) {
+      setDupError(err?.message || "Errore duplicazione");
+    } finally {
+      setDupSaving(false);
+    }
+  }
+
   async function backupAndDeleteChecklist(checklistId: string) {
     const ok = window.confirm("Eliminare questo PROGETTO? Verrà salvato in backup per 30 giorni.");
     if (!ok) return;
@@ -1334,7 +1448,7 @@ export default function Page() {
                   <col style={{ width: 180 }} />
                   <col style={{ width: 160 }} />
                   <col style={{ width: 160 }} />
-                  <col style={{ width: 110 }} />
+                  <col style={{ width: 200 }} />
                 </colgroup>
                 <thead>
                   <tr>
@@ -2113,7 +2227,24 @@ export default function Page() {
                             ? operatoriById.get(c.updated_by_operatore)?.nome ?? "—"
                             : "—"}
                         </td>
-                        <td style={{ padding: "10px 12px" }}>
+                        <td style={{ padding: "10px 12px", display: "flex", gap: 8 }}>
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              openDuplicateModal(c.id);
+                            }}
+                            style={{
+                              padding: "6px 10px",
+                              borderRadius: 8,
+                              border: "1px solid #2563eb",
+                              background: "white",
+                              color: "#2563eb",
+                              cursor: "pointer",
+                            }}
+                          >
+                            Duplica
+                          </button>
                           <button
                             type="button"
                             onClick={(e) => {
@@ -2146,6 +2277,99 @@ export default function Page() {
             </div>
           )}
         </div>
+      )}
+      {dupModalOpen && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.35)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 16,
+            zIndex: 50,
+          }}
+          onClick={() => setDupModalOpen(false)}
+        >
+          <div
+            style={{
+              width: "100%",
+              maxWidth: 480,
+              background: "white",
+              borderRadius: 12,
+              padding: 20,
+              boxShadow: "0 10px 30px rgba(0,0,0,0.15)",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ fontWeight: 800, fontSize: 18, marginBottom: 14 }}>
+              Duplica progetto
+            </div>
+            <label style={{ display: "block", marginBottom: 14 }}>
+              Nome nuovo progetto
+              <input
+                value={dupNewName}
+                onChange={(e) => setDupNewName(e.target.value)}
+                style={{
+                  width: "100%",
+                  padding: 10,
+                  marginTop: 6,
+                  borderRadius: 8,
+                  border: "1px solid #d1d5db",
+                  fontSize: 14,
+                }}
+                autoFocus
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && dupNewName.trim()) duplicateChecklist();
+                }}
+              />
+            </label>
+            <div style={{ fontSize: 12, opacity: 0.6, marginBottom: 14 }}>
+              Verranno copiati: dati impianto, BOM e attività (resettate a DA_FARE).
+              NON verranno copiati: seriali, licenze, SaaS, tagliandi, garanzie, log avvisi.
+            </div>
+            {dupError && (
+              <div style={{ marginBottom: 10, fontSize: 12, color: "#dc2626" }}>
+                {dupError}
+              </div>
+            )}
+            <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+              <button
+                type="button"
+                onClick={() => setDupModalOpen(false)}
+                style={{
+                  padding: "8px 14px",
+                  borderRadius: 8,
+                  border: "1px solid #d1d5db",
+                  background: "white",
+                  cursor: "pointer",
+                }}
+              >
+                Annulla
+              </button>
+              <button
+                type="button"
+                onClick={duplicateChecklist}
+                disabled={dupSaving || !dupNewName.trim()}
+                style={{
+                  padding: "8px 14px",
+                  borderRadius: 8,
+                  border: "1px solid #111",
+                  background: "#111",
+                  color: "white",
+                  cursor: dupSaving || !dupNewName.trim() ? "not-allowed" : "pointer",
+                  opacity: dupSaving || !dupNewName.trim() ? 0.6 : 1,
+                }}
+              >
+                {dupSaving ? "Duplicazione..." : "Duplica"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {toastMsg && (
+        <Toast message={toastMsg} variant="success" onClose={() => setToastMsg(null)} />
       )}
     </div>
   );
