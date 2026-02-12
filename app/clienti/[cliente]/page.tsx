@@ -797,6 +797,7 @@ export default function ClientePage({ params }: { params: any }) {
     null
   );
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const prefillInterventoRef = useRef(false);
   const autoFatturazioneSent = useRef<Set<string>>(new Set());
   const autoFatturazioneInFlight = useRef(false);
   const [editIntervento, setEditIntervento] = useState({
@@ -1011,6 +1012,25 @@ export default function ClientePage({ params }: { params: any }) {
     return () => {
       if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
     };
+  }, []);
+
+  useEffect(() => {
+    if (prefillInterventoRef.current) return;
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("addIntervento") !== "1") return;
+    prefillInterventoRef.current = true;
+    const checklistId = params.get("checklist_id");
+    const descrizione = params.get("descrizione");
+    setNewIntervento((prev) => ({
+      ...prev,
+      checklistId: checklistId || prev.checklistId,
+      tipo: descrizione || prev.tipo,
+    }));
+    setTimeout(() => {
+      const el = document.getElementById("add-intervento");
+      if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 100);
   }, []);
 
   useEffect(() => {
@@ -5545,6 +5565,7 @@ ${rinnovi30ggBreakdown.debugSample
         )}
 
         <div
+          id="add-intervento"
           style={{
             marginTop: 10,
             border: "1px solid #eee",

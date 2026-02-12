@@ -287,6 +287,7 @@ export default function Page() {
   const [expandedSaasNoteId, setExpandedSaasNoteId] = useState<string | null>(null);
   const scrollTopRef = useRef<HTMLDivElement | null>(null);
   const scrollBodyRef = useRef<HTMLDivElement | null>(null);
+  const scrollGlobalRef = useRef<HTMLDivElement | null>(null);
   const [serialsByChecklistId, setSerialsByChecklistId] = useState<
     Record<string, { seriali: string[] }>
   >({});
@@ -298,6 +299,11 @@ export default function Page() {
   const [dupSaving, setDupSaving] = useState(false);
   const [dupError, setDupError] = useState<string | null>(null);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
+  const [addInterventoOpen, setAddInterventoOpen] = useState(false);
+  const [addInterventoCliente, setAddInterventoCliente] = useState("");
+  const [addInterventoChecklistId, setAddInterventoChecklistId] = useState("");
+  const [addInterventoDescrizione, setAddInterventoDescrizione] = useState("");
+  const [addInterventoError, setAddInterventoError] = useState<string | null>(null);
 
   // campi testata
   const [cliente, setCliente] = useState("");
@@ -516,6 +522,21 @@ export default function Page() {
     return sorted;
   }, [items, q, sortKey, sortDir, serialsByChecklistId]);
 
+  const clientiOptions = useMemo(() => {
+    const set = new Set<string>();
+    items.forEach((c) => {
+      if (c.cliente) set.add(c.cliente);
+    });
+    return Array.from(set).sort((a, b) => a.localeCompare(b, "it", { sensitivity: "base" }));
+  }, [items]);
+
+  const checklistOptions = useMemo(() => {
+    if (!addInterventoCliente) return [];
+    return items
+      .filter((c) => c.cliente === addInterventoCliente)
+      .map((c) => ({ id: c.id, nome: c.nome_checklist }));
+  }, [items, addInterventoCliente]);
+
   async function load() {
     setLoading(true);
     const { data, error } = await supabase
@@ -690,18 +711,27 @@ export default function Page() {
   useEffect(() => {
     const top = scrollTopRef.current;
     const body = scrollBodyRef.current;
-    if (!top || !body) return;
-    const syncFromTop = () => {
-      if (body.scrollLeft !== top.scrollLeft) body.scrollLeft = top.scrollLeft;
+    const global = scrollGlobalRef.current;
+    if (!top || !body || !global) return;
+    let syncing = false;
+    const sync = (source: HTMLDivElement, a: HTMLDivElement, b: HTMLDivElement) => {
+      if (syncing) return;
+      syncing = true;
+      const left = source.scrollLeft;
+      if (a.scrollLeft !== left) a.scrollLeft = left;
+      if (b.scrollLeft !== left) b.scrollLeft = left;
+      syncing = false;
     };
-    const syncFromBody = () => {
-      if (top.scrollLeft !== body.scrollLeft) top.scrollLeft = body.scrollLeft;
-    };
+    const syncFromTop = () => sync(top, body, global);
+    const syncFromBody = () => sync(body, top, global);
+    const syncFromGlobal = () => sync(global, top, body);
     top.addEventListener("scroll", syncFromTop);
     body.addEventListener("scroll", syncFromBody);
+    global.addEventListener("scroll", syncFromGlobal);
     return () => {
       top.removeEventListener("scroll", syncFromTop);
       body.removeEventListener("scroll", syncFromBody);
+      global.removeEventListener("scroll", syncFromGlobal);
     };
   }, []);
 
@@ -719,6 +749,15 @@ export default function Page() {
       window.localStorage.removeItem("current_operatore_id");
     }
   }, [currentOperatoreId]);
+
+  useEffect(() => {
+    if (!addInterventoCliente) {
+      setAddInterventoChecklistId("");
+      return;
+    }
+    const first = items.find((c) => c.cliente === addInterventoCliente);
+    if (first?.id) setAddInterventoChecklistId(first.id);
+  }, [addInterventoCliente, items]);
 
   useEffect(() => {
     const channel = supabase
@@ -1336,6 +1375,25 @@ export default function Page() {
           >
             + Nuovo PROGETTO
           </Link>
+          <button
+            type="button"
+            onClick={() => {
+              setAddInterventoError(null);
+              setAddInterventoCliente("");
+              setAddInterventoChecklistId("");
+              setAddInterventoDescrizione("");
+              setAddInterventoOpen(true);
+            }}
+            style={{
+              padding: "10px 14px",
+              borderRadius: 10,
+              border: "1px solid #ddd",
+              cursor: "pointer",
+              background: "white",
+            }}
+          >
+            + Aggiungi intervento
+          </button>
         </div>
       </div>
 
@@ -2368,6 +2426,169 @@ export default function Page() {
           </div>
         </div>
       )}
+      {addInterventoOpen && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.35)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 16,
+            zIndex: 50,
+          }}
+          onClick={() => setAddInterventoOpen(false)}
+        >
+          <div
+            style={{
+              width: "100%",
+              maxWidth: 520,
+              background: "white",
+              borderRadius: 12,
+              padding: 20,
+              boxShadow: "0 10px 30px rgba(0,0,0,0.15)",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ fontWeight: 800, fontSize: 18, marginBottom: 14 }}>
+              Aggiungi intervento
+            </div>
+            <label style={{ display: "block", marginBottom: 12 }}>
+              Cliente
+              <select
+                value={addInterventoCliente}
+                onChange={(e) => {
+                  const value = e.target.value;
+                  setAddInterventoCliente(value);
+                  setAddInterventoChecklistId("");
+                }}
+                style={{
+                  width: "100%",
+                  padding: 10,
+                  marginTop: 6,
+                  borderRadius: 8,
+                  border: "1px solid #d1d5db",
+                  fontSize: 14,
+                }}
+              >
+                <option value="">—</option>
+                {clientiOptions.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label style={{ display: "block", marginBottom: 12 }}>
+              Progetto
+              <select
+                value={addInterventoChecklistId}
+                onChange={(e) => setAddInterventoChecklistId(e.target.value)}
+                style={{
+                  width: "100%",
+                  padding: 10,
+                  marginTop: 6,
+                  borderRadius: 8,
+                  border: "1px solid #d1d5db",
+                  fontSize: 14,
+                }}
+                disabled={!addInterventoCliente}
+              >
+                <option value="">—</option>
+                {checklistOptions.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.nome || c.id}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label style={{ display: "block", marginBottom: 12 }}>
+              Descrizione (opzionale)
+              <input
+                value={addInterventoDescrizione}
+                onChange={(e) => setAddInterventoDescrizione(e.target.value)}
+                style={{
+                  width: "100%",
+                  padding: 10,
+                  marginTop: 6,
+                  borderRadius: 8,
+                  border: "1px solid #d1d5db",
+                  fontSize: 14,
+                }}
+              />
+            </label>
+            {addInterventoError && (
+              <div style={{ marginBottom: 10, fontSize: 12, color: "#dc2626" }}>
+                {addInterventoError}
+              </div>
+            )}
+            <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+              <button
+                type="button"
+                onClick={() => setAddInterventoOpen(false)}
+                style={{
+                  padding: "8px 14px",
+                  borderRadius: 8,
+                  border: "1px solid #d1d5db",
+                  background: "white",
+                  cursor: "pointer",
+                }}
+              >
+                Annulla
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  if (!addInterventoCliente || !addInterventoChecklistId) {
+                    setAddInterventoError("Seleziona cliente e progetto.");
+                    return;
+                  }
+                  const params = new URLSearchParams();
+                  params.set("addIntervento", "1");
+                  params.set("checklist_id", addInterventoChecklistId);
+                  if (addInterventoDescrizione.trim()) {
+                    params.set("descrizione", addInterventoDescrizione.trim());
+                  }
+                  router.push(
+                    `/clienti/${encodeURIComponent(addInterventoCliente)}?${params.toString()}`
+                  );
+                  setAddInterventoOpen(false);
+                }}
+                style={{
+                  padding: "8px 14px",
+                  borderRadius: 8,
+                  border: "1px solid #111",
+                  background: "#111",
+                  color: "white",
+                  cursor: "pointer",
+                }}
+              >
+                Continua
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      <div
+        ref={scrollGlobalRef}
+        style={{
+          position: "fixed",
+          left: 12,
+          right: 12,
+          bottom: 10,
+          height: 14,
+          overflowX: "auto",
+          overflowY: "hidden",
+          background: "rgba(255,255,255,0.95)",
+          border: "1px solid #e5e7eb",
+          borderRadius: 8,
+          zIndex: 40,
+          display: dupModalOpen || addInterventoOpen ? "none" : "block",
+        }}
+      >
+        <div style={{ width: 4480, height: 1 }} />
+      </div>
       {toastMsg && (
         <Toast message={toastMsg} variant="success" onClose={() => setToastMsg(null)} />
       )}
