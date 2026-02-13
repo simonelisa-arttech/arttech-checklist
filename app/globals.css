@@ -3,20 +3,6 @@
 html,
 body {
   overflow-y: auto !important;
-  scrollbar-width: auto;
-}
-html::-webkit-scrollbar,
-body::-webkit-scrollbar {
-  width: 14px;
-}
-html::-webkit-scrollbar-thumb,
-body::-webkit-scrollbar-thumb {
-  background: #bdbdbd;
-  border-radius: 8px;
-}
-html::-webkit-scrollbar-track,
-body::-webkit-scrollbar-track {
-  background: #f0f0f0;
 }
 
 /* Dashboard: scrollbar orizzontale sempre visibile */
@@ -41,10 +27,8 @@ body::-webkit-scrollbar-track {
 .dashboard-scroll-wrapper {
   position: relative;
   width: 100%;
-  overflow-x: scroll !important;
-  overflow-y: hidden;
-  scrollbar-gutter: stable both-edges;
-  scrollbar-width: auto;
+  overflow-x: auto;
+  overflow-y: visible;
 }
 
 .dashboard-scroll-content {
@@ -65,38 +49,4 @@ body::-webkit-scrollbar-track {
 }
 .dashboard-scroll-wrapper::-webkit-scrollbar-thumb:hover {
   background: #9ca3af;
-}
-
-.bottom-scrollbar::-webkit-scrollbar {
-  height: 16px;
-}
-.bottom-scrollbar::-webkit-scrollbar-track {
-  background: #f3f4f6;
-}
-.bottom-scrollbar::-webkit-scrollbar-thumb {
-  background: #bdbdbd;
-  border-radius: 6px;
-}
-.bottom-scrollbar {
-  scrollbar-width: auto;
-  overflow-x: scroll !important;
-  scrollbar-gutter: stable both-edges;
-}
-
-/* Dashboard: force scrollbar visibility (debug override) */
-.dashboard-force-scrollbars * {
-  scrollbar-width: auto !important;
-  -ms-overflow-style: auto !important;
-}
-.dashboard-force-scrollbars *::-webkit-scrollbar {
-  height: 16px !important;
-  width: 16px !important;
-  display: block !important;
-}
-.dashboard-force-scrollbars *::-webkit-scrollbar-thumb {
-  background: #bdbdbd !important;
-  border-radius: 8px !important;
-}
-.dashboard-force-scrollbars *::-webkit-scrollbar-track {
-  background: #f0f0f0 !important;
 }
