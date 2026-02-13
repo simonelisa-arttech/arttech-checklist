@@ -2223,14 +2223,13 @@ export default function Page() {
                         <td style={{ padding: "10px 12px", textAlign: "center", whiteSpace: "nowrap" }}>
                           {renderBadge(getExpiryStatus(c.saas_scadenza))}
                         </td>
-                        <td style={{ padding: "10px 12px" }}>
+                        <td style={{ padding: "10px 12px", whiteSpace: "nowrap" }}>
                           <div
                             style={{
                               display: "flex",
-                              gap: 8,
-                              alignItems: "center",
-                              whiteSpace: "nowrap",
-                              minWidth: 0,
+                              flexDirection: "column",
+                              gap: 6,
+                              alignItems: "flex-start",
                             }}
                           >
                             <span>
@@ -2238,9 +2237,7 @@ export default function Page() {
                                 ? new Date(c.garanzia_scadenza).toLocaleDateString()
                                 : "—"}
                             </span>
-                            <span style={{ flexShrink: 0 }}>
-                              {renderBadge(getExpiryStatus(c.garanzia_scadenza))}
-                            </span>
+                            <span>{renderBadge(getExpiryStatus(c.garanzia_scadenza))}</span>
                           </div>
                         </td>
                         <td style={{ padding: "10px 12px", opacity: 0.85 }}>
@@ -2330,17 +2327,18 @@ export default function Page() {
                     );
                   })}
                 </tbody>
-                  </table>
-                </div>
-
-                {displayRows.length === 0 && (
-                  <div style={{ padding: 14, opacity: 0.7 }}>Nessun risultato</div>
-                )}
-              </div>
+              </table>
             </div>
+          </div>
+
+          {displayRows.length === 0 && (
+            <div style={{ padding: 14, opacity: 0.7 }}>Nessun risultato</div>
           )}
         </div>
-      )}
+      </div>
+    )}
+  </div>
+)}
       {dupModalOpen && (
         <div
           style={{
@@ -2582,11 +2580,11 @@ export default function Page() {
           left: 12,
           right: 12,
           bottom: 10,
-          height: 18,
+          height: 22,
           overflowX: "auto",
           overflowY: "hidden",
-          background: "rgba(255,255,255,0.98)",
-          border: "2px solid #d1d5db",
+          background: "#f3f4f6",
+          border: "2px solid #9ca3af",
           borderRadius: 8,
           zIndex: 40,
           display: dupModalOpen || addInterventoOpen ? "none" : "block",
