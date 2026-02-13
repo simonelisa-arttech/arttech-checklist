@@ -86,20 +86,10 @@ export default function DashboardTable({ children }: DashboardTableProps) {
               padding: "0 12px",
             }}
           >
-            <input
-              type="range"
-              min={0}
-              max={max}
-              value={value}
-              onChange={(e) => {
-                const next = Number(e.target.value);
-                const el = wrapRef.current;
-                if (el) el.scrollLeft = next;
-                setValue(next);
-              }}
-              className="dashboard-slider"
-              style={{ width: "100%" }}
-            />
+            <div style={{ display: "flex", width: "100%", gap: 12, alignItems: "center" }}>
+              <span style={{ fontSize: 12, color: "#000" }}>SLIDER OK</span>
+              <div style={{ flex: 1, height: 16, background: "#ddd" }} />
+            </div>
           </div>,
           document.body
         )}
