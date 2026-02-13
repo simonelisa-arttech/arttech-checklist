@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import ConfigMancante from "@/components/ConfigMancante";
@@ -285,9 +285,6 @@ export default function Page() {
   const [operatori, setOperatori] = useState<OperatoreRow[]>([]);
   const [currentOperatoreId, setCurrentOperatoreId] = useState<string>("");
   const [expandedSaasNoteId, setExpandedSaasNoteId] = useState<string | null>(null);
-  const scrollTopRef = useRef<HTMLDivElement | null>(null);
-  const scrollBodyRef = useRef<HTMLDivElement | null>(null);
-  const scrollGlobalRef = useRef<HTMLDivElement | null>(null);
   const [serialsByChecklistId, setSerialsByChecklistId] = useState<
     Record<string, { seriali: string[] }>
   >({});
@@ -706,33 +703,6 @@ export default function Page() {
 
   useEffect(() => {
     load();
-  }, []);
-
-  useEffect(() => {
-    const top = scrollTopRef.current;
-    const body = scrollBodyRef.current;
-    const global = scrollGlobalRef.current;
-    if (!top || !body || !global) return;
-    let syncing = false;
-    const sync = (source: HTMLDivElement, a: HTMLDivElement, b: HTMLDivElement) => {
-      if (syncing) return;
-      syncing = true;
-      const left = source.scrollLeft;
-      if (a.scrollLeft !== left) a.scrollLeft = left;
-      if (b.scrollLeft !== left) b.scrollLeft = left;
-      syncing = false;
-    };
-    const syncFromTop = () => sync(top, body, global);
-    const syncFromBody = () => sync(body, top, global);
-    const syncFromGlobal = () => sync(global, top, body);
-    top.addEventListener("scroll", syncFromTop);
-    body.addEventListener("scroll", syncFromBody);
-    global.addEventListener("scroll", syncFromGlobal);
-    return () => {
-      top.removeEventListener("scroll", syncFromTop);
-      body.removeEventListener("scroll", syncFromBody);
-      global.removeEventListener("scroll", syncFromGlobal);
-    };
   }, []);
 
   useEffect(() => {
@@ -1445,26 +1415,8 @@ export default function Page() {
                   background: "white",
                 }}
               >
-                <div
-                  ref={scrollTopRef}
-                  style={{
-                    overflowX: "auto",
-                    overflowY: "hidden",
-                    position: "sticky",
-                    top: 0,
-                    zIndex: 5,
-                    background: "white",
-                    borderBottom: "1px solid #f3f4f6",
-                  }}
-                >
-                  <div style={{ width: 5200, height: 16 }} />
-                </div>
-                <div style={{ position: "relative", maxHeight: "70vh", overflowY: "auto" }}>
-                  <div
-                    ref={scrollBodyRef}
-                    className="dashboard-scroll-body"
-                    style={{ overflowX: "auto" }}
-                  >
+                <div className="dashboard-scroll-wrapper">
+                  <div className="dashboard-scroll-content dashboard-scroll-body">
                     <table
                       style={{
                         width: "100%",
@@ -2327,9 +2279,9 @@ export default function Page() {
                     );
                   })}
                 </tbody>
-              </table>
-            </div>
-          </div>
+                    </table>
+                  </div>
+                </div>
 
           {displayRows.length === 0 && (
             <div style={{ padding: 14, opacity: 0.7 }}>Nessun risultato</div>
@@ -2573,26 +2525,6 @@ export default function Page() {
           </div>
         </div>
       )}
-      <div
-        ref={scrollGlobalRef}
-        style={{
-          position: "fixed",
-          left: 12,
-          right: 12,
-          bottom: 10,
-          height: 22,
-          overflowX: "auto",
-          overflowY: "hidden",
-          background: "#f3f4f6",
-          border: "2px solid #9ca3af",
-          borderRadius: 8,
-          zIndex: 40,
-          display: dupModalOpen || addInterventoOpen ? "none" : "block",
-          boxShadow: "0 6px 16px rgba(0,0,0,0.12)",
-        }}
-      >
-        <div style={{ width: 5200, height: 1 }} />
-      </div>
       {toastMsg && (
         <Toast message={toastMsg} variant="success" onClose={() => setToastMsg(null)} />
       )}
