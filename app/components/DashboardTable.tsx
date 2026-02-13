@@ -170,7 +170,6 @@ export default function DashboardTable({ children }: DashboardTableProps) {
                 window.scrollTo({ top: next, behavior: "auto" });
               }}
               style={{
-                writingMode: "bt-lr",
                 WebkitAppearance: "slider-vertical",
                 height: "60vh",
                 width: 16,
