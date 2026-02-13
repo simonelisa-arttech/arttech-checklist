@@ -16,6 +16,14 @@ export default function DashboardTable({ children }: DashboardTableProps) {
 
   useEffect(() => {
     setMounted(true);
+    if (typeof document !== "undefined") {
+      document.body.style.paddingBottom = "40px";
+    }
+    return () => {
+      if (typeof document !== "undefined") {
+        document.body.style.paddingBottom = "";
+      }
+    };
   }, []);
 
   useEffect(() => {
@@ -74,12 +82,18 @@ export default function DashboardTable({ children }: DashboardTableProps) {
     const table = findTable();
     if (table) ro.observe(table);
     window.addEventListener("resize", updateWidths);
+    const onWindowScroll = () => {
+      const rect = bar.getBoundingClientRect();
+      console.log("[dashboard-scroll] bar rect", rect.top, rect.bottom);
+    };
+    window.addEventListener("scroll", onWindowScroll, { passive: true });
 
     return () => {
       wrap.removeEventListener("scroll", onWrapScroll);
       bar.removeEventListener("scroll", onBarScroll);
       ro.disconnect();
       window.removeEventListener("resize", updateWidths);
+      window.removeEventListener("scroll", onWindowScroll);
     };
   }, [children]);
 
@@ -96,8 +110,9 @@ export default function DashboardTable({ children }: DashboardTableProps) {
         overflowX: "scroll",
         overflowY: "hidden",
         background: "white",
-        borderTop: "1px solid #e5e7eb",
-        zIndex: 9999,
+        borderTop: "2px solid red",
+        zIndex: 2147483647,
+        width: "100vw",
       }}
     >
       <div ref={spacerRef} style={{ height: 28 }} />
