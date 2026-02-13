@@ -302,6 +302,7 @@ export default function Page() {
   const [addInterventoDescrizione, setAddInterventoDescrizione] = useState("");
   const [addInterventoError, setAddInterventoError] = useState<string | null>(null);
   const tableWrapRef = useRef<HTMLDivElement | null>(null);
+  const tableRef = useRef<HTMLTableElement | null>(null);
   const bottomBarRef = useRef<HTMLDivElement | null>(null);
   const bottomSpacerRef = useRef<HTMLDivElement | null>(null);
   const [bottomBarWidth, setBottomBarWidth] = useState(5200);
@@ -740,7 +741,11 @@ export default function Page() {
     if (!wrap || !bar || !spacer) return;
     let syncing = false;
     const updateWidths = () => {
-      const width = wrap.scrollWidth || 0;
+      const contentWidth = Math.max(
+        wrap.scrollWidth || 0,
+        tableRef.current?.scrollWidth || 0
+      );
+      const width = Math.max(contentWidth, wrap.clientWidth + 1);
       spacer.style.width = `${width}px`;
       setBottomBarWidth(width);
       console.log("[dashboard-scroll] wrap", {
@@ -1479,6 +1484,7 @@ export default function Page() {
                     style={{ width: "max-content" }}
                   >
                     <table
+                      ref={tableRef}
                       style={{
                         width: "max-content",
                         minWidth: 1600,
@@ -2597,8 +2603,9 @@ export default function Page() {
           height: 28,
           overflowX: "scroll",
           overflowY: "hidden",
-          background: "white",
+          background: "#f8f8f8",
           borderTop: "1px solid #e5e7eb",
+          boxShadow: "0 -1px 0 rgba(0,0,0,0.05)",
           zIndex: 50,
         }}
       >
