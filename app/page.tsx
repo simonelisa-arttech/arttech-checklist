@@ -1457,7 +1457,7 @@ export default function Page() {
                     borderBottom: "1px solid #f3f4f6",
                   }}
                 >
-                  <div style={{ width: 4480, height: 14 }} />
+                  <div style={{ width: 3600, height: 16 }} />
                 </div>
                 <div
                   ref={scrollBodyRef}
@@ -1467,46 +1467,46 @@ export default function Page() {
                   <table
                     style={{
                       width: "100%",
-                      minWidth: 4480,
+                      minWidth: 3600,
                       tableLayout: "fixed",
                       borderCollapse: "collapse",
                       fontSize: 13,
                     }}
                   >
                 <colgroup>
-                  <col style={{ width: 220 }} />
-                  <col style={{ width: 160 }} />
-                  <col style={{ width: 200 }} />
-                  <col style={{ width: 160 }} />
-                  <col style={{ width: 120 }} />
+                  <col style={{ width: 180 }} />
+                  <col style={{ width: 140 }} />
+                  <col style={{ width: 150 }} />
                   <col style={{ width: 110 }} />
-                  <col style={{ width: 90 }} />
+                  <col style={{ width: 110 }} />
+                  <col style={{ width: 110 }} />
+                  <col style={{ width: 70 }} />
+                  <col style={{ width: 70 }} />
+                  <col style={{ width: 110 }} />
                   <col style={{ width: 140 }} />
                   <col style={{ width: 120 }} />
+                  <col style={{ width: 110 }} />
                   <col style={{ width: 120 }} />
-                  <col style={{ width: 140 }} />
-                  <col style={{ width: 120 }} />
-                  <col style={{ width: 240 }} />
-                  <col style={{ width: 180 }} />
                   <col style={{ width: 200 }} />
+                  <col style={{ width: 170 }} />
+                  <col style={{ width: 120 }} />
+                  <col style={{ width: 200 }} />
+                  <col style={{ width: 110 }} />
+                  <col style={{ width: 120 }} />
+                  <col style={{ width: 180 }} />
+                  <col style={{ width: 190 }} />
+                  <col style={{ width: 220 }} />
+                  <col style={{ width: 130 }} />
+                  <col style={{ width: 120 }} />
+                  <col style={{ width: 120 }} />
+                  <col style={{ width: 120 }} />
                   <col style={{ width: 120 }} />
                   <col style={{ width: 110 }} />
-                  <col style={{ width: 220 }} />
                   <col style={{ width: 120 }} />
+                  <col style={{ width: 120 }} />
+                  <col style={{ width: 130 }} />
+                  <col style={{ width: 130 }} />
                   <col style={{ width: 160 }} />
-                  <col style={{ width: 260 }} />
-                  <col style={{ width: 120 }} />
-                  <col style={{ width: 120 }} />
-                  <col style={{ width: 120 }} />
-                  <col style={{ width: 120 }} />
-                  <col style={{ width: 120 }} />
-                  <col style={{ width: 160 }} />
-                  <col style={{ width: 90 }} />
-                  <col style={{ width: 180 }} />
-                  <col style={{ width: 180 }} />
-                  <col style={{ width: 160 }} />
-                  <col style={{ width: 160 }} />
-                  <col style={{ width: 200 }} />
                 </colgroup>
                 <thead>
                   <tr>
@@ -1560,6 +1560,40 @@ export default function Page() {
                     >
                       Proforma
                       {sortIcon("proforma_doc")}
+                    </th>
+                    <th
+                      onClick={() => toggleSort("data_prevista")}
+                      title="Ordina per Data installazione prevista"
+                      style={{
+                        textAlign: "left",
+                        padding: "10px 12px",
+                        cursor: "pointer",
+                        position: "sticky",
+                        top: 0,
+                        background: "white",
+                        zIndex: 2,
+                        boxShadow: "0 2px 6px rgba(0, 0, 0, 0.06)",
+                      }}
+                    >
+                      Data prevista
+                      {sortIcon("data_prevista")}
+                    </th>
+                    <th
+                      onClick={() => toggleSort("data_tassativa")}
+                      title="Ordina per Data tassativa"
+                      style={{
+                        textAlign: "left",
+                        padding: "10px 12px",
+                        cursor: "pointer",
+                        position: "sticky",
+                        top: 0,
+                        background: "white",
+                        zIndex: 2,
+                        boxShadow: "0 2px 6px rgba(0, 0, 0, 0.06)",
+                      }}
+                    >
+                      Data tassativa
+                      {sortIcon("data_tassativa")}
                     </th>
                     <th
                       onClick={() => toggleSort("magazzino_importazione")}
@@ -1664,40 +1698,6 @@ export default function Page() {
                       {sortIcon("impianto_indirizzo")}
                     </th>
                     <th
-                      onClick={() => toggleSort("data_prevista")}
-                      title="Ordina per Data installazione prevista"
-                      style={{
-                        textAlign: "left",
-                        padding: "10px 12px",
-                        cursor: "pointer",
-                        position: "sticky",
-                        top: 0,
-                        background: "white",
-                        zIndex: 2,
-                        boxShadow: "0 2px 6px rgba(0, 0, 0, 0.06)",
-                      }}
-                    >
-                      Data prevista
-                      {sortIcon("data_prevista")}
-                    </th>
-                    <th
-                      onClick={() => toggleSort("data_tassativa")}
-                      title="Ordina per Data tassativa"
-                      style={{
-                        textAlign: "left",
-                        padding: "10px 12px",
-                        cursor: "pointer",
-                        position: "sticky",
-                        top: 0,
-                        background: "white",
-                        zIndex: 2,
-                        boxShadow: "0 2px 6px rgba(0, 0, 0, 0.06)",
-                      }}
-                    >
-                      Data tassativa
-                      {sortIcon("data_tassativa")}
-                    </th>
-                    <th
                       onClick={() => toggleSort("data_installazione_reale")}
                       title="Ordina per Installazione reale"
                       style={{
@@ -1730,6 +1730,23 @@ export default function Page() {
                     >
                       Codice
                       {sortIcon("codice")}
+                    </th>
+                    <th
+                      onClick={() => toggleSort("magazzino_importazione")}
+                      title="Ordina per Magazzino importazione"
+                      style={{
+                        textAlign: "left",
+                        padding: "10px 12px",
+                        cursor: "pointer",
+                        position: "sticky",
+                        top: 0,
+                        background: "white",
+                        zIndex: 2,
+                        boxShadow: "0 2px 6px rgba(0, 0, 0, 0.06)",
+                      }}
+                    >
+                      Magazzino
+                      {sortIcon("magazzino_importazione")}
                     </th>
                     <th
                       onClick={() => toggleSort("descrizione")}
@@ -2129,9 +2146,18 @@ export default function Page() {
                           })()}
                         </td>
                         <td style={{ padding: "10px 12px", opacity: 0.85 }}>
-                          {c.magazzino_importazione ?? "—"}
+                          {c.data_prevista
+                            ? new Date(c.data_prevista).toLocaleDateString()
+                            : "—"}
                         </td>
-                        <td style={{ padding: "10px 12px", opacity: 0.85 }}>{c.dimensioni ?? "—"}</td>
+                        <td style={{ padding: "10px 12px", opacity: 0.85 }}>
+                          {c.data_tassativa
+                            ? new Date(c.data_tassativa).toLocaleDateString()
+                            : "—"}
+                        </td>
+                        <td style={{ padding: "10px 12px", opacity: 0.85 }}>
+                          {c.dimensioni ?? "—"}
+                        </td>
                         <td style={{ padding: "10px 12px", opacity: 0.85 }}>{c.passo ?? "—"}</td>
                         <td style={{ padding: "10px 12px", opacity: 0.85, textAlign: "right" }}>
                           {calcM2(c.dimensioni) != null
@@ -2145,21 +2171,14 @@ export default function Page() {
                           {c.impianto_indirizzo ?? "—"}
                         </td>
                         <td style={{ padding: "10px 12px", opacity: 0.85 }}>
-                          {c.data_prevista
-                            ? new Date(c.data_prevista).toLocaleDateString()
-                            : "—"}
-                        </td>
-                        <td style={{ padding: "10px 12px", opacity: 0.85 }}>
-                          {c.data_tassativa
-                            ? new Date(c.data_tassativa).toLocaleDateString()
-                            : "—"}
-                        </td>
-                        <td style={{ padding: "10px 12px", opacity: 0.85 }}>
                           {c.data_installazione_reale
                             ? new Date(c.data_installazione_reale).toLocaleDateString()
                             : "—"}
                         </td>
                         <td style={{ padding: "10px 12px", opacity: 0.85 }}>{c.codice ?? "—"}</td>
+                        <td style={{ padding: "10px 12px", opacity: 0.85 }}>
+                          {c.magazzino_importazione ?? "—"}
+                        </td>
                         <td style={{ padding: "10px 12px", opacity: 0.85 }}>{c.descrizione ?? "—"}</td>
                         <td style={{ padding: "10px 12px", opacity: 0.85 }}>
                           {c.saas_piano
@@ -2577,17 +2596,18 @@ export default function Page() {
           left: 12,
           right: 12,
           bottom: 10,
-          height: 14,
+          height: 18,
           overflowX: "auto",
           overflowY: "hidden",
-          background: "rgba(255,255,255,0.95)",
-          border: "1px solid #e5e7eb",
+          background: "rgba(255,255,255,0.98)",
+          border: "2px solid #d1d5db",
           borderRadius: 8,
           zIndex: 40,
           display: dupModalOpen || addInterventoOpen ? "none" : "block",
+          boxShadow: "0 6px 16px rgba(0,0,0,0.12)",
         }}
       >
-        <div style={{ width: 4480, height: 1 }} />
+        <div style={{ width: 3600, height: 1 }} />
       </div>
       {toastMsg && (
         <Toast message={toastMsg} variant="success" onClose={() => setToastMsg(null)} />
