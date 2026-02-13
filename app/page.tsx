@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import ConfigMancante from "@/components/ConfigMancante";
@@ -301,6 +301,10 @@ export default function Page() {
   const [addInterventoChecklistId, setAddInterventoChecklistId] = useState("");
   const [addInterventoDescrizione, setAddInterventoDescrizione] = useState("");
   const [addInterventoError, setAddInterventoError] = useState<string | null>(null);
+  const tableWrapRef = useRef<HTMLDivElement | null>(null);
+  const bottomBarRef = useRef<HTMLDivElement | null>(null);
+  const bottomSpacerRef = useRef<HTMLDivElement | null>(null);
+  const [showBottomBar, setShowBottomBar] = useState(false);
 
   // campi testata
   const [cliente, setCliente] = useState("");
@@ -728,6 +732,43 @@ export default function Page() {
     const first = items.find((c) => c.cliente === addInterventoCliente);
     if (first?.id) setAddInterventoChecklistId(first.id);
   }, [addInterventoCliente, items]);
+
+  useEffect(() => {
+    const wrap = tableWrapRef.current;
+    const bar = bottomBarRef.current;
+    const spacer = bottomSpacerRef.current;
+    if (!wrap || !bar || !spacer) return;
+    let syncing = false;
+    const updateWidths = () => {
+      const width = wrap.scrollWidth;
+      spacer.style.width = `${width}px`;
+      setShowBottomBar(width > wrap.clientWidth + 2);
+    };
+    updateWidths();
+    const onWrapScroll = () => {
+      if (syncing) return;
+      syncing = true;
+      bar.scrollLeft = wrap.scrollLeft;
+      syncing = false;
+    };
+    const onBarScroll = () => {
+      if (syncing) return;
+      syncing = true;
+      wrap.scrollLeft = bar.scrollLeft;
+      syncing = false;
+    };
+    wrap.addEventListener("scroll", onWrapScroll);
+    bar.addEventListener("scroll", onBarScroll);
+    const ro = new ResizeObserver(updateWidths);
+    ro.observe(wrap);
+    window.addEventListener("resize", updateWidths);
+    return () => {
+      wrap.removeEventListener("scroll", onWrapScroll);
+      bar.removeEventListener("scroll", onBarScroll);
+      ro.disconnect();
+      window.removeEventListener("resize", updateWidths);
+    };
+  }, [displayRows.length]);
 
   useEffect(() => {
     const channel = supabase
@@ -1279,7 +1320,7 @@ export default function Page() {
   }
 
   return (
-    <div style={{ maxWidth: 1100, margin: "24px auto", padding: 16 }}>
+    <div style={{ maxWidth: 1100, margin: "24px auto", padding: 16, paddingBottom: 60 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
         <div>
           <h1 style={{ margin: 0, fontSize: 34 }}>AT SYSTEM</h1>
@@ -1415,7 +1456,7 @@ export default function Page() {
                   background: "white",
                 }}
               >
-                <div className="dashboard-scroll-wrapper">
+                <div className="dashboard-scroll-wrapper" ref={tableWrapRef}>
                   <div className="dashboard-scroll-content dashboard-scroll-body">
                     <table
                       style={{
@@ -2523,6 +2564,27 @@ export default function Page() {
               </button>
             </div>
           </div>
+        </div>
+      )}
+      {showBottomBar && (
+        <div
+          ref={bottomBarRef}
+          style={{
+            position: "fixed",
+            left: 12,
+            right: 12,
+            bottom: 6,
+            height: 18,
+            overflowX: "auto",
+            overflowY: "hidden",
+            background: "white",
+            borderTop: "1px solid #e5e7eb",
+            borderBottom: "1px solid #e5e7eb",
+            zIndex: 40,
+            boxShadow: "0 -2px 8px rgba(0,0,0,0.08)",
+          }}
+        >
+          <div ref={bottomSpacerRef} style={{ height: 1 }} />
         </div>
       )}
       {toastMsg && (
