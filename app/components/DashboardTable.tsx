@@ -51,51 +51,91 @@ export default function DashboardTable({ children }: DashboardTableProps) {
   }, []);
 
   const recalcV = useCallback(() => {
-    const maxScroll = Math.max(
-      0,
-      document.documentElement.scrollHeight - window.innerHeight
-    );
+    const el = wrapRef.current;
+    if (!el) return;
+    const maxScroll = Math.max(0, el.scrollHeight - el.clientHeight);
     setVMax(maxScroll);
-    setVValue(window.scrollY);
+    setVValue(el.scrollTop);
   }, []);
 
-  const onWindowScroll = useCallback(() => {
-    setVValue(window.scrollY);
+  const onWrapScroll = useCallback(() => {
+    const el = wrapRef.current;
+    if (!el) return;
+    setVValue(el.scrollTop);
   }, []);
 
   useEffect(() => {
     if (!mounted) return;
     recalcV();
-    window.addEventListener("scroll", onWindowScroll, { passive: true });
+    const el = wrapRef.current;
+    if (!el) return;
+    el.addEventListener("scroll", onWrapScroll, { passive: true });
     window.addEventListener("resize", recalcV);
     return () => {
-      window.removeEventListener("scroll", onWindowScroll);
+      el.removeEventListener("scroll", onWrapScroll);
       window.removeEventListener("resize", recalcV);
     };
-  }, [mounted, onWindowScroll, recalcV]);
+  }, [mounted, onWrapScroll, recalcV, children]);
   return (
     <>
-      <div
-        ref={wrapRef}
-        className="dashboard-scroll-wrapper"
-        style={{
-          width: "100%",
-          maxWidth: "100vw",
-          overflowX: "auto",
-          overflowY: "visible",
-          display: "block",
-        }}
-        onScroll={() => {
-          const el = wrapRef.current;
-          if (el) setValue(el.scrollLeft);
-        }}
-      >
+      <div style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
         <div
-          ref={contentRef}
-          className="dashboard-scroll-content dashboard-scroll-body"
-          style={{ width: "max-content", display: "inline-block" }}
+          ref={wrapRef}
+          className="dashboard-scroll-wrapper"
+          style={{
+            width: "100%",
+            maxWidth: "100%",
+            overflowX: "hidden",
+            overflowY: "auto",
+            display: "block",
+            maxHeight: "calc(100vh - 220px)",
+          }}
+          onScroll={() => {
+            const el = wrapRef.current;
+            if (el) {
+              setValue(el.scrollLeft);
+              setVValue(el.scrollTop);
+            }
+          }}
         >
-          {children}
+          <div
+            ref={contentRef}
+            className="dashboard-scroll-content dashboard-scroll-body"
+            style={{ width: "max-content", display: "inline-block" }}
+          >
+            {children}
+          </div>
+        </div>
+        <div
+          style={{
+            position: "sticky",
+            top: 120,
+            alignSelf: "flex-start",
+            background: "white",
+            border: "1px solid #e5e7eb",
+            borderRadius: 10,
+            padding: 8,
+          }}
+        >
+          <input
+            type="range"
+            min={0}
+            max={vMax}
+            value={vValue}
+            disabled={vMax === 0}
+            onChange={(e) => {
+              const next = Number(e.target.value);
+              const el = wrapRef.current;
+              if (el) el.scrollTop = next;
+              setVValue(next);
+            }}
+            style={{
+              writingMode: "vertical-rl",
+              height: "60vh",
+              width: 16,
+              WebkitAppearance: "slider-vertical",
+            }}
+          />
         </div>
       </div>
       {mounted &&
