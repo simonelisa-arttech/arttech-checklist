@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import ConfigMancante from "@/components/ConfigMancante";
 import DashboardTable from "./components/DashboardTable";
 import Toast from "@/components/Toast";
@@ -279,6 +279,7 @@ export default function Page() {
     return <ConfigMancante />;
   }
   const router = useRouter();
+  const pathname = usePathname();
   const [items, setItems] = useState<Checklist[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -705,6 +706,18 @@ export default function Page() {
   useEffect(() => {
     load();
   }, []);
+
+  useEffect(() => {
+    // Safety: ensure no stale backdrop stays open
+    setDupModalOpen(false);
+    setAddInterventoOpen(false);
+  }, []);
+
+  useEffect(() => {
+    // Close any modal on route change to avoid stuck overlay
+    setDupModalOpen(false);
+    setAddInterventoOpen(false);
+  }, [pathname]);
 
   useEffect(() => {
     const stored =
