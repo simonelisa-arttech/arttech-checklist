@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 type DashboardTableProps = {
@@ -13,6 +13,8 @@ export default function DashboardTable({ children }: DashboardTableProps) {
   const [max, setMax] = useState(0);
   const [value, setValue] = useState(0);
   const [mounted, setMounted] = useState(false);
+  const [vMax, setVMax] = useState(0);
+  const [vValue, setVValue] = useState(0);
 
   useEffect(() => {
     setMounted(true);
@@ -47,6 +49,30 @@ export default function DashboardTable({ children }: DashboardTableProps) {
       el.removeEventListener("scroll", onScroll);
     };
   }, []);
+
+  const recalcV = useCallback(() => {
+    const maxScroll = Math.max(
+      0,
+      document.documentElement.scrollHeight - window.innerHeight
+    );
+    setVMax(maxScroll);
+    setVValue(window.scrollY);
+  }, []);
+
+  const onWindowScroll = useCallback(() => {
+    setVValue(window.scrollY);
+  }, []);
+
+  useEffect(() => {
+    if (!mounted) return;
+    recalcV();
+    window.addEventListener("scroll", onWindowScroll, { passive: true });
+    window.addEventListener("resize", recalcV);
+    return () => {
+      window.removeEventListener("scroll", onWindowScroll);
+      window.removeEventListener("resize", recalcV);
+    };
+  }, [mounted, onWindowScroll, recalcV]);
   return (
     <>
       <div
@@ -115,6 +141,41 @@ export default function DashboardTable({ children }: DashboardTableProps) {
                 style={{ width: "100%", height: 16 }}
               />
             </div>
+          </div>,
+          document.body
+        )}
+      {mounted &&
+        createPortal(
+          <div
+            style={{
+              position: "fixed",
+              right: 8,
+              top: "50%",
+              transform: "translateY(-50%)",
+              zIndex: 2147483647,
+              background: "white",
+              border: "1px solid #e5e7eb",
+              borderRadius: 10,
+              padding: 8,
+            }}
+          >
+            <input
+              type="range"
+              min={0}
+              max={vMax}
+              value={vValue}
+              onChange={(e) => {
+                const next = Number(e.target.value);
+                setVValue(next);
+                window.scrollTo({ top: next, behavior: "auto" });
+              }}
+              style={{
+                writingMode: "bt-lr",
+                WebkitAppearance: "slider-vertical",
+                height: "60vh",
+                width: 16,
+              }}
+            />
           </div>,
           document.body
         )}
