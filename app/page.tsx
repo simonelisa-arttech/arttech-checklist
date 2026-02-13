@@ -740,9 +740,14 @@ export default function Page() {
     if (!wrap || !bar || !spacer) return;
     let syncing = false;
     const updateWidths = () => {
-      const width = Math.max(5200, wrap.scrollWidth || 0);
+      const width = wrap.scrollWidth || 0;
       spacer.style.width = `${width}px`;
       setBottomBarWidth(width);
+      if (width === wrap.clientWidth) {
+        console.debug("[dashboard-scroll] no overflow", { width, client: wrap.clientWidth });
+      } else {
+        console.debug("[dashboard-scroll] overflow", { width, client: wrap.clientWidth });
+      }
     };
     updateWidths();
     const onWrapScroll = () => {
@@ -2568,22 +2573,21 @@ export default function Page() {
       )}
       <div
         ref={bottomBarRef}
+        className="bottom-scrollbar"
         style={{
           position: "fixed",
-          left: 12,
-          right: 12,
-          bottom: 6,
-          height: 18,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          height: 24,
           overflowX: "scroll",
           overflowY: "hidden",
           background: "white",
           borderTop: "1px solid #e5e7eb",
-          borderBottom: "1px solid #e5e7eb",
-          zIndex: 40,
-          boxShadow: "0 -2px 8px rgba(0,0,0,0.08)",
+          zIndex: 50,
         }}
       >
-        <div ref={bottomSpacerRef} style={{ height: 1, width: bottomBarWidth }} />
+        <div ref={bottomSpacerRef} style={{ height: 24, width: bottomBarWidth }} />
       </div>
       {toastMsg && (
         <Toast message={toastMsg} variant="success" onClose={() => setToastMsg(null)} />
