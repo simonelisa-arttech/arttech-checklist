@@ -29,9 +29,25 @@ body {
   width: 100%;
   overflow-x: auto;
   overflow-y: visible;
+  scrollbar-gutter: stable both-edges;
 }
 
 .dashboard-scroll-content {
   display: inline-block;
   min-width: max-content;
+}
+
+.dashboard-scroll-wrapper::-webkit-scrollbar {
+  height: 12px;
+}
+.dashboard-scroll-wrapper::-webkit-scrollbar-track {
+  background: #f3f4f6;
+  border-radius: 6px;
+}
+.dashboard-scroll-wrapper::-webkit-scrollbar-thumb {
+  background: #d1d5db;
+  border-radius: 6px;
+}
+.dashboard-scroll-wrapper::-webkit-scrollbar-thumb:hover {
+  background: #9ca3af;
 }

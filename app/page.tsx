@@ -1419,7 +1419,7 @@ export default function Page() {
                   <div className="dashboard-scroll-content dashboard-scroll-body">
                     <table
                       style={{
-                        width: "100%",
+                        width: "max-content",
                         minWidth: 5200,
                         tableLayout: "fixed",
                         borderCollapse: "collapse",
