@@ -82,12 +82,18 @@ export default function DashboardTable({ children }: DashboardTableProps) {
       <div
         ref={wrapRef}
         className="dashboard-scroll-wrapper"
-        style={{ overflowX: "scroll", overflowY: "hidden" }}
+        style={{
+          width: "100%",
+          maxWidth: "100vw",
+          overflowX: "scroll",
+          overflowY: "hidden",
+          display: "block",
+        }}
       >
         <div
           ref={contentRef}
           className="dashboard-scroll-content dashboard-scroll-body"
-          style={{ width: "max-content" }}
+          style={{ width: "max-content", minWidth: "max-content", display: "inline-block" }}
         >
           {children}
         </div>

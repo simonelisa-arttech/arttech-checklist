@@ -1414,6 +1414,9 @@ export default function Page() {
                   border: "1px solid #eee",
                   borderRadius: 14,
                   background: "white",
+                  width: "100%",
+                  maxWidth: "100%",
+                  minWidth: 0,
                 }}
               >
                 <DashboardTable>
