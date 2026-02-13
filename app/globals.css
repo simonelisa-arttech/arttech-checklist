@@ -68,3 +68,21 @@ body {
   overflow-x: scroll !important;
   scrollbar-gutter: stable both-edges;
 }
+
+/* Dashboard: force scrollbar visibility (debug override) */
+.dashboard-force-scrollbars * {
+  scrollbar-width: auto !important;
+  -ms-overflow-style: auto !important;
+}
+.dashboard-force-scrollbars *::-webkit-scrollbar {
+  height: 16px !important;
+  width: 16px !important;
+  display: block !important;
+}
+.dashboard-force-scrollbars *::-webkit-scrollbar-thumb {
+  background: #bdbdbd !important;
+  border-radius: 8px !important;
+}
+.dashboard-force-scrollbars *::-webkit-scrollbar-track {
+  background: #f0f0f0 !important;
+}
