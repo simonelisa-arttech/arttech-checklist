@@ -4,6 +4,9 @@ html,
 body {
   overflow-y: auto !important;
 }
+html {
+  scrollbar-gutter: stable;
+}
 
 /* Dashboard: scrollbar orizzontale sempre visibile */
 .dashboard-scroll-body {
@@ -34,6 +37,32 @@ body {
 .dashboard-scroll-content {
   display: inline-block;
   width: max-content;
+}
+
+/* Dashboard horizontal slider styling */
+.dashboard-slider {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 14px;
+  background: #f0f0f0;
+  border-radius: 999px;
+  outline: none;
+}
+.dashboard-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 80px;
+  height: 14px;
+  background: #9ca3af;
+  border-radius: 999px;
+  cursor: pointer;
+}
+.dashboard-slider::-moz-range-thumb {
+  width: 80px;
+  height: 14px;
+  background: #9ca3af;
+  border-radius: 999px;
+  cursor: pointer;
 }
 
 .dashboard-scroll-wrapper::-webkit-scrollbar {

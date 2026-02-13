@@ -71,6 +71,7 @@ export default function DashboardTable({ children }: DashboardTableProps) {
       {mounted &&
         createPortal(
           <div
+            className="dashboard-slider-bar"
             style={{
               position: "fixed",
               left: 0,
@@ -79,16 +80,12 @@ export default function DashboardTable({ children }: DashboardTableProps) {
               height: 40,
               zIndex: 2147483647,
               background: "white",
-              borderTop: "2px solid red",
+              borderTop: "1px solid #e5e7eb",
               display: "flex",
               alignItems: "center",
-              gap: 12,
               padding: "0 12px",
             }}
           >
-            <div style={{ fontSize: 12, fontWeight: 700, color: "#b91c1c" }}>
-              SLIDER DEBUG
-            </div>
             <input
               type="range"
               min={0}
@@ -100,6 +97,7 @@ export default function DashboardTable({ children }: DashboardTableProps) {
                 if (el) el.scrollLeft = next;
                 setValue(next);
               }}
+              className="dashboard-slider"
               style={{ width: "100%" }}
             />
           </div>,
