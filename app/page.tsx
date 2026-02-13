@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import ConfigMancante from "@/components/ConfigMancante";
+import DashboardTable from "@/components/DashboardTable";
 import Toast from "@/components/Toast";
 import { isSupabaseConfigured, supabase } from "@/lib/supabaseClient";
 
@@ -301,11 +302,6 @@ export default function Page() {
   const [addInterventoChecklistId, setAddInterventoChecklistId] = useState("");
   const [addInterventoDescrizione, setAddInterventoDescrizione] = useState("");
   const [addInterventoError, setAddInterventoError] = useState<string | null>(null);
-  const tableWrapRef = useRef<HTMLDivElement | null>(null);
-  const tableRef = useRef<HTMLTableElement | null>(null);
-  const bottomBarRef = useRef<HTMLDivElement | null>(null);
-  const bottomSpacerRef = useRef<HTMLDivElement | null>(null);
-  const [bottomBarWidth, setBottomBarWidth] = useState(5200);
 
   // campi testata
   const [cliente, setCliente] = useState("");
@@ -733,60 +729,6 @@ export default function Page() {
     const first = items.find((c) => c.cliente === addInterventoCliente);
     if (first?.id) setAddInterventoChecklistId(first.id);
   }, [addInterventoCliente, items]);
-
-  useEffect(() => {
-    const wrap = tableWrapRef.current;
-    const bar = bottomBarRef.current;
-    const spacer = bottomSpacerRef.current;
-    if (!wrap || !bar || !spacer) return;
-    let syncing = false;
-    const updateWidths = () => {
-      const contentWidth = Math.max(
-        wrap.scrollWidth || 0,
-        tableRef.current?.scrollWidth || 0
-      );
-      const width = Math.max(contentWidth, wrap.clientWidth + 1);
-      spacer.style.width = `${width}px`;
-      setBottomBarWidth(width);
-      console.log("[dashboard-scroll] wrap", {
-        client: wrap.clientWidth,
-        scroll: wrap.scrollWidth,
-      });
-      console.log("[dashboard-scroll] bar", {
-        client: bar.clientWidth,
-        scroll: bar.scrollWidth,
-      });
-      if (width === wrap.clientWidth) {
-        console.debug("[dashboard-scroll] no overflow", { width, client: wrap.clientWidth });
-      } else {
-        console.debug("[dashboard-scroll] overflow", { width, client: wrap.clientWidth });
-      }
-    };
-    updateWidths();
-    const onWrapScroll = () => {
-      if (syncing) return;
-      syncing = true;
-      bar.scrollLeft = wrap.scrollLeft;
-      syncing = false;
-    };
-    const onBarScroll = () => {
-      if (syncing) return;
-      syncing = true;
-      wrap.scrollLeft = bar.scrollLeft;
-      syncing = false;
-    };
-    wrap.addEventListener("scroll", onWrapScroll);
-    bar.addEventListener("scroll", onBarScroll);
-    const ro = new ResizeObserver(updateWidths);
-    ro.observe(wrap);
-    window.addEventListener("resize", updateWidths);
-    return () => {
-      wrap.removeEventListener("scroll", onWrapScroll);
-      bar.removeEventListener("scroll", onBarScroll);
-      ro.disconnect();
-      window.removeEventListener("resize", updateWidths);
-    };
-  }, [displayRows.length]);
 
   useEffect(() => {
     const channel = supabase
@@ -1474,25 +1416,16 @@ export default function Page() {
                   background: "white",
                 }}
               >
-                <div
-                  className="dashboard-scroll-wrapper"
-                  ref={tableWrapRef}
-                  style={{ overflowX: "scroll", overflowY: "visible" }}
-                >
-                  <div
-                    className="dashboard-scroll-content dashboard-scroll-body"
-                    style={{ width: "max-content" }}
+                <DashboardTable>
+                  <table
+                    style={{
+                      width: "max-content",
+                      minWidth: 1600,
+                      tableLayout: "fixed",
+                      borderCollapse: "collapse",
+                      fontSize: 13,
+                    }}
                   >
-                    <table
-                      ref={tableRef}
-                      style={{
-                        width: "max-content",
-                        minWidth: 1600,
-                        tableLayout: "fixed",
-                        borderCollapse: "collapse",
-                        fontSize: 13,
-                      }}
-                    >
                 <colgroup>
                   <col style={{ width: 170 }} />  {/* PROGETTO */}
                   <col style={{ width: 140 }} />  {/* Cliente */}
@@ -2346,9 +2279,8 @@ export default function Page() {
                     );
                   })}
                 </tbody>
-                    </table>
-                  </div>
-                </div>
+                  </table>
+                </DashboardTable>
 
           {displayRows.length === 0 && (
             <div style={{ padding: 14, opacity: 0.7 }}>Nessun risultato</div>
@@ -2592,25 +2524,6 @@ export default function Page() {
           </div>
         </div>
       )}
-      <div
-        ref={bottomBarRef}
-        className="bottom-scrollbar"
-        style={{
-          position: "fixed",
-          left: 0,
-          right: 0,
-          bottom: 0,
-          height: 28,
-          overflowX: "scroll",
-          overflowY: "hidden",
-          background: "#f8f8f8",
-          borderTop: "1px solid #e5e7eb",
-          boxShadow: "0 -1px 0 rgba(0,0,0,0.05)",
-          zIndex: 50,
-        }}
-      >
-        <div ref={bottomSpacerRef} style={{ height: 28, width: bottomBarWidth }} />
-      </div>
       {toastMsg && (
         <Toast message={toastMsg} variant="success" onClose={() => setToastMsg(null)} />
       )}

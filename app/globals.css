@@ -28,7 +28,7 @@ body {
   position: relative;
   width: 100%;
   overflow-x: scroll !important;
-  overflow-y: visible;
+  overflow-y: hidden;
   scrollbar-gutter: stable both-edges;
   scrollbar-width: auto;
 }
