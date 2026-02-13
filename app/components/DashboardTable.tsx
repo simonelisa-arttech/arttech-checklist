@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 type DashboardTableProps = {
   children: React.ReactNode;
@@ -11,6 +12,11 @@ export default function DashboardTable({ children }: DashboardTableProps) {
   const contentRef = useRef<HTMLDivElement | null>(null);
   const [max, setMax] = useState(0);
   const [value, setValue] = useState(0);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
     const el = wrapRef.current;
@@ -62,24 +68,43 @@ export default function DashboardTable({ children }: DashboardTableProps) {
           {children}
         </div>
       </div>
-      <div
-        className="fixed bottom-0 left-0 right-0 z-50 border-t bg-white px-4 py-2"
-        style={{ boxShadow: "0 -1px 0 rgba(0,0,0,0.05)" }}
-      >
-        <input
-          type="range"
-          min={0}
-          max={max}
-          value={value}
-          onChange={(e) => {
-            const next = Number(e.target.value);
-            const el = wrapRef.current;
-            if (el) el.scrollLeft = next;
-            setValue(next);
-          }}
-          className="w-full"
-        />
-      </div>
+      {mounted &&
+        createPortal(
+          <div
+            style={{
+              position: "fixed",
+              left: 0,
+              right: 0,
+              bottom: 0,
+              height: 40,
+              zIndex: 2147483647,
+              background: "white",
+              borderTop: "2px solid red",
+              display: "flex",
+              alignItems: "center",
+              gap: 12,
+              padding: "0 12px",
+            }}
+          >
+            <div style={{ fontSize: 12, fontWeight: 700, color: "#b91c1c" }}>
+              SLIDER DEBUG
+            </div>
+            <input
+              type="range"
+              min={0}
+              max={max}
+              value={value}
+              onChange={(e) => {
+                const next = Number(e.target.value);
+                const el = wrapRef.current;
+                if (el) el.scrollLeft = next;
+                setValue(next);
+              }}
+              style={{ width: "100%" }}
+            />
+          </div>,
+          document.body
+        )}
     </>
   );
 }
