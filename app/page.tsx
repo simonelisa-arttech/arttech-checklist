@@ -1457,22 +1457,23 @@ export default function Page() {
                     borderBottom: "1px solid #f3f4f6",
                   }}
                 >
-                  <div style={{ width: 4600, height: 16 }} />
+                  <div style={{ width: 5200, height: 16 }} />
                 </div>
-                <div
-                  ref={scrollBodyRef}
-                  className="dashboard-scroll-body"
-                  style={{ overflowX: "auto", overflowY: "auto", maxHeight: "70vh" }}
-                >
-                  <table
-                    style={{
-                      width: "100%",
-                      minWidth: 4600,
-                      tableLayout: "fixed",
-                      borderCollapse: "collapse",
-                      fontSize: 13,
-                    }}
+                <div style={{ position: "relative", maxHeight: "70vh", overflowY: "auto" }}>
+                  <div
+                    ref={scrollBodyRef}
+                    className="dashboard-scroll-body"
+                    style={{ overflowX: "auto" }}
                   >
+                    <table
+                      style={{
+                        width: "100%",
+                        minWidth: 5200,
+                        tableLayout: "fixed",
+                        borderCollapse: "collapse",
+                        fontSize: 13,
+                      }}
+                    >
                 <colgroup>
                   <col style={{ width: 170 }} />  {/* PROGETTO */}
                   <col style={{ width: 140 }} />  {/* Cliente */}
@@ -1492,7 +1493,7 @@ export default function Page() {
                   <col style={{ width: 120 }} />  {/* SAAS scadenza */}
                   <col style={{ width: 200 }} />  {/* SAAS note */}
                   <col style={{ width: 140 }} />  {/* SAAS stato */}
-                  <col style={{ width: 120 }} />  {/* Garanzia */}
+                  <col style={{ width: 150 }} />  {/* Garanzia */}
                   <col style={{ width: 120 }} />  {/* Licenze # attive */}
                   <col style={{ width: 180 }} />  {/* Licenze prossima scadenza */}
                   <col style={{ width: 220 }} />  {/* Licenze dettaglio */}
@@ -2222,7 +2223,7 @@ export default function Page() {
                         <td style={{ padding: "10px 12px", textAlign: "center", whiteSpace: "nowrap" }}>
                           {renderBadge(getExpiryStatus(c.saas_scadenza))}
                         </td>
-                        <td style={{ padding: "10px 12px", overflow: "hidden" }}>
+                        <td style={{ padding: "10px 12px" }}>
                           <div
                             style={{
                               display: "flex",
@@ -2592,7 +2593,7 @@ export default function Page() {
           boxShadow: "0 6px 16px rgba(0,0,0,0.12)",
         }}
       >
-        <div style={{ width: 4600, height: 1 }} />
+        <div style={{ width: 5200, height: 1 }} />
       </div>
       {toastMsg && (
         <Toast message={toastMsg} variant="success" onClose={() => setToastMsg(null)} />
