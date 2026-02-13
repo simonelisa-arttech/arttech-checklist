@@ -1457,56 +1457,57 @@ export default function Page() {
                     borderBottom: "1px solid #f3f4f6",
                   }}
                 >
-                  <div style={{ width: 3600, height: 16 }} />
+                  <div style={{ width: 4600, height: 16 }} />
                 </div>
                 <div
                   ref={scrollBodyRef}
                   className="dashboard-scroll-body"
-                  style={{ overflowX: "auto" }}
+                  style={{ overflowX: "auto", overflowY: "auto", maxHeight: "70vh" }}
                 >
                   <table
                     style={{
                       width: "100%",
-                      minWidth: 3600,
+                      minWidth: 4600,
                       tableLayout: "fixed",
                       borderCollapse: "collapse",
                       fontSize: 13,
                     }}
                   >
                 <colgroup>
-                  <col style={{ width: 180 }} />
-                  <col style={{ width: 140 }} />
-                  <col style={{ width: 150 }} />
-                  <col style={{ width: 110 }} />
-                  <col style={{ width: 110 }} />
-                  <col style={{ width: 110 }} />
-                  <col style={{ width: 70 }} />
-                  <col style={{ width: 70 }} />
-                  <col style={{ width: 110 }} />
-                  <col style={{ width: 140 }} />
-                  <col style={{ width: 120 }} />
-                  <col style={{ width: 110 }} />
-                  <col style={{ width: 120 }} />
-                  <col style={{ width: 200 }} />
-                  <col style={{ width: 170 }} />
-                  <col style={{ width: 120 }} />
-                  <col style={{ width: 200 }} />
-                  <col style={{ width: 110 }} />
-                  <col style={{ width: 120 }} />
-                  <col style={{ width: 180 }} />
-                  <col style={{ width: 190 }} />
-                  <col style={{ width: 220 }} />
-                  <col style={{ width: 130 }} />
-                  <col style={{ width: 120 }} />
-                  <col style={{ width: 120 }} />
-                  <col style={{ width: 120 }} />
-                  <col style={{ width: 120 }} />
-                  <col style={{ width: 110 }} />
-                  <col style={{ width: 120 }} />
-                  <col style={{ width: 120 }} />
-                  <col style={{ width: 130 }} />
-                  <col style={{ width: 130 }} />
-                  <col style={{ width: 160 }} />
+                  <col style={{ width: 170 }} />  {/* PROGETTO */}
+                  <col style={{ width: 140 }} />  {/* Cliente */}
+                  <col style={{ width: 140 }} />  {/* Proforma */}
+                  <col style={{ width: 110 }} />  {/* Data prevista */}
+                  <col style={{ width: 110 }} />  {/* Data tassativa */}
+                  <col style={{ width: 110 }} />  {/* Dimensioni */}
+                  <col style={{ width: 70 }} />   {/* Passo */}
+                  <col style={{ width: 70 }} />   {/* m2 */}
+                  <col style={{ width: 110 }} />  {/* Tipo impianto */}
+                  <col style={{ width: 160 }} />  {/* Indirizzo impianto */}
+                  <col style={{ width: 120 }} />  {/* Install. reale */}
+                  <col style={{ width: 110 }} />  {/* Codice */}
+                  <col style={{ width: 130 }} />  {/* Magazzino */}
+                  <col style={{ width: 200 }} />  {/* Descrizione */}
+                  <col style={{ width: 150 }} />  {/* SAAS */}
+                  <col style={{ width: 120 }} />  {/* SAAS scadenza */}
+                  <col style={{ width: 200 }} />  {/* SAAS note */}
+                  <col style={{ width: 140 }} />  {/* SAAS stato */}
+                  <col style={{ width: 120 }} />  {/* Garanzia */}
+                  <col style={{ width: 120 }} />  {/* Licenze # attive */}
+                  <col style={{ width: 180 }} />  {/* Licenze prossima scadenza */}
+                  <col style={{ width: 220 }} />  {/* Licenze dettaglio */}
+                  <col style={{ width: 130 }} />  {/* Stato progetto */}
+                  <col style={{ width: 120 }} />  {/* Documenti */}
+                  <col style={{ width: 120 }} />  {/* Sezione 1 */}
+                  <col style={{ width: 120 }} />  {/* Sezione 2 */}
+                  <col style={{ width: 120 }} />  {/* Sezione 3 */}
+                  <col style={{ width: 120 }} />  {/* Stato complessivo */}
+                  <col style={{ width: 110 }} />  {/* % Stato */}
+                  <col style={{ width: 120 }} />  {/* Creato */}
+                  <col style={{ width: 120 }} />  {/* Modificato */}
+                  <col style={{ width: 130 }} />  {/* Creato da */}
+                  <col style={{ width: 130 }} />  {/* Modificato da */}
+                  <col style={{ width: 160 }} />  {/* Azioni */}
                 </colgroup>
                 <thead>
                   <tr>
@@ -1594,23 +1595,6 @@ export default function Page() {
                     >
                       Data tassativa
                       {sortIcon("data_tassativa")}
-                    </th>
-                    <th
-                      onClick={() => toggleSort("magazzino_importazione")}
-                      title="Ordina per Magazzino importazione"
-                      style={{
-                        textAlign: "left",
-                        padding: "10px 12px",
-                        cursor: "pointer",
-                        position: "sticky",
-                        top: 0,
-                        background: "white",
-                        zIndex: 2,
-                        boxShadow: "0 2px 6px rgba(0, 0, 0, 0.06)",
-                      }}
-                    >
-                      Magazzino
-                      {sortIcon("magazzino_importazione")}
                     </th>
                     <th
                       onClick={() => toggleSort("dimensioni")}
@@ -1820,7 +1804,7 @@ export default function Page() {
                       onClick={() => toggleSort("saas_stato")}
                       title="Ordina per SAAS stato"
                       style={{
-                        textAlign: "left",
+                        textAlign: "center",
                         padding: "10px 12px",
                         cursor: "pointer",
                         position: "sticky",
@@ -1828,6 +1812,7 @@ export default function Page() {
                         background: "white",
                         zIndex: 2,
                         boxShadow: "0 2px 6px rgba(0, 0, 0, 0.06)",
+                        whiteSpace: "nowrap",
                       }}
                     >
                       SAAS stato
@@ -2234,7 +2219,7 @@ export default function Page() {
                             "—"
                           )}
                         </td>
-                        <td style={{ padding: "10px 12px" }}>
+                        <td style={{ padding: "10px 12px", textAlign: "center", whiteSpace: "nowrap" }}>
                           {renderBadge(getExpiryStatus(c.saas_scadenza))}
                         </td>
                         <td style={{ padding: "10px 12px", overflow: "hidden" }}>
@@ -2607,7 +2592,7 @@ export default function Page() {
           boxShadow: "0 6px 16px rgba(0,0,0,0.12)",
         }}
       >
-        <div style={{ width: 3600, height: 1 }} />
+        <div style={{ width: 4600, height: 1 }} />
       </div>
       {toastMsg && (
         <Toast message={toastMsg} variant="success" onClose={() => setToastMsg(null)} />
