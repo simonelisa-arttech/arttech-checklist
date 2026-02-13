@@ -1377,7 +1377,7 @@ export default function Page() {
       {/* Nuova checklist spostata su /checklists/nuova */}
 
       {!showForm && (
-        <div style={{ marginTop: 20 }}>
+        <div style={{ marginTop: 20, paddingBottom: 64 }}>
           {loading ? (
             <div>Caricamento…</div>
           ) : items.length === 0 ? (
