@@ -87,11 +87,19 @@ export default function DashboardTable({ children }: DashboardTableProps) {
               borderTop: "1px solid #e5e7eb",
               display: "flex",
               alignItems: "center",
-              padding: "0 12px",
+              padding: "0",
             }}
           >
-            <div style={{ display: "flex", width: "100%", gap: 12, alignItems: "center" }}>
-              <span style={{ fontSize: 12, color: "#000" }}>SLIDER OK</span>
+            <div
+              style={{
+                maxWidth: 1100,
+                margin: "0 auto",
+                padding: "8px 16px",
+                width: "100%",
+                display: "flex",
+                alignItems: "center",
+              }}
+            >
               <input
                 type="range"
                 min={0}
