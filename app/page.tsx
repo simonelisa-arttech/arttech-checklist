@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import ConfigMancante from "@/components/ConfigMancante";
@@ -707,13 +707,12 @@ export default function Page() {
     load();
   }, []);
 
+  const didMountRef = useRef(false);
   useEffect(() => {
-    // Safety: ensure no stale backdrop stays open
-    setDupModalOpen(false);
-    setAddInterventoOpen(false);
-  }, []);
-
-  useEffect(() => {
+    if (!didMountRef.current) {
+      didMountRef.current = true;
+      return;
+    }
     // Close any modal on route change to avoid stuck overlay
     setDupModalOpen(false);
     setAddInterventoOpen(false);
