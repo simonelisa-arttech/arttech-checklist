@@ -59,6 +59,10 @@ export default function DashboardTable({ children }: DashboardTableProps) {
           overflowY: "visible",
           display: "block",
         }}
+        onScroll={() => {
+          const el = wrapRef.current;
+          if (el) setValue(el.scrollLeft);
+        }}
       >
         <div
           ref={contentRef}
@@ -88,7 +92,20 @@ export default function DashboardTable({ children }: DashboardTableProps) {
           >
             <div style={{ display: "flex", width: "100%", gap: 12, alignItems: "center" }}>
               <span style={{ fontSize: 12, color: "#000" }}>SLIDER OK</span>
-              <div style={{ flex: 1, height: 16, background: "#ddd" }} />
+              <input
+                type="range"
+                min={0}
+                max={max}
+                value={value}
+                disabled={max === 0}
+                onChange={(e) => {
+                  const next = Number(e.target.value);
+                  const el = wrapRef.current;
+                  if (el) el.scrollLeft = next;
+                  setValue(next);
+                }}
+                style={{ width: "100%", height: 16 }}
+              />
             </div>
           </div>,
           document.body
