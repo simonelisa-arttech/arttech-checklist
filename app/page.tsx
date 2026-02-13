@@ -304,7 +304,7 @@ export default function Page() {
   const tableWrapRef = useRef<HTMLDivElement | null>(null);
   const bottomBarRef = useRef<HTMLDivElement | null>(null);
   const bottomSpacerRef = useRef<HTMLDivElement | null>(null);
-  const [showBottomBar, setShowBottomBar] = useState(false);
+  const [bottomBarWidth, setBottomBarWidth] = useState(5200);
 
   // campi testata
   const [cliente, setCliente] = useState("");
@@ -740,9 +740,9 @@ export default function Page() {
     if (!wrap || !bar || !spacer) return;
     let syncing = false;
     const updateWidths = () => {
-      const width = wrap.scrollWidth;
+      const width = Math.max(5200, wrap.scrollWidth || 0);
       spacer.style.width = `${width}px`;
-      setShowBottomBar(width > wrap.clientWidth + 2);
+      setBottomBarWidth(width);
     };
     updateWidths();
     const onWrapScroll = () => {
@@ -2566,27 +2566,25 @@ export default function Page() {
           </div>
         </div>
       )}
-      {showBottomBar && (
-        <div
-          ref={bottomBarRef}
-          style={{
-            position: "fixed",
-            left: 12,
-            right: 12,
-            bottom: 6,
-            height: 18,
-            overflowX: "auto",
-            overflowY: "hidden",
-            background: "white",
-            borderTop: "1px solid #e5e7eb",
-            borderBottom: "1px solid #e5e7eb",
-            zIndex: 40,
-            boxShadow: "0 -2px 8px rgba(0,0,0,0.08)",
-          }}
-        >
-          <div ref={bottomSpacerRef} style={{ height: 1 }} />
-        </div>
-      )}
+      <div
+        ref={bottomBarRef}
+        style={{
+          position: "fixed",
+          left: 12,
+          right: 12,
+          bottom: 6,
+          height: 18,
+          overflowX: "scroll",
+          overflowY: "hidden",
+          background: "white",
+          borderTop: "1px solid #e5e7eb",
+          borderBottom: "1px solid #e5e7eb",
+          zIndex: 40,
+          boxShadow: "0 -2px 8px rgba(0,0,0,0.08)",
+        }}
+      >
+        <div ref={bottomSpacerRef} style={{ height: 1, width: bottomBarWidth }} />
+      </div>
       {toastMsg && (
         <Toast message={toastMsg} variant="success" onClose={() => setToastMsg(null)} />
       )}

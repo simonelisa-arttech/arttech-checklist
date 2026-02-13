@@ -27,7 +27,7 @@ body {
 .dashboard-scroll-wrapper {
   position: relative;
   width: 100%;
-  overflow-x: auto;
+  overflow-x: scroll;
   overflow-y: visible;
   scrollbar-gutter: stable both-edges;
 }
