@@ -27,18 +27,19 @@ body {
 .dashboard-scroll-wrapper {
   position: relative;
   width: 100%;
-  overflow-x: scroll;
+  overflow-x: scroll !important;
   overflow-y: visible;
   scrollbar-gutter: stable both-edges;
+  scrollbar-width: auto;
 }
 
 .dashboard-scroll-content {
   display: inline-block;
-  min-width: max-content;
+  width: max-content;
 }
 
 .dashboard-scroll-wrapper::-webkit-scrollbar {
-  height: 12px;
+  height: 14px;
 }
 .dashboard-scroll-wrapper::-webkit-scrollbar-track {
   background: #f3f4f6;
@@ -53,7 +54,7 @@ body {
 }
 
 .bottom-scrollbar::-webkit-scrollbar {
-  height: 12px;
+  height: 14px;
 }
 .bottom-scrollbar::-webkit-scrollbar-track {
   background: #f3f4f6;
@@ -61,4 +62,8 @@ body {
 .bottom-scrollbar::-webkit-scrollbar-thumb {
   background: #9ca3af;
   border-radius: 6px;
+}
+.bottom-scrollbar {
+  scrollbar-width: auto;
+  overflow-x: scroll !important;
 }

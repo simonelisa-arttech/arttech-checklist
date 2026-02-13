@@ -743,6 +743,14 @@ export default function Page() {
       const width = wrap.scrollWidth || 0;
       spacer.style.width = `${width}px`;
       setBottomBarWidth(width);
+      console.log("[dashboard-scroll] wrap", {
+        client: wrap.clientWidth,
+        scroll: wrap.scrollWidth,
+      });
+      console.log("[dashboard-scroll] bar", {
+        client: bar.clientWidth,
+        scroll: bar.scrollWidth,
+      });
       if (width === wrap.clientWidth) {
         console.debug("[dashboard-scroll] no overflow", { width, client: wrap.clientWidth });
       } else {
@@ -1422,7 +1430,7 @@ export default function Page() {
       {/* Nuova checklist spostata su /checklists/nuova */}
 
       {!showForm && (
-        <div style={{ marginTop: 20 }}>
+        <div style={{ marginTop: 20, paddingBottom: 40 }}>
           {loading ? (
             <div>Caricamento…</div>
           ) : items.length === 0 ? (
@@ -1461,12 +1469,19 @@ export default function Page() {
                   background: "white",
                 }}
               >
-                <div className="dashboard-scroll-wrapper" ref={tableWrapRef}>
-                  <div className="dashboard-scroll-content dashboard-scroll-body">
+                <div
+                  className="dashboard-scroll-wrapper"
+                  ref={tableWrapRef}
+                  style={{ overflowX: "scroll", overflowY: "visible" }}
+                >
+                  <div
+                    className="dashboard-scroll-content dashboard-scroll-body"
+                    style={{ width: "max-content" }}
+                  >
                     <table
                       style={{
                         width: "max-content",
-                        minWidth: 5200,
+                        minWidth: 1600,
                         tableLayout: "fixed",
                         borderCollapse: "collapse",
                         fontSize: 13,
@@ -2584,6 +2599,7 @@ export default function Page() {
           overflowY: "hidden",
           background: "white",
           borderTop: "1px solid #e5e7eb",
+          outline: "2px solid red",
           zIndex: 50,
         }}
       >
