@@ -2594,16 +2594,15 @@ export default function Page() {
           left: 0,
           right: 0,
           bottom: 0,
-          height: 24,
+          height: 28,
           overflowX: "scroll",
           overflowY: "hidden",
           background: "white",
           borderTop: "1px solid #e5e7eb",
-          outline: "2px solid red",
           zIndex: 50,
         }}
       >
-        <div ref={bottomSpacerRef} style={{ height: 24, width: bottomBarWidth }} />
+        <div ref={bottomSpacerRef} style={{ height: 28, width: bottomBarWidth }} />
       </div>
       {toastMsg && (
         <Toast message={toastMsg} variant="success" onClose={() => setToastMsg(null)} />

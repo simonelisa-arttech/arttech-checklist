@@ -54,16 +54,17 @@ body {
 }
 
 .bottom-scrollbar::-webkit-scrollbar {
-  height: 14px;
+  height: 16px;
 }
 .bottom-scrollbar::-webkit-scrollbar-track {
   background: #f3f4f6;
 }
 .bottom-scrollbar::-webkit-scrollbar-thumb {
-  background: #9ca3af;
+  background: #bdbdbd;
   border-radius: 6px;
 }
 .bottom-scrollbar {
   scrollbar-width: auto;
   overflow-x: scroll !important;
+  scrollbar-gutter: stable both-edges;
 }
