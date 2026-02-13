@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 
 type DashboardTableProps = {
   children: React.ReactNode;
@@ -11,6 +12,11 @@ export default function DashboardTable({ children }: DashboardTableProps) {
   const contentRef = useRef<HTMLDivElement | null>(null);
   const barRef = useRef<HTMLDivElement | null>(null);
   const spacerRef = useRef<HTMLDivElement | null>(null);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   useEffect(() => {
     const wrap = wrapRef.current;
@@ -77,6 +83,27 @@ export default function DashboardTable({ children }: DashboardTableProps) {
     };
   }, [children]);
 
+  const bottomBar = (
+    <div
+      ref={barRef}
+      className="bottom-scrollbar"
+      style={{
+        position: "fixed",
+        left: 0,
+        right: 0,
+        bottom: 0,
+        height: 28,
+        overflowX: "scroll",
+        overflowY: "hidden",
+        background: "white",
+        borderTop: "1px solid #e5e7eb",
+        zIndex: 9999,
+      }}
+    >
+      <div ref={spacerRef} style={{ height: 28 }} />
+    </div>
+  );
+
   return (
     <>
       <div
@@ -98,24 +125,7 @@ export default function DashboardTable({ children }: DashboardTableProps) {
           {children}
         </div>
       </div>
-      <div
-        ref={barRef}
-        className="bottom-scrollbar"
-        style={{
-          position: "fixed",
-          left: 0,
-          right: 0,
-          bottom: 0,
-          height: 28,
-          overflowX: "scroll",
-          overflowY: "hidden",
-          background: "white",
-          borderTop: "1px solid #e5e7eb",
-          zIndex: 9999,
-        }}
-      >
-        <div ref={spacerRef} style={{ height: 28 }} />
-      </div>
+      {mounted && createPortal(bottomBar, document.body)}
     </>
   );
 }

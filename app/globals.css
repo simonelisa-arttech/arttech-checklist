@@ -3,6 +3,20 @@
 html,
 body {
   overflow-y: auto !important;
+  scrollbar-width: auto;
+}
+html::-webkit-scrollbar,
+body::-webkit-scrollbar {
+  width: 14px;
+}
+html::-webkit-scrollbar-thumb,
+body::-webkit-scrollbar-thumb {
+  background: #bdbdbd;
+  border-radius: 8px;
+}
+html::-webkit-scrollbar-track,
+body::-webkit-scrollbar-track {
+  background: #f0f0f0;
 }
 
 /* Dashboard: scrollbar orizzontale sempre visibile */
