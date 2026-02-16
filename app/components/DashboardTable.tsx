@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { createPortal } from "react-dom";
 
 type DashboardTableProps = {
   children: React.ReactNode;
@@ -117,52 +116,6 @@ export default function DashboardTable({ children }: DashboardTableProps) {
           </div>
         </div>
       </div>
-      {mounted &&
-        createPortal(
-          <div
-            className="dashboard-slider-bar"
-            style={{
-              position: "fixed",
-              left: 0,
-              right: 0,
-              bottom: 0,
-              height: 40,
-              zIndex: 2147483647,
-              background: "white",
-              borderTop: "1px solid #e5e7eb",
-              display: "flex",
-              alignItems: "center",
-              padding: "0",
-            }}
-          >
-            <div
-              style={{
-                maxWidth: 1100,
-                margin: "0 auto",
-                padding: "8px 16px",
-                width: "100%",
-                display: "flex",
-                alignItems: "center",
-              }}
-            >
-              <input
-                type="range"
-                min={0}
-                max={max}
-                value={value}
-                disabled={max === 0}
-                onChange={(e) => {
-                  const next = Number(e.target.value);
-                  const el = wrapRef.current;
-                  if (el) el.scrollLeft = next;
-                  setValue(next);
-                }}
-                style={{ width: "100%", height: 16 }}
-              />
-            </div>
-          </div>,
-          document.body
-        )}
     </>
   );
 }
