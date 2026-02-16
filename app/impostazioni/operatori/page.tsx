@@ -372,32 +372,6 @@ export default function OperatoriPage() {
         >
           + Nuovo operatore
         </button>
-        <Link
-          href="/impostazioni/checklist-attivita"
-          style={{
-            padding: "8px 12px",
-            borderRadius: 10,
-            border: "1px solid #ddd",
-            background: "white",
-            textDecoration: "none",
-            color: "inherit",
-          }}
-        >
-          Gestisci PROGETTO operativo
-        </Link>
-        <Link
-          href="/impostazioni/preset-avvisi"
-          style={{
-            padding: "8px 12px",
-            borderRadius: 10,
-            border: "1px solid #ddd",
-            background: "white",
-            textDecoration: "none",
-            color: "inherit",
-          }}
-        >
-          Preset avvisi
-        </Link>
       </div>
 
       {loading ? (
