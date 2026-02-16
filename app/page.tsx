@@ -2315,7 +2315,6 @@ export default function Page() {
             padding: 16,
             zIndex: 50,
           }}
-          onClick={() => closeDupModal("backdrop")}
         >
           <div
             style={{
@@ -2327,6 +2326,9 @@ export default function Page() {
               boxShadow: "0 10px 30px rgba(0,0,0,0.15)",
             }}
             onClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") closeDupModal("esc");
+            }}
           >
             <div style={{ fontWeight: 800, fontSize: 18, marginBottom: 14 }}>
               Duplica progetto
@@ -2405,7 +2407,6 @@ export default function Page() {
             padding: 16,
             zIndex: 50,
           }}
-          onClick={() => closeAddIntervento("backdrop")}
         >
           <div
             style={{
@@ -2417,6 +2418,9 @@ export default function Page() {
               boxShadow: "0 10px 30px rgba(0,0,0,0.15)",
             }}
             onClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") closeAddIntervento("esc");
+            }}
           >
             <div style={{ fontWeight: 800, fontSize: 18, marginBottom: 14 }}>
               Aggiungi intervento
