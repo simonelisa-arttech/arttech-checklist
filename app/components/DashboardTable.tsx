@@ -25,46 +25,13 @@ export default function DashboardTable({ children }: DashboardTableProps) {
     };
   }, [children]);
   return (
-    <>
-      <div style={{ display: "grid" }}>
-        <div style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
-          <div
-          ref={wrapRef}
-          className="dashboard-scroll-wrapper"
-          style={{
-            width: "100%",
-            maxWidth: "100%",
-            overflowX: "auto",
-            overflowY: "auto",
-            display: "block",
-            height: "calc(100vh - 240px)",
-            overscrollBehavior: "contain",
-          }}
-          onWheel={(e) => {
-            const el = wrapRef.current;
-            if (!el) return;
-            const dx = e.deltaX;
-            const dy = e.deltaY;
-            if (dx !== 0) {
-              el.scrollLeft += dx;
-              return;
-            }
-            if (e.shiftKey && dy !== 0) {
-              e.preventDefault();
-              el.scrollLeft += dy;
-            }
-          }}
-          >
-            <div
-              ref={contentRef}
-              className="dashboard-scroll-content dashboard-scroll-body"
-              style={{ width: "max-content", display: "inline-block" }}
-            >
-              {children}
-            </div>
-          </div>
-        </div>
+    <div className="dashboard-table-wrap" ref={wrapRef}>
+      <div
+        ref={contentRef}
+        className="dashboard-table-content"
+      >
+        {children}
       </div>
-    </>
+    </div>
   );
 }

@@ -8,49 +8,32 @@ html {
   scrollbar-gutter: stable;
 }
 
-/* Dashboard: scrollbar orizzontale sempre visibile */
-.dashboard-scroll-body {
+/* Dashboard: wrapper scrollabile unico (X + Y) */
+.dashboard-table-wrap {
+  height: calc(100vh - 260px);
+  overflow: auto;
   scrollbar-gutter: stable;
-}
-.dashboard-scroll-body::-webkit-scrollbar {
-  height: 12px;
-}
-.dashboard-scroll-body::-webkit-scrollbar-track {
-  background: #f3f4f6;
-  border-radius: 6px;
-}
-.dashboard-scroll-body::-webkit-scrollbar-thumb {
-  background: #d1d5db;
-  border-radius: 6px;
-}
-.dashboard-scroll-body::-webkit-scrollbar-thumb:hover {
-  background: #9ca3af;
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  border-radius: 12px;
 }
 
-.dashboard-scroll-wrapper {
-  position: relative;
-  width: 100%;
-  overflow-x: auto;
-  overflow-y: auto;
-  scrollbar-gutter: stable;
-}
-
-.dashboard-scroll-content {
-  display: inline-block;
+.dashboard-table-content {
   width: max-content;
+  min-width: 1100px;
 }
 
-.dashboard-scroll-wrapper::-webkit-scrollbar {
+.dashboard-table-wrap::-webkit-scrollbar {
   height: 14px;
+  width: 12px;
 }
-.dashboard-scroll-wrapper::-webkit-scrollbar-track {
+.dashboard-table-wrap::-webkit-scrollbar-track {
   background: #f3f4f6;
   border-radius: 6px;
 }
-.dashboard-scroll-wrapper::-webkit-scrollbar-thumb {
+.dashboard-table-wrap::-webkit-scrollbar-thumb {
   background: #d1d5db;
   border-radius: 6px;
 }
-.dashboard-scroll-wrapper::-webkit-scrollbar-thumb:hover {
+.dashboard-table-wrap::-webkit-scrollbar-thumb:hover {
   background: #9ca3af;
 }
