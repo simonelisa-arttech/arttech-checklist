@@ -9,15 +9,10 @@ type DashboardTableProps = {
 export default function DashboardTable({ children }: DashboardTableProps) {
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const contentRef = useRef<HTMLDivElement | null>(null);
+  const topBarRef = useRef<HTMLDivElement | null>(null);
+  const topSpacerRef = useRef<HTMLDivElement | null>(null);
   const [max, setMax] = useState(0);
   const [value, setValue] = useState(0);
-  const [mounted, setMounted] = useState(false);
-  const [vMax, setVMax] = useState(0);
-  const [vValue, setVValue] = useState(0);
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
 
   useEffect(() => {
     const el = wrapRef.current;
@@ -26,6 +21,9 @@ export default function DashboardTable({ children }: DashboardTableProps) {
       const nextMax = Math.max(0, el.scrollWidth - el.clientWidth);
       setMax(nextMax);
       setValue((prev) => Math.min(prev, nextMax));
+      if (topSpacerRef.current) {
+        topSpacerRef.current.style.width = `${el.scrollWidth}px`;
+      }
     };
     update();
     const ro = new ResizeObserver(update);
@@ -37,48 +35,49 @@ export default function DashboardTable({ children }: DashboardTableProps) {
     };
   }, [children]);
 
-  useEffect(() => {
-    const el = wrapRef.current;
-    if (!el) return;
-    const onScroll = () => {
-      setValue(el.scrollLeft);
-    };
-    el.addEventListener("scroll", onScroll, { passive: true });
-    return () => {
-      el.removeEventListener("scroll", onScroll);
-    };
-  }, []);
-
-  const recalcV = useCallback(() => {
-    const el = wrapRef.current;
-    if (!el) return;
-    const maxScroll = Math.max(0, el.scrollHeight - el.clientHeight);
-    setVMax(maxScroll);
-    setVValue(el.scrollTop);
-  }, []);
-
   const onWrapScroll = useCallback(() => {
     const el = wrapRef.current;
     if (!el) return;
-    setVValue(el.scrollTop);
     setValue(el.scrollLeft);
+    if (topBarRef.current && topBarRef.current.scrollLeft !== el.scrollLeft) {
+      topBarRef.current.scrollLeft = el.scrollLeft;
+    }
   }, []);
 
   useEffect(() => {
-    if (!mounted) return;
-    recalcV();
-    const el = wrapRef.current;
-    if (!el) return;
-    el.addEventListener("scroll", onWrapScroll, { passive: true });
-    window.addEventListener("resize", recalcV);
-    return () => {
-      el.removeEventListener("scroll", onWrapScroll);
-      window.removeEventListener("resize", recalcV);
+    const topBar = topBarRef.current;
+    const onTopBarScroll = () => {
+      const wrap = wrapRef.current;
+      if (!wrap || !topBar) return;
+      if (wrap.scrollLeft !== topBar.scrollLeft) {
+        wrap.scrollLeft = topBar.scrollLeft;
+      }
     };
-  }, [mounted, onWrapScroll, recalcV, children]);
+    if (topBar) {
+      topBar.addEventListener("scroll", onTopBarScroll, { passive: true });
+    }
+    return () => {
+      if (topBar) {
+        topBar.removeEventListener("scroll", onTopBarScroll);
+      }
+    };
+  }, []);
   return (
     <>
-      <div style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
+      <div style={{ display: "grid", gap: 8 }}>
+        <div
+          ref={topBarRef}
+          style={{
+            height: 14,
+            overflowX: "auto",
+            overflowY: "hidden",
+            background: "#f3f4f6",
+            borderRadius: 999,
+          }}
+        >
+          <div ref={topSpacerRef} style={{ height: 14 }} />
+        </div>
+        <div style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
         <div
           ref={wrapRef}
           className="dashboard-scroll-wrapper"
@@ -114,6 +113,7 @@ export default function DashboardTable({ children }: DashboardTableProps) {
           >
             {children}
           </div>
+        </div>
         </div>
       </div>
     </>
