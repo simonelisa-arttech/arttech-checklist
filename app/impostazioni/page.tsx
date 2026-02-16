@@ -32,7 +32,20 @@ export default function ImpostazioniPage() {
         </Link>
       </div>
 
-      <div style={{ marginTop: 20, display: "flex", gap: 12 }}>
+      <div style={{ marginTop: 20, display: "flex", gap: 12, flexWrap: "wrap" }}>
+        <Link
+          href="/clienti"
+          style={{
+            padding: "12px 16px",
+            borderRadius: 12,
+            border: "1px solid #ddd",
+            background: "white",
+            textDecoration: "none",
+            color: "inherit",
+          }}
+        >
+          Clienti
+        </Link>
         <Link
           href="/impostazioni/operatori"
           style={{
@@ -58,6 +71,32 @@ export default function ImpostazioniPage() {
           }}
         >
           Catalogo
+        </Link>
+        <Link
+          href="/impostazioni/checklist-attivita"
+          style={{
+            padding: "12px 16px",
+            borderRadius: 12,
+            border: "1px solid #ddd",
+            background: "white",
+            textDecoration: "none",
+            color: "inherit",
+          }}
+        >
+          Gestisci progetto operativo
+        </Link>
+        <Link
+          href="/impostazioni/preset-avvisi"
+          style={{
+            padding: "12px 16px",
+            borderRadius: 12,
+            border: "1px solid #ddd",
+            background: "white",
+            textDecoration: "none",
+            color: "inherit",
+          }}
+        >
+          Preset avvisi
         </Link>
       </div>
     </div>
