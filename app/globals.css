@@ -31,7 +31,8 @@ html {
   position: relative;
   width: 100%;
   overflow-x: auto;
-  overflow-y: visible;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
 }
 
 .dashboard-scroll-content {
