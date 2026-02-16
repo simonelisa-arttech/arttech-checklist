@@ -87,7 +87,7 @@ export default function DashboardTable({ children }: DashboardTableProps) {
             overflowX: "auto",
             overflowY: "auto",
             display: "block",
-            maxHeight: "calc(100vh - 220px)",
+            height: "calc(100vh - 240px)",
             overscrollBehavior: "contain",
           }}
           onScroll={onWrapScroll}
