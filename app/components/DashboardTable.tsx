@@ -62,6 +62,7 @@ export default function DashboardTable({ children }: DashboardTableProps) {
     const el = wrapRef.current;
     if (!el) return;
     setVValue(el.scrollTop);
+    setValue(el.scrollLeft);
   }, []);
 
   useEffect(() => {
@@ -85,16 +86,25 @@ export default function DashboardTable({ children }: DashboardTableProps) {
           style={{
             width: "100%",
             maxWidth: "100%",
-            overflowX: "hidden",
+            overflowX: "auto",
             overflowY: "auto",
             display: "block",
             maxHeight: "calc(100vh - 220px)",
+            overscrollBehavior: "contain",
           }}
-          onScroll={() => {
+          onScroll={onWrapScroll}
+          onWheel={(e) => {
             const el = wrapRef.current;
-            if (el) {
-              setValue(el.scrollLeft);
-              setVValue(el.scrollTop);
+            if (!el) return;
+            const dx = e.deltaX;
+            const dy = e.deltaY;
+            if (dx !== 0) {
+              el.scrollLeft += dx;
+              return;
+            }
+            if (e.shiftKey && dy !== 0) {
+              e.preventDefault();
+              el.scrollLeft += dy;
             }
           }}
         >
@@ -105,37 +115,6 @@ export default function DashboardTable({ children }: DashboardTableProps) {
           >
             {children}
           </div>
-        </div>
-        <div
-          style={{
-            position: "sticky",
-            top: 120,
-            alignSelf: "flex-start",
-            background: "white",
-            border: "1px solid #e5e7eb",
-            borderRadius: 10,
-            padding: 8,
-          }}
-        >
-          <input
-            type="range"
-            min={0}
-            max={vMax}
-            value={vValue}
-            disabled={vMax === 0}
-            onChange={(e) => {
-              const next = Number(e.target.value);
-              const el = wrapRef.current;
-              if (el) el.scrollTop = next;
-              setVValue(next);
-            }}
-            style={{
-              writingMode: "vertical-rl",
-              height: "60vh",
-              width: 16,
-              WebkitAppearance: "slider-vertical",
-            }}
-          />
         </div>
       </div>
       {mounted &&
@@ -181,40 +160,6 @@ export default function DashboardTable({ children }: DashboardTableProps) {
                 style={{ width: "100%", height: 16 }}
               />
             </div>
-          </div>,
-          document.body
-        )}
-      {mounted &&
-        createPortal(
-          <div
-            style={{
-              position: "fixed",
-              right: 8,
-              top: "50%",
-              transform: "translateY(-50%)",
-              zIndex: 2147483647,
-              background: "white",
-              border: "1px solid #e5e7eb",
-              borderRadius: 10,
-              padding: 8,
-            }}
-          >
-            <input
-              type="range"
-              min={0}
-              max={vMax}
-              value={vValue}
-              onChange={(e) => {
-                const next = Number(e.target.value);
-                setVValue(next);
-                window.scrollTo({ top: next, behavior: "auto" });
-              }}
-              style={{
-                WebkitAppearance: "slider-vertical",
-                height: "60vh",
-                width: 16,
-              }}
-            />
           </div>,
           document.body
         )}
