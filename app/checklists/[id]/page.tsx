@@ -1169,8 +1169,7 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
     console.log("LICENSE PAYLOAD", payload);
     const { error: insertErr } = await supabase.from("licenses").insert(payload);
     if (insertErr) {
-      const e = logSupabaseError("insert licenses", insertErr);
-      const msg = e.message || "Errore inserimento licenza";
+      const msg = logSupabaseError("insert licenses", insertErr) || "Errore inserimento licenza";
       alert(msg);
       setItemsError(msg);
       return;
@@ -1574,8 +1573,9 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
       .delete()
       .eq("checklist_id", id);
     if (itemsErr) {
-      const e = logSupabaseError("delete checklist_items", itemsErr);
-      const msg = e.message || "Errore eliminazione righe checklist";
+      const msg =
+        logSupabaseError("delete checklist_items", itemsErr) ||
+        "Errore eliminazione righe checklist";
       alert(msg);
       setItemsError(msg);
       return;
@@ -1586,8 +1586,9 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
       .delete()
       .eq("checklist_id", id);
     if (licensesErr) {
-      const e = logSupabaseError("delete licenses", licensesErr);
-      const msg = e.message || "Errore eliminazione licenze checklist";
+      const msg =
+        logSupabaseError("delete licenses", licensesErr) ||
+        "Errore eliminazione licenze checklist";
       alert(msg);
       setItemsError(msg);
       return;
@@ -1598,8 +1599,9 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
       .select("id, storage_path")
       .eq("checklist_id", id);
     if (docsErr) {
-      const e = logSupabaseError("load checklist_documents", docsErr);
-      const msg = e.message || "Errore caricamento documenti checklist";
+      const msg =
+        logSupabaseError("load checklist_documents", docsErr) ||
+        "Errore caricamento documenti checklist";
       alert(msg);
       setItemsError(msg);
       return;
@@ -1612,8 +1614,9 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
         .from("checklist-documents")
         .remove(paths);
       if (storageErr) {
-        const e = logSupabaseError("delete storage files", storageErr);
-        const msg = e.message || "Errore eliminazione file documenti";
+        const msg =
+          logSupabaseError("delete storage files", storageErr) ||
+          "Errore eliminazione file documenti";
         alert(msg);
         setItemsError(msg);
         return;
@@ -1625,8 +1628,9 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
       .delete()
       .eq("checklist_id", id);
     if (docsDeleteErr) {
-      const e = logSupabaseError("delete checklist_documents", docsDeleteErr);
-      const msg = e.message || "Errore eliminazione documenti checklist";
+      const msg =
+        logSupabaseError("delete checklist_documents", docsDeleteErr) ||
+        "Errore eliminazione documenti checklist";
       alert(msg);
       setItemsError(msg);
       return;
@@ -1634,8 +1638,9 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
 
     const { error: checklistErr } = await supabase.from("checklists").delete().eq("id", id);
     if (checklistErr) {
-      const e = logSupabaseError("delete checklists", checklistErr);
-      const msg = e.message || "Errore eliminazione checklist";
+      const msg =
+        logSupabaseError("delete checklists", checklistErr) ||
+        "Errore eliminazione checklist";
       alert(msg);
       setItemsError(msg);
       return;
