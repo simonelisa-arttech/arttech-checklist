@@ -225,8 +225,8 @@ export default function NuovaChecklistPage() {
   const [licenzeError, setLicenzeError] = useState<string | null>(null);
 
   const canCreate = useMemo(() => {
-    return Boolean(clienteId) && nomeChecklist.trim().length > 0;
-  }, [clienteId, nomeChecklist]);
+    return nomeChecklist.trim().length > 0 && cliente.trim().length > 0;
+  }, [cliente, nomeChecklist]);
 
   const isUltraOrPremium =
     saasPiano.startsWith("SAS-UL") || saasPiano.startsWith("SAS-PR");
@@ -368,8 +368,8 @@ export default function NuovaChecklistPage() {
         alert("Compila almeno Cliente e Nome checklist.");
         return;
       }
-      if (!clienteId) {
-        alert("Seleziona un cliente dall'elenco.");
+      if (!cliente.trim()) {
+        alert("Inserisci il cliente.");
         return;
       }
 
@@ -743,11 +743,20 @@ export default function NuovaChecklistPage() {
             Cliente*<br />
             <ClientiCombobox
               value={cliente}
-              onValueChange={setCliente}
+              onValueChange={(val) => {
+                setCliente(val);
+                setClienteId(null);
+              }}
               selectedId={clienteId}
-              onSelectId={setClienteId}
+              onSelectId={(id) => {
+                setClienteId(id);
+              }}
               placeholder="Cerca cliente..."
             />
+            <div style={{ fontSize: 12, opacity: 0.6, marginTop: 6 }}>
+              Seleziona dall'elenco per collegare l'anagrafica (consigliato). Puoi anche
+              scrivere testo libero.
+            </div>
           </label>
 
           <label>
