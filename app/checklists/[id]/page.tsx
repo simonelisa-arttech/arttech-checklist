@@ -1391,7 +1391,7 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
       saas_stato: formData.saas_stato.trim() ? formData.saas_stato.trim() : null,
       saas_note: formData.saas_note.trim() ? formData.saas_note.trim() : null,
       tipo_saas: null,
-      m2_inclusi: null,
+      m2_inclusi: calcM2(formData.dimensioni) ?? null,
       m2_allocati: null,
       updated_by_operatore: currentOperatoreId || null,
       data_prevista: formData.data_prevista.trim()

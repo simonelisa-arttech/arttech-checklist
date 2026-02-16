@@ -375,6 +375,7 @@ export default function NuovaChecklistPage() {
         return;
       }
 
+      const m2Calcolati = calcM2(dimensioni);
       const payloadChecklist = {
         cliente: cliente.trim(),
         cliente_id: clienteId,
@@ -402,7 +403,7 @@ export default function NuovaChecklistPage() {
       tipo_impianto: tipoImpianto || null,
       impianto_indirizzo: impiantoIndirizzo.trim() ? impiantoIndirizzo.trim() : null,
       dimensioni: dimensioni.trim() ? dimensioni.trim() : null,
-        m2_inclusi: null,
+        m2_inclusi: m2Calcolati != null ? m2Calcolati : null,
         m2_allocati: null,
         garanzia_scadenza: garanziaScadenza.trim() ? garanziaScadenza.trim() : null,
       };
