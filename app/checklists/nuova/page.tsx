@@ -415,7 +415,7 @@ export default function NuovaChecklistPage() {
         );
       };
 
-      const tryInsert = async (payload: typeof payloadChecklist) => {
+      const tryInsert = async (payload: Partial<typeof payloadChecklist>) => {
         return supabase
           .from("checklists")
           .insert(payload)
