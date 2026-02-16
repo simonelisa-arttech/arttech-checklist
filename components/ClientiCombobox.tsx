@@ -47,7 +47,6 @@ export default function ClientiCombobox({
       try {
         const res = await fetch(`/api/clienti?q=${encodeURIComponent(q)}`);
         const json = await res.json();
-        console.log("[clienti] q=", q, "resp=", json?.data?.length ?? 0);
         if (json?.ok) {
           setOptions((json.data || []) as ClienteOption[]);
         } else {
