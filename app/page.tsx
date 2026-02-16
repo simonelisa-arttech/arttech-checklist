@@ -1366,6 +1366,20 @@ export default function Page() {
           </Link>
 
           <Link
+            href="/clienti"
+            style={{
+              padding: "8px 12px",
+              borderRadius: 10,
+              border: "1px solid #ddd",
+              background: "white",
+              textDecoration: "none",
+              color: "inherit",
+            }}
+          >
+            Clienti
+          </Link>
+
+          <Link
             href="/impostazioni/operatori"
             style={{
               padding: "8px 12px",

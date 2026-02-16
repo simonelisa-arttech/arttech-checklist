@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import ConfigMancante from "@/components/ConfigMancante";
 import ClientiCombobox from "@/components/ClientiCombobox";
+import ClienteModal, { ClienteRecord } from "@/components/ClienteModal";
 import { isSupabaseConfigured, supabase } from "@/lib/supabaseClient";
 import { sendAlert } from "@/lib/sendAlert";
 
@@ -212,6 +213,7 @@ export default function NuovaChecklistPage() {
   const [serialsError, setSerialsError] = useState<string | null>(null);
   const [ultraScope, setUltraScope] = useState<"CLIENTE" | "CHECKLIST">("CLIENTE");
   const [ultraInclusi, setUltraInclusi] = useState<string>("");
+  const [clienteModalOpen, setClienteModalOpen] = useState(false);
 
   const [rows, setRows] = useState<ChecklistItem[]>([
     { codice: "", descrizione: "", qty: "", note: "", search: "", categoria_filter: "" },
@@ -757,6 +759,20 @@ export default function NuovaChecklistPage() {
               Seleziona dall'elenco per collegare l'anagrafica (consigliato). Puoi anche
               scrivere testo libero.
             </div>
+            <button
+              type="button"
+              onClick={() => setClienteModalOpen(true)}
+              style={{
+                marginTop: 8,
+                padding: "6px 10px",
+                borderRadius: 10,
+                border: "1px solid #ddd",
+                background: "white",
+                cursor: "pointer",
+              }}
+            >
+              + Nuovo cliente
+            </button>
           </label>
 
           <label>
@@ -1494,6 +1510,17 @@ export default function NuovaChecklistPage() {
           </button>
         </div>
       </div>
+
+      <ClienteModal
+        open={clienteModalOpen}
+        onClose={() => setClienteModalOpen(false)}
+        onSaved={(clienteRecord: ClienteRecord) => {
+          if (clienteRecord?.id) {
+            setClienteId(clienteRecord.id);
+          }
+          setCliente(clienteRecord.denominazione || "");
+        }}
+      />
     </div>
   );
 }
