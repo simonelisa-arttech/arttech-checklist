@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { useRouter } from "next/navigation";
 import ConfigMancante from "@/components/ConfigMancante";
 import DashboardTable from "./components/DashboardTable";
 import Toast from "@/components/Toast";
@@ -279,7 +279,6 @@ export default function Page() {
     return <ConfigMancante />;
   }
   const router = useRouter();
-  const pathname = usePathname();
   const [items, setItems] = useState<Checklist[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
@@ -707,16 +706,15 @@ export default function Page() {
     load();
   }, []);
 
-  const didMountRef = useRef(false);
-  useEffect(() => {
-    if (!didMountRef.current) {
-      didMountRef.current = true;
-      return;
-    }
-    // Close any modal on route change to avoid stuck overlay
+  const closeDupModal = (reason: string) => {
+    console.log("[dupModal] close reason", reason);
     setDupModalOpen(false);
+  };
+
+  const closeAddIntervento = (reason: string) => {
+    console.log("[addIntervento] close reason", reason);
     setAddInterventoOpen(false);
-  }, [pathname]);
+  };
 
   useEffect(() => {
     const stored =
@@ -1131,7 +1129,7 @@ export default function Page() {
         await supabase.from("checklist_tasks").insert(taskRows);
       }
 
-      setDupModalOpen(false);
+      closeDupModal("duplicate-success");
       setToastMsg("✅ Progetto duplicato");
       setTimeout(() => router.push(`/checklists/${newId}`), 800);
     } catch (err: any) {
@@ -2317,7 +2315,7 @@ export default function Page() {
             padding: 16,
             zIndex: 50,
           }}
-          onClick={() => setDupModalOpen(false)}
+          onClick={() => closeDupModal("backdrop")}
         >
           <div
             style={{
@@ -2364,7 +2362,7 @@ export default function Page() {
             <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
               <button
                 type="button"
-                onClick={() => setDupModalOpen(false)}
+                onClick={() => closeDupModal("cancel")}
                 style={{
                   padding: "8px 14px",
                   borderRadius: 8,
@@ -2407,7 +2405,7 @@ export default function Page() {
             padding: 16,
             zIndex: 50,
           }}
-          onClick={() => setAddInterventoOpen(false)}
+          onClick={() => closeAddIntervento("backdrop")}
         >
           <div
             style={{
@@ -2495,7 +2493,7 @@ export default function Page() {
             <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
               <button
                 type="button"
-                onClick={() => setAddInterventoOpen(false)}
+                onClick={() => closeAddIntervento("cancel")}
                 style={{
                   padding: "8px 14px",
                   borderRadius: 8,
@@ -2522,7 +2520,7 @@ export default function Page() {
                   router.push(
                     `/clienti/${encodeURIComponent(addInterventoCliente)}?${params.toString()}`
                   );
-                  setAddInterventoOpen(false);
+                  closeAddIntervento("submit");
                 }}
                 style={{
                   padding: "8px 14px",
