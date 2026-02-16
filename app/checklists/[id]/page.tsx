@@ -46,6 +46,8 @@ type Checklist = {
   updated_at: string | null;
   created_by_operatore: string | null;
   updated_by_operatore: string | null;
+  created_by_name?: string | null;
+  updated_by_name?: string | null;
 };
 
 type ChecklistItem = {
@@ -689,7 +691,9 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
 
     const { data: head, error: err1 } = await supabase
       .from("checklists")
-      .select("*")
+      .select(
+        "*, created_by_name, updated_by_name, created_by_operatore, updated_by_operatore"
+      )
       .eq("id", id)
       .single();
 
@@ -1914,18 +1918,20 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
             <FieldRow
               label="Creato da"
               view={
-                checklist.created_by_operatore
+                checklist.created_by_name ??
+                (checklist.created_by_operatore
                   ? operatoriMap.get(checklist.created_by_operatore) ?? "—"
-                  : "—"
+                  : "—")
               }
               isEdit={false}
             />
             <FieldRow
               label="Modificato da"
               view={
-                checklist.updated_by_operatore
+                checklist.updated_by_name ??
+                (checklist.updated_by_operatore
                   ? operatoriMap.get(checklist.updated_by_operatore) ?? "—"
-                  : "—"
+                  : "—")
               }
               isEdit={false}
             />
