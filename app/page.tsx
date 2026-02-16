@@ -539,10 +539,7 @@ export default function Page() {
 
   async function load() {
     setLoading(true);
-    const { data, error } = await supabase
-      .from("checklists")
-      .select(
-        `
+    const baseSelect = `
         *,
         checklist_documents:checklist_documents (
           id,
@@ -550,9 +547,40 @@ export default function Page() {
           filename,
           uploaded_at
         )
-      `
-      )
+      `;
+
+    const joinSelect = `
+        *,
+        clienti_anagrafica:cliente_id(denominazione),
+        checklist_documents:checklist_documents (
+          id,
+          tipo,
+          filename,
+          uploaded_at
+        )
+      `;
+
+    let data: any[] | null = null;
+    let error: any = null;
+
+    // Try with join first (if schema exists). Fallback to legacy query on error.
+    const joinRes = await supabase
+      .from("checklists")
+      .select(joinSelect)
       .order("created_at", { ascending: false });
+
+    if (joinRes.error) {
+      console.warn("[dashboard] clienti_anagrafica join failed, fallback", joinRes.error);
+      const legacyRes = await supabase
+        .from("checklists")
+        .select(baseSelect)
+        .order("created_at", { ascending: false });
+      data = legacyRes.data as any[] | null;
+      error = legacyRes.error;
+    } else {
+      data = joinRes.data as any[] | null;
+      error = joinRes.error;
+    }
 
     const { data: sections, error: sectionsErr } = await supabase
       .from("checklist_sections_view")
@@ -666,14 +694,21 @@ export default function Page() {
         }
       }
 
-      const merged = (data as Checklist[]).map((c) => ({
-        ...c,
-        ...(sectionsByChecklistId[c.id] || {}),
-        ...(licenzeByChecklistId[c.id] || {}),
-        ...(mainByChecklistId[c.id] || {}),
-        license_search: licenseSearchByChecklistId.get(c.id) || null,
-      }));
+      const merged = (data as Checklist[]).map((c) => {
+        const clienteLabel =
+          (c as any).clienti_anagrafica?.denominazione?.trim() || c.cliente || "";
+        return {
+          ...c,
+          cliente: clienteLabel || c.cliente,
+          ...(sectionsByChecklistId[c.id] || {}),
+          ...(licenzeByChecklistId[c.id] || {}),
+          ...(mainByChecklistId[c.id] || {}),
+          license_search: licenseSearchByChecklistId.get(c.id) || null,
+        };
+      });
       setItems(merged as Checklist[]);
+    } else if (error) {
+      console.error("Errore caricamento checklists (dashboard)", error);
     }
 
     const { data: catalogItems, error: catalogErr } = await supabase
