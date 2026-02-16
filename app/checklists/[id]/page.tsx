@@ -1431,10 +1431,26 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
         : null,
     };
 
-    const { error: errUpdate } = await supabase
-      .from("checklists")
-      .update(payload)
-      .eq("id", id);
+    const isClienteIdMissing = (err: any) => {
+      const msg = `${err?.message || ""}`.toLowerCase();
+      const code = `${err?.code || ""}`.toLowerCase();
+      return (
+        code === "pgrst204" ||
+        (msg.includes("cliente_id") && msg.includes("does not exist")) ||
+        (msg.includes("cliente_id") && msg.includes("column"))
+      );
+    };
+
+    const tryUpdate = async (payloadUpdate: typeof payload) => {
+      return supabase.from("checklists").update(payloadUpdate).eq("id", id);
+    };
+
+    let { error: errUpdate } = await tryUpdate(payload);
+
+    if (errUpdate && isClienteIdMissing(errUpdate)) {
+      const { cliente_id, ...legacyPayload } = payload;
+      ({ error: errUpdate } = await tryUpdate(legacyPayload));
+    }
 
     if (errUpdate) {
       const info = logSupabaseError("update checklist", errUpdate);

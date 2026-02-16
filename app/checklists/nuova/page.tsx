@@ -405,11 +405,30 @@ export default function NuovaChecklistPage() {
         garanzia_scadenza: garanziaScadenza.trim() ? garanziaScadenza.trim() : null,
       };
 
-      const { data: created, error: errCreate } = await supabase
-        .from("checklists")
-        .insert(payloadChecklist)
-        .select("id")
-        .single();
+      const isClienteIdMissing = (err: any) => {
+        const msg = `${err?.message || ""}`.toLowerCase();
+        const code = `${err?.code || ""}`.toLowerCase();
+        return (
+          code === "pgrst204" ||
+          (msg.includes("cliente_id") && msg.includes("does not exist")) ||
+          (msg.includes("cliente_id") && msg.includes("column"))
+        );
+      };
+
+      const tryInsert = async (payload: typeof payloadChecklist) => {
+        return supabase
+          .from("checklists")
+          .insert(payload)
+          .select("id")
+          .single();
+      };
+
+      let { data: created, error: errCreate } = await tryInsert(payloadChecklist);
+
+      if (errCreate && isClienteIdMissing(errCreate)) {
+        const { cliente_id, ...legacyPayload } = payloadChecklist;
+        ({ data: created, error: errCreate } = await tryInsert(legacyPayload));
+      }
 
       if (errCreate) {
         const info = logSupabaseError(errCreate);
