@@ -1441,7 +1441,7 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
       );
     };
 
-    const tryUpdate = async (payloadUpdate: typeof payload) => {
+    const tryUpdate = async (payloadUpdate: Partial<typeof payload>) => {
       return supabase.from("checklists").update(payloadUpdate).eq("id", id);
     };
 
