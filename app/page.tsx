@@ -1352,20 +1352,6 @@ export default function Page() {
           </label>
 
           <Link
-            href="/catalogo"
-            style={{
-              padding: "8px 12px",
-              borderRadius: 10,
-              border: "1px solid #ddd",
-              background: "white",
-              textDecoration: "none",
-              color: "inherit",
-            }}
-          >
-            Catalogo
-          </Link>
-
-          <Link
             href="/clienti"
             style={{
               padding: "8px 12px",
@@ -1380,7 +1366,7 @@ export default function Page() {
           </Link>
 
           <Link
-            href="/impostazioni/operatori"
+            href="/impostazioni"
             style={{
               padding: "8px 12px",
               borderRadius: 10,
@@ -1390,7 +1376,7 @@ export default function Page() {
               color: "inherit",
             }}
           >
-            Operatori
+            Impostazioni
           </Link>
 
           <Link
