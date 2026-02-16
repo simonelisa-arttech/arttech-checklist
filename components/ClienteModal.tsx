@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 export type ClienteRecord = {
   id?: string;
   denominazione: string;
+  attivo?: boolean;
   codice_interno?: string | null;
   comune?: string | null;
   provincia?: string | null;

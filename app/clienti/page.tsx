@@ -21,6 +21,7 @@ export default function ClientiPage() {
   const [hasMore, setHasMore] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<ClienteRecord | null>(null);
+  const [includeInactive, setIncludeInactive] = useState(false);
   const debounceRef = useRef<number | null>(null);
 
   useEffect(() => {
@@ -43,6 +44,7 @@ export default function ClientiPage() {
         if (debounced) params.set("q", debounced);
         params.set("limit", String(PAGE_SIZE));
         params.set("offset", String(offset));
+        if (includeInactive) params.set("include_inactive", "1");
         const res = await fetch(`/api/clienti?${params.toString()}`);
         const json = await res.json();
         if (!active) return;
@@ -65,7 +67,7 @@ export default function ClientiPage() {
     return () => {
       active = false;
     };
-  }, [debounced, offset]);
+  }, [debounced, offset, includeInactive]);
 
   const countLabel = useMemo(() => {
     return loading ? "Caricamento..." : `Totale caricati: ${rows.length}`;
@@ -101,6 +103,15 @@ export default function ClientiPage() {
           placeholder="Cerca cliente, p.iva, CF, codice interno..."
           style={{ flex: 1, padding: 10, borderRadius: 10, border: "1px solid #ddd" }}
         />
+        <label style={{ fontSize: 12 }}>
+          <input
+            type="checkbox"
+            checked={includeInactive}
+            onChange={(e) => setIncludeInactive(e.target.checked)}
+            style={{ marginRight: 6 }}
+          />
+          Mostra disattivi
+        </label>
         <button
           type="button"
           onClick={() => {
@@ -133,13 +144,14 @@ export default function ClientiPage() {
               <th style={{ padding: "10px 12px" }}>Codice fiscale</th>
               <th style={{ padding: "10px 12px" }}>Email</th>
               <th style={{ padding: "10px 12px" }}>Telefono</th>
+              <th style={{ padding: "10px 12px" }}>Stato</th>
               <th style={{ padding: "10px 12px" }}>Azioni</th>
             </tr>
           </thead>
           <tbody>
             {rows.length === 0 && !loading && (
               <tr>
-                <td colSpan={9} style={{ padding: 14, textAlign: "center" }}>
+                <td colSpan={10} style={{ padding: 14, textAlign: "center" }}>
                   Nessun cliente trovato
                 </td>
               </tr>
@@ -157,6 +169,9 @@ export default function ClientiPage() {
                 <td style={{ padding: "10px 12px" }}>{row.email || "—"}</td>
                 <td style={{ padding: "10px 12px" }}>{row.telefono || "—"}</td>
                 <td style={{ padding: "10px 12px" }}>
+                  {row.attivo === false ? "Disattivo" : "Attivo"}
+                </td>
+                <td style={{ padding: "10px 12px" }}>
                   <button
                     type="button"
                     onClick={() => {
@@ -172,6 +187,37 @@ export default function ClientiPage() {
                     }}
                   >
                     Modifica
+                  </button>
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      const res = await fetch("/api/clienti", {
+                        method: "PATCH",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                          id: row.id,
+                          attivo: row.attivo === false ? true : false,
+                        }),
+                      });
+                      const json = await res.json();
+                      if (!res.ok || !json?.ok) {
+                        alert(json?.error || "Errore aggiornamento stato cliente");
+                        return;
+                      }
+                      setRows((prev) =>
+                        prev.map((r) => (r.id === row.id ? { ...r, ...json.data } : r))
+                      );
+                    }}
+                    style={{
+                      marginLeft: 8,
+                      padding: "6px 10px",
+                      borderRadius: 10,
+                      border: "1px solid #ddd",
+                      background: "white",
+                      cursor: "pointer",
+                    }}
+                  >
+                    {row.attivo === false ? "Riattiva" : "Disattiva"}
                   </button>
                 </td>
               </tr>

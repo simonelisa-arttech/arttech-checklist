@@ -77,14 +77,19 @@ export async function GET(request: Request) {
   const limit = Number.isFinite(limitParam) && limitParam > 0 ? Math.min(limitParam, 200) : 50;
   const offset = Number.isFinite(offsetParam) && offsetParam >= 0 ? offsetParam : 0;
   const qNorm = normalizeDenominazione(q);
+  const includeInactive = url.searchParams.get("include_inactive") === "1";
 
   let query = supabase
     .from("clienti_anagrafica")
     .select(
-      "id,denominazione,denominazione_norm,piva,codice_fiscale,codice_sdi,pec,email,telefono,indirizzo,comune,cap,provincia,paese,codice_interno"
+      "id,denominazione,denominazione_norm,piva,codice_fiscale,codice_sdi,pec,email,telefono,indirizzo,comune,cap,provincia,paese,codice_interno,attivo"
     )
     .order("denominazione", { ascending: true })
     .range(offset, offset + limit - 1);
+
+  if (!includeInactive) {
+    query = query.eq("attivo", true);
+  }
 
   if (qNorm) {
     const like = `%${qNorm}%`;
@@ -135,13 +140,14 @@ export async function POST(request: Request) {
     provincia: `${body?.provincia || ""}`.trim() || null,
     paese: `${body?.paese || ""}`.trim() || null,
     codice_interno: `${body?.codice_interno || ""}`.trim() || null,
+    attivo: typeof body?.attivo === "boolean" ? body.attivo : true,
   };
 
   const { data, error } = await supabase
     .from("clienti_anagrafica")
     .insert(payload)
     .select(
-      "id,denominazione,denominazione_norm,piva,codice_fiscale,codice_sdi,pec,email,telefono,indirizzo,comune,cap,provincia,paese,codice_interno"
+      "id,denominazione,denominazione_norm,piva,codice_fiscale,codice_sdi,pec,email,telefono,indirizzo,comune,cap,provincia,paese,codice_interno,attivo"
     )
     .single();
 
@@ -171,7 +177,7 @@ export async function PATCH(request: Request) {
   }
 
   const denominazione = body?.denominazione != null ? `${body.denominazione}`.trim() : "";
-  const payload: Record<string, string | null> = {
+  const payload: Record<string, string | null | boolean> = {
     piva: `${body?.piva || ""}`.trim() || null,
     codice_fiscale: `${body?.codice_fiscale || ""}`.trim() || null,
     codice_sdi: `${body?.codice_sdi || ""}`.trim() || null,
@@ -186,6 +192,10 @@ export async function PATCH(request: Request) {
     codice_interno: `${body?.codice_interno || ""}`.trim() || null,
   };
 
+  if (typeof body?.attivo === "boolean") {
+    payload.attivo = body.attivo;
+  }
+
   if (denominazione) {
     payload.denominazione = denominazione;
     payload.denominazione_norm = normalizeDenominazione(denominazione);
@@ -196,7 +206,7 @@ export async function PATCH(request: Request) {
     .update(payload)
     .eq("id", id)
     .select(
-      "id,denominazione,denominazione_norm,piva,codice_fiscale,codice_sdi,pec,email,telefono,indirizzo,comune,cap,provincia,paese,codice_interno"
+      "id,denominazione,denominazione_norm,piva,codice_fiscale,codice_sdi,pec,email,telefono,indirizzo,comune,cap,provincia,paese,codice_interno,attivo"
     )
     .single();
 
