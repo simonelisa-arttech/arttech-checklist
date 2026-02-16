@@ -259,7 +259,13 @@ function logSupabaseError(label: string, err: any) {
     raw: err,
   };
   console.error("SUPABASE ERROR:", payload);
-  return payload;
+  const parts = [
+    payload.message,
+    payload.details ? `details: ${payload.details}` : null,
+    payload.hint ? `hint: ${payload.hint}` : null,
+    payload.code ? `code: ${payload.code}` : null,
+  ].filter(Boolean);
+  return parts.join(" | ");
 }
 
 function parseLocalDay(value?: string | null): Date | null {
