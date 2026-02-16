@@ -8,6 +8,7 @@ import ClientiCombobox from "@/components/ClientiCombobox";
 import Toast from "@/components/Toast";
 import { isSupabaseConfigured, supabase } from "@/lib/supabaseClient";
 import { sendAlert } from "@/lib/sendAlert";
+import { parseDimensioniToM2, calcM2Totale } from "@/lib/parseDimensioni";
 
 type Checklist = {
   id: string;
@@ -54,6 +55,7 @@ type ChecklistItem = {
   descrizione: string | null;
   quantita: number | null;
   note: string | null;
+  dimensioni?: string | null;
   created_at: string;
 };
 
@@ -64,6 +66,7 @@ type ChecklistItemRow = {
   descrizione: string;
   descrizione_custom?: string;
   quantita: string;
+  dimensioni: string;
   note: string;
   search?: string;
 };
@@ -233,16 +236,10 @@ function normalizeCustomCode(code: string) {
   return isCustomCode(code) ? "CUSTOM" : code;
 }
 
-function calcM2(dimensioni: string | null): number | null {
-  if (!dimensioni) return null;
-  const raw = dimensioni.replace(/\s+/g, "").replace(/,/g, ".");
-  const parts = raw.split("x");
-  if (parts.length !== 2) return null;
-  const w = Number(parts[0]);
-  const h = Number(parts[1]);
-  if (!Number.isFinite(w) || !Number.isFinite(h) || w <= 0 || h <= 0) return null;
-  const m2 = w * h;
-  return Math.round(m2 * 100) / 100;
+function calcFallbackM2(dimensioni: string | null): number | null {
+  const area = parseDimensioniToM2(dimensioni || null);
+  if (!area) return null;
+  return Math.round(area * 100) / 100;
 }
 
 function logSupabaseError(label: string, err: any) {
@@ -795,6 +792,7 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
         descrizione: isCustom ? "Altro / Fuori catalogo" : r.descrizione ?? "",
         descrizione_custom: isCustom ? r.descrizione ?? "" : "",
         quantita: r.quantita != null ? String(r.quantita) : "",
+        dimensioni: r.dimensioni ?? "",
         note: r.note ?? "",
         search: "",
       };
@@ -946,6 +944,11 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
   });
   const serialiControllo = assetSerials.filter((s) => s.tipo === "CONTROLLO");
   const serialiModuli = assetSerials.filter((s) => s.tipo === "MODULO_LED");
+  const righeM2 = calcM2Totale(
+    rows.map((r) => ({ dimensioni: r.dimensioni, qty: r.quantita }))
+  );
+  const hasRowDims = rows.some((r) => r.dimensioni.trim().length > 0);
+  const m2Calcolati = hasRowDims ? righeM2 : calcFallbackM2(formData?.dimensioni ?? null);
 
   function updateRowFields(idx: number, patch: Partial<ChecklistItemRow>) {
     setRows((prev) => {
@@ -1114,6 +1117,7 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
         descrizione: "",
         descrizione_custom: "",
         quantita: "",
+        dimensioni: "",
         note: "",
         search: "",
       },
@@ -1373,6 +1377,12 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
     if (!id || !formData) return;
     setItemsError(null);
 
+    const righeM2 = calcM2Totale(
+      rows.map((r) => ({ dimensioni: r.dimensioni, qty: r.quantita }))
+    );
+    const hasRowDims = rows.some((r) => r.dimensioni.trim().length > 0);
+    const m2Calcolati = hasRowDims ? righeM2 : calcFallbackM2(formData.dimensioni);
+
     const payload = {
       cliente: formData.cliente.trim() ? formData.cliente.trim() : null,
       cliente_id: formData.cliente_id?.trim() ? formData.cliente_id.trim() : null,
@@ -1391,7 +1401,7 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
       saas_stato: formData.saas_stato.trim() ? formData.saas_stato.trim() : null,
       saas_note: formData.saas_note.trim() ? formData.saas_note.trim() : null,
       tipo_saas: null,
-      m2_inclusi: calcM2(formData.dimensioni) ?? null,
+      m2_inclusi: m2Calcolati ?? null,
       m2_allocati: null,
       updated_by_operatore: currentOperatoreId || null,
       data_prevista: formData.data_prevista.trim()
@@ -1465,6 +1475,7 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
         descrizione: r.descrizione.trim(),
         descrizione_custom: (r.descrizione_custom ?? "").trim(),
         quantita: r.quantita.trim(),
+        dimensioni: r.dimensioni.trim(),
         note: r.note.trim(),
       }))
       .filter((r) => {
@@ -1473,7 +1484,8 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
           r.descrizione ||
           r.descrizione_custom ||
           r.quantita ||
-          r.note
+          r.note ||
+          r.dimensioni
         );
       });
 
@@ -1505,6 +1517,7 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
           : null,
         quantita: r.quantita === "" ? null : Number(r.quantita),
         note: r.note ? r.note : null,
+        dimensioni: r.dimensioni ? r.dimensioni : null,
       }));
 
     if (existingPayload.length > 0) {
@@ -1531,6 +1544,7 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
           : null,
         quantita: r.quantita === "" ? null : Number(r.quantita),
         note: r.note ? r.note : null,
+        dimensioni: r.dimensioni ? r.dimensioni : null,
       }));
 
     if (insertPayload.length > 0) {
@@ -1928,13 +1942,9 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
             <div style={{ fontWeight: 800, marginBottom: 6 }}>IMPIANTO</div>
             <FieldRow
               label="Dimensioni + m²"
-              view={
-                `${checklist.dimensioni || "—"} — ${
-                  calcM2(checklist.dimensioni) != null
-                    ? calcM2(checklist.dimensioni)!.toFixed(2)
-                    : "—"
-                }`
-              }
+              view={`${checklist.dimensioni || "—"} — ${
+                m2Calcolati != null ? m2Calcolati.toFixed(2) : "—"
+              }`}
               edit={
                 isEdit ? (
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 140px", gap: 10 }}>
@@ -1963,9 +1973,7 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
                         justifyContent: "flex-start",
                       }}
                     >
-                      {calcM2(formData.dimensioni) != null
-                        ? calcM2(formData.dimensioni)!.toFixed(2)
-                        : ""}
+                      {m2Calcolati != null ? m2Calcolati.toFixed(2) : ""}
                     </div>
                   </div>
                 ) : undefined
@@ -3223,7 +3231,7 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
             <div
               style={{
                 display: "grid",
-                gridTemplateColumns: "160px 1fr 120px 1fr",
+                gridTemplateColumns: "160px 1fr 120px 140px 1fr",
                 gap: 0,
                 padding: 10,
                 fontWeight: 700,
@@ -3233,6 +3241,7 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
               <div>Codice</div>
               <div>Descrizione</div>
               <div>Q.tà</div>
+              <div>Dimensioni</div>
               <div>Note</div>
             </div>
 
@@ -3241,7 +3250,7 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
                 key={r.id ?? r.client_id}
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "160px 1fr 120px 1fr",
+                  gridTemplateColumns: "160px 1fr 120px 140px 1fr",
                   gap: 0,
                   padding: 10,
                   borderBottom: "1px solid #f1f1f1",
@@ -3252,6 +3261,7 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
                   {isCustomCode(r.codice) ? r.descrizione_custom || "—" : r.descrizione || "—"}
                 </div>
                 <div>{r.quantita || "—"}</div>
+                <div>{r.dimensioni || "—"}</div>
                 <div>{r.note || "—"}</div>
               </div>
             ))}
@@ -3273,7 +3283,7 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
               <div
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "160px 1fr 120px 1fr 120px",
+                  gridTemplateColumns: "160px 1fr 120px 140px 1fr 120px",
                   gap: 10,
                   alignItems: "center",
                 }}
@@ -3369,6 +3379,16 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
                     type="number"
                     value={r.quantita}
                     onChange={(e) => updateRowFields(idx, { quantita: e.target.value })}
+                    style={{ width: "100%", padding: 10 }}
+                  />
+                </label>
+
+                <label>
+                  Dimensioni<br />
+                  <input
+                    value={r.dimensioni}
+                    onChange={(e) => updateRowFields(idx, { dimensioni: e.target.value })}
+                    placeholder="Es. 4x2"
                     style={{ width: "100%", padding: 10 }}
                   />
                 </label>

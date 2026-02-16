@@ -8,6 +8,7 @@ import ClientiCombobox from "@/components/ClientiCombobox";
 import ClienteModal, { ClienteRecord } from "@/components/ClienteModal";
 import { isSupabaseConfigured, supabase } from "@/lib/supabaseClient";
 import { sendAlert } from "@/lib/sendAlert";
+import { parseDimensioniToM2, calcM2Totale } from "@/lib/parseDimensioni";
 
 const SAAS_PIANI = [
   { code: "SAS-PL", label: "CARE PLUS (ASSISTENZA BASE)" },
@@ -41,6 +42,7 @@ type ChecklistItem = {
   descrizione: string;
   descrizione_custom?: string;
   qty: string;
+  dimensioni: string;
   note: string;
   search?: string;
   categoria_filter?: string;
@@ -160,16 +162,10 @@ function normalizeCustomCode(code: string) {
   return isCustomCode(code) ? "CUSTOM" : code;
 }
 
-function calcM2(dimensioni: string | null): number | null {
-  if (!dimensioni) return null;
-  const raw = dimensioni.replace(/\s+/g, "").replace(/,/g, ".");
-  const parts = raw.split("x");
-  if (parts.length !== 2) return null;
-  const w = Number(parts[0]);
-  const h = Number(parts[1]);
-  if (!Number.isFinite(w) || !Number.isFinite(h) || w <= 0 || h <= 0) return null;
-  const m2 = w * h;
-  return Math.round(m2 * 100) / 100;
+function calcFallbackM2(dimensioni: string | null): number | null {
+  const area = parseDimensioniToM2(dimensioni || null);
+  if (!area) return null;
+  return Math.round(area * 100) / 100;
 }
 
 export default function NuovaChecklistPage() {
@@ -216,7 +212,15 @@ export default function NuovaChecklistPage() {
   const [clienteModalOpen, setClienteModalOpen] = useState(false);
 
   const [rows, setRows] = useState<ChecklistItem[]>([
-    { codice: "", descrizione: "", qty: "", note: "", search: "", categoria_filter: "" },
+    {
+      codice: "",
+      descrizione: "",
+      qty: "",
+      dimensioni: "",
+      note: "",
+      search: "",
+      categoria_filter: "",
+    },
   ]);
   const [draftLicenze, setDraftLicenze] = useState<DraftLicenza[]>([]);
   const [newLicenza, setNewLicenza] = useState<DraftLicenza>({
@@ -265,7 +269,15 @@ export default function NuovaChecklistPage() {
   function addRow() {
     setRows((prev) => [
       ...prev,
-      { codice: "", descrizione: "", qty: "", note: "", search: "", categoria_filter: "" },
+      {
+        codice: "",
+        descrizione: "",
+        qty: "",
+        dimensioni: "",
+        note: "",
+        search: "",
+        categoria_filter: "",
+      },
     ]);
   }
 
@@ -375,7 +387,11 @@ export default function NuovaChecklistPage() {
         return;
       }
 
-      const m2Calcolati = calcM2(dimensioni);
+      const righeM2 = calcM2Totale(
+        rows.map((r) => ({ dimensioni: r.dimensioni, qty: r.qty }))
+      );
+      const hasRowDims = rows.some((r) => r.dimensioni.trim().length > 0);
+      const m2Calcolati = hasRowDims ? righeM2 : calcFallbackM2(dimensioni);
       const payloadChecklist = {
         cliente: cliente.trim(),
         cliente_id: clienteId,
@@ -539,9 +555,10 @@ export default function NuovaChecklistPage() {
           descrizione: r.descrizione.trim(),
           descrizione_custom: (r.descrizione_custom ?? "").trim(),
           qty: r.qty.trim(),
+          dimensioni: r.dimensioni.trim(),
           note: r.note.trim(),
         }))
-        .filter((r) => r.codice || r.descrizione || r.qty || r.note);
+        .filter((r) => r.codice || r.descrizione || r.qty || r.note || r.dimensioni);
 
       for (const r of normalizedRows) {
         if (r.qty !== "" && !isFiniteNumberString(r.qty)) {
@@ -565,6 +582,7 @@ export default function NuovaChecklistPage() {
             : null,
           quantita: r.qty === "" ? null : Number(r.qty),
           note: r.note ? r.note : null,
+          dimensioni: r.dimensioni ? r.dimensioni : null,
         }));
 
         const { error: errItems } = await supabase
@@ -995,7 +1013,17 @@ export default function NuovaChecklistPage() {
           <label>
             m² calcolati<br />
             <input
-              value={calcM2(dimensioni) != null ? calcM2(dimensioni)!.toFixed(2) : ""}
+              value={
+                (() => {
+                  const righeM2 = calcM2Totale(
+                    rows.map((r) => ({ dimensioni: r.dimensioni, qty: r.qty }))
+                  );
+                  const hasRowDims = rows.some((r) => r.dimensioni.trim().length > 0);
+                  const fallback = calcFallbackM2(dimensioni);
+                  const total = hasRowDims ? righeM2 : fallback;
+                  return total != null ? total.toFixed(2) : "";
+                })()
+              }
               readOnly
               style={{ width: "100%", padding: 10, background: "#f7f7f7" }}
             />
@@ -1332,7 +1360,7 @@ export default function NuovaChecklistPage() {
               <div
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "160px 1fr 120px 1fr",
+                  gridTemplateColumns: "160px 1fr 120px 140px 1fr",
                   gap: 10,
                   alignItems: "center",
                 }}
@@ -1446,6 +1474,16 @@ export default function NuovaChecklistPage() {
                   <input
                     value={r.qty}
                     onChange={(e) => updateRow(idx, "qty", e.target.value)}
+                    style={{ width: "100%", padding: 10 }}
+                  />
+                </label>
+
+                <label>
+                  Dimensioni<br />
+                  <input
+                    value={r.dimensioni}
+                    onChange={(e) => updateRow(idx, "dimensioni", e.target.value)}
+                    placeholder="Es. 4x2"
                     style={{ width: "100%", padding: 10 }}
                   />
                 </label>
