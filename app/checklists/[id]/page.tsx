@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import ConfigMancante from "@/components/ConfigMancante";
+import ClientiCombobox from "@/components/ClientiCombobox";
 import Toast from "@/components/Toast";
 import { isSupabaseConfigured, supabase } from "@/lib/supabaseClient";
 import { sendAlert } from "@/lib/sendAlert";
@@ -11,6 +12,7 @@ import { sendAlert } from "@/lib/sendAlert";
 type Checklist = {
   id: string;
   cliente: string;
+  cliente_id: string | null;
   nome_checklist: string;
   proforma: string | null;
   magazzino_importazione: string | null;
@@ -165,6 +167,7 @@ type ContrattoRow = {
 
 type FormData = {
   cliente: string;
+  cliente_id: string;
   nome_checklist: string;
   proforma: string;
   magazzino_importazione: string;
@@ -649,6 +652,7 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
   function buildFormData(c: Checklist): FormData {
     return {
       cliente: c.cliente ?? "",
+      cliente_id: c.cliente_id ?? "",
       nome_checklist: c.nome_checklist ?? "",
       proforma: c.proforma ?? "",
       magazzino_importazione: c.magazzino_importazione ?? "",
@@ -1366,6 +1370,7 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
 
     const payload = {
       cliente: formData.cliente.trim() ? formData.cliente.trim() : null,
+      cliente_id: formData.cliente_id?.trim() ? formData.cliente_id.trim() : null,
       nome_checklist: formData.nome_checklist.trim()
         ? formData.nome_checklist.trim()
         : null,
@@ -1755,10 +1760,14 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
               }
               edit={
                 isEdit ? (
-                  <input
+                  <ClientiCombobox
                     value={formData.cliente}
-                    onChange={(e) => setFormData({ ...formData, cliente: e.target.value })}
-                    style={{ width: "100%", padding: 10 }}
+                    onValueChange={(v) => setFormData({ ...formData, cliente: v })}
+                    selectedId={formData.cliente_id || null}
+                    onSelectId={(id) =>
+                      setFormData({ ...formData, cliente_id: id || "" })
+                    }
+                    placeholder="Cerca cliente..."
                   />
                 ) : undefined
               }

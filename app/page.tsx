@@ -155,6 +155,8 @@ function logSupabaseError(error: any) {
 type Checklist = {
   id: string;
   cliente: string;
+  cliente_id?: string | null;
+  clienti_anagrafica?: { denominazione: string | null } | null;
   nome_checklist: string;
   proforma: string | null;
   magazzino_importazione: string | null;
@@ -542,6 +544,7 @@ export default function Page() {
       .select(
         `
         *,
+        clienti_anagrafica:cliente_id(denominazione),
         checklist_documents:checklist_documents (
           id,
           tipo,
@@ -664,13 +667,18 @@ export default function Page() {
         }
       }
 
-      const merged = (data as Checklist[]).map((c) => ({
-        ...c,
-        ...(sectionsByChecklistId[c.id] || {}),
-        ...(licenzeByChecklistId[c.id] || {}),
-        ...(mainByChecklistId[c.id] || {}),
-        license_search: licenseSearchByChecklistId.get(c.id) || null,
-      }));
+      const merged = (data as Checklist[]).map((c) => {
+        const clienteLabel =
+          (c as any).clienti_anagrafica?.denominazione?.trim() || c.cliente || "";
+        return {
+          ...c,
+          cliente: clienteLabel || c.cliente,
+          ...(sectionsByChecklistId[c.id] || {}),
+          ...(licenzeByChecklistId[c.id] || {}),
+          ...(mainByChecklistId[c.id] || {}),
+          license_search: licenseSearchByChecklistId.get(c.id) || null,
+        };
+      });
       setItems(merged as Checklist[]);
     }
 

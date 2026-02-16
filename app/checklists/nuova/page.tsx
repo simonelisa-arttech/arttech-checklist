@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import ConfigMancante from "@/components/ConfigMancante";
+import ClientiCombobox from "@/components/ClientiCombobox";
 import { isSupabaseConfigured, supabase } from "@/lib/supabaseClient";
 import { sendAlert } from "@/lib/sendAlert";
 
@@ -180,6 +181,7 @@ export default function NuovaChecklistPage() {
 
   // campi testata
   const [cliente, setCliente] = useState("");
+  const [clienteId, setClienteId] = useState<string | null>(null);
   const [nomeChecklist, setNomeChecklist] = useState("");
   const [proforma, setProforma] = useState("");
   const [magazzinoImportazione, setMagazzinoImportazione] = useState("");
@@ -223,8 +225,8 @@ export default function NuovaChecklistPage() {
   const [licenzeError, setLicenzeError] = useState<string | null>(null);
 
   const canCreate = useMemo(() => {
-    return cliente.trim().length > 0 && nomeChecklist.trim().length > 0;
-  }, [cliente, nomeChecklist]);
+    return Boolean(clienteId) && nomeChecklist.trim().length > 0;
+  }, [clienteId, nomeChecklist]);
 
   const isUltraOrPremium =
     saasPiano.startsWith("SAS-UL") || saasPiano.startsWith("SAS-PR");
@@ -366,9 +368,14 @@ export default function NuovaChecklistPage() {
         alert("Compila almeno Cliente e Nome checklist.");
         return;
       }
+      if (!clienteId) {
+        alert("Seleziona un cliente dall'elenco.");
+        return;
+      }
 
       const payloadChecklist = {
         cliente: cliente.trim(),
+        cliente_id: clienteId,
         nome_checklist: nomeChecklist.trim(),
         proforma: proforma.trim() ? proforma.trim() : null,
         magazzino_importazione: magazzinoImportazione.trim()
@@ -715,10 +722,12 @@ export default function NuovaChecklistPage() {
         >
           <label>
             Cliente*<br />
-            <input
+            <ClientiCombobox
               value={cliente}
-              onChange={(e) => setCliente(e.target.value)}
-              style={{ width: "100%", padding: 10 }}
+              onValueChange={setCliente}
+              selectedId={clienteId}
+              onSelectId={setClienteId}
+              placeholder="Cerca cliente..."
             />
           </label>
 
