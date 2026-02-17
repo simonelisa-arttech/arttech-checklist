@@ -38,10 +38,12 @@ export default function LoginClient() {
     });
     setLoading(false);
     if (error) {
+      console.error("Login error", error);
       setError(error.message);
       return;
     }
-    router.push(redirectTo);
+    console.log("Session after login", await supabase.auth.getSession());
+    router.replace(redirectTo);
   }
 
   return (
