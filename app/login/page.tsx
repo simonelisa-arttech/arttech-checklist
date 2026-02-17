@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { isSupabaseConfigured, supabase } from "@/lib/supabaseClient";
 import ConfigMancante from "@/components/ConfigMancante";
 
@@ -11,25 +11,27 @@ export default function LoginPage() {
   }
 
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const redirectTo = searchParams.get("redirect") || "/";
 
   useEffect(() => {
     let mounted = true;
     supabase.auth.getSession().then(({ data }) => {
       if (!mounted) return;
-      if (data.session) router.replace("/");
+      if (data.session) router.replace(redirectTo);
     });
     const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (session) router.replace("/");
+      if (session) router.replace(redirectTo);
     });
     return () => {
       mounted = false;
       sub.subscription.unsubscribe();
     };
-  }, [router]);
+  }, [router, redirectTo]);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -44,7 +46,7 @@ export default function LoginPage() {
       setError(error.message);
       return;
     }
-    router.push("/");
+    router.push(redirectTo);
   }
 
   return (
