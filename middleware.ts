@@ -1,58 +1,45 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { createSupabaseMiddlewareClient } from "@/lib/supabase/middleware";
+import { createMiddlewareClient } from "@supabase/auth-helpers-nextjs";
 
-const PUBLIC_PATHS = ["/login", "/auth"];
+const PUBLIC_PATHS = ["/login", "/api/auth"];
 
-function isPublicPath(pathname: string) {
-  if (pathname.startsWith("/_next")) return true;
-  if (pathname.startsWith("/api")) return true;
-  if (pathname.startsWith("/favicon.ico")) return true;
-  if (pathname.startsWith("/robots.txt")) return true;
-  if (pathname.startsWith("/sitemap.xml")) return true;
-  if (pathname.match(/\.(png|jpg|jpeg|gif|svg|ico|css|js|map)$/)) return true;
-  return PUBLIC_PATHS.some((p) => pathname === p || pathname.startsWith(`${p}/`));
-}
+export async function middleware(req: NextRequest) {
+  const res = NextResponse.next();
+  const { pathname } = req.nextUrl;
 
-export async function middleware(request: NextRequest) {
-  const { pathname } = request.nextUrl;
-  const cookieHeader = request.headers.get("cookie") ?? "";
-  const hasSessionCookie = cookieHeader.includes("sb-");
-
-  if (pathname === "/login" || pathname.startsWith("/login/")) {
-    const { supabase } = createSupabaseMiddlewareClient(request);
+  if (pathname.startsWith("/login")) {
+    const supabase = createMiddlewareClient({ req, res });
     const {
-      data: { session },
-    } = await supabase.auth.getSession();
-    console.log("MW", pathname, "hasSessionCookie", hasSessionCookie, "session", !!session);
-    if (session) {
-      const url = request.nextUrl.clone();
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (user) {
+      const url = req.nextUrl.clone();
       url.pathname = "/";
-      url.searchParams.delete("redirect");
       return NextResponse.redirect(url);
     }
-    return NextResponse.next();
+    return res;
   }
 
-  if (isPublicPath(pathname)) {
-    return NextResponse.next();
+  if (PUBLIC_PATHS.some((p) => pathname.startsWith(p))) {
+    return res;
   }
 
-  const { supabase, response } = createSupabaseMiddlewareClient(request);
+  const supabase = createMiddlewareClient({ req, res });
   const {
-    data: { session },
-  } = await supabase.auth.getSession();
-  console.log("MW", pathname, "hasSessionCookie", hasSessionCookie, "session", !!session);
+    data: { user },
+  } = await supabase.auth.getUser();
 
-  if (!session) {
-    const url = request.nextUrl.clone();
+  if (!user) {
+    const url = req.nextUrl.clone();
     url.pathname = "/login";
-    url.searchParams.set("redirect", pathname);
     return NextResponse.redirect(url);
   }
 
-  return response;
+  return res;
 }
 
 export const config = {
-  matcher: ["/((?!_next|favicon.ico).*)"],
+  matcher: [
+    "/((?!_next/static|_next/image|favicon.ico|.*\\.(?:png|jpg|jpeg|gif|svg|webp|ico|css|js|map)$).*)",
+  ],
 };

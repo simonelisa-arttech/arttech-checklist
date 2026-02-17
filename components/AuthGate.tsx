@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import { isSupabaseConfigured, supabase } from "@/lib/supabaseClient";
 
 type AuthGateProps = {
@@ -9,7 +9,6 @@ type AuthGateProps = {
 };
 
 export default function AuthGate({ children }: AuthGateProps) {
-  const router = useRouter();
   const pathname = usePathname();
   const [loading, setLoading] = useState(true);
   const [hasSession, setHasSession] = useState(false);
@@ -34,19 +33,8 @@ export default function AuthGate({ children }: AuthGateProps) {
     };
   }, []);
 
-  useEffect(() => {
-    if (loading) return;
-    if (!hasSession && pathname !== "/login") {
-      router.replace("/login");
-      return;
-    }
-    if (hasSession && pathname === "/login") {
-      router.replace("/");
-    }
-  }, [loading, hasSession, pathname, router]);
-
   if (pathname === "/login") return <>{children}</>;
-  if (loading) return null;
-  if (!hasSession) return null;
+  if (loading) return <>{children}</>;
+  if (!hasSession) return <>{children}</>;
   return <>{children}</>;
 }
