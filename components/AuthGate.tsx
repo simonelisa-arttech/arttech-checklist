@@ -33,7 +33,13 @@ export default function AuthGate({ children }: AuthGateProps) {
     };
   }, []);
 
-  if (pathname === "/login") return <>{children}</>;
+  if (
+    pathname === "/login" ||
+    pathname === "/reset-password" ||
+    pathname === "/auth/callback"
+  ) {
+    return <>{children}</>;
+  }
   if (loading) return <>{children}</>;
   if (!hasSession) return <>{children}</>;
   return <>{children}</>;
