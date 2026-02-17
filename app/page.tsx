@@ -304,6 +304,11 @@ export default function Page() {
   const [addInterventoChecklistId, setAddInterventoChecklistId] = useState("");
   const [addInterventoDescrizione, setAddInterventoDescrizione] = useState("");
   const [addInterventoError, setAddInterventoError] = useState<string | null>(null);
+  const [debugLocation, setDebugLocation] = useState<string>("");
+  const [debugCookieHasSb, setDebugCookieHasSb] = useState<boolean | null>(null);
+  const [debugLocalKeys, setDebugLocalKeys] = useState<string[]>([]);
+  const [debugSessionEmail, setDebugSessionEmail] = useState<string | null>(null);
+  const [debugSessionLoading, setDebugSessionLoading] = useState<boolean>(true);
 
   // campi testata
   const [cliente, setCliente] = useState("");
@@ -342,6 +347,27 @@ export default function Page() {
     });
     return map;
   }, [operatori]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    setDebugLocation(window.location.href);
+    setDebugCookieHasSb(document.cookie.includes("sb-"));
+    const keys = Object.keys(localStorage).filter(
+      (k) => k.toLowerCase().includes("supabase") || k.toLowerCase().includes("sb-")
+    );
+    setDebugLocalKeys(keys);
+    supabase.auth
+      .getSession()
+      .then(({ data, error }) => {
+        if (error) console.error("Debug getSession error", error);
+        setDebugSessionEmail(data.session?.user?.email ?? null);
+        setDebugSessionLoading(false);
+      })
+      .catch((err) => {
+        console.error("Debug getSession exception", err);
+        setDebugSessionLoading(false);
+      });
+  }, []);
 
   const isUltraOrPremium =
     saasPiano.startsWith("SAS-UL") || saasPiano.startsWith("SAS-PR");
@@ -1332,6 +1358,30 @@ export default function Page() {
         <div>
           <h1 style={{ margin: 0, fontSize: 34 }}>AT SYSTEM</h1>
           <div style={{ marginTop: 2, fontSize: 12, opacity: 0.7 }}>DASH BOARD</div>
+        </div>
+
+        <div
+          style={{
+            padding: "8px 10px",
+            borderRadius: 8,
+            border: "1px dashed #ef4444",
+            fontSize: 12,
+            background: "#fff7ed",
+            color: "#7c2d12",
+            maxWidth: 380,
+          }}
+        >
+          <div style={{ fontWeight: 700, marginBottom: 4 }}>DEBUG AUTH</div>
+          <div>href: {debugLocation || "—"}</div>
+          <div>cookie sb-*: {debugCookieHasSb === null ? "—" : String(debugCookieHasSb)}</div>
+          <div>
+            localStorage keys: {debugLocalKeys.length ? debugLocalKeys.join(", ") : "—"}
+          </div>
+          <div>
+            session:{" "}
+            {debugSessionLoading ? "loading" : debugSessionEmail ? debugSessionEmail : "—"}
+          </div>
+          <div>operatore: {currentOperatoreId || "—"}</div>
         </div>
 
         <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 10 }}>
