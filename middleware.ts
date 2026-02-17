@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { createSupabaseMiddlewareClient } from "@/lib/supabase/middleware";
 
 const PUBLIC_PATHS = ["/login", "/auth"];
 
@@ -16,10 +17,14 @@ export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const cookieHeader = request.headers.get("cookie") ?? "";
   const hasSessionCookie = cookieHeader.includes("sb-");
-  console.log("MW", pathname, "hasSessionCookie", hasSessionCookie);
 
   if (pathname === "/login" || pathname.startsWith("/login/")) {
-    if (hasSessionCookie) {
+    const { supabase } = createSupabaseMiddlewareClient(request);
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    console.log("MW", pathname, "hasSessionCookie", hasSessionCookie, "session", !!session);
+    if (session) {
       const url = request.nextUrl.clone();
       url.pathname = "/";
       url.searchParams.delete("redirect");
@@ -32,14 +37,20 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  if (!hasSessionCookie) {
+  const { supabase, response } = createSupabaseMiddlewareClient(request);
+  const {
+    data: { session },
+  } = await supabase.auth.getSession();
+  console.log("MW", pathname, "hasSessionCookie", hasSessionCookie, "session", !!session);
+
+  if (!session) {
     const url = request.nextUrl.clone();
     url.pathname = "/login";
     url.searchParams.set("redirect", pathname);
     return NextResponse.redirect(url);
   }
 
-  return NextResponse.next();
+  return response;
 }
 
 export const config = {

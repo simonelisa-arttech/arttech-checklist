@@ -1,49 +1,46 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
-import { supabase } from "@/lib/supabaseClient";
+import { useState } from "react";
+import { useRouter } from "next/navigation";
 
-export default function LoginClient() {
+type LoginFormProps = {
+  redirectTo: string;
+};
+
+export default function LoginForm({ redirectTo }: LoginFormProps) {
   const router = useRouter();
-  const searchParams = useSearchParams();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const redirectTo = searchParams.get("redirect") || "/";
-
-  useEffect(() => {
-    let mounted = true;
-    supabase.auth.getSession().then(({ data }) => {
-      if (!mounted) return;
-      if (data.session) router.replace(redirectTo);
-    });
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (session) router.replace(redirectTo);
-    });
-    return () => {
-      mounted = false;
-      sub.subscription.unsubscribe();
-    };
-  }, [router, redirectTo]);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
     setLoading(true);
-    const { error } = await supabase.auth.signInWithPassword({
-      email: email.trim(),
-      password,
+
+    const res = await fetch("/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        email: email.trim(),
+        password,
+        redirectTo,
+      }),
     });
+
     setLoading(false);
-    if (error) {
-      console.error("Login error", error);
-      setError(error.message);
+
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      const msg = data?.error || "Credenziali non valide";
+      console.error("Login error", msg);
+      setError(msg);
       return;
     }
-    console.log("Session after login", await supabase.auth.getSession());
-    router.replace(redirectTo);
+
+    console.log("Session after login (cookie set)");
+    router.replace(redirectTo || "/");
   }
 
   return (

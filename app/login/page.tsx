@@ -1,16 +1,16 @@
-import { Suspense } from "react";
 import { isSupabaseConfigured } from "@/lib/supabaseClient";
 import ConfigMancante from "@/components/ConfigMancante";
-import LoginClient from "./LoginClient";
+import LoginForm from "./LoginForm";
 
-export default function LoginPage() {
+export default function LoginPage({
+  searchParams,
+}: {
+  searchParams?: { redirect?: string };
+}) {
   if (!isSupabaseConfigured) {
     return <ConfigMancante />;
   }
 
-  return (
-    <Suspense fallback={null}>
-      <LoginClient />
-    </Suspense>
-  );
+  const redirectTo = searchParams?.redirect || "/";
+  return <LoginForm redirectTo={redirectTo} />;
 }
