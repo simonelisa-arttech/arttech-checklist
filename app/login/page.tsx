@@ -1,97 +1,16 @@
-"use client";
-
-import { useEffect, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
-import { isSupabaseConfigured, supabase } from "@/lib/supabaseClient";
+import { Suspense } from "react";
+import { isSupabaseConfigured } from "@/lib/supabaseClient";
 import ConfigMancante from "@/components/ConfigMancante";
+import LoginClient from "./LoginClient";
 
 export default function LoginPage() {
   if (!isSupabaseConfigured) {
     return <ConfigMancante />;
   }
 
-  const router = useRouter();
-  const searchParams = useSearchParams();
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const redirectTo = searchParams.get("redirect") || "/";
-
-  useEffect(() => {
-    let mounted = true;
-    supabase.auth.getSession().then(({ data }) => {
-      if (!mounted) return;
-      if (data.session) router.replace(redirectTo);
-    });
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (session) router.replace(redirectTo);
-    });
-    return () => {
-      mounted = false;
-      sub.subscription.unsubscribe();
-    };
-  }, [router, redirectTo]);
-
-  async function onSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    setError(null);
-    setLoading(true);
-    const { error } = await supabase.auth.signInWithPassword({
-      email: email.trim(),
-      password,
-    });
-    setLoading(false);
-    if (error) {
-      setError(error.message);
-      return;
-    }
-    router.push(redirectTo);
-  }
-
   return (
-    <div style={{ maxWidth: 420, margin: "80px auto", padding: 16 }}>
-      <h1 style={{ marginBottom: 6 }}>Login</h1>
-      <div style={{ marginBottom: 20, fontSize: 12, opacity: 0.7 }}>
-        Accedi con email e password
-      </div>
-      <form onSubmit={onSubmit} style={{ display: "grid", gap: 12 }}>
-        <label>
-          Email<br />
-          <input
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            required
-            style={{ width: "100%", padding: 10 }}
-          />
-        </label>
-        <label>
-          Password<br />
-          <input
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-            style={{ width: "100%", padding: 10 }}
-          />
-        </label>
-        {error && <div style={{ color: "#b91c1c", fontSize: 13 }}>{error}</div>}
-        <button
-          type="submit"
-          disabled={loading}
-          style={{
-            padding: "10px 14px",
-            borderRadius: 10,
-            border: "1px solid #111",
-            background: "#111",
-            color: "white",
-            cursor: "pointer",
-          }}
-        >
-          {loading ? "Accesso..." : "Accedi"}
-        </button>
-      </form>
-    </div>
+    <Suspense fallback={null}>
+      <LoginClient />
+    </Suspense>
   );
 }
