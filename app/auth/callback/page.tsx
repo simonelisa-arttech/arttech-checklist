@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 
-export default function AuthCallbackPage() {
+function AuthCallbackContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [error, setError] = useState<string | null>(null);
@@ -132,5 +132,20 @@ export default function AuthCallbackPage() {
         {JSON.stringify(queryDebug, null, 2)}
       </pre>
     </div>
+  );
+}
+
+export default function AuthCallbackPage() {
+  return (
+    <Suspense
+      fallback={
+        <div style={{ maxWidth: 420, margin: "80px auto", padding: 16 }}>
+          <h1 style={{ marginBottom: 8 }}>Verifica recupero password</h1>
+          <div style={{ fontSize: 13, opacity: 0.8 }}>Caricamento callback...</div>
+        </div>
+      }
+    >
+      <AuthCallbackContent />
+    </Suspense>
   );
 }
