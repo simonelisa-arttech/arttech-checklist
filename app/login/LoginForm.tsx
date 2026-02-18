@@ -25,21 +25,24 @@ export default function LoginForm({ redirectTo }: LoginFormProps) {
     setRecoveryMsg(null);
     setLoading(true);
 
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email: email,
-      password,
+    const res = await fetch("/auth/login", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ email, password }),
     });
-    console.log("Login signInWithPassword data:", data);
 
     setLoading(false);
 
-    if (error) {
-      console.error("Login signInWithPassword error:", error);
-      setError(error.message || "Credenziali non valide");
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      const message = data?.error || "Credenziali non valide";
+      console.error("Login server-side error:", message);
+      setError(message);
       return;
     }
 
-    router.replace(redirectTo || "/");
+    router.replace("/");
+    router.refresh();
   }
 
   async function onRecovery() {
