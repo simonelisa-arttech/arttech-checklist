@@ -222,6 +222,7 @@ type OperatoreRow = {
   id: string;
   user_id?: string | null;
   nome: string | null;
+  email?: string | null;
   ruolo?: string | null;
   attivo: boolean;
 };
@@ -292,6 +293,9 @@ export default function Page() {
     nome: string | null;
     ruolo: string | null;
   } | null>(null);
+  const [operatoriLookupById, setOperatoriLookupById] = useState<
+    Map<string, { nome: string | null; email: string | null }>
+  >(new Map());
   const [operatoreAssociationError, setOperatoreAssociationError] = useState<string | null>(null);
   const [expandedSaasNoteId, setExpandedSaasNoteId] = useState<string | null>(null);
   const [serialsByChecklistId, setSerialsByChecklistId] = useState<
@@ -371,6 +375,16 @@ export default function Page() {
   }, []);
 
   const showDebugAuth = process.env.NODE_ENV !== "production" || debugForcedByQuery;
+
+  function formatOperatoreRef(refId?: string | null) {
+    if (!refId) return "—";
+    const found = operatoriLookupById.get(refId);
+    if (!found) return refId;
+    if (found.nome && found.email) return `${found.nome} (${found.email})`;
+    if (found.nome) return found.nome;
+    if (found.email) return found.email;
+    return refId;
+  }
 
   const isUltraOrPremium =
     saasPiano.startsWith("SAS-UL") || saasPiano.startsWith("SAS-PR");
@@ -751,6 +765,22 @@ export default function Page() {
     } else {
       console.log("catalogItems", catalogItems);
       setCatalogItems((catalogItems || []) as CatalogItem[]);
+    }
+
+    const opRes = await fetch("/api/operatori");
+    if (opRes.ok) {
+      const opData = await opRes.json().catch(() => ({}));
+      const list = Array.isArray(opData?.data) ? opData.data : [];
+      const nextMap = new Map<string, { nome: string | null; email: string | null }>();
+      for (const row of list) {
+        const id = String(row?.id || "");
+        if (!id) continue;
+        nextMap.set(id, {
+          nome: row?.nome ?? null,
+          email: row?.email ?? null,
+        });
+      }
+      setOperatoriLookupById(nextMap);
     }
 
     setOperatoreAssociationError(null);
@@ -2301,10 +2331,10 @@ export default function Page() {
                           {c.updated_at ? new Date(c.updated_at).toLocaleString() : "—"}
                         </td>
                         <td style={{ padding: "10px 12px", opacity: 0.85 }}>
-                          {c.created_by_operatore || "—"}
+                          {formatOperatoreRef(c.created_by_operatore)}
                         </td>
                         <td style={{ padding: "10px 12px", opacity: 0.85 }}>
-                          {c.updated_by_operatore || "—"}
+                          {formatOperatoreRef(c.updated_by_operatore)}
                         </td>
                         <td style={{ padding: "10px 12px", display: "flex", gap: 8 }}>
                           <button
