@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient, type SupabaseClient, type User } from "@supabase/supabase-js";
+import { isAdminRole } from "@/lib/adminRoles";
 
 type OperatoreAuthRow = {
   id: string;
@@ -85,7 +86,7 @@ export async function requireAdmin(request: Request): Promise<RequireAdminOk | R
     return unauthorized("Admin profile missing", 403);
   }
 
-  const isAdmin = String(op.ruolo || "").toUpperCase() === "ADMIN" && op.attivo !== false;
+  const isAdmin = isAdminRole(op.ruolo) && op.attivo !== false;
   if (!isAdmin) {
     return unauthorized("Forbidden", 403);
   }

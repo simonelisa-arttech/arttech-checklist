@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { isAdminRole } from "@/lib/adminRoles";
 
 const PUBLIC_PATHS = ["/login", "/auth/callback", "/reset-password", "/auth/login"];
 const ASSET_PREFIXES = ["/_next", "/images"];
@@ -42,11 +43,38 @@ export async function middleware(req: NextRequest) {
   );
 
   const res = NextResponse.next();
+  let currentUserId: string | null = null;
   const {
     data: { user },
   } = await supabase.auth.getUser(accessToken);
+  currentUserId = user?.id ?? null;
 
-  if (user) return res;
+  if (user) {
+    if (pathname.startsWith("/impostazioni")) {
+      const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+      if (!serviceRoleKey || !currentUserId) {
+        const url = req.nextUrl.clone();
+        url.pathname = "/";
+        return NextResponse.redirect(url);
+      }
+      const supabaseAdmin = createClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL ?? "",
+        serviceRoleKey,
+        { auth: { persistSession: false, autoRefreshToken: false } }
+      );
+      const { data: op } = await supabaseAdmin
+        .from("operatori")
+        .select("ruolo, attivo")
+        .eq("user_id", currentUserId)
+        .maybeSingle();
+      if (!op || op.attivo === false || !isAdminRole(op.ruolo)) {
+        const url = req.nextUrl.clone();
+        url.pathname = "/";
+        return NextResponse.redirect(url);
+      }
+    }
+    return res;
+  }
 
   if (refreshToken) {
     const { data, error } = await supabase.auth.refreshSession({
@@ -54,6 +82,7 @@ export async function middleware(req: NextRequest) {
     });
 
     if (!error && data.session) {
+      currentUserId = data.user?.id ?? null;
       const secure = process.env.NODE_ENV === "production";
       res.cookies.set("sb-access-token", data.session.access_token, {
         httpOnly: true,
@@ -69,6 +98,29 @@ export async function middleware(req: NextRequest) {
         path: "/",
         maxAge: 60 * 60 * 24 * 30,
       });
+      if (pathname.startsWith("/impostazioni")) {
+        const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+        if (!serviceRoleKey || !currentUserId) {
+          const url = req.nextUrl.clone();
+          url.pathname = "/";
+          return NextResponse.redirect(url);
+        }
+        const supabaseAdmin = createClient(
+          process.env.NEXT_PUBLIC_SUPABASE_URL ?? "",
+          serviceRoleKey,
+          { auth: { persistSession: false, autoRefreshToken: false } }
+        );
+        const { data: op } = await supabaseAdmin
+          .from("operatori")
+          .select("ruolo, attivo")
+          .eq("user_id", currentUserId)
+          .maybeSingle();
+        if (!op || op.attivo === false || !isAdminRole(op.ruolo)) {
+          const url = req.nextUrl.clone();
+          url.pathname = "/";
+          return NextResponse.redirect(url);
+        }
+      }
       return res;
     }
   }

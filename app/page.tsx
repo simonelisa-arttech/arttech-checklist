@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import ConfigMancante from "@/components/ConfigMancante";
 import DashboardTable from "./components/DashboardTable";
 import Toast from "@/components/Toast";
+import { isAdminRole } from "@/lib/adminRoles";
 import { isSupabaseConfigured, supabase } from "@/lib/supabaseClient";
 
 const SAAS_PIANI = [
@@ -375,6 +376,7 @@ export default function Page() {
   }, []);
 
   const showDebugAuth = process.env.NODE_ENV !== "production" || debugForcedByQuery;
+  const canAccessSettings = isAdminRole(currentOperatoreLabel?.ruolo);
 
   function formatOperatoreRef(refId?: string | null) {
     if (!refId) return "—";
@@ -1411,19 +1413,21 @@ export default function Page() {
         )}
 
         <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 10 }}>
-          <Link
-            href="/impostazioni"
-            style={{
-              padding: "8px 12px",
-              borderRadius: 10,
-              border: "1px solid #ddd",
-              background: "white",
-              textDecoration: "none",
-              color: "inherit",
-            }}
-          >
-            Impostazioni
-          </Link>
+          {canAccessSettings && (
+            <Link
+              href="/impostazioni"
+              style={{
+                padding: "8px 12px",
+                borderRadius: 10,
+                border: "1px solid #ddd",
+                background: "white",
+                textDecoration: "none",
+                color: "inherit",
+              }}
+            >
+              Impostazioni
+            </Link>
+          )}
 
           <Link
             href="/checklists/nuova"

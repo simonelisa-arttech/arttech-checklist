@@ -33,6 +33,9 @@ export default function ImpostazioniPage() {
       </div>
 
       <div style={{ marginTop: 20, display: "flex", gap: 12, flexWrap: "wrap" }}>
+        <div style={{ width: "100%", fontSize: 11, opacity: 0.65 }}>
+          SETTINGS GUARD v1
+        </div>
         <Link
           href="/clienti"
           style={{
