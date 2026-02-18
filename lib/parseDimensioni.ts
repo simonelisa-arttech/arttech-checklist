@@ -29,10 +29,22 @@ export function parseDimensioniToWH(
     .replace(/[×\*]/g, "x")
     .replace(/\s+/g, " ")
     .trim();
+
+  // Preferred parse: explicit "AxB" token.
   const m = s.match(/(\d+(?:\.\d+)?)\s*x\s*(\d+(?:\.\d+)?)/);
-  if (!m) return null;
-  const larghezza = Number(m[1]);
-  const altezza = Number(m[2]);
+  if (m) {
+    const larghezza = Number(m[1]);
+    const altezza = Number(m[2]);
+    if (!Number.isFinite(larghezza) || !Number.isFinite(altezza)) return null;
+    if (larghezza <= 0 || altezza <= 0) return null;
+    return { larghezza, altezza };
+  }
+
+  // Fallback parse: first two numeric tokens even with odd separators.
+  const nums = s.match(/\d+(?:\.\d+)?/g);
+  if (!nums || nums.length < 2) return null;
+  const larghezza = Number(nums[0]);
+  const altezza = Number(nums[1]);
   if (!Number.isFinite(larghezza) || !Number.isFinite(altezza)) return null;
   if (larghezza <= 0 || altezza <= 0) return null;
   return { larghezza, altezza };

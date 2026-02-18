@@ -8,7 +8,7 @@ import ClientiCombobox from "@/components/ClientiCombobox";
 import ClienteModal, { ClienteRecord } from "@/components/ClienteModal";
 import { isSupabaseConfigured, supabase } from "@/lib/supabaseClient";
 import { sendAlert } from "@/lib/sendAlert";
-import { calcM2FromDimensioni, parseDimensioniToWH } from "@/lib/parseDimensioni";
+import { calcM2FromDimensioni } from "@/lib/parseDimensioni";
 
 const SAAS_PIANI = [
   { code: "SAS-PL", label: "CARE PLUS (ASSISTENZA BASE)" },
@@ -232,7 +232,6 @@ export default function NuovaChecklistPage() {
     note: "",
   });
   const [licenzeError, setLicenzeError] = useState<string | null>(null);
-  const [lastSavedM2, setLastSavedM2] = useState<number | null>(null);
 
   const canCreate = useMemo(() => {
     return nomeChecklist.trim().length > 0 && cliente.trim().length > 0;
@@ -241,7 +240,6 @@ export default function NuovaChecklistPage() {
     () => calcM2FromDimensioni(dimensioni, numeroFacce),
     [dimensioni, numeroFacce]
   );
-  const m2DebugWH = useMemo(() => parseDimensioniToWH(dimensioni), [dimensioni]);
 
   const isUltraOrPremium =
     saasPiano.startsWith("SAS-UL") || saasPiano.startsWith("SAS-PR");
@@ -296,18 +294,6 @@ export default function NuovaChecklistPage() {
       }
     })();
   }, []);
-
-  useEffect(() => {
-    if (process.env.NODE_ENV === "production") return;
-    console.log("[M2 DEBUG][nuova checklist]", {
-      larghezza: m2DebugWH?.larghezza ?? null,
-      altezza: m2DebugWH?.altezza ?? null,
-      numero_facce: numeroFacce,
-      passo: passo || null,
-      mq_calcolati: m2Calcolati,
-      mq_salvati: lastSavedM2,
-    });
-  }, [m2DebugWH, numeroFacce, passo, m2Calcolati, lastSavedM2]);
 
   function addRow() {
     setRows((prev) => [
@@ -479,6 +465,7 @@ export default function NuovaChecklistPage() {
         impianto_descrizione: impiantoDescrizione.trim() ? impiantoDescrizione.trim() : null,
         dimensioni: dimensioni.trim() ? dimensioni.trim() : null,
         numero_facce: numeroFacce,
+        m2_calcolati: m2Calcolati != null ? m2Calcolati : null,
         m2_inclusi: m2Calcolati != null ? m2Calcolati : null,
         m2_allocati: null,
         garanzia_scadenza: garanziaScadenza.trim() ? garanziaScadenza.trim() : null,
@@ -518,8 +505,6 @@ export default function NuovaChecklistPage() {
         alert("Errore: id checklist non ricevuto");
         return;
       }
-      setLastSavedM2(m2Calcolati != null ? m2Calcolati : null);
-
       const checklistId = created.id as string;
 
       const { count: existingTasksCount, error: existingTasksErr } = await supabase
@@ -1476,6 +1461,9 @@ export default function NuovaChecklistPage() {
         </div>
 
         <h2 style={{ marginTop: 22 }}>Voci / Prodotti</h2>
+        <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 10 }}>
+          Accessori/Extra (no TEC, no SAS)
+        </div>
 
         <div style={{ display: "grid", gap: 10 }}>
           {rows.map((r, idx) => (

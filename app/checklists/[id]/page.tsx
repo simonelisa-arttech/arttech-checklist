@@ -8,7 +8,7 @@ import ClientiCombobox from "@/components/ClientiCombobox";
 import Toast from "@/components/Toast";
 import { isSupabaseConfigured, supabase } from "@/lib/supabaseClient";
 import { sendAlert } from "@/lib/sendAlert";
-import { calcM2FromDimensioni, parseDimensioniToWH } from "@/lib/parseDimensioni";
+import { calcM2FromDimensioni } from "@/lib/parseDimensioni";
 
 type Checklist = {
   id: string;
@@ -23,6 +23,7 @@ type Checklist = {
   saas_scadenza: string | null;
   saas_stato: string | null;
   saas_note: string | null;
+  m2_calcolati: number | null;
   m2_inclusi: number | null;
   m2_allocati: number | null;
   ultra_interventi_illimitati: boolean | null;
@@ -980,19 +981,6 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
     formData?.dimensioni ?? null,
     formData?.numero_facce ?? 1
   );
-  const m2DebugWH = parseDimensioniToWH(formData?.dimensioni ?? null);
-
-  useEffect(() => {
-    if (process.env.NODE_ENV === "production") return;
-    console.log("[M2 DEBUG][checklist dettaglio]", {
-      larghezza: m2DebugWH?.larghezza ?? null,
-      altezza: m2DebugWH?.altezza ?? null,
-      numero_facce: formData?.numero_facce ?? 1,
-      passo: formData?.passo ?? null,
-      mq_calcolati: m2Calcolati,
-      mq_salvati: checklist?.m2_inclusi ?? null,
-    });
-  }, [m2DebugWH, formData?.numero_facce, formData?.passo, m2Calcolati, checklist?.m2_inclusi]);
 
   if (loading) return <div style={{ padding: 20 }}>Caricamento…</div>;
   if (error) return <div style={{ padding: 20, color: "crimson" }}>{error}</div>;
@@ -1013,6 +1001,9 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
   const deviceOptions = deviceCatalogItems;
   const serialiControllo = assetSerials.filter((s) => s.tipo === "CONTROLLO");
   const serialiModuli = assetSerials.filter((s) => s.tipo === "MODULO_LED");
+  const m2Persisted =
+    checklist.m2_calcolati ??
+    calcM2FromDimensioni(checklist.dimensioni, checklist.numero_facce ?? 1);
 
   function updateRowFields(idx: number, patch: Partial<ChecklistItemRow>) {
     setRows((prev) => {
@@ -1233,7 +1224,6 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
       gestore: newLicenza.gestore.trim() ? newLicenza.gestore.trim() : null,
       fornitore: newLicenza.fornitore.trim() ? newLicenza.fornitore.trim() : null,
     };
-    console.log("LICENSE PAYLOAD", payload);
     const { error: insertErr } = await supabase.from("licenses").insert(payload);
     if (insertErr) {
       const msg = logSupabaseError("insert licenses", insertErr) || "Errore inserimento licenza";
@@ -1460,6 +1450,7 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
       saas_stato: formData.saas_stato.trim() ? formData.saas_stato.trim() : null,
       saas_note: formData.saas_note.trim() ? formData.saas_note.trim() : null,
       tipo_saas: null,
+      m2_calcolati: m2Calcolati ?? null,
       m2_inclusi: m2Calcolati ?? null,
       m2_allocati: null,
       updated_by_operatore: currentOperatoreId || null,
@@ -2054,7 +2045,7 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
             <FieldRow
               label="Dimensioni + m²"
               view={`${checklist.dimensioni || "—"} — ${
-                m2Calcolati != null ? m2Calcolati.toFixed(2) : "—"
+                m2Persisted != null ? m2Persisted.toFixed(2) : "—"
               } (${checklist.numero_facce ?? 1} facce)`}
               edit={
                 isEdit ? (
@@ -3407,6 +3398,9 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
       </div>
 
       <h2 style={{ marginTop: 22 }}>Voci / Prodotti</h2>
+      <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 10 }}>
+        Accessori/Extra (no TEC, no SAS)
+      </div>
 
       {itemsError && (
         <div style={{ color: "crimson", marginBottom: 10 }}>{itemsError}</div>

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import ConfigMancante from "@/components/ConfigMancante";
 import Toast from "@/components/Toast";
+import { calcM2FromDimensioni } from "@/lib/parseDimensioni";
 import { isSupabaseConfigured, supabase } from "@/lib/supabaseClient";
 import { sendAlert } from "@/lib/sendAlert";
 
@@ -466,17 +467,8 @@ function toNumber(value?: string | null): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-function calcM2(dimensioni?: string | null): number | null {
-  if (!dimensioni) return null;
-  const parts = String(dimensioni)
-    .toLowerCase()
-    .split("x")
-    .map((p) => p.trim());
-  if (parts.length !== 2) return null;
-  const a = toNumber(parts[0]);
-  const b = toNumber(parts[1]);
-  if (a == null || b == null) return null;
-  return a * b;
+function calcM2(dimensioni?: string | null, numeroFacce?: number | null): number | null {
+  return calcM2FromDimensioni(dimensioni, numeroFacce ?? 1);
 }
 
 type ChecklistRow = {
@@ -486,6 +478,7 @@ type ChecklistRow = {
   proforma: string | null;
   magazzino_importazione: string | null;
   dimensioni: string | null;
+  numero_facce: number | null;
   passo: string | null;
   tipo_impianto: string | null;
   data_prevista: string | null;
@@ -1049,7 +1042,7 @@ export default function ClientePage({ params }: { params: any }) {
       const { data: cls, error: clsErr } = await supabase
         .from("checklists")
         .select(
-          "id, cliente, nome_checklist, proforma, magazzino_importazione, dimensioni, passo, tipo_impianto, data_prevista, data_tassativa, data_installazione_reale, stato_progetto, saas_piano, saas_tipo, saas_scadenza, saas_note, ultra_interventi_illimitati, ultra_interventi_inclusi, garanzia_scadenza, created_at"
+          "id, cliente, nome_checklist, proforma, magazzino_importazione, dimensioni, numero_facce, passo, tipo_impianto, data_prevista, data_tassativa, data_installazione_reale, stato_progetto, saas_piano, saas_tipo, saas_scadenza, saas_note, ultra_interventi_illimitati, ultra_interventi_inclusi, garanzia_scadenza, created_at"
         )
         .ilike("cliente", `%${clienteKey}%`)
         .order("created_at", { ascending: false });
@@ -7570,7 +7563,11 @@ ${rinnovi30ggBreakdown.debugSample
                 <div style={{ fontWeight: 800 }}>{c.nome_checklist ?? "—"}</div>
                 <div>{c.proforma ?? "—"}</div>
                 <div>{c.dimensioni ?? "—"}</div>
-                <div>{calcM2(c.dimensioni) != null ? calcM2(c.dimensioni)!.toFixed(2) : "—"}</div>
+                <div>
+                  {calcM2(c.dimensioni, c.numero_facce) != null
+                    ? calcM2(c.dimensioni, c.numero_facce)!.toFixed(2)
+                    : "—"}
+                </div>
                 <div>{c.passo ?? "—"}</div>
                 <div>{c.tipo_impianto ?? "—"}</div>
                 <div style={{ fontSize: 12, opacity: 0.8 }}>

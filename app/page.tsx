@@ -7,6 +7,7 @@ import ConfigMancante from "@/components/ConfigMancante";
 import DashboardTable from "./components/DashboardTable";
 import Toast from "@/components/Toast";
 import { isAdminRole } from "@/lib/adminRoles";
+import { calcM2FromDimensioni } from "@/lib/parseDimensioni";
 import { isSupabaseConfigured, supabase } from "@/lib/supabaseClient";
 
 const SAAS_PIANI = [
@@ -173,6 +174,7 @@ type Checklist = {
   saas_note: string | null;
 
   // m2
+  m2_calcolati: number | null;
   m2_inclusi: number | null;
   m2_allocati: number | null;
 
@@ -182,6 +184,7 @@ type Checklist = {
   tipo_impianto: string | null;
   impianto_indirizzo: string | null;
   dimensioni: string | null;
+  numero_facce: number | null;
   passo: string | null;
   note: string | null;
   tipo_struttura: string | null;
@@ -268,16 +271,15 @@ function normalizeCustomCode(code: string) {
   return isCustomCode(code) ? "CUSTOM" : code;
 }
 
-function calcM2(dimensioni: string | null): number | null {
-  if (!dimensioni) return null;
-  const raw = dimensioni.replace(/\s+/g, "").replace(/,/g, ".");
-  const parts = raw.split("x");
-  if (parts.length !== 2) return null;
-  const w = Number(parts[0]);
-  const h = Number(parts[1]);
-  if (!Number.isFinite(w) || !Number.isFinite(h) || w <= 0 || h <= 0) return null;
-  const m2 = w * h;
-  return Math.round(m2 * 100) / 100;
+function calcM2(dimensioni: string | null, numeroFacce?: number | null): number | null {
+  return calcM2FromDimensioni(dimensioni, numeroFacce ?? 1);
+}
+
+function getChecklistM2(row: Checklist): number | null {
+  if (typeof row.m2_calcolati === "number" && Number.isFinite(row.m2_calcolati)) {
+    return row.m2_calcolati;
+  }
+  return calcM2(row.dimensioni, row.numero_facce);
 }
 
 export default function Page() {
@@ -472,7 +474,7 @@ export default function Page() {
   }
 
   function getSortRaw(row: Checklist, key: typeof sortKey) {
-    if (key === "m2_calcolati") return calcM2(row.dimensioni);
+    if (key === "m2_calcolati") return getChecklistM2(row);
     if (key === "pct_complessivo") return row.pct_complessivo;
     if (key === "licenze_attive") return row.licenze_attive ?? 0;
     if (key === "saas_stato") return getExpiryStatus(row.saas_scadenza);
@@ -515,7 +517,9 @@ export default function Page() {
         c.tipo_impianto ?? "",
         c.impianto_indirizzo ?? "",
         c.dimensioni ?? "",
-        calcM2(c.dimensioni) != null ? calcM2(c.dimensioni)?.toFixed(2) ?? "" : "",
+        getChecklistM2(c) != null
+          ? getChecklistM2(c)?.toFixed(2) ?? ""
+          : "",
         c.proforma ?? "",
         c.magazzino_importazione ?? "",
         c.tipo_saas ?? "",
@@ -765,7 +769,6 @@ export default function Page() {
     if (catalogErr) {
       console.error("Errore caricamento catalogo", catalogErr);
     } else {
-      console.log("catalogItems", catalogItems);
       setCatalogItems((catalogItems || []) as CatalogItem[]);
     }
 
@@ -810,13 +813,11 @@ export default function Page() {
     load();
   }, []);
 
-  const closeDupModal = (reason: string) => {
-    console.log("[dupModal] close reason", reason);
+  const closeDupModal = (_reason?: string) => {
     setDupModalOpen(false);
   };
 
-  const closeAddIntervento = (reason: string) => {
-    console.log("[addIntervento] close reason", reason);
+  const closeAddIntervento = (_reason?: string) => {
     setAddInterventoOpen(false);
   };
 
@@ -906,7 +907,9 @@ export default function Page() {
       passo: passo.trim() ? passo.trim() : null,
       tipo_impianto: tipoImpianto || null,
       dimensioni: dimensioni.trim() ? dimensioni.trim() : null,
-      m2_inclusi: null,
+      numero_facce: 1,
+      m2_calcolati: calcM2FromDimensioni(dimensioni.trim() ? dimensioni.trim() : null, 1),
+      m2_inclusi: calcM2FromDimensioni(dimensioni.trim() ? dimensioni.trim() : null, 1),
       m2_allocati: null,
       garanzia_scadenza: garanziaScadenza.trim()
         ? garanziaScadenza.trim()
@@ -974,7 +977,6 @@ export default function Page() {
       }
 
       const rows = (tpl ?? []).map((t: any) => {
-        console.log("TEMPLATE sezione raw:", t.sezione, "mapped:", mapSezioneToInt(t.sezione));
         return {
         checklist_id: checklistId,
         sezione: mapSezioneToInt(t.sezione), // int4
@@ -2203,8 +2205,8 @@ export default function Page() {
                         </td>
                         <td style={{ padding: "10px 12px", opacity: 0.85 }}>{c.passo ?? "—"}</td>
                         <td style={{ padding: "10px 12px", opacity: 0.85, textAlign: "right" }}>
-                          {calcM2(c.dimensioni) != null
-                            ? calcM2(c.dimensioni)!.toFixed(2)
+                          {getChecklistM2(c) != null
+                            ? getChecklistM2(c)!.toFixed(2)
                             : "—"}
                         </td>
                         <td style={{ padding: "10px 12px", opacity: 0.85 }}>
