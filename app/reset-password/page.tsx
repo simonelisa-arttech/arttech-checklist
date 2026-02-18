@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 
@@ -11,10 +11,34 @@ export default function ResetPasswordPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+  const [sessionReady, setSessionReady] = useState(false);
+  const [hasSession, setHasSession] = useState(false);
+
+  useEffect(() => {
+    let mounted = true;
+    supabase.auth.getSession().then(({ data }) => {
+      if (!mounted) return;
+      setHasSession(Boolean(data.session));
+      setSessionReady(true);
+    });
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (!mounted) return;
+      setHasSession(Boolean(session));
+      setSessionReady(true);
+    });
+    return () => {
+      mounted = false;
+      sub.subscription.unsubscribe();
+    };
+  }, []);
 
   async function onSubmit(e: React.FormEvent) {
     e.preventDefault();
     setError(null);
+    if (!hasSession) {
+      setError("Sessione recovery mancante, richiedi di nuovo il reset.");
+      return;
+    }
     if (!password || password.length < 8) {
       setError("La password deve avere almeno 8 caratteri.");
       return;
@@ -31,7 +55,7 @@ export default function ResetPasswordPage() {
       return;
     }
     setSuccess(true);
-    setTimeout(() => router.replace("/login"), 1200);
+    setTimeout(() => router.replace("/login"), 1000);
   }
 
   return (
@@ -40,6 +64,11 @@ export default function ResetPasswordPage() {
       <div style={{ marginBottom: 20, fontSize: 12, opacity: 0.7 }}>
         Inserisci una nuova password
       </div>
+      {sessionReady && !hasSession && (
+        <div style={{ color: "#b45309", fontSize: 13, marginBottom: 10 }}>
+          Sessione recovery mancante, richiedi di nuovo il reset.
+        </div>
+      )}
       <form onSubmit={onSubmit} style={{ display: "grid", gap: 12 }}>
         <label>
           Nuova password<br />

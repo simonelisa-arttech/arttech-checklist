@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { supabase } from "@/lib/supabaseClient";
 
 type LoginFormProps = {
   redirectTo: string;
@@ -13,43 +14,61 @@ export default function LoginForm({ redirectTo }: LoginFormProps) {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [recoveryMsg, setRecoveryMsg] = useState<string | null>(null);
+  const buildStamp = "LOGIN BUILD v4";
 
-  async function onSubmit(e: React.FormEvent) {
+  async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
+    e.stopPropagation();
+    console.log("LOGIN handler called");
     setError(null);
+    setRecoveryMsg(null);
     setLoading(true);
 
-    const res = await fetch("/auth/login", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        email: email.trim(),
-        password,
-        redirectTo,
-      }),
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email: email,
+      password,
     });
+    console.log("Login signInWithPassword data:", data);
 
     setLoading(false);
 
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({}));
-      const msg = data?.error || "Credenziali non valide";
-      console.error("Login error", msg);
-      setError(msg);
+    if (error) {
+      console.error("Login signInWithPassword error:", error);
+      setError(error.message || "Credenziali non valide");
       return;
     }
 
-    console.log("Session after login (cookie set)");
     router.replace(redirectTo || "/");
+  }
+
+  async function onRecovery() {
+    setError(null);
+    setRecoveryMsg(null);
+    if (!email.trim()) {
+      setError("Inserisci prima l'email.");
+      return;
+    }
+    const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
+      redirectTo: `${window.location.origin}/auth/callback`,
+    });
+    if (error) {
+      setError(error.message);
+      return;
+    }
+    setRecoveryMsg("Email di recupero inviata. Controlla la posta.");
   }
 
   return (
     <div style={{ maxWidth: 420, margin: "80px auto", padding: 16 }}>
       <h1 style={{ marginBottom: 6 }}>Login</h1>
+      <div style={{ marginBottom: 8, fontSize: 11, opacity: 0.7 }}>
+        {buildStamp}
+      </div>
       <div style={{ marginBottom: 20, fontSize: 12, opacity: 0.7 }}>
         Accedi con email e password
       </div>
-      <form onSubmit={onSubmit} style={{ display: "grid", gap: 12 }}>
+      <form onSubmit={handleLogin} style={{ display: "grid", gap: 12 }}>
         <label>
           Email<br />
           <input
@@ -71,6 +90,9 @@ export default function LoginForm({ redirectTo }: LoginFormProps) {
           />
         </label>
         {error && <div style={{ color: "#b91c1c", fontSize: 13 }}>{error}</div>}
+        {recoveryMsg && (
+          <div style={{ color: "#166534", fontSize: 13 }}>{recoveryMsg}</div>
+        )}
         <button
           type="submit"
           disabled={loading}
@@ -84,6 +106,21 @@ export default function LoginForm({ redirectTo }: LoginFormProps) {
           }}
         >
           {loading ? "Accesso..." : "Accedi"}
+        </button>
+        <button
+          type="button"
+          onClick={onRecovery}
+          style={{
+            padding: "8px 10px",
+            borderRadius: 10,
+            border: "1px solid #d1d5db",
+            background: "white",
+            color: "#111",
+            cursor: "pointer",
+            fontSize: 12,
+          }}
+        >
+          Password dimenticata
         </button>
       </form>
     </div>
