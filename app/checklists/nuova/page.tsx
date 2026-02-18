@@ -203,8 +203,6 @@ export default function NuovaChecklistPage() {
   const [serialControlDeviceDescrizione, setSerialControlDeviceDescrizione] = useState("");
   const [serialControlNote, setSerialControlNote] = useState("");
   const [serialModuleInput, setSerialModuleInput] = useState("");
-  const [serialModuleDeviceCode, setSerialModuleDeviceCode] = useState("");
-  const [serialModuleDeviceDescrizione, setSerialModuleDeviceDescrizione] = useState("");
   const [serialModuleNote, setSerialModuleNote] = useState("");
   const [serialiControllo, setSerialiControllo] = useState<
     { seriale: string; note: string; device_code: string | null; device_descrizione: string | null }[]
@@ -362,10 +360,8 @@ export default function NuovaChecklistPage() {
 
   function addSerial(tipo: "CONTROLLO" | "MODULO_LED") {
     const raw = tipo === "CONTROLLO" ? serialControlInput : serialModuleInput;
-    const deviceCode =
-      tipo === "CONTROLLO" ? serialControlDeviceCode : serialModuleDeviceCode;
-    const deviceDescrizione =
-      tipo === "CONTROLLO" ? serialControlDeviceDescrizione : serialModuleDeviceDescrizione;
+    const deviceCode = tipo === "CONTROLLO" ? serialControlDeviceCode : "";
+    const deviceDescrizione = tipo === "CONTROLLO" ? serialControlDeviceDescrizione : "";
     const noteRaw = tipo === "CONTROLLO" ? serialControlNote : serialModuleNote;
     const seriale = normalizeSerial(raw);
     if (!seriale) {
@@ -400,8 +396,6 @@ export default function NuovaChecklistPage() {
         },
       ]);
       setSerialModuleInput("");
-      setSerialModuleDeviceCode("");
-      setSerialModuleDeviceDescrizione("");
       setSerialModuleNote("");
     }
   }
@@ -1017,23 +1011,6 @@ export default function NuovaChecklistPage() {
             <div style={{ border: "1px solid #eee", borderRadius: 10, padding: 10 }}>
               <div style={{ fontWeight: 700, marginBottom: 6 }}>Seriali moduli LED</div>
               <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
-                <select
-                  value={serialModuleDeviceCode}
-                  onChange={(e) => {
-                    const code = e.target.value;
-                    const selected = deviceOptions.find((d) => (d.codice ?? "") === code);
-                    setSerialModuleDeviceCode(code);
-                    setSerialModuleDeviceDescrizione(selected?.descrizione ?? "");
-                  }}
-                  style={{ width: "100%", padding: 8 }}
-                >
-                  <option value="">Device/Modello (opzionale)</option>
-                  {deviceOptions.map((item) => (
-                    <option key={item.id} value={item.codice ?? ""}>
-                      {item.codice ?? "—"} — {item.descrizione ?? "—"}
-                    </option>
-                  ))}
-                </select>
                 <input
                   value={serialModuleInput}
                   onChange={(e) => setSerialModuleInput(e.target.value)}
