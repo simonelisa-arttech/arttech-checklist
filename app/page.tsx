@@ -754,34 +754,21 @@ export default function Page() {
     }
 
     setOperatoreAssociationError(null);
-    const {
-      data: { user },
-      error: userErr,
-    } = await supabase.auth.getUser();
-    if (userErr || !user) {
+    const meRes = await fetch("/api/me-operatore");
+    const meData = await meRes.json().catch(() => ({}));
+    if (!meRes.ok || !meData?.operatore?.id) {
+      if (meData?.error) {
+        console.error("Errore risoluzione operatore corrente", meData.error);
+      }
       setCurrentOperatoreId("");
       setCurrentOperatoreLabel(null);
       setOperatoreAssociationError("Operatore non associato");
     } else {
-      const { data: myOperatore, error: myOperatoreErr } = await supabase
-        .from("operatori")
-        .select("*")
-        .eq("user_id", user.id)
-        .maybeSingle();
-      if (myOperatoreErr || !myOperatore || !myOperatore.id) {
-        if (myOperatoreErr) {
-          console.error("Errore lookup operatore by user_id", myOperatoreErr);
-        }
-        setCurrentOperatoreId("");
-        setCurrentOperatoreLabel(null);
-        setOperatoreAssociationError("Operatore non associato");
-      } else {
-        setCurrentOperatoreId(myOperatore.id);
-        setCurrentOperatoreLabel({
-          nome: myOperatore.nome ?? null,
-          ruolo: myOperatore.ruolo ?? null,
-        });
-      }
+      setCurrentOperatoreId(String(meData.operatore.id));
+      setCurrentOperatoreLabel({
+        nome: meData.operatore.nome ?? null,
+        ruolo: meData.operatore.ruolo ?? null,
+      });
     }
 
     setLoading(false);
