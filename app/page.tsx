@@ -8,6 +8,10 @@ import DashboardTable from "./components/DashboardTable";
 import Toast from "@/components/Toast";
 import { isSupabaseConfigured, supabase } from "@/lib/supabaseClient";
 
+const SHOW_DEBUG_AUTH =
+  process.env.NODE_ENV === "development" ||
+  process.env.NEXT_PUBLIC_DEBUG_AUTH === "1";
+
 const SAAS_PIANI = [
   { code: "SAS-PL", label: "CARE PLUS (ASSISTENZA BASE)" },
   { code: "SAS-PR", label: "CARE PREMIUM (ASSISTENZA AVANZATA + MONITORAGGIO)" },
@@ -1360,29 +1364,31 @@ export default function Page() {
           <div style={{ marginTop: 2, fontSize: 12, opacity: 0.7 }}>DASH BOARD</div>
         </div>
 
-        <div
-          style={{
-            padding: "8px 10px",
-            borderRadius: 8,
-            border: "1px dashed #ef4444",
-            fontSize: 12,
-            background: "#fff7ed",
-            color: "#7c2d12",
-            maxWidth: 380,
-          }}
-        >
-          <div style={{ fontWeight: 700, marginBottom: 4 }}>DEBUG AUTH</div>
-          <div>href: {debugLocation || "—"}</div>
-          <div>cookie sb-*: {debugCookieHasSb === null ? "—" : String(debugCookieHasSb)}</div>
-          <div>
-            localStorage keys: {debugLocalKeys.length ? debugLocalKeys.join(", ") : "—"}
+        {SHOW_DEBUG_AUTH && (
+          <div
+            style={{
+              padding: "8px 10px",
+              borderRadius: 8,
+              border: "1px dashed #ef4444",
+              fontSize: 12,
+              background: "#fff7ed",
+              color: "#7c2d12",
+              maxWidth: 380,
+            }}
+          >
+            <div style={{ fontWeight: 700, marginBottom: 4 }}>DEBUG AUTH</div>
+            <div>href: {debugLocation || "—"}</div>
+            <div>cookie sb-*: {debugCookieHasSb === null ? "—" : String(debugCookieHasSb)}</div>
+            <div>
+              localStorage keys: {debugLocalKeys.length ? debugLocalKeys.join(", ") : "—"}
+            </div>
+            <div>
+              session:{" "}
+              {debugSessionLoading ? "loading" : debugSessionEmail ? debugSessionEmail : "—"}
+            </div>
+            <div>operatore: {currentOperatoreId || "—"}</div>
           </div>
-          <div>
-            session:{" "}
-            {debugSessionLoading ? "loading" : debugSessionEmail ? debugSessionEmail : "—"}
-          </div>
-          <div>operatore: {currentOperatoreId || "—"}</div>
-        </div>
+        )}
 
         <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 10 }}>
           <label style={{ fontSize: 12 }}>
