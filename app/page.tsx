@@ -8,9 +8,6 @@ import DashboardTable from "./components/DashboardTable";
 import Toast from "@/components/Toast";
 import { isSupabaseConfigured, supabase } from "@/lib/supabaseClient";
 
-const SHOW_DEBUG_AUTH =
-  process.env.NEXT_PUBLIC_DEBUG_AUTH === "true";
-
 const SAAS_PIANI = [
   { code: "SAS-PL", label: "CARE PLUS (ASSISTENZA BASE)" },
   { code: "SAS-PR", label: "CARE PREMIUM (ASSISTENZA AVANZATA + MONITORAGGIO)" },
@@ -225,6 +222,7 @@ type OperatoreRow = {
   id: string;
   user_id?: string | null;
   nome: string | null;
+  ruolo?: string | null;
   attivo: boolean;
 };
 
@@ -290,6 +288,10 @@ export default function Page() {
   const [showForm, setShowForm] = useState(false);
   const [catalogItems, setCatalogItems] = useState<CatalogItem[]>([]);
   const [currentOperatoreId, setCurrentOperatoreId] = useState<string>("");
+  const [currentOperatoreLabel, setCurrentOperatoreLabel] = useState<{
+    nome: string | null;
+    ruolo: string | null;
+  } | null>(null);
   const [operatoreAssociationError, setOperatoreAssociationError] = useState<string | null>(null);
   const [expandedSaasNoteId, setExpandedSaasNoteId] = useState<string | null>(null);
   const [serialsByChecklistId, setSerialsByChecklistId] = useState<
@@ -313,6 +315,7 @@ export default function Page() {
   const [debugLocalKeys, setDebugLocalKeys] = useState<string[]>([]);
   const [debugSessionEmail, setDebugSessionEmail] = useState<string | null>(null);
   const [debugSessionLoading, setDebugSessionLoading] = useState<boolean>(true);
+  const [debugForcedByQuery, setDebugForcedByQuery] = useState(false);
 
   // campi testata
   const [cliente, setCliente] = useState("");
@@ -346,6 +349,8 @@ export default function Page() {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    setDebugForcedByQuery(params.get("debug") === "1");
     setDebugLocation(window.location.href);
     setDebugCookieHasSb(document.cookie.includes("sb-"));
     const keys = Object.keys(localStorage).filter(
@@ -364,6 +369,8 @@ export default function Page() {
         setDebugSessionLoading(false);
       });
   }, []);
+
+  const showDebugAuth = process.env.NODE_ENV !== "production" || debugForcedByQuery;
 
   const isUltraOrPremium =
     saasPiano.startsWith("SAS-UL") || saasPiano.startsWith("SAS-PR");
@@ -753,6 +760,7 @@ export default function Page() {
     } = await supabase.auth.getUser();
     if (userErr || !user) {
       setCurrentOperatoreId("");
+      setCurrentOperatoreLabel(null);
       setOperatoreAssociationError("Operatore non associato");
     } else {
       const { data: myOperatore, error: myOperatoreErr } = await supabase
@@ -765,9 +773,14 @@ export default function Page() {
           console.error("Errore lookup operatore by user_id", myOperatoreErr);
         }
         setCurrentOperatoreId("");
+        setCurrentOperatoreLabel(null);
         setOperatoreAssociationError("Operatore non associato");
       } else {
         setCurrentOperatoreId(myOperatore.id);
+        setCurrentOperatoreLabel({
+          nome: myOperatore.nome ?? null,
+          ruolo: myOperatore.ruolo ?? null,
+        });
       }
     }
 
@@ -1354,7 +1367,7 @@ export default function Page() {
           <div style={{ marginTop: 2, fontSize: 12, opacity: 0.7 }}>DASH BOARD</div>
         </div>
 
-        {SHOW_DEBUG_AUTH && (
+        {showDebugAuth && (
           <div
             style={{
               padding: "8px 10px",
@@ -1431,11 +1444,16 @@ export default function Page() {
         </div>
       </div>
 
-      {!!operatoreAssociationError && (
+      {operatoreAssociationError ? (
         <div style={{ marginTop: 8, fontSize: 12, color: "#991b1b" }}>
           Operatore non associato
         </div>
-      )}
+      ) : currentOperatoreLabel ? (
+        <div style={{ marginTop: 8, fontSize: 12, color: "#166534" }}>
+          Operatore: {currentOperatoreLabel.nome || "—"}
+          {currentOperatoreLabel.ruolo ? ` (${currentOperatoreLabel.ruolo})` : ""}
+        </div>
+      ) : null}
 
       {/* Nuova checklist spostata su /checklists/nuova */}
 
