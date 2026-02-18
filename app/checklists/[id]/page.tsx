@@ -8,7 +8,7 @@ import ClientiCombobox from "@/components/ClientiCombobox";
 import Toast from "@/components/Toast";
 import { isSupabaseConfigured, supabase } from "@/lib/supabaseClient";
 import { sendAlert } from "@/lib/sendAlert";
-import { parseDimensioniToM2, calcM2Totale } from "@/lib/parseDimensioni";
+import { calcM2FromDimensioni, parseDimensioniToWH } from "@/lib/parseDimensioni";
 
 type Checklist = {
   id: string;
@@ -31,7 +31,10 @@ type Checklist = {
   data_tassativa: string | null;
   tipo_impianto: string | null;
   impianto_indirizzo: string | null;
+  impianto_codice: string | null;
+  impianto_descrizione: string | null;
   dimensioni: string | null;
+  numero_facce: number | null;
   passo: string | null;
   note: string | null;
   tipo_struttura: string | null;
@@ -57,7 +60,6 @@ type ChecklistItem = {
   descrizione: string | null;
   quantita: number | null;
   note: string | null;
-  dimensioni?: string | null;
   created_at: string;
 };
 
@@ -68,7 +70,6 @@ type ChecklistItemRow = {
   descrizione: string;
   descrizione_custom?: string;
   quantita: string;
-  dimensioni: string;
   note: string;
   search?: string;
 };
@@ -140,6 +141,8 @@ type AssetSerial = {
   id: string;
   checklist_id: string;
   tipo: "CONTROLLO" | "MODULO_LED";
+  device_code: string | null;
+  device_descrizione: string | null;
   seriale: string;
   note: string | null;
   created_at: string | null;
@@ -185,7 +188,10 @@ type FormData = {
   data_tassativa: string;
   tipo_impianto: string;
   impianto_indirizzo: string;
+  impianto_codice: string;
+  impianto_descrizione: string;
   dimensioni: string;
+  numero_facce: number;
   passo: string;
   note: string;
   tipo_struttura: string;
@@ -238,10 +244,9 @@ function normalizeCustomCode(code: string) {
   return isCustomCode(code) ? "CUSTOM" : code;
 }
 
-function calcFallbackM2(dimensioni: string | null): number | null {
-  const area = parseDimensioniToM2(dimensioni || null);
-  if (!area) return null;
-  return Math.round(area * 100) / 100;
+function startsWithTecOrSas(value?: string | null) {
+  const v = String(value ?? "").trim().toUpperCase();
+  return v.startsWith("TEC") || v.startsWith("SAS");
 }
 
 function logSupabaseError(label: string, err: any) {
@@ -455,6 +460,7 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
   const [originalRowIds, setOriginalRowIds] = useState<string[]>([]);
   const [tasks, setTasks] = useState<ChecklistTask[]>([]);
   const [catalogItems, setCatalogItems] = useState<CatalogItem[]>([]);
+  const [deviceCatalogItems, setDeviceCatalogItems] = useState<CatalogItem[]>([]);
   const [catalogLoaded, setCatalogLoaded] = useState(false);
   const [licenze, setLicenze] = useState<Licenza[]>([]);
   const [newLicenza, setNewLicenza] = useState<NewLicenza>({
@@ -484,7 +490,11 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
   } | null>(null);
   const [assetSerials, setAssetSerials] = useState<AssetSerial[]>([]);
   const [serialControlInput, setSerialControlInput] = useState("");
+  const [serialControlDeviceCode, setSerialControlDeviceCode] = useState("");
+  const [serialControlDeviceDescrizione, setSerialControlDeviceDescrizione] = useState("");
   const [serialModuleInput, setSerialModuleInput] = useState("");
+  const [serialModuleDeviceCode, setSerialModuleDeviceCode] = useState("");
+  const [serialModuleDeviceDescrizione, setSerialModuleDeviceDescrizione] = useState("");
   const [serialControlNote, setSerialControlNote] = useState("");
   const [serialModuleNote, setSerialModuleNote] = useState("");
   const [serialsError, setSerialsError] = useState<string | null>(null);
@@ -546,7 +556,9 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
   async function addSerial(
     tipo: "CONTROLLO" | "MODULO_LED",
     raw: string,
-    noteRaw: string
+    noteRaw: string,
+    deviceCodeRaw?: string,
+    deviceDescrizioneRaw?: string
   ) {
     if (!id) return;
     const seriale = normalizeSerial(raw);
@@ -559,9 +571,18 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
       return;
     }
     setSerialsError(null);
+    const deviceCode = String(deviceCodeRaw ?? "").trim();
+    const deviceDescrizione = String(deviceDescrizioneRaw ?? "").trim();
     const { data, error: err } = await supabase
       .from("asset_serials")
-      .insert({ checklist_id: id, tipo, seriale, note: noteRaw?.trim() || null })
+      .insert({
+        checklist_id: id,
+        tipo,
+        device_code: deviceCode || null,
+        device_descrizione: deviceDescrizione || null,
+        seriale,
+        note: noteRaw?.trim() || null,
+      })
       .select("*")
       .single();
     if (err) {
@@ -575,8 +596,12 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
     }
     setAssetSerials((prev) => [...prev, data as AssetSerial]);
     if (tipo === "CONTROLLO") setSerialControlInput("");
+    if (tipo === "CONTROLLO") setSerialControlDeviceCode("");
+    if (tipo === "CONTROLLO") setSerialControlDeviceDescrizione("");
     if (tipo === "CONTROLLO") setSerialControlNote("");
     if (tipo === "MODULO_LED") setSerialModuleInput("");
+    if (tipo === "MODULO_LED") setSerialModuleDeviceCode("");
+    if (tipo === "MODULO_LED") setSerialModuleDeviceDescrizione("");
     if (tipo === "MODULO_LED") setSerialModuleNote("");
     showToast("Seriale aggiunto");
   }
@@ -670,7 +695,10 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
       data_tassativa: toDateInput(c.data_tassativa),
       tipo_impianto: c.tipo_impianto ?? "",
       impianto_indirizzo: c.impianto_indirizzo ?? "",
+      impianto_codice: c.impianto_codice ?? "",
+      impianto_descrizione: c.impianto_descrizione ?? "",
       dimensioni: c.dimensioni ?? "",
+      numero_facce: Number(c.numero_facce ?? 1) > 1 ? 2 : 1,
       passo: c.passo ?? "",
       note: c.note ?? "",
       tipo_struttura: c.tipo_struttura ?? "",
@@ -776,11 +804,22 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
         .select("id, codice, descrizione, tipo, categoria, attivo")
         .eq("attivo", true)
         .order("descrizione", { ascending: true });
+      const { data: deviceData, error: deviceErr } = await supabase
+        .from("catalog_items")
+        .select("id, codice, descrizione, tipo, categoria, attivo")
+        .eq("attivo", true)
+        .ilike("codice", "EL-%")
+        .order("descrizione", { ascending: true });
 
       if (catalogErr) {
         console.error("Errore caricamento catalogo", catalogErr);
       } else {
         setCatalogItems((catalogData || []) as CatalogItem[]);
+      }
+      if (deviceErr) {
+        console.error("Errore caricamento device/modelli (EL-%)", deviceErr);
+      } else {
+        setDeviceCatalogItems((deviceData || []) as CatalogItem[]);
       }
       setCatalogLoaded(true);
     }
@@ -796,7 +835,6 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
         descrizione: isCustom ? "Altro / Fuori catalogo" : r.descrizione ?? "",
         descrizione_custom: isCustom ? r.descrizione ?? "" : "",
         quantita: r.quantita != null ? String(r.quantita) : "",
-        dimensioni: r.dimensioni ?? "",
         note: r.note ?? "",
         search: "",
       };
@@ -938,6 +976,24 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
     })();
   }, []);
 
+  const m2Calcolati = calcM2FromDimensioni(
+    formData?.dimensioni ?? null,
+    formData?.numero_facce ?? 1
+  );
+  const m2DebugWH = parseDimensioniToWH(formData?.dimensioni ?? null);
+
+  useEffect(() => {
+    if (process.env.NODE_ENV === "production") return;
+    console.log("[M2 DEBUG][checklist dettaglio]", {
+      larghezza: m2DebugWH?.larghezza ?? null,
+      altezza: m2DebugWH?.altezza ?? null,
+      numero_facce: formData?.numero_facce ?? 1,
+      passo: formData?.passo ?? null,
+      mq_calcolati: m2Calcolati,
+      mq_salvati: checklist?.m2_inclusi ?? null,
+    });
+  }, [m2DebugWH, formData?.numero_facce, formData?.passo, m2Calcolati, checklist?.m2_inclusi]);
+
   if (loading) return <div style={{ padding: 20 }}>Caricamento…</div>;
   if (error) return <div style={{ padding: 20, color: "crimson" }}>{error}</div>;
   if (!checklist) return <div style={{ padding: 20 }}>Checklist non trovata</div>;
@@ -946,13 +1002,17 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
     const code = (item.codice ?? "").toUpperCase();
     return code.startsWith("STR-") || code === "TEC-STRCT";
   });
+  const impiantoOptions = catalogItems.filter((item) =>
+    (item.codice ?? "").toUpperCase().startsWith("TEC")
+  );
+  const vociProdottiOptions = catalogItems.filter((item) => {
+    if (item.attivo === false) return false;
+    const code = (item.codice ?? "").toUpperCase();
+    return !(code.startsWith("TEC") || code.startsWith("SAS"));
+  });
+  const deviceOptions = deviceCatalogItems;
   const serialiControllo = assetSerials.filter((s) => s.tipo === "CONTROLLO");
   const serialiModuli = assetSerials.filter((s) => s.tipo === "MODULO_LED");
-  const righeM2 = calcM2Totale(
-    rows.map((r) => ({ dimensioni: r.dimensioni, qty: r.quantita }))
-  );
-  const hasRowDims = rows.some((r) => r.dimensioni.trim().length > 0);
-  const m2Calcolati = hasRowDims ? righeM2 : calcFallbackM2(formData?.dimensioni ?? null);
 
   function updateRowFields(idx: number, patch: Partial<ChecklistItemRow>) {
     setRows((prev) => {
@@ -1121,7 +1181,6 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
         descrizione: "",
         descrizione_custom: "",
         quantita: "",
-        dimensioni: "",
         note: "",
         search: "",
       },
@@ -1381,11 +1440,7 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
     if (!id || !formData) return;
     setItemsError(null);
 
-    const righeM2 = calcM2Totale(
-      rows.map((r) => ({ dimensioni: r.dimensioni, qty: r.quantita }))
-    );
-    const hasRowDims = rows.some((r) => r.dimensioni.trim().length > 0);
-    const m2Calcolati = hasRowDims ? righeM2 : calcFallbackM2(formData.dimensioni);
+    const m2Calcolati = calcM2FromDimensioni(formData.dimensioni, formData.numero_facce);
 
     const payload = {
       cliente: formData.cliente.trim() ? formData.cliente.trim() : null,
@@ -1420,7 +1475,17 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
       impianto_indirizzo: formData.impianto_indirizzo.trim()
         ? formData.impianto_indirizzo.trim()
         : null,
+      impianto_codice: formData.impianto_codice.trim()
+        ? formData.impianto_codice.trim()
+        : null,
+      impianto_descrizione: formData.impianto_descrizione.trim()
+        ? formData.impianto_descrizione.trim()
+        : null,
       dimensioni: formData.dimensioni.trim() ? formData.dimensioni.trim() : null,
+      numero_facce:
+        Number.isFinite(Number(formData.numero_facce)) && Number(formData.numero_facce) > 0
+          ? Number(formData.numero_facce)
+          : 1,
       passo: formData.passo.trim() ? formData.passo.trim() : null,
       note: formData.note.trim() ? formData.note.trim() : null,
       tipo_struttura: formData.tipo_struttura.trim()
@@ -1479,7 +1544,6 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
         descrizione: r.descrizione.trim(),
         descrizione_custom: (r.descrizione_custom ?? "").trim(),
         quantita: r.quantita.trim(),
-        dimensioni: r.dimensioni.trim(),
         note: r.note.trim(),
       }))
       .filter((r) => {
@@ -1488,8 +1552,7 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
           r.descrizione ||
           r.descrizione_custom ||
           r.quantita ||
-          r.note ||
-          r.dimensioni
+          r.note
         );
       });
 
@@ -1500,6 +1563,17 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
       }
       if (isCustomCode(r.codice) && r.descrizione_custom === "") {
         setItemsError("Inserisci la descrizione per la voce fuori catalogo.");
+        return;
+      }
+      if (!isCustomCode(r.codice) && startsWithTecOrSas(r.codice)) {
+        setItemsError("TEC e SAS si gestiscono nelle sezioni dedicate.");
+        return;
+      }
+      if (
+        isCustomCode(r.codice) &&
+        (startsWithTecOrSas(r.descrizione_custom) || startsWithTecOrSas(r.descrizione))
+      ) {
+        setItemsError("TEC e SAS si gestiscono nelle sezioni dedicate.");
         return;
       }
       if (!r.codice || (!isCustomCode(r.codice) && !r.descrizione)) {
@@ -1521,7 +1595,6 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
           : null,
         quantita: r.quantita === "" ? null : Number(r.quantita),
         note: r.note ? r.note : null,
-        dimensioni: r.dimensioni ? r.dimensioni : null,
       }));
 
     if (existingPayload.length > 0) {
@@ -1548,7 +1621,6 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
           : null,
         quantita: r.quantita === "" ? null : Number(r.quantita),
         note: r.note ? r.note : null,
-        dimensioni: r.dimensioni ? r.dimensioni : null,
       }));
 
     if (insertPayload.length > 0) {
@@ -1947,40 +2019,85 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
           >
             <div style={{ fontWeight: 800, marginBottom: 6 }}>IMPIANTO</div>
             <FieldRow
+              label="Descrizione impianto (TEC)"
+              view={
+                checklist.impianto_codice
+                  ? `${checklist.impianto_codice} — ${checklist.impianto_descrizione || "—"}`
+                  : "—"
+              }
+              edit={
+                isEdit ? (
+                  <select
+                    value={formData.impianto_codice}
+                    onChange={(e) => {
+                      const code = e.target.value;
+                      const selected = impiantoOptions.find((i) => (i.codice ?? "") === code);
+                      setFormData({
+                        ...formData,
+                        impianto_codice: code,
+                        impianto_descrizione: selected?.descrizione ?? "",
+                      });
+                    }}
+                    style={{ width: "100%", padding: 10 }}
+                  >
+                    <option value="">— seleziona impianto TEC —</option>
+                    {impiantoOptions.map((item) => (
+                      <option key={item.id} value={item.codice ?? ""}>
+                        {item.codice ?? "—"} — {item.descrizione ?? "—"}
+                      </option>
+                    ))}
+                  </select>
+                ) : undefined
+              }
+              isEdit={isEdit}
+            />
+            <FieldRow
               label="Dimensioni + m²"
               view={`${checklist.dimensioni || "—"} — ${
                 m2Calcolati != null ? m2Calcolati.toFixed(2) : "—"
-              }`}
+              } (${checklist.numero_facce ?? 1} facce)`}
               edit={
                 isEdit ? (
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 140px", gap: 10 }}>
-                    <input
-                      value={dimensioniLocal}
-                      onChange={(e) => {
-                        const value = e.target.value;
-                        setDimensioniLocal(value);
-                        setFormData((prev) => (prev ? { ...prev, dimensioni: value } : prev));
-                      }}
-                      readOnly={false}
-                      disabled={false}
-                      placeholder="Es: 3x2"
-                      style={{ width: "100%", padding: 10 }}
-                    />
-                    <div
-                      style={{
-                        width: "100%",
-                        padding: 10,
-                        background: "#f7f7f7",
-                        borderRadius: 6,
-                        border: "1px solid #e5e7eb",
-                        fontSize: 13,
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "flex-start",
-                      }}
-                    >
-                      {m2Calcolati != null ? m2Calcolati.toFixed(2) : ""}
+                  <div style={{ display: "grid", gap: 8 }}>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 140px", gap: 10 }}>
+                      <input
+                        value={dimensioniLocal}
+                        onChange={(e) => {
+                          const value = e.target.value;
+                          setDimensioniLocal(value);
+                          setFormData((prev) => (prev ? { ...prev, dimensioni: value } : prev));
+                        }}
+                        readOnly={false}
+                        disabled={false}
+                        placeholder="Es: 3x2"
+                        style={{ width: "100%", padding: 10 }}
+                      />
+                      <div
+                        style={{
+                          width: "100%",
+                          padding: 10,
+                          background: "#f7f7f7",
+                          borderRadius: 6,
+                          border: "1px solid #e5e7eb",
+                          fontSize: 13,
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "flex-start",
+                        }}
+                      >
+                        {m2Calcolati != null ? m2Calcolati.toFixed(2) : ""}
+                      </div>
                     </div>
+                    <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>
+                      <input
+                        type="checkbox"
+                        checked={formData.numero_facce === 2}
+                        onChange={(e) =>
+                          setFormData({ ...formData, numero_facce: e.target.checked ? 2 : 1 })
+                        }
+                      />
+                      Bifacciale ({formData.numero_facce} facce)
+                    </label>
                   </div>
                 ) : undefined
               }
@@ -2213,6 +2330,23 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
             </div>
             {editMode && (
               <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+                <select
+                  value={serialControlDeviceCode}
+                  onChange={(e) => {
+                    const code = e.target.value;
+                    const selected = deviceOptions.find((d) => (d.codice ?? "") === code);
+                    setSerialControlDeviceCode(code);
+                    setSerialControlDeviceDescrizione(selected?.descrizione ?? "");
+                  }}
+                  style={{ width: "100%", padding: 8 }}
+                >
+                  <option value="">Device/Modello (EL-%)</option>
+                  {deviceOptions.map((item) => (
+                    <option key={item.id} value={item.codice ?? ""}>
+                      {item.codice ?? "—"} — {item.descrizione ?? "—"}
+                    </option>
+                  ))}
+                </select>
                 <input
                   value={serialControlInput}
                   onChange={(e) => setSerialControlInput(e.target.value)}
@@ -2220,7 +2354,13 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
                   style={{ width: "100%", padding: 8 }}
                   onKeyDown={(e) => {
                     if (e.key === "Enter")
-                      addSerial("CONTROLLO", serialControlInput, serialControlNote);
+                      addSerial(
+                        "CONTROLLO",
+                        serialControlInput,
+                        serialControlNote,
+                        serialControlDeviceCode,
+                        serialControlDeviceDescrizione
+                      );
                   }}
                 />
                 <input
@@ -2231,7 +2371,15 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
                 />
                 <button
                   type="button"
-                  onClick={() => addSerial("CONTROLLO", serialControlInput, serialControlNote)}
+                  onClick={() =>
+                    addSerial(
+                      "CONTROLLO",
+                      serialControlInput,
+                      serialControlNote,
+                      serialControlDeviceCode,
+                      serialControlDeviceDescrizione
+                    )
+                  }
                   style={{
                     padding: "6px 10px",
                     borderRadius: 8,
@@ -2269,6 +2417,12 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
                     }}
                   >
                     {s.seriale}
+                    {s.device_code ? (
+                      <span style={{ opacity: 0.85, fontWeight: 600 }}>
+                        [{s.device_code}
+                        {s.device_descrizione ? ` - ${s.device_descrizione}` : ""}]
+                      </span>
+                    ) : null}
                     {s.note ? (
                       <span style={{ opacity: 0.7, fontWeight: 500 }}>{s.note}</span>
                     ) : null}
@@ -2317,6 +2471,23 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
             <div style={{ fontWeight: 800, marginBottom: 6 }}>Seriali moduli LED</div>
             {editMode && (
               <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+                <select
+                  value={serialModuleDeviceCode}
+                  onChange={(e) => {
+                    const code = e.target.value;
+                    const selected = deviceOptions.find((d) => (d.codice ?? "") === code);
+                    setSerialModuleDeviceCode(code);
+                    setSerialModuleDeviceDescrizione(selected?.descrizione ?? "");
+                  }}
+                  style={{ width: "100%", padding: 8 }}
+                >
+                  <option value="">Device/Modello (EL-%)</option>
+                  {deviceOptions.map((item) => (
+                    <option key={item.id} value={item.codice ?? ""}>
+                      {item.codice ?? "—"} — {item.descrizione ?? "—"}
+                    </option>
+                  ))}
+                </select>
                 <input
                   value={serialModuleInput}
                   onChange={(e) => setSerialModuleInput(e.target.value)}
@@ -2324,7 +2495,13 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
                   style={{ width: "100%", padding: 8 }}
                   onKeyDown={(e) => {
                     if (e.key === "Enter")
-                      addSerial("MODULO_LED", serialModuleInput, serialModuleNote);
+                      addSerial(
+                        "MODULO_LED",
+                        serialModuleInput,
+                        serialModuleNote,
+                        serialModuleDeviceCode,
+                        serialModuleDeviceDescrizione
+                      );
                   }}
                 />
                 <input
@@ -2335,7 +2512,15 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
                 />
                 <button
                   type="button"
-                  onClick={() => addSerial("MODULO_LED", serialModuleInput, serialModuleNote)}
+                  onClick={() =>
+                    addSerial(
+                      "MODULO_LED",
+                      serialModuleInput,
+                      serialModuleNote,
+                      serialModuleDeviceCode,
+                      serialModuleDeviceDescrizione
+                    )
+                  }
                   style={{
                     padding: "6px 10px",
                     borderRadius: 8,
@@ -2373,6 +2558,12 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
                     }}
                   >
                     {s.seriale}
+                    {s.device_code ? (
+                      <span style={{ opacity: 0.85, fontWeight: 600 }}>
+                        [{s.device_code}
+                        {s.device_descrizione ? ` - ${s.device_descrizione}` : ""}]
+                      </span>
+                    ) : null}
                     {s.note ? (
                       <span style={{ opacity: 0.7, fontWeight: 500 }}>{s.note}</span>
                     ) : null}
@@ -3237,7 +3428,7 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
             <div
               style={{
                 display: "grid",
-                gridTemplateColumns: "160px 1fr 120px 140px 1fr",
+                gridTemplateColumns: "160px 1fr 120px 1fr",
                 gap: 0,
                 padding: 10,
                 fontWeight: 700,
@@ -3247,7 +3438,6 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
               <div>Codice</div>
               <div>Descrizione</div>
               <div>Q.tà</div>
-              <div>Dimensioni</div>
               <div>Note</div>
             </div>
 
@@ -3256,7 +3446,7 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
                 key={r.id ?? r.client_id}
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "160px 1fr 120px 140px 1fr",
+                  gridTemplateColumns: "160px 1fr 120px 1fr",
                   gap: 0,
                   padding: 10,
                   borderBottom: "1px solid #f1f1f1",
@@ -3267,7 +3457,6 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
                   {isCustomCode(r.codice) ? r.descrizione_custom || "—" : r.descrizione || "—"}
                 </div>
                 <div>{r.quantita || "—"}</div>
-                <div>{r.dimensioni || "—"}</div>
                 <div>{r.note || "—"}</div>
               </div>
             ))}
@@ -3289,7 +3478,7 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
               <div
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "160px 1fr 120px 140px 1fr 120px",
+                  gridTemplateColumns: "160px 1fr 120px 1fr 120px",
                   gap: 10,
                   alignItems: "center",
                 }}
@@ -3307,7 +3496,7 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
                   Descrizione<br />
                   <input
                     type="text"
-                    placeholder="Cerca per codice o descrizione (es. SRV-, TEC-SC, LED...)"
+                    placeholder="Cerca per codice o descrizione (extra/accessori)"
                     value={r.search ?? ""}
                     onChange={(e) => updateRowFields(idx, { search: e.target.value })}
                     style={{ width: "100%", padding: 10, marginBottom: 8 }}
@@ -3324,7 +3513,7 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
                         });
                         return;
                       }
-                      const selected = catalogItems.find(
+                      const selected = vociProdottiOptions.find(
                         (c) => c.descrizione === value
                       );
                       updateRowFields(idx, {
@@ -3337,8 +3526,7 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
                   >
                     <option value="">— seleziona prodotto / servizio —</option>
                     <option value="__CUSTOM__">Altro / Fuori catalogo</option>
-                    {catalogItems
-                      .filter((item) => item.attivo !== false)
+                    {vociProdottiOptions
                       .filter((item) => {
                         const s = (r.search ?? "").trim().toLowerCase();
                         if (!s) return true;
@@ -3385,16 +3573,6 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
                     type="number"
                     value={r.quantita}
                     onChange={(e) => updateRowFields(idx, { quantita: e.target.value })}
-                    style={{ width: "100%", padding: 10 }}
-                  />
-                </label>
-
-                <label>
-                  Dimensioni<br />
-                  <input
-                    value={r.dimensioni}
-                    onChange={(e) => updateRowFields(idx, { dimensioni: e.target.value })}
-                    placeholder="Es. 4x2"
                     style={{ width: "100%", padding: 10 }}
                   />
                 </label>

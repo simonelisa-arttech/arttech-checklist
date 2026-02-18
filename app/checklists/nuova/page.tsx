@@ -8,7 +8,7 @@ import ClientiCombobox from "@/components/ClientiCombobox";
 import ClienteModal, { ClienteRecord } from "@/components/ClienteModal";
 import { isSupabaseConfigured, supabase } from "@/lib/supabaseClient";
 import { sendAlert } from "@/lib/sendAlert";
-import { parseDimensioniToM2, calcM2Totale } from "@/lib/parseDimensioni";
+import { calcM2FromDimensioni, parseDimensioniToWH } from "@/lib/parseDimensioni";
 
 const SAAS_PIANI = [
   { code: "SAS-PL", label: "CARE PLUS (ASSISTENZA BASE)" },
@@ -42,7 +42,6 @@ type ChecklistItem = {
   descrizione: string;
   descrizione_custom?: string;
   qty: string;
-  dimensioni: string;
   note: string;
   search?: string;
   categoria_filter?: string;
@@ -162,10 +161,9 @@ function normalizeCustomCode(code: string) {
   return isCustomCode(code) ? "CUSTOM" : code;
 }
 
-function calcFallbackM2(dimensioni: string | null): number | null {
-  const area = parseDimensioniToM2(dimensioni || null);
-  if (!area) return null;
-  return Math.round(area * 100) / 100;
+function startsWithTecOrSas(value?: string | null) {
+  const v = String(value ?? "").trim().toUpperCase();
+  return v.startsWith("TEC") || v.startsWith("SAS");
 }
 
 export default function NuovaChecklistPage() {
@@ -174,6 +172,7 @@ export default function NuovaChecklistPage() {
   }
   const router = useRouter();
   const [catalogItems, setCatalogItems] = useState<CatalogItem[]>([]);
+  const [deviceCatalogItems, setDeviceCatalogItems] = useState<CatalogItem[]>([]);
   const [currentOperatoreId, setCurrentOperatoreId] = useState<string>("");
 
   // campi testata
@@ -194,18 +193,25 @@ export default function NuovaChecklistPage() {
   const [passo, setPasso] = useState("");
   const [tipoImpianto, setTipoImpianto] = useState<"INDOOR" | "OUTDOOR" | "">("");
   const [impiantoIndirizzo, setImpiantoIndirizzo] = useState("");
+  const [impiantoCodice, setImpiantoCodice] = useState("");
+  const [impiantoDescrizione, setImpiantoDescrizione] = useState("");
   const [dimensioni, setDimensioni] = useState("");
+  const [numeroFacce, setNumeroFacce] = useState(1);
   const [garanziaScadenza, setGaranziaScadenza] = useState("");
   const [serialControlInput, setSerialControlInput] = useState("");
+  const [serialControlDeviceCode, setSerialControlDeviceCode] = useState("");
+  const [serialControlDeviceDescrizione, setSerialControlDeviceDescrizione] = useState("");
   const [serialControlNote, setSerialControlNote] = useState("");
   const [serialModuleInput, setSerialModuleInput] = useState("");
+  const [serialModuleDeviceCode, setSerialModuleDeviceCode] = useState("");
+  const [serialModuleDeviceDescrizione, setSerialModuleDeviceDescrizione] = useState("");
   const [serialModuleNote, setSerialModuleNote] = useState("");
-  const [serialiControllo, setSerialiControllo] = useState<{ seriale: string; note: string }[]>(
-    []
-  );
-  const [serialiModuli, setSerialiModuli] = useState<{ seriale: string; note: string }[]>(
-    []
-  );
+  const [serialiControllo, setSerialiControllo] = useState<
+    { seriale: string; note: string; device_code: string | null; device_descrizione: string | null }[]
+  >([]);
+  const [serialiModuli, setSerialiModuli] = useState<
+    { seriale: string; note: string; device_code: string | null; device_descrizione: string | null }[]
+  >([]);
   const [serialsError, setSerialsError] = useState<string | null>(null);
   const [ultraScope, setUltraScope] = useState<"CLIENTE" | "CHECKLIST">("CLIENTE");
   const [ultraInclusi, setUltraInclusi] = useState<string>("");
@@ -216,7 +222,6 @@ export default function NuovaChecklistPage() {
       codice: "",
       descrizione: "",
       qty: "",
-      dimensioni: "",
       note: "",
       search: "",
       categoria_filter: "",
@@ -229,10 +234,16 @@ export default function NuovaChecklistPage() {
     note: "",
   });
   const [licenzeError, setLicenzeError] = useState<string | null>(null);
+  const [lastSavedM2, setLastSavedM2] = useState<number | null>(null);
 
   const canCreate = useMemo(() => {
     return nomeChecklist.trim().length > 0 && cliente.trim().length > 0;
   }, [cliente, nomeChecklist]);
+  const m2Calcolati = useMemo(
+    () => calcM2FromDimensioni(dimensioni, numeroFacce),
+    [dimensioni, numeroFacce]
+  );
+  const m2DebugWH = useMemo(() => parseDimensioniToWH(dimensioni), [dimensioni]);
 
   const isUltraOrPremium =
     saasPiano.startsWith("SAS-UL") || saasPiano.startsWith("SAS-PR");
@@ -243,6 +254,17 @@ export default function NuovaChecklistPage() {
       return code.startsWith("STR-") || code === "TEC-STRCT";
     });
   }, [catalogItems]);
+  const impiantoOptions = useMemo(() => {
+    return catalogItems.filter((item) => (item.codice ?? "").toUpperCase().startsWith("TEC"));
+  }, [catalogItems]);
+  const vociProdottiOptions = useMemo(() => {
+    return catalogItems.filter((item) => {
+      if (item.attivo === false) return false;
+      const code = (item.codice ?? "").toUpperCase();
+      return !(code.startsWith("TEC") || code.startsWith("SAS"));
+    });
+  }, [catalogItems]);
+  const deviceOptions = useMemo(() => deviceCatalogItems, [deviceCatalogItems]);
 
   useEffect(() => {
     const stored =
@@ -257,14 +279,37 @@ export default function NuovaChecklistPage() {
         .select("id, codice, descrizione, tipo, categoria, attivo")
         .eq("attivo", true)
         .order("descrizione", { ascending: true });
+      const { data: deviceItems, error: deviceErr } = await supabase
+        .from("catalog_items")
+        .select("id, codice, descrizione, tipo, categoria, attivo")
+        .eq("attivo", true)
+        .ilike("codice", "EL-%")
+        .order("descrizione", { ascending: true });
 
       if (catalogErr) {
         console.error("Errore caricamento catalogo", catalogErr);
       } else {
         setCatalogItems((catalogItems || []) as CatalogItem[]);
       }
+      if (deviceErr) {
+        console.error("Errore caricamento device/modelli (EL-%)", deviceErr);
+      } else {
+        setDeviceCatalogItems((deviceItems || []) as CatalogItem[]);
+      }
     })();
   }, []);
+
+  useEffect(() => {
+    if (process.env.NODE_ENV === "production") return;
+    console.log("[M2 DEBUG][nuova checklist]", {
+      larghezza: m2DebugWH?.larghezza ?? null,
+      altezza: m2DebugWH?.altezza ?? null,
+      numero_facce: numeroFacce,
+      passo: passo || null,
+      mq_calcolati: m2Calcolati,
+      mq_salvati: lastSavedM2,
+    });
+  }, [m2DebugWH, numeroFacce, passo, m2Calcolati, lastSavedM2]);
 
   function addRow() {
     setRows((prev) => [
@@ -273,7 +318,6 @@ export default function NuovaChecklistPage() {
         codice: "",
         descrizione: "",
         qty: "",
-        dimensioni: "",
         note: "",
         search: "",
         categoria_filter: "",
@@ -318,6 +362,10 @@ export default function NuovaChecklistPage() {
 
   function addSerial(tipo: "CONTROLLO" | "MODULO_LED") {
     const raw = tipo === "CONTROLLO" ? serialControlInput : serialModuleInput;
+    const deviceCode =
+      tipo === "CONTROLLO" ? serialControlDeviceCode : serialModuleDeviceCode;
+    const deviceDescrizione =
+      tipo === "CONTROLLO" ? serialControlDeviceDescrizione : serialModuleDeviceDescrizione;
     const noteRaw = tipo === "CONTROLLO" ? serialControlNote : serialModuleNote;
     const seriale = normalizeSerial(raw);
     if (!seriale) {
@@ -327,13 +375,33 @@ export default function NuovaChecklistPage() {
     setSerialsError(null);
     if (tipo === "CONTROLLO") {
       if (serialiControllo.some((s) => s.seriale === seriale)) return;
-      setSerialiControllo((prev) => [...prev, { seriale, note: noteRaw.trim() }]);
+      setSerialiControllo((prev) => [
+        ...prev,
+        {
+          seriale,
+          note: noteRaw.trim(),
+          device_code: deviceCode || null,
+          device_descrizione: deviceDescrizione || null,
+        },
+      ]);
       setSerialControlInput("");
+      setSerialControlDeviceCode("");
+      setSerialControlDeviceDescrizione("");
       setSerialControlNote("");
     } else {
       if (serialiModuli.some((s) => s.seriale === seriale)) return;
-      setSerialiModuli((prev) => [...prev, { seriale, note: noteRaw.trim() }]);
+      setSerialiModuli((prev) => [
+        ...prev,
+        {
+          seriale,
+          note: noteRaw.trim(),
+          device_code: deviceCode || null,
+          device_descrizione: deviceDescrizione || null,
+        },
+      ]);
       setSerialModuleInput("");
+      setSerialModuleDeviceCode("");
+      setSerialModuleDeviceDescrizione("");
       setSerialModuleNote("");
     }
   }
@@ -387,11 +455,6 @@ export default function NuovaChecklistPage() {
         return;
       }
 
-      const righeM2 = calcM2Totale(
-        rows.map((r) => ({ dimensioni: r.dimensioni, qty: r.qty }))
-      );
-      const hasRowDims = rows.some((r) => r.dimensioni.trim().length > 0);
-      const m2Calcolati = hasRowDims ? righeM2 : calcFallbackM2(dimensioni);
       const payloadChecklist = {
         cliente: cliente.trim(),
         cliente_id: clienteId,
@@ -415,10 +478,13 @@ export default function NuovaChecklistPage() {
           : null,
         noleggio_vendita: noleggioVendita.trim() ? noleggioVendita.trim() : null,
         tipo_struttura: tipoStruttura.trim() ? tipoStruttura.trim() : null,
-      passo: passo.trim() ? passo.trim() : null,
-      tipo_impianto: tipoImpianto || null,
-      impianto_indirizzo: impiantoIndirizzo.trim() ? impiantoIndirizzo.trim() : null,
-      dimensioni: dimensioni.trim() ? dimensioni.trim() : null,
+        passo: passo.trim() ? passo.trim() : null,
+        tipo_impianto: tipoImpianto || null,
+        impianto_indirizzo: impiantoIndirizzo.trim() ? impiantoIndirizzo.trim() : null,
+        impianto_codice: impiantoCodice.trim() ? impiantoCodice.trim() : null,
+        impianto_descrizione: impiantoDescrizione.trim() ? impiantoDescrizione.trim() : null,
+        dimensioni: dimensioni.trim() ? dimensioni.trim() : null,
+        numero_facce: numeroFacce,
         m2_inclusi: m2Calcolati != null ? m2Calcolati : null,
         m2_allocati: null,
         garanzia_scadenza: garanziaScadenza.trim() ? garanziaScadenza.trim() : null,
@@ -458,6 +524,7 @@ export default function NuovaChecklistPage() {
         alert("Errore: id checklist non ricevuto");
         return;
       }
+      setLastSavedM2(m2Calcolati != null ? m2Calcolati : null);
 
       const checklistId = created.id as string;
 
@@ -555,18 +622,28 @@ export default function NuovaChecklistPage() {
           descrizione: r.descrizione.trim(),
           descrizione_custom: (r.descrizione_custom ?? "").trim(),
           qty: r.qty.trim(),
-          dimensioni: r.dimensioni.trim(),
           note: r.note.trim(),
         }))
-        .filter((r) => r.codice || r.descrizione || r.qty || r.note || r.dimensioni);
+        .filter((r) => r.codice || r.descrizione || r.qty || r.note);
 
       for (const r of normalizedRows) {
         if (r.qty !== "" && !isFiniteNumberString(r.qty)) {
           alert(`Qty non valida (deve essere numero): "${r.qty}"`);
           return;
         }
+        if (!isCustomCode(r.codice) && startsWithTecOrSas(r.codice)) {
+          alert("TEC e SAS si gestiscono nelle sezioni dedicate (Impianto / Licenze-SAAS).");
+          return;
+        }
         if (isCustomCode(r.codice) && r.descrizione_custom === "") {
           alert("Inserisci la descrizione per la voce fuori catalogo.");
+          return;
+        }
+        if (
+          isCustomCode(r.codice) &&
+          (startsWithTecOrSas(r.descrizione_custom) || startsWithTecOrSas(r.descrizione))
+        ) {
+          alert("TEC e SAS si gestiscono nelle sezioni dedicate (Impianto / Licenze-SAAS).");
           return;
         }
       }
@@ -582,7 +659,6 @@ export default function NuovaChecklistPage() {
             : null,
           quantita: r.qty === "" ? null : Number(r.qty),
           note: r.note ? r.note : null,
-          dimensioni: r.dimensioni ? r.dimensioni : null,
         }));
 
         const { error: errItems } = await supabase
@@ -615,12 +691,16 @@ export default function NuovaChecklistPage() {
         ...serialiControllo.map((s) => ({
           checklist_id: checklistId,
           tipo: "CONTROLLO",
+          device_code: s.device_code,
+          device_descrizione: s.device_descrizione,
           seriale: normalizeSerial(s.seriale),
           note: s.note ? s.note.trim() : null,
         })),
         ...serialiModuli.map((s) => ({
           checklist_id: checklistId,
           tipo: "MODULO_LED",
+          device_code: s.device_code,
+          device_descrizione: s.device_descrizione,
           seriale: normalizeSerial(s.seriale),
           note: s.note ? s.note.trim() : null,
         })),
@@ -835,6 +915,23 @@ export default function NuovaChecklistPage() {
                 Seriali elettroniche di controllo
               </div>
               <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+                <select
+                  value={serialControlDeviceCode}
+                  onChange={(e) => {
+                    const code = e.target.value;
+                    const selected = deviceOptions.find((d) => (d.codice ?? "") === code);
+                    setSerialControlDeviceCode(code);
+                    setSerialControlDeviceDescrizione(selected?.descrizione ?? "");
+                  }}
+                  style={{ width: "100%", padding: 8 }}
+                >
+                  <option value="">Device/Modello (opzionale)</option>
+                  {deviceOptions.map((item) => (
+                    <option key={item.id} value={item.codice ?? ""}>
+                      {item.codice ?? "—"} — {item.descrizione ?? "—"}
+                    </option>
+                  ))}
+                </select>
                 <input
                   value={serialControlInput}
                   onChange={(e) => setSerialControlInput(e.target.value)}
@@ -889,6 +986,12 @@ export default function NuovaChecklistPage() {
                       }}
                     >
                       {s.seriale}
+                      {s.device_code ? (
+                        <span style={{ opacity: 0.85, fontWeight: 600 }}>
+                          [{s.device_code}
+                          {s.device_descrizione ? ` - ${s.device_descrizione}` : ""}]
+                        </span>
+                      ) : null}
                       {s.note ? (
                         <span style={{ opacity: 0.7, fontWeight: 500 }}>{s.note}</span>
                       ) : null}
@@ -914,6 +1017,23 @@ export default function NuovaChecklistPage() {
             <div style={{ border: "1px solid #eee", borderRadius: 10, padding: 10 }}>
               <div style={{ fontWeight: 700, marginBottom: 6 }}>Seriali moduli LED</div>
               <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+                <select
+                  value={serialModuleDeviceCode}
+                  onChange={(e) => {
+                    const code = e.target.value;
+                    const selected = deviceOptions.find((d) => (d.codice ?? "") === code);
+                    setSerialModuleDeviceCode(code);
+                    setSerialModuleDeviceDescrizione(selected?.descrizione ?? "");
+                  }}
+                  style={{ width: "100%", padding: 8 }}
+                >
+                  <option value="">Device/Modello (opzionale)</option>
+                  {deviceOptions.map((item) => (
+                    <option key={item.id} value={item.codice ?? ""}>
+                      {item.codice ?? "—"} — {item.descrizione ?? "—"}
+                    </option>
+                  ))}
+                </select>
                 <input
                   value={serialModuleInput}
                   onChange={(e) => setSerialModuleInput(e.target.value)}
@@ -968,6 +1088,12 @@ export default function NuovaChecklistPage() {
                       }}
                     >
                       {s.seriale}
+                      {s.device_code ? (
+                        <span style={{ opacity: 0.85, fontWeight: 600 }}>
+                          [{s.device_code}
+                          {s.device_descrizione ? ` - ${s.device_descrizione}` : ""}]
+                        </span>
+                      ) : null}
                       {s.note ? (
                         <span style={{ opacity: 0.7, fontWeight: 500 }}>{s.note}</span>
                       ) : null}
@@ -992,6 +1118,27 @@ export default function NuovaChecklistPage() {
           </div>
 
           <label>
+            Descrizione impianto (TEC)<br />
+            <select
+              value={impiantoCodice}
+              onChange={(e) => {
+                const code = e.target.value;
+                const selected = impiantoOptions.find((i) => (i.codice ?? "") === code);
+                setImpiantoCodice(code);
+                setImpiantoDescrizione(selected?.descrizione ?? "");
+              }}
+              style={{ width: "100%", padding: 10 }}
+            >
+              <option value="">— seleziona impianto TEC —</option>
+              {impiantoOptions.map((item) => (
+                <option key={item.id} value={item.codice ?? ""}>
+                  {item.codice ?? "—"} — {item.descrizione ?? "—"}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label>
             Dimensioni<br />
             <input
               value={dimensioni}
@@ -999,6 +1146,22 @@ export default function NuovaChecklistPage() {
               placeholder="Es. 4x2 o 4,5 x 2,2"
               style={{ width: "100%", padding: 10 }}
             />
+          </label>
+          <label
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              fontSize: 14,
+              marginTop: 26,
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={numeroFacce === 2}
+              onChange={(e) => setNumeroFacce(e.target.checked ? 2 : 1)}
+            />
+            Bifacciale ({numeroFacce} facce)
           </label>
 
           <label>
@@ -1013,17 +1176,7 @@ export default function NuovaChecklistPage() {
           <label>
             m² calcolati<br />
             <input
-              value={
-                (() => {
-                  const righeM2 = calcM2Totale(
-                    rows.map((r) => ({ dimensioni: r.dimensioni, qty: r.qty }))
-                  );
-                  const hasRowDims = rows.some((r) => r.dimensioni.trim().length > 0);
-                  const fallback = calcFallbackM2(dimensioni);
-                  const total = hasRowDims ? righeM2 : fallback;
-                  return total != null ? total.toFixed(2) : "";
-                })()
-              }
+              value={m2Calcolati != null ? m2Calcolati.toFixed(2) : ""}
               readOnly
               style={{ width: "100%", padding: 10, background: "#f7f7f7" }}
             />
@@ -1360,7 +1513,7 @@ export default function NuovaChecklistPage() {
               <div
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "160px 1fr 120px 140px 1fr",
+                  gridTemplateColumns: "160px 1fr 120px 1fr",
                   gap: 10,
                   alignItems: "center",
                 }}
@@ -1379,7 +1532,7 @@ export default function NuovaChecklistPage() {
                   <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
                     <input
                       type="text"
-                      placeholder="Cerca per codice o descrizione (es. SRV-, TEC-SC, LED...)"
+                      placeholder="Cerca per codice o descrizione (extra/accessori)"
                       value={r.search ?? ""}
                       onChange={(e) => updateRowFields(idx, { search: e.target.value })}
                       style={{ flex: 1, padding: 10 }}
@@ -1410,7 +1563,7 @@ export default function NuovaChecklistPage() {
                         });
                         return;
                       }
-                      const selected = catalogItems.find((c) => c.descrizione === value);
+                      const selected = vociProdottiOptions.find((c) => c.descrizione === value);
                       updateRowFields(idx, {
                         descrizione: selected?.descrizione ?? "",
                         codice: selected?.codice ?? "",
@@ -1421,8 +1574,7 @@ export default function NuovaChecklistPage() {
                   >
                     <option value="">— seleziona prodotto / servizio —</option>
                     <option value="__CUSTOM__">Altro / Fuori catalogo</option>
-                    {catalogItems
-                      .filter((item) => item.attivo !== false)
+                    {vociProdottiOptions
                       .filter((item) => {
                         const s = (r.search ?? "").trim().toLowerCase();
                         if (!s) return true;
@@ -1474,16 +1626,6 @@ export default function NuovaChecklistPage() {
                   <input
                     value={r.qty}
                     onChange={(e) => updateRow(idx, "qty", e.target.value)}
-                    style={{ width: "100%", padding: 10 }}
-                  />
-                </label>
-
-                <label>
-                  Dimensioni<br />
-                  <input
-                    value={r.dimensioni}
-                    onChange={(e) => updateRow(idx, "dimensioni", e.target.value)}
-                    placeholder="Es. 4x2"
                     style={{ width: "100%", padding: 10 }}
                   />
                 </label>
