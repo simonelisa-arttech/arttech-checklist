@@ -20,7 +20,7 @@ function AuthCallbackContent() {
     () => searchParams.get("redirect") || "/reset-password",
     [searchParams]
   );
-  const buildStamp = "CALLBACK v2 token_hash enabled";
+  const buildStamp = "AUTH BUILD PROD DOMAIN";
   const queryDebug = useMemo(
     () => ({
       token_hash: searchParams.get("token_hash"),

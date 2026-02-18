@@ -15,7 +15,7 @@ export default function LoginForm({ redirectTo }: LoginFormProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [recoveryMsg, setRecoveryMsg] = useState<string | null>(null);
-  const buildStamp = "LOGIN BUILD v4";
+  const buildStamp = "AUTH BUILD PROD DOMAIN";
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
@@ -53,7 +53,7 @@ export default function LoginForm({ redirectTo }: LoginFormProps) {
       return;
     }
     const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
-      redirectTo: `${window.location.origin}/auth/callback`,
+      redirectTo: "https://atsystem.arttechworld.com/auth/callback",
     });
     if (error) {
       setError(error.message);

@@ -9,8 +9,7 @@ import Toast from "@/components/Toast";
 import { isSupabaseConfigured, supabase } from "@/lib/supabaseClient";
 
 const SHOW_DEBUG_AUTH =
-  process.env.NODE_ENV === "development" ||
-  process.env.NEXT_PUBLIC_DEBUG_AUTH === "1";
+  process.env.NEXT_PUBLIC_DEBUG_AUTH === "true";
 
 const SAAS_PIANI = [
   { code: "SAS-PL", label: "CARE PLUS (ASSISTENZA BASE)" },

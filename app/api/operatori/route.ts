@@ -84,7 +84,7 @@ export async function GET(request: Request) {
 
   const { data, error } = await supabase
     .from("operatori")
-    .select("id, nome, ruolo, email, attivo, alert_enabled, alert_tasks")
+    .select("id, user_id, nome, ruolo, email, attivo, alert_enabled, alert_tasks")
     .order("ruolo", { ascending: true })
     .order("nome", { ascending: true });
   if (error) {

@@ -7,6 +7,7 @@ import { isSupabaseConfigured, supabase } from "@/lib/supabaseClient";
 
 type OperatoreRow = {
   id?: string;
+  user_id?: string | null;
   nome: string;
   ruolo: string;
   email: string;
@@ -45,6 +46,15 @@ export default function OperatoriPage() {
   const [quickEmail, setQuickEmail] = useState("");
   const [quickSaving, setQuickSaving] = useState(false);
   const [quickError, setQuickError] = useState<string | null>(null);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [adminLoading, setAdminLoading] = useState(true);
+  const [credenzialiNome, setCredenzialiNome] = useState("");
+  const [credenzialiEmail, setCredenzialiEmail] = useState("");
+  const [credenzialiRuolo, setCredenzialiRuolo] = useState("TECNICO_SW");
+  const [credenzialiSaving, setCredenzialiSaving] = useState(false);
+  const [credenzialiMsg, setCredenzialiMsg] = useState<string | null>(null);
+  const [credenzialiErr, setCredenzialiErr] = useState<string | null>(null);
+  const [resettingOperatoreId, setResettingOperatoreId] = useState<string | null>(null);
 
   function normalizeAlertTasks(input: any) {
     if (!input) {
@@ -91,6 +101,7 @@ export default function OperatoriPage() {
     const data = payload?.data || [];
     const mapped = (data || []).map((r: any) => ({
       id: r.id,
+      user_id: r.user_id ?? null,
       nome: r.nome ?? "",
       ruolo: r.ruolo ?? "",
       email: r.email ?? "",
@@ -122,7 +133,15 @@ export default function OperatoriPage() {
   useEffect(() => {
     loadOperatori();
     loadTaskTemplates();
+    loadAdminAccess();
   }, []);
+
+  async function loadAdminAccess() {
+    setAdminLoading(true);
+    const res = await fetch("/api/admin/me");
+    setIsAdmin(res.ok);
+    setAdminLoading(false);
+  }
 
 
   function addRow() {
@@ -241,6 +260,71 @@ export default function OperatoriPage() {
     }
   }
 
+  async function createOperatorCredentials() {
+    setCredenzialiErr(null);
+    setCredenzialiMsg(null);
+    const nome = credenzialiNome.trim();
+    const email = credenzialiEmail.trim().toLowerCase();
+    const ruolo = credenzialiRuolo.trim().toUpperCase();
+    if (!nome || !email || !ruolo) {
+      setCredenzialiErr("Nome, email e ruolo sono obbligatori.");
+      return;
+    }
+    if (!email.includes("@")) {
+      setCredenzialiErr("Email non valida.");
+      return;
+    }
+    setCredenzialiSaving(true);
+    try {
+      const res = await fetch("/api/admin/create-operator", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ nome, email, ruolo }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setCredenzialiErr(data?.error || "Errore creazione credenziali");
+        return;
+      }
+      setCredenzialiMsg(`Invito inviato a ${email}`);
+      setCredenzialiNome("");
+      setCredenzialiEmail("");
+      await loadOperatori();
+    } finally {
+      setCredenzialiSaving(false);
+    }
+  }
+
+  async function sendResetPassword(row: OperatoreRow) {
+    if (!row.id && !row.email) return;
+    const ok = window.confirm(
+      `Inviare reset password a ${row.email || "questo operatore"}?`
+    );
+    if (!ok) return;
+    setError(null);
+    setCredenzialiMsg(null);
+    setResettingOperatoreId(row.id || null);
+    try {
+      const res = await fetch("/api/admin/reset-operator-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          operatore_id: row.id,
+          email: row.email || undefined,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError(data?.error || "Errore invio reset password");
+        return;
+      }
+      setCredenzialiMsg(`Reset password inviato a ${row.email || data?.email || "operatore"}`);
+      await loadOperatori();
+    } finally {
+      setResettingOperatoreId(null);
+    }
+  }
+
   async function deleteRow(row: OperatoreRow) {
     if (!row.id) {
       setRows((prev) => prev.filter((r) => r !== row));
@@ -315,6 +399,73 @@ export default function OperatoriPage() {
           }}
         >
           {error}
+        </div>
+      )}
+
+      {!adminLoading && isAdmin && (
+        <div
+          style={{
+            marginBottom: 12,
+            padding: "12px 14px",
+            borderRadius: 12,
+            border: "1px solid #dbeafe",
+            background: "#eff6ff",
+          }}
+        >
+          <div style={{ fontWeight: 700, marginBottom: 8 }}>
+            Crea credenziali operatore
+          </div>
+          <div style={{ display: "grid", gap: 8, gridTemplateColumns: "1fr 1fr 180px auto" }}>
+            <input
+              placeholder="Nome"
+              value={credenzialiNome}
+              onChange={(e) => setCredenzialiNome(e.target.value)}
+              style={{ width: "100%", padding: 8 }}
+            />
+            <input
+              placeholder="Email"
+              value={credenzialiEmail}
+              onChange={(e) => setCredenzialiEmail(e.target.value)}
+              style={{ width: "100%", padding: 8 }}
+            />
+            <select
+              value={credenzialiRuolo}
+              onChange={(e) => setCredenzialiRuolo(e.target.value)}
+              style={{ width: "100%", padding: 8 }}
+            >
+              {["ADMIN", ...RUOLI].map((r) => (
+                <option key={r} value={r}>
+                  {r}
+                </option>
+              ))}
+            </select>
+            <button
+              type="button"
+              onClick={createOperatorCredentials}
+              disabled={credenzialiSaving}
+              style={{
+                padding: "8px 12px",
+                borderRadius: 10,
+                border: "1px solid #111",
+                background: "#111",
+                color: "white",
+                cursor: "pointer",
+                opacity: credenzialiSaving ? 0.7 : 1,
+              }}
+            >
+              {credenzialiSaving ? "Invio..." : "Crea + Invia invito"}
+            </button>
+          </div>
+          {credenzialiErr && (
+            <div style={{ marginTop: 8, color: "#991b1b", fontSize: 13 }}>
+              {credenzialiErr}
+            </div>
+          )}
+          {credenzialiMsg && (
+            <div style={{ marginTop: 8, color: "#166534", fontSize: 13 }}>
+              {credenzialiMsg}
+            </div>
+          )}
         </div>
       )}
 
@@ -487,6 +638,25 @@ export default function OperatoriPage() {
                     >
                       Salva
                     </button>
+                    {!adminLoading && isAdmin && (
+                      <button
+                        type="button"
+                        onClick={() => sendResetPassword(row)}
+                        disabled={resettingOperatoreId === row.id || !row.email}
+                        style={{
+                          padding: "6px 10px",
+                          borderRadius: 8,
+                          border: "1px solid #ddd",
+                          background: "white",
+                          cursor: "pointer",
+                          opacity: resettingOperatoreId === row.id || !row.email ? 0.6 : 1,
+                        }}
+                      >
+                        {resettingOperatoreId === row.id
+                          ? "Invio reset..."
+                          : "Invia reset password"}
+                      </button>
+                    )}
                     <button
                       type="button"
                       onClick={() => deleteRow(row)}

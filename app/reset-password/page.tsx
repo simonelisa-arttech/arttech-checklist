@@ -6,6 +6,7 @@ import { supabase } from "@/lib/supabaseClient";
 
 export default function ResetPasswordPage() {
   const router = useRouter();
+  const buildStamp = "RESET v1 recovery page";
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [loading, setLoading] = useState(false);
@@ -63,6 +64,9 @@ export default function ResetPasswordPage() {
       <h1 style={{ marginBottom: 6 }}>Reimposta password</h1>
       <div style={{ marginBottom: 20, fontSize: 12, opacity: 0.7 }}>
         Inserisci una nuova password
+      </div>
+      <div style={{ marginBottom: 10, fontSize: 11, opacity: 0.65 }}>
+        Build: {buildStamp}
       </div>
       {sessionReady && !hasSession && (
         <div style={{ color: "#b45309", fontSize: 13, marginBottom: 10 }}>
