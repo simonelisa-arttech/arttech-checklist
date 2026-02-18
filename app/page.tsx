@@ -223,6 +223,7 @@ type Checklist = {
 
 type OperatoreRow = {
   id: string;
+  user_id?: string | null;
   nome: string | null;
   attivo: boolean;
 };
@@ -288,8 +289,8 @@ export default function Page() {
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [catalogItems, setCatalogItems] = useState<CatalogItem[]>([]);
-  const [operatori, setOperatori] = useState<OperatoreRow[]>([]);
   const [currentOperatoreId, setCurrentOperatoreId] = useState<string>("");
+  const [operatoreAssociationError, setOperatoreAssociationError] = useState<string | null>(null);
   const [expandedSaasNoteId, setExpandedSaasNoteId] = useState<string | null>(null);
   const [serialsByChecklistId, setSerialsByChecklistId] = useState<
     Record<string, { seriali: string[] }>
@@ -342,14 +343,6 @@ export default function Page() {
   const canCreate = useMemo(() => {
     return cliente.trim().length > 0 && nomeChecklist.trim().length > 0;
   }, [cliente, nomeChecklist]);
-
-  const operatoriById = useMemo(() => {
-    const map = new Map<string, OperatoreRow>();
-    operatori.forEach((o) => {
-      if (o.id) map.set(o.id, o);
-    });
-    return map;
-  }, [operatori]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -753,16 +746,29 @@ export default function Page() {
       setCatalogItems((catalogItems || []) as CatalogItem[]);
     }
 
-    const { data: operatoriData, error: operatoriErr } = await supabase
-      .from("operatori")
-      .select("id, nome, attivo")
-      .eq("attivo", true)
-      .order("nome", { ascending: true });
-
-    if (operatoriErr) {
-      console.error("Errore caricamento operatori", operatoriErr);
+    setOperatoreAssociationError(null);
+    const {
+      data: { user },
+      error: userErr,
+    } = await supabase.auth.getUser();
+    if (userErr || !user) {
+      setCurrentOperatoreId("");
+      setOperatoreAssociationError("Operatore non associato");
     } else {
-      setOperatori((operatoriData || []) as OperatoreRow[]);
+      const { data: myOperatore, error: myOperatoreErr } = await supabase
+        .from("operatori")
+        .select("*")
+        .eq("user_id", user.id)
+        .maybeSingle();
+      if (myOperatoreErr || !myOperatore || !myOperatore.id) {
+        if (myOperatoreErr) {
+          console.error("Errore lookup operatore by user_id", myOperatoreErr);
+        }
+        setCurrentOperatoreId("");
+        setOperatoreAssociationError("Operatore non associato");
+      } else {
+        setCurrentOperatoreId(myOperatore.id);
+      }
     }
 
     setLoading(false);
@@ -781,21 +787,6 @@ export default function Page() {
     console.log("[addIntervento] close reason", reason);
     setAddInterventoOpen(false);
   };
-
-  useEffect(() => {
-    const stored =
-      typeof window !== "undefined" ? window.localStorage.getItem("current_operatore_id") : null;
-    if (stored) setCurrentOperatoreId(stored);
-  }, []);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    if (currentOperatoreId) {
-      window.localStorage.setItem("current_operatore_id", currentOperatoreId);
-    } else {
-      window.localStorage.removeItem("current_operatore_id");
-    }
-  }, [currentOperatoreId]);
 
   useEffect(() => {
     if (!addInterventoCliente) {
@@ -1390,22 +1381,6 @@ export default function Page() {
         )}
 
         <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 10 }}>
-          <label style={{ fontSize: 12 }}>
-            Operatore corrente<br />
-            <select
-              value={currentOperatoreId}
-              onChange={(e) => setCurrentOperatoreId(e.target.value)}
-              style={{ padding: "6px 8px", minWidth: 200 }}
-            >
-              <option value="">—</option>
-              {operatori.map((o) => (
-                <option key={o.id} value={o.id}>
-                  {o.nome ?? o.id}
-                </option>
-              ))}
-            </select>
-          </label>
-
           <Link
             href="/impostazioni"
             style={{
@@ -1456,9 +1431,9 @@ export default function Page() {
         </div>
       </div>
 
-      {!currentOperatoreId && (
+      {!!operatoreAssociationError && (
         <div style={{ marginTop: 8, fontSize: 12, color: "#991b1b" }}>
-          Seleziona operatore per tracciare le modifiche.
+          Operatore non associato
         </div>
       )}
 
@@ -2321,14 +2296,10 @@ export default function Page() {
                           {c.updated_at ? new Date(c.updated_at).toLocaleString() : "—"}
                         </td>
                         <td style={{ padding: "10px 12px", opacity: 0.85 }}>
-                          {c.created_by_operatore
-                            ? operatoriById.get(c.created_by_operatore)?.nome ?? "—"
-                            : "—"}
+                          {c.created_by_operatore || "—"}
                         </td>
                         <td style={{ padding: "10px 12px", opacity: 0.85 }}>
-                          {c.updated_by_operatore
-                            ? operatoriById.get(c.updated_by_operatore)?.nome ?? "—"
-                            : "—"}
+                          {c.updated_by_operatore || "—"}
                         </td>
                         <td style={{ padding: "10px 12px", display: "flex", gap: 8 }}>
                           <button
