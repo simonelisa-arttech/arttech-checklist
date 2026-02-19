@@ -430,21 +430,45 @@ export default function NuovaChecklistPage() {
       throw new Error(authErr.message || "Utente non autenticato.");
     }
     const userId = authData?.user?.id;
+    const userEmail = (authData?.user?.email ?? "").trim();
     if (!userId) {
       throw new Error("Utente non autenticato.");
     }
 
-    const { data: operatore, error: opErr } = await supabase
+    const { data: operatoreByUserId, error: opErr } = await supabase
       .from("operatori")
-      .select("id")
+      .select("id, user_id")
       .eq("user_id", userId)
       .maybeSingle();
 
     if (opErr) {
       throw new Error(opErr.message || "Errore caricamento operatore.");
     }
+
+    let operatore = operatoreByUserId;
+    if (!operatore?.id && userEmail) {
+      const { data: operatoreByEmail, error: opByEmailErr } = await supabase
+        .from("operatori")
+        .select("id, user_id")
+        .eq("email", userEmail)
+        .maybeSingle();
+      if (opByEmailErr) {
+        throw new Error(opByEmailErr.message || "Errore caricamento operatore.");
+      }
+      operatore = operatoreByEmail;
+      if (operatore?.id && operatore.user_id !== userId) {
+        const { error: linkErr } = await supabase
+          .from("operatori")
+          .update({ user_id: userId })
+          .eq("id", operatore.id);
+        if (linkErr) {
+          console.error("Errore aggiornamento user_id su operatori", linkErr);
+        }
+      }
+    }
+
     if (!operatore?.id) {
-      throw new Error("Operatore non associato");
+      throw new Error("Operatore non associato.");
     }
 
     setCurrentOperatoreId(operatore.id);
