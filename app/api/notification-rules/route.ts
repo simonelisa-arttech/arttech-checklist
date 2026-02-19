@@ -59,17 +59,28 @@ export async function GET(request: Request) {
   const taskTitle = url.searchParams.get("task_title");
   const target = url.searchParams.get("target");
 
-  let query = auth.adminClient
-    .from("notification_rules")
-    .select(
-      "id, enabled, mode, task_title, target, recipients, frequency, send_time, timezone, day_of_week, stop_statuses, only_future, created_at, updated_at"
-    )
-    .order("created_at", { ascending: false });
+  const selectWithDay =
+    "id, enabled, mode, task_title, target, recipients, frequency, send_time, timezone, day_of_week, stop_statuses, only_future, created_at, updated_at";
+  const selectFallback =
+    "id, enabled, mode, task_title, target, recipients, frequency, send_time, timezone, stop_statuses, only_future, created_at, updated_at";
 
-  if (taskTitle) query = query.eq("task_title", taskTitle);
-  if (target) query = query.eq("target", target);
+  const runQuery = async (selectExpr: string) => {
+    let query = auth.adminClient
+      .from("notification_rules")
+      .select(selectExpr)
+      .order("created_at", { ascending: false });
+    if (taskTitle) query = query.eq("task_title", taskTitle);
+    if (target) query = query.eq("target", target);
+    return query;
+  };
 
-  const { data, error } = await query;
+  let { data, error } = await runQuery(selectWithDay);
+  if (error && String(error.message || "").toLowerCase().includes("day_of_week")) {
+    ({ data, error } = await runQuery(selectFallback));
+    if (!error && Array.isArray(data)) {
+      data = data.map((row: any) => ({ ...row, day_of_week: null }));
+    }
+  }
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ ok: true, data: data || [] });
 }
@@ -95,7 +106,7 @@ export async function POST(request: Request) {
     ? body.recipients.map((x: any) => String(x || "").trim().toLowerCase()).filter((x: string) => x.includes("@"))
     : [];
   const frequency = String(body?.frequency || "DAILY").trim().toUpperCase();
-  const payload = {
+  const payloadBase = {
     enabled: body?.enabled !== false,
     mode: String(body?.mode || "AUTOMATICA").trim().toUpperCase(),
     task_title: taskTitle,
@@ -104,24 +115,41 @@ export async function POST(request: Request) {
     frequency,
     send_time: String(body?.send_time || "07:30").trim(),
     timezone: String(body?.timezone || "Europe/Rome").trim() || "Europe/Rome",
-    day_of_week:
-      body?.day_of_week === null || body?.day_of_week === undefined || body?.day_of_week === ""
-        ? null
-        : Number(body.day_of_week),
     stop_statuses:
       Array.isArray(body?.stop_statuses) && body.stop_statuses.length > 0
         ? body.stop_statuses.map((x: any) => String(x || "").trim().toUpperCase()).filter(Boolean)
         : ["OK", "NON_NECESSARIO"],
     only_future: body?.only_future !== false,
   };
+  const dayOfWeek =
+    body?.day_of_week === null || body?.day_of_week === undefined || body?.day_of_week === ""
+      ? null
+      : Number(body.day_of_week);
 
-  const { data, error } = await auth.adminClient
+  const payloadWithDay = { ...payloadBase, day_of_week: dayOfWeek };
+  const payloadFallback = { ...payloadBase };
+
+  const selectWithDay =
+    "id, enabled, mode, task_title, target, recipients, frequency, send_time, timezone, day_of_week, stop_statuses, only_future, created_at, updated_at";
+  const selectFallback =
+    "id, enabled, mode, task_title, target, recipients, frequency, send_time, timezone, stop_statuses, only_future, created_at, updated_at";
+
+  let { data, error } = await auth.adminClient
     .from("notification_rules")
-    .upsert(payload, { onConflict: "task_title,target" })
-    .select(
-      "id, enabled, mode, task_title, target, recipients, frequency, send_time, timezone, day_of_week, stop_statuses, only_future, created_at, updated_at"
-    )
+    .upsert(payloadWithDay, { onConflict: "task_title,target" })
+    .select(selectWithDay)
     .single();
+
+  if (error && String(error.message || "").toLowerCase().includes("day_of_week")) {
+    ({ data, error } = await auth.adminClient
+      .from("notification_rules")
+      .upsert(payloadFallback, { onConflict: "task_title,target" })
+      .select(selectFallback)
+      .single());
+    if (!error && data) {
+      data = { ...(data as any), day_of_week: null };
+    }
+  }
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ ok: true, data });

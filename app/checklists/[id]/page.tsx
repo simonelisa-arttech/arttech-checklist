@@ -3981,15 +3981,17 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
                             type="button"
                             onClick={() => openRuleSettings(t)}
                             style={{
-                              padding: "6px 10px",
+                              padding: "6px 9px",
                               borderRadius: 8,
-                              border: "1px solid #111",
-                              background: "#111",
-                              color: "white",
+                              border: "1px solid #d1d5db",
+                              background: "#f8fafc",
+                              color: "#111827",
                               cursor: "pointer",
+                              fontSize: 12,
+                              fontWeight: 600,
                             }}
                           >
-                            Impostazioni
+                            ⚙ Regola
                           </button>
                         )}
                       </div>

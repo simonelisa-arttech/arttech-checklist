@@ -238,13 +238,28 @@ export async function GET(req: Request) {
   const todayRome = getRomeDateString();
   const baseUrl = getBaseUrl(req);
 
-  const { data: rulesRaw, error: rulesErr } = await supabase
+  const selectWithDay =
+    "id, enabled, mode, frequency, day_of_week, task_title, target, recipients, send_time, timezone, stop_statuses, only_future";
+  const selectFallback =
+    "id, enabled, mode, frequency, task_title, target, recipients, send_time, timezone, stop_statuses, only_future";
+
+  let { data: rulesRaw, error: rulesErr } = await supabase
     .from("notification_rules")
-    .select(
-      "id, enabled, mode, frequency, day_of_week, task_title, target, recipients, send_time, timezone, stop_statuses, only_future"
-    )
+    .select(selectWithDay)
     .eq("enabled", true)
     .eq("mode", "AUTOMATICA");
+  if (rulesErr && String(rulesErr.message || "").toLowerCase().includes("day_of_week")) {
+    const fallbackRes = await supabase
+      .from("notification_rules")
+      .select(selectFallback)
+      .eq("enabled", true)
+      .eq("mode", "AUTOMATICA");
+    rulesRaw = fallbackRes.data as any;
+    rulesErr = fallbackRes.error as any;
+    if (!rulesErr && Array.isArray(rulesRaw)) {
+      rulesRaw = rulesRaw.map((r: any) => ({ ...r, day_of_week: null }));
+    }
+  }
   if (rulesErr) {
     return NextResponse.json({ error: rulesErr.message }, { status: 500 });
   }

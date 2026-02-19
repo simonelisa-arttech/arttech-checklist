@@ -1380,6 +1380,21 @@ export default function Page() {
     await load();
   }
 
+  async function handleLogout() {
+    try {
+      await fetch("/auth/logout", { method: "POST" });
+    } catch {
+      // ignore network errors and proceed with client cleanup
+    }
+    try {
+      localStorage.removeItem("current_operatore_id");
+    } catch {
+      // ignore
+    }
+    router.replace("/login");
+    router.refresh();
+  }
+
   return (
     <div style={{ maxWidth: 1100, margin: "24px auto", padding: 16, paddingBottom: 60 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
@@ -1463,6 +1478,19 @@ export default function Page() {
             }}
           >
             + Aggiungi intervento
+          </button>
+          <button
+            type="button"
+            onClick={handleLogout}
+            style={{
+              padding: "10px 14px",
+              borderRadius: 10,
+              border: "1px solid #ddd",
+              cursor: "pointer",
+              background: "white",
+            }}
+          >
+            Logout
           </button>
         </div>
       </div>
