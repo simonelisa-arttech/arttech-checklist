@@ -23,6 +23,8 @@ type RuleRow = {
   id: string;
   enabled: boolean;
   mode: string | null;
+  frequency: string | null;
+  day_of_week: number | null;
   task_title: string | null;
   target: string | null;
   recipients: any;
@@ -77,6 +79,23 @@ function getTimePartsInTimezone(timezone: string) {
   return { h, m, s };
 }
 
+function getWeekdayInTimezone(timezone: string) {
+  const token = new Intl.DateTimeFormat("en-US", {
+    timeZone: timezone,
+    weekday: "short",
+  }).format(new Date());
+  const map: Record<string, number> = {
+    Sun: 0,
+    Mon: 1,
+    Tue: 2,
+    Wed: 3,
+    Thu: 4,
+    Fri: 5,
+    Sat: 6,
+  };
+  return map[token] ?? 0;
+}
+
 function parseHmsToSeconds(value: string | null | undefined) {
   const raw = String(value || "").trim();
   if (!raw) return 0;
@@ -95,6 +114,22 @@ function shouldSendNow(sendTime: string | null | undefined, timezone: string | n
   const nowSec = now.h * 3600 + now.m * 60 + now.s;
   const sendSec = parseHmsToSeconds(sendTime);
   return nowSec >= sendSec;
+}
+
+function shouldRunByFrequency(rule: RuleRow) {
+  const tz = String(rule.timezone || "Europe/Rome").trim() || "Europe/Rome";
+  const weekday = getWeekdayInTimezone(tz);
+  const freq = String(rule.frequency || "DAILY").trim().toUpperCase();
+  if (freq === "DAILY") return true;
+  if (freq === "WEEKDAYS") return weekday >= 1 && weekday <= 5;
+  if (freq === "WEEKLY") {
+    const targetDay =
+      Number.isInteger(Number(rule.day_of_week)) && Number(rule.day_of_week) >= 0 && Number(rule.day_of_week) <= 6
+        ? Number(rule.day_of_week)
+        : 1;
+    return weekday === targetDay;
+  }
+  return true;
 }
 
 function parseRecipients(input: any) {
@@ -206,7 +241,7 @@ export async function GET(req: Request) {
   const { data: rulesRaw, error: rulesErr } = await supabase
     .from("notification_rules")
     .select(
-      "id, enabled, mode, task_title, target, recipients, send_time, timezone, stop_statuses, only_future"
+      "id, enabled, mode, frequency, day_of_week, task_title, target, recipients, send_time, timezone, stop_statuses, only_future"
     )
     .eq("enabled", true)
     .eq("mode", "AUTOMATICA");
@@ -220,6 +255,12 @@ export async function GET(req: Request) {
       ok: true,
       date: todayRome,
       future_checklists: 0,
+      rules_total: 0,
+      rules_processed: 0,
+      rules_skipped_time: 0,
+      rules_skipped_frequency: 0,
+      skipped_no_recipients: 0,
+      emails_attempted: 0,
       emails_sent: 0,
       skipped_already_sent: 0,
     });
@@ -242,18 +283,34 @@ export async function GET(req: Request) {
   }
 
   const checklistById = new Map(allChecklists.map((c) => [c.id, c]));
+  let rulesProcessed = 0;
+  let rulesSkippedTime = 0;
+  let rulesSkippedFrequency = 0;
+  let skippedNoRecipients = 0;
+  let emailsAttempted = 0;
   let emailsSent = 0;
   let skippedAlreadySent = 0;
 
   for (const rule of rules) {
-    if (!shouldSendNow(rule.send_time, rule.timezone)) continue;
+    if (!shouldRunByFrequency(rule)) {
+      rulesSkippedFrequency += 1;
+      continue;
+    }
+    if (!shouldSendNow(rule.send_time, rule.timezone)) {
+      rulesSkippedTime += 1;
+      continue;
+    }
+    rulesProcessed += 1;
 
     const target = String(rule.target || "").trim().toUpperCase();
     const taskTitle = String(rule.task_title || "").trim();
     if (!target || !taskTitle) continue;
 
     const recipients = parseRecipients(rule.recipients);
-    if (recipients.length === 0) continue;
+    if (recipients.length === 0) {
+      skippedNoRecipients += 1;
+      continue;
+    }
 
     const allowedChecklistIds = allChecklists
       .filter((c) => {
@@ -311,16 +368,31 @@ export async function GET(req: Request) {
     if (grouped.size === 0) continue;
 
     const mail = buildEmailBody(rule, grouped, baseUrl);
+    emailsAttempted += recipients.length;
     const sends = await Promise.allSettled(
       recipients.map((to) => sendEmail({ to, subject: mail.subject, text: mail.text, html: mail.html }))
     );
-    emailsSent += sends.filter((r) => r.status === "fulfilled").length;
+    const sentNow = sends.filter((r) => r.status === "fulfilled").length;
+    emailsSent += sentNow;
+
+    if (sentNow > 0) {
+      await supabase
+        .from("notification_rules")
+        .update({ last_sent_on: todayRome })
+        .eq("id", rule.id);
+    }
   }
 
   return NextResponse.json({
     ok: true,
     date: todayRome,
     future_checklists: futureChecklistsSet.size,
+    rules_total: rules.length,
+    rules_processed: rulesProcessed,
+    rules_skipped_time: rulesSkippedTime,
+    rules_skipped_frequency: rulesSkippedFrequency,
+    skipped_no_recipients: skippedNoRecipients,
+    emails_attempted: emailsAttempted,
     emails_sent: emailsSent,
     skipped_already_sent: skippedAlreadySent,
   });

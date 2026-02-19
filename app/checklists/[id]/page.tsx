@@ -205,6 +205,43 @@ type FormData = {
   garanzia_scadenza: string;
 };
 
+type NotificationRule = {
+  id?: string;
+  enabled: boolean;
+  mode: "AUTOMATICA" | "MANUALE";
+  task_title: string;
+  target: "MAGAZZINO" | "TECNICO_SW";
+  recipients: string[];
+  frequency: "DAILY" | "WEEKDAYS" | "WEEKLY";
+  send_time: string;
+  timezone: string;
+  day_of_week: number | null;
+  stop_statuses: string[];
+  only_future: boolean;
+};
+
+const TASK_MAGAZZINO_TITLE = "Preparazione / riserva disponibilità / ordine merce";
+const TASK_TECNICO_SW_TITLE = "Elettronica di controllo: schemi dati ed elettrici";
+
+function normalizeRuleTitle(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
+}
+
+function getRuleTargetByTaskTitle(title: string): "MAGAZZINO" | "TECNICO_SW" | null {
+  const normalized = normalizeRuleTitle(title);
+  if (normalized === normalizeRuleTitle(TASK_MAGAZZINO_TITLE)) return "MAGAZZINO";
+  if (normalized === normalizeRuleTitle(TASK_TECNICO_SW_TITLE)) return "TECNICO_SW";
+  return null;
+}
+
+function isRuleConfigurableTask(title: string) {
+  return getRuleTargetByTaskTitle(title) !== null;
+}
+
 function toDateInput(value?: string | null) {
   if (!value) return "";
   return value.slice(0, 10);
@@ -524,6 +561,13 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
   const [alertManualName, setAlertManualName] = useState("");
   const [alertFormError, setAlertFormError] = useState<string | null>(null);
   const [alertNotice, setAlertNotice] = useState<string | null>(null);
+  const [ruleTask, setRuleTask] = useState<ChecklistTask | null>(null);
+  const [ruleDraft, setRuleDraft] = useState<NotificationRule | null>(null);
+  const [ruleRecipientsInput, setRuleRecipientsInput] = useState("");
+  const [ruleLoading, setRuleLoading] = useState(false);
+  const [ruleSaving, setRuleSaving] = useState(false);
+  const [ruleSendingNow, setRuleSendingNow] = useState(false);
+  const [ruleError, setRuleError] = useState<string | null>(null);
   const [lastAlertByTask, setLastAlertByTask] = useState<
     Map<string, { toOperatoreId: string; createdAt: string }>
   >(new Map());
@@ -1160,6 +1204,188 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
     setAlertManualMode(false);
     setAlertManualEmail("");
     setAlertManualName("");
+  }
+
+  function parseRecipientsInput(input: string) {
+    return Array.from(
+      new Set(
+        input
+          .split(/[\n,;]+/)
+          .map((s) => s.trim().toLowerCase())
+          .filter((s) => s.includes("@"))
+      )
+    );
+  }
+
+  async function openRuleSettings(task: ChecklistTask) {
+    const target = getRuleTargetByTaskTitle(task.titolo);
+    if (!target) return;
+
+    setRuleTask(task);
+    setRuleError(null);
+    setRuleLoading(true);
+    try {
+      const query = new URLSearchParams({
+        task_title: task.titolo,
+        target,
+      });
+      const res = await fetch(`/api/notification-rules?${query.toString()}`, {
+        method: "GET",
+        credentials: "include",
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(json?.error || "Errore caricamento regola.");
+      }
+      const row = Array.isArray(json?.data) ? json.data[0] : null;
+      const nextDraft: NotificationRule = row
+        ? {
+            id: row.id,
+            enabled: row.enabled !== false,
+            mode: row.mode === "MANUALE" ? "MANUALE" : "AUTOMATICA",
+            task_title: row.task_title || task.titolo,
+            target: row.target === "TECNICO_SW" ? "TECNICO_SW" : "MAGAZZINO",
+            recipients: Array.isArray(row.recipients)
+              ? row.recipients.map((x: any) => String(x || "").trim().toLowerCase()).filter((x: string) => x.includes("@"))
+              : [],
+            frequency:
+              row.frequency === "WEEKLY" || row.frequency === "WEEKDAYS"
+                ? row.frequency
+                : "DAILY",
+            send_time: String(row.send_time || "07:30").slice(0, 5),
+            timezone: String(row.timezone || "Europe/Rome"),
+            day_of_week:
+              row.day_of_week === null || row.day_of_week === undefined
+                ? null
+                : Number(row.day_of_week),
+            stop_statuses:
+              Array.isArray(row.stop_statuses) && row.stop_statuses.length > 0
+                ? row.stop_statuses.map((x: any) => String(x || "").trim().toUpperCase())
+                : ["OK", "NON_NECESSARIO"],
+            only_future: row.only_future !== false,
+          }
+        : {
+            enabled: true,
+            mode: "AUTOMATICA",
+            task_title: task.titolo,
+            target,
+            recipients: [],
+            frequency: "DAILY",
+            send_time: "07:30",
+            timezone: "Europe/Rome",
+            day_of_week: null,
+            stop_statuses: ["OK", "NON_NECESSARIO"],
+            only_future: true,
+          };
+      setRuleDraft(nextDraft);
+      setRuleRecipientsInput(nextDraft.recipients.join(", "));
+    } catch (err: any) {
+      setRuleError(err?.message || "Errore caricamento regola.");
+      setRuleDraft(null);
+    } finally {
+      setRuleLoading(false);
+    }
+  }
+
+  function closeRuleSettings() {
+    setRuleTask(null);
+    setRuleDraft(null);
+    setRuleRecipientsInput("");
+    setRuleError(null);
+    setRuleLoading(false);
+    setRuleSaving(false);
+    setRuleSendingNow(false);
+  }
+
+  async function saveRuleSettings() {
+    if (!ruleDraft) return;
+    const recipients = parseRecipientsInput(ruleRecipientsInput);
+    const payload = {
+      ...ruleDraft,
+      recipients,
+      day_of_week: ruleDraft.frequency === "WEEKLY" ? ruleDraft.day_of_week ?? 1 : null,
+    };
+    setRuleSaving(true);
+    setRuleError(null);
+    try {
+      const res = await fetch("/api/notification-rules", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify(payload),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(json?.error || "Errore salvataggio regola.");
+      }
+      const saved = json?.data;
+      if (saved) {
+        setRuleDraft({
+          id: saved.id,
+          enabled: saved.enabled !== false,
+          mode: saved.mode === "MANUALE" ? "MANUALE" : "AUTOMATICA",
+          task_title: saved.task_title || payload.task_title,
+          target: saved.target === "TECNICO_SW" ? "TECNICO_SW" : "MAGAZZINO",
+          recipients: Array.isArray(saved.recipients)
+            ? saved.recipients.map((x: any) => String(x || "").trim().toLowerCase()).filter((x: string) => x.includes("@"))
+            : recipients,
+          frequency:
+            saved.frequency === "WEEKLY" || saved.frequency === "WEEKDAYS"
+              ? saved.frequency
+              : "DAILY",
+          send_time: String(saved.send_time || payload.send_time).slice(0, 5),
+          timezone: String(saved.timezone || payload.timezone),
+          day_of_week:
+            saved.day_of_week === null || saved.day_of_week === undefined
+              ? null
+              : Number(saved.day_of_week),
+          stop_statuses:
+            Array.isArray(saved.stop_statuses) && saved.stop_statuses.length > 0
+              ? saved.stop_statuses.map((x: any) => String(x || "").trim().toUpperCase())
+              : ["OK", "NON_NECESSARIO"],
+          only_future: saved.only_future !== false,
+        });
+        setRuleRecipientsInput(
+          Array.isArray(saved.recipients)
+            ? saved.recipients
+                .map((x: any) => String(x || "").trim().toLowerCase())
+                .filter((x: string) => x.includes("@"))
+                .join(", ")
+            : recipients.join(", ")
+        );
+      }
+      showToast("Regola notifiche salvata", "success");
+    } catch (err: any) {
+      setRuleError(err?.message || "Errore salvataggio regola.");
+    } finally {
+      setRuleSaving(false);
+    }
+  }
+
+  async function sendRuleNow() {
+    if (!ruleDraft) return;
+    setRuleSendingNow(true);
+    setRuleError(null);
+    try {
+      const res = await fetch("/api/notifications/send-now", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          task_title: ruleDraft.task_title,
+          target: ruleDraft.target,
+        }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(json?.error || "Errore invio manuale.");
+      }
+      showToast(`Invio manuale completato (${json?.emails_sent ?? 0} email)`, "success");
+    } catch (err: any) {
+      setRuleError(err?.message || "Errore invio manuale.");
+    } finally {
+      setRuleSendingNow(false);
+    }
   }
 
   function addRow() {
@@ -3736,19 +3962,37 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
                       </select>
                     </div>
                     <div>
-                      <button
-                        type="button"
-                        onClick={() => setAlertTask(t)}
-                        style={{
-                          padding: "6px 10px",
-                          borderRadius: 8,
-                          border: "1px solid #ddd",
-                          background: "white",
-                          cursor: "pointer",
-                        }}
-                      >
-                        Invia alert
-                      </button>
+                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                        <button
+                          type="button"
+                          onClick={() => setAlertTask(t)}
+                          style={{
+                            padding: "6px 10px",
+                            borderRadius: 8,
+                            border: "1px solid #ddd",
+                            background: "white",
+                            cursor: "pointer",
+                          }}
+                        >
+                          Invia alert
+                        </button>
+                        {isRuleConfigurableTask(t.titolo) && (
+                          <button
+                            type="button"
+                            onClick={() => openRuleSettings(t)}
+                            style={{
+                              padding: "6px 10px",
+                              borderRadius: 8,
+                              border: "1px solid #111",
+                              background: "#111",
+                              color: "white",
+                              cursor: "pointer",
+                            }}
+                          >
+                            Impostazioni
+                          </button>
+                        )}
+                      </div>
                       {lastAlertByTask.has(t.id) && (
                         <div style={{ marginTop: 6, fontSize: 11, opacity: 0.7 }}>
                           <div>
@@ -3950,6 +4194,224 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
                 Invia
               </button>
             </div>
+          </div>
+        </div>
+      )}
+      {ruleTask && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.25)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 55,
+            padding: 16,
+          }}
+        >
+          <div
+            style={{
+              background: "white",
+              borderRadius: 12,
+              padding: 16,
+              width: "100%",
+              maxWidth: 620,
+              boxShadow: "0 10px 30px rgba(0,0,0,0.15)",
+            }}
+          >
+            <div style={{ fontWeight: 700, marginBottom: 8 }}>Impostazioni notifiche</div>
+            <div style={{ fontSize: 12, opacity: 0.75, marginBottom: 12 }}>
+              Task: {ruleTask.titolo}
+            </div>
+
+            {ruleLoading ? (
+              <div style={{ fontSize: 13, opacity: 0.7 }}>Caricamento regola...</div>
+            ) : !ruleDraft ? (
+              <div style={{ fontSize: 13, color: "#b91c1c" }}>
+                {ruleError || "Regola non disponibile."}
+              </div>
+            ) : (
+              <>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                  <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                    <input
+                      type="checkbox"
+                      checked={ruleDraft.enabled}
+                      onChange={(e) =>
+                        setRuleDraft((prev) => (prev ? { ...prev, enabled: e.target.checked } : prev))
+                      }
+                    />
+                    Abilitata
+                  </label>
+                  <label>
+                    Mode<br />
+                    <select
+                      value={ruleDraft.mode}
+                      onChange={(e) =>
+                        setRuleDraft((prev) =>
+                          prev
+                            ? {
+                                ...prev,
+                                mode: e.target.value === "MANUALE" ? "MANUALE" : "AUTOMATICA",
+                              }
+                            : prev
+                        )
+                      }
+                      style={{ width: "100%", padding: 8 }}
+                    >
+                      <option value="AUTOMATICA">AUTOMATICA</option>
+                      <option value="MANUALE">MANUALE</option>
+                    </select>
+                  </label>
+                </div>
+
+                <label style={{ display: "block", marginTop: 10 }}>
+                  Destinatari (email separate da virgola o newline)<br />
+                  <textarea
+                    value={ruleRecipientsInput}
+                    onChange={(e) => setRuleRecipientsInput(e.target.value)}
+                    rows={3}
+                    style={{ width: "100%", padding: 8 }}
+                  />
+                </label>
+
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginTop: 10 }}>
+                  <label>
+                    Frequenza<br />
+                    <select
+                      value={ruleDraft.frequency}
+                      onChange={(e) =>
+                        setRuleDraft((prev) =>
+                          prev
+                            ? {
+                                ...prev,
+                                frequency:
+                                  e.target.value === "WEEKLY"
+                                    ? "WEEKLY"
+                                    : e.target.value === "WEEKDAYS"
+                                    ? "WEEKDAYS"
+                                    : "DAILY",
+                              }
+                            : prev
+                        )
+                      }
+                      style={{ width: "100%", padding: 8 }}
+                    >
+                      <option value="DAILY">DAILY</option>
+                      <option value="WEEKDAYS">WEEKDAYS</option>
+                      <option value="WEEKLY">WEEKLY</option>
+                    </select>
+                  </label>
+                  <label>
+                    Ora invio<br />
+                    <input
+                      type="time"
+                      value={ruleDraft.send_time}
+                      onChange={(e) =>
+                        setRuleDraft((prev) => (prev ? { ...prev, send_time: e.target.value } : prev))
+                      }
+                      style={{ width: "100%", padding: 8 }}
+                    />
+                  </label>
+                  <label>
+                    Timezone<br />
+                    <input
+                      value={ruleDraft.timezone}
+                      onChange={(e) =>
+                        setRuleDraft((prev) => (prev ? { ...prev, timezone: e.target.value } : prev))
+                      }
+                      style={{ width: "100%", padding: 8 }}
+                    />
+                  </label>
+                </div>
+
+                {ruleDraft.frequency === "WEEKLY" && (
+                  <label style={{ display: "block", marginTop: 10 }}>
+                    Giorno settimana<br />
+                    <select
+                      value={ruleDraft.day_of_week ?? 1}
+                      onChange={(e) =>
+                        setRuleDraft((prev) =>
+                          prev ? { ...prev, day_of_week: Number(e.target.value) } : prev
+                        )
+                      }
+                      style={{ width: "100%", padding: 8 }}
+                    >
+                      <option value={1}>Lunedì</option>
+                      <option value={2}>Martedì</option>
+                      <option value={3}>Mercoledì</option>
+                      <option value={4}>Giovedì</option>
+                      <option value={5}>Venerdì</option>
+                      <option value={6}>Sabato</option>
+                      <option value={0}>Domenica</option>
+                    </select>
+                  </label>
+                )}
+
+                <label style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 10 }}>
+                  <input
+                    type="checkbox"
+                    checked={ruleDraft.only_future}
+                    onChange={(e) =>
+                      setRuleDraft((prev) => (prev ? { ...prev, only_future: e.target.checked } : prev))
+                    }
+                  />
+                  Solo checklist future
+                </label>
+
+                {ruleError && (
+                  <div style={{ marginTop: 10, fontSize: 12, color: "#b91c1c" }}>{ruleError}</div>
+                )}
+
+                <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 14 }}>
+                  <button
+                    type="button"
+                    onClick={closeRuleSettings}
+                    style={{
+                      padding: "8px 12px",
+                      borderRadius: 8,
+                      border: "1px solid #ddd",
+                      background: "white",
+                    }}
+                  >
+                    Chiudi
+                  </button>
+                  {ruleDraft.mode === "MANUALE" && (
+                    <button
+                      type="button"
+                      onClick={sendRuleNow}
+                      disabled={ruleSendingNow}
+                      style={{
+                        padding: "8px 12px",
+                        borderRadius: 8,
+                        border: "1px solid #2563eb",
+                        background: "#2563eb",
+                        color: "white",
+                        opacity: ruleSendingNow ? 0.7 : 1,
+                      }}
+                    >
+                      {ruleSendingNow ? "Invio..." : "Invia ora"}
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    onClick={saveRuleSettings}
+                    disabled={ruleSaving}
+                    style={{
+                      padding: "8px 12px",
+                      borderRadius: 8,
+                      border: "1px solid #111",
+                      background: "#111",
+                      color: "white",
+                      opacity: ruleSaving ? 0.7 : 1,
+                    }}
+                  >
+                    {ruleSaving ? "Salvataggio..." : "Salva"}
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}
