@@ -1427,57 +1427,30 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
   }
 
   async function resolveOperatoreIdForSave() {
-    const { data: authData, error: authErr } = await supabase.auth.getUser();
-    if (authErr) {
-      throw new Error(authErr.message || "Utente non autenticato.");
+    const res = await fetch("/api/resolve-operatore", {
+      method: "GET",
+      credentials: "include",
+      cache: "no-store",
+    });
+    let payload: any = null;
+    try {
+      payload = await res.json();
+    } catch {
+      payload = null;
     }
-    const userId = authData?.user?.id;
-    const userEmail = (authData?.user?.email ?? "").trim();
-    if (!userId) {
-      throw new Error("Utente non autenticato.");
+    if (!res.ok) {
+      throw new Error(payload?.error || "Operatore non associato.");
     }
-
-    const { data: operatoreByUserId, error: opErr } = await supabase
-      .from("operatori")
-      .select("id, user_id")
-      .eq("user_id", userId)
-      .maybeSingle();
-
-    if (opErr) {
-      throw new Error(opErr.message || "Errore caricamento operatore.");
-    }
-
-    let operatore = operatoreByUserId;
-    if (!operatore?.id && userEmail) {
-      const { data: operatoreByEmail, error: opByEmailErr } = await supabase
-        .from("operatori")
-        .select("id, user_id")
-        .eq("email", userEmail)
-        .maybeSingle();
-      if (opByEmailErr) {
-        throw new Error(opByEmailErr.message || "Errore caricamento operatore.");
-      }
-      operatore = operatoreByEmail;
-      if (operatore?.id && operatore.user_id !== userId) {
-        const { error: linkErr } = await supabase
-          .from("operatori")
-          .update({ user_id: userId })
-          .eq("id", operatore.id);
-        if (linkErr) {
-          console.error("Errore aggiornamento user_id su operatori", linkErr);
-        }
-      }
-    }
-
-    if (!operatore?.id) {
+    const operatoreId = payload?.operatore_id;
+    if (!operatoreId) {
       throw new Error("Operatore non associato.");
     }
 
-    setCurrentOperatoreId(operatore.id);
+    setCurrentOperatoreId(operatoreId);
     if (typeof window !== "undefined") {
-      window.localStorage.setItem("current_operatore_id", operatore.id);
+      window.localStorage.setItem("current_operatore_id", operatoreId);
     }
-    return operatore.id;
+    return operatoreId;
   }
 
   async function onSave() {
