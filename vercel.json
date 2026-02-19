@@ -15,6 +15,10 @@
     {
       "path": "/api/cron/reminders",
       "schedule": "50 8 * * *"
+    },
+    {
+      "path": "/api/cron/daily-reminder",
+      "schedule": "30 6 * * *"
     }
   ]
 }
