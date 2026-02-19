@@ -1426,9 +1426,47 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
     setDocuments((prev) => prev.filter((d) => d.id !== doc.id));
   }
 
+  async function resolveOperatoreIdForSave() {
+    const { data: authData, error: authErr } = await supabase.auth.getUser();
+    if (authErr) {
+      throw new Error(authErr.message || "Utente non autenticato.");
+    }
+    const userId = authData?.user?.id;
+    if (!userId) {
+      throw new Error("Utente non autenticato.");
+    }
+
+    const { data: operatore, error: opErr } = await supabase
+      .from("operatori")
+      .select("id")
+      .eq("user_id", userId)
+      .maybeSingle();
+
+    if (opErr) {
+      throw new Error(opErr.message || "Errore caricamento operatore.");
+    }
+    if (!operatore?.id) {
+      throw new Error("Operatore non associato");
+    }
+
+    setCurrentOperatoreId(operatore.id);
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem("current_operatore_id", operatore.id);
+    }
+    return operatore.id;
+  }
+
   async function onSave() {
     if (!id || !formData) return;
     setItemsError(null);
+
+    let operatoreId: string;
+    try {
+      operatoreId = await resolveOperatoreIdForSave();
+    } catch (err: any) {
+      alert(err?.message || "Operatore non associato");
+      return;
+    }
 
     const m2Calcolati = calcM2FromDimensioni(formData.dimensioni, formData.numero_facce);
 
@@ -1453,7 +1491,7 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
       m2_calcolati: m2Calcolati ?? null,
       m2_inclusi: m2Calcolati ?? null,
       m2_allocati: null,
-      updated_by_operatore: currentOperatoreId || null,
+      updated_by_operatore: operatoreId,
       data_prevista: formData.data_prevista.trim()
         ? formData.data_prevista.trim()
         : null,

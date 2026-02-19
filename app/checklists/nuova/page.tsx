@@ -424,6 +424,36 @@ export default function NuovaChecklistPage() {
     setDraftLicenze((prev) => prev.filter((_, i) => i !== idx));
   }
 
+  async function resolveOperatoreIdForSave() {
+    const { data: authData, error: authErr } = await supabase.auth.getUser();
+    if (authErr) {
+      throw new Error(authErr.message || "Utente non autenticato.");
+    }
+    const userId = authData?.user?.id;
+    if (!userId) {
+      throw new Error("Utente non autenticato.");
+    }
+
+    const { data: operatore, error: opErr } = await supabase
+      .from("operatori")
+      .select("id")
+      .eq("user_id", userId)
+      .maybeSingle();
+
+    if (opErr) {
+      throw new Error(opErr.message || "Errore caricamento operatore.");
+    }
+    if (!operatore?.id) {
+      throw new Error("Operatore non associato");
+    }
+
+    setCurrentOperatoreId(operatore.id);
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem("current_operatore_id", operatore.id);
+    }
+    return operatore.id;
+  }
+
   async function onCreate() {
     try {
       if (!canCreate) {
@@ -432,6 +462,13 @@ export default function NuovaChecklistPage() {
       }
       if (!cliente.trim()) {
         alert("Inserisci il cliente.");
+        return;
+      }
+      let operatoreId: string;
+      try {
+        operatoreId = await resolveOperatoreIdForSave();
+      } catch (err: any) {
+        alert(err?.message || "Operatore non associato");
         return;
       }
 
@@ -443,8 +480,8 @@ export default function NuovaChecklistPage() {
         magazzino_importazione: magazzinoImportazione.trim()
           ? magazzinoImportazione.trim()
           : null,
-        created_by_operatore: currentOperatoreId || null,
-        updated_by_operatore: currentOperatoreId || null,
+        created_by_operatore: operatoreId,
+        updated_by_operatore: operatoreId,
         saas_piano: saasPiano || null,
         saas_scadenza: saasScadenza.trim() ? saasScadenza.trim() : null,
         saas_note: saasNote.trim() ? saasNote.trim() : null,
