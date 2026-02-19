@@ -19,13 +19,18 @@ type TaskRow = {
   stato: string | null;
 };
 
-type OperatoreRow = {
-  ruolo: string | null;
-  email: string | null;
+type RuleRow = {
+  id: string;
+  enabled: boolean;
+  mode: string | null;
+  task_title: string | null;
+  target: string | null;
+  recipients: any;
+  send_time: string | null;
+  timezone: string | null;
+  stop_statuses: string[] | null;
+  only_future: boolean | null;
 };
-
-const MAGAZZINO_TITLE_TOKEN = "preparazione / riserva disponibilita / ordine merce";
-const TECNICO_SW_TITLE_TOKEN = "elettronica di controllo: schemi dati ed elettrici";
 
 function getBaseUrl(req: Request) {
   const env =
@@ -56,30 +61,49 @@ function getEffectiveInstallDate(checklist: ChecklistRow) {
   return toIsoDay(checklist.data_tassativa) || toIsoDay(checklist.data_prevista);
 }
 
-function normalizeText(value: string | null | undefined) {
-  return String(value || "")
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase();
+function getTimePartsInTimezone(timezone: string) {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: timezone,
+    hour12: false,
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  }).formatToParts(new Date());
+
+  const byType = new Map(parts.map((p) => [p.type, p.value]));
+  const h = Number(byType.get("hour") || "0");
+  const m = Number(byType.get("minute") || "0");
+  const s = Number(byType.get("second") || "0");
+  return { h, m, s };
 }
 
-function classifyTargetByTitle(title: string | null | undefined): "MAGAZZINO" | "TECNICO_SW" | null {
-  const normalized = normalizeText(title);
-  if (!normalized) return null;
-  if (normalized.includes(MAGAZZINO_TITLE_TOKEN)) return "MAGAZZINO";
-  if (normalized.includes(TECNICO_SW_TITLE_TOKEN)) return "TECNICO_SW";
-  return null;
+function parseHmsToSeconds(value: string | null | undefined) {
+  const raw = String(value || "").trim();
+  if (!raw) return 0;
+  const match = /^(\d{1,2}):(\d{2})(?::(\d{2}))?$/.exec(raw);
+  if (!match) return 0;
+  const h = Number(match[1]);
+  const m = Number(match[2]);
+  const s = Number(match[3] || "0");
+  if (h < 0 || h > 23 || m < 0 || m > 59 || s < 0 || s > 59) return 0;
+  return h * 3600 + m * 60 + s;
 }
 
-function buildPayloadHash(
-  sentOn: string,
-  checklistId: string,
-  target: "MAGAZZINO" | "TECNICO_SW",
-  taskTitle: string
-) {
-  return createHash("sha256")
-    .update(`${sentOn}|${checklistId}|${target}|${taskTitle}`)
-    .digest("hex");
+function shouldSendNow(sendTime: string | null | undefined, timezone: string | null | undefined) {
+  const tz = String(timezone || "Europe/Rome").trim() || "Europe/Rome";
+  const now = getTimePartsInTimezone(tz);
+  const nowSec = now.h * 3600 + now.m * 60 + now.s;
+  const sendSec = parseHmsToSeconds(sendTime);
+  return nowSec >= sendSec;
+}
+
+function parseRecipients(input: any) {
+  if (Array.isArray(input)) {
+    return input
+      .map((v) => String(v || "").trim().toLowerCase())
+      .filter((v) => v.includes("@"));
+  }
+  return [];
 }
 
 function escapeHtml(value: string) {
@@ -91,21 +115,33 @@ function escapeHtml(value: string) {
     .replaceAll("'", "&#39;");
 }
 
-function targetLabel(target: "MAGAZZINO" | "TECNICO_SW") {
-  return target === "MAGAZZINO" ? "Magazzino" : "Tecnico SW";
+function buildPayloadHash(sentOn: string, checklistId: string, target: string, taskTitle: string) {
+  return createHash("sha256")
+    .update(`${sentOn}|${checklistId}|${target}|${taskTitle}`)
+    .digest("hex");
 }
 
-function buildRoleEmailBody(
-  target: "MAGAZZINO" | "TECNICO_SW",
+function normalizeStatusSet(stopStatuses: string[] | null | undefined) {
+  const source =
+    Array.isArray(stopStatuses) && stopStatuses.length > 0
+      ? stopStatuses
+      : ["OK", "NON_NECESSARIO"];
+  return new Set(source.map((s) => String(s || "").trim().toUpperCase()));
+}
+
+function buildEmailBody(
+  rule: RuleRow,
   grouped: Map<string, { checklist: ChecklistRow; tasks: TaskRow[] }>,
   baseUrl: string
 ) {
-  const label = targetLabel(target);
   const entries = Array.from(grouped.values());
-  const subject = `Promemoria giornaliero - Attività ${label} pendenti (${entries.length})`;
-
-  const textLines = [subject, ""];
-  let html = `<div><h2>${escapeHtml(subject)}</h2><ul>`;
+  const label = String(rule.target || "").toUpperCase() || "PROMEMORIA";
+  const title = String(rule.task_title || "Attività");
+  const subject = `Promemoria giornaliero - ${label} pendenti (${entries.length})`;
+  const textLines = [subject, `Task: ${title}`, ""];
+  let html = `<div><h2>${escapeHtml(subject)}</h2><p><strong>Task:</strong> ${escapeHtml(
+    title
+  )}</p><ul>`;
 
   for (const item of entries) {
     const cliente = item.checklist.cliente || "—";
@@ -167,6 +203,28 @@ export async function GET(req: Request) {
   const todayRome = getRomeDateString();
   const baseUrl = getBaseUrl(req);
 
+  const { data: rulesRaw, error: rulesErr } = await supabase
+    .from("notification_rules")
+    .select(
+      "id, enabled, mode, task_title, target, recipients, send_time, timezone, stop_statuses, only_future"
+    )
+    .eq("enabled", true)
+    .eq("mode", "AUTOMATICA");
+  if (rulesErr) {
+    return NextResponse.json({ error: rulesErr.message }, { status: 500 });
+  }
+
+  const rules = (rulesRaw || []) as RuleRow[];
+  if (rules.length === 0) {
+    return NextResponse.json({
+      ok: true,
+      date: todayRome,
+      future_checklists: 0,
+      emails_sent: 0,
+      skipped_already_sent: 0,
+    });
+  }
+
   const { data: checklistRaw, error: checklistErr } = await supabase
     .from("checklists")
     .select("id, cliente, nome_checklist, data_prevista, data_tassativa");
@@ -174,79 +232,61 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: checklistErr.message }, { status: 500 });
   }
 
-  const futureChecklists = ((checklistRaw || []) as ChecklistRow[]).filter((c) => {
+  const allChecklists = (checklistRaw || []) as ChecklistRow[];
+  const futureChecklistsSet = new Set<string>();
+  for (const c of allChecklists) {
     const effective = getEffectiveInstallDate(c);
-    return Boolean(effective) && effective > todayRome;
-  });
-  if (futureChecklists.length === 0) {
-    return NextResponse.json({
-      ok: true,
-      date: todayRome,
-      future_checklists: 0,
-      magazzino_open_tasks: 0,
-      tecnico_sw_open_tasks: 0,
-      emails_sent: 0,
-      skipped_already_sent: 0,
-    });
-  }
-
-  const checklistById = new Map(futureChecklists.map((c) => [c.id, c]));
-  const checklistIds = futureChecklists.map((c) => c.id);
-
-  const { data: taskRaw, error: taskErr } = await supabase
-    .from("checklist_tasks")
-    .select("checklist_id, titolo, stato")
-    .in("checklist_id", checklistIds)
-    .not("stato", "in", "(OK,NON_NECESSARIO)");
-  if (taskErr) {
-    return NextResponse.json({ error: taskErr.message }, { status: 500 });
-  }
-
-  const openTasks = (taskRaw || []) as TaskRow[];
-  const openByTarget = {
-    MAGAZZINO: [] as TaskRow[],
-    TECNICO_SW: [] as TaskRow[],
-  };
-  for (const t of openTasks) {
-    const target = classifyTargetByTitle(t.titolo);
-    if (!target) continue;
-    openByTarget[target].push(t);
-  }
-
-  const { data: opsRaw, error: opsErr } = await supabase
-    .from("operatori")
-    .select("ruolo, email")
-    .eq("attivo", true)
-    .not("email", "is", null)
-    .in("ruolo", ["MAGAZZINO", "TECNICO_SW"]);
-  if (opsErr) {
-    return NextResponse.json({ error: opsErr.message }, { status: 500 });
-  }
-
-  const recipients = {
-    MAGAZZINO: new Set<string>(),
-    TECNICO_SW: new Set<string>(),
-  };
-  for (const op of (opsRaw || []) as OperatoreRow[]) {
-    const role = String(op.ruolo || "").toUpperCase();
-    const email = String(op.email || "").trim().toLowerCase();
-    if (!email || !email.includes("@")) continue;
-    if (role === "MAGAZZINO" || role === "TECNICO_SW") {
-      recipients[role].add(email);
+    if (effective && effective > todayRome) {
+      futureChecklistsSet.add(c.id);
     }
   }
 
+  const checklistById = new Map(allChecklists.map((c) => [c.id, c]));
   let emailsSent = 0;
   let skippedAlreadySent = 0;
 
-  for (const target of ["MAGAZZINO", "TECNICO_SW"] as const) {
-    const grouped = new Map<string, { checklist: ChecklistRow; tasks: TaskRow[] }>();
+  for (const rule of rules) {
+    if (!shouldSendNow(rule.send_time, rule.timezone)) continue;
 
-    for (const task of openByTarget[target]) {
+    const target = String(rule.target || "").trim().toUpperCase();
+    const taskTitle = String(rule.task_title || "").trim();
+    if (!target || !taskTitle) continue;
+
+    const recipients = parseRecipients(rule.recipients);
+    if (recipients.length === 0) continue;
+
+    const allowedChecklistIds = allChecklists
+      .filter((c) => {
+        if (rule.only_future === true) {
+          return futureChecklistsSet.has(c.id);
+        }
+        return true;
+      })
+      .map((c) => c.id);
+
+    if (allowedChecklistIds.length === 0) continue;
+
+    const { data: taskRaw, error: taskErr } = await supabase
+      .from("checklist_tasks")
+      .select("checklist_id, titolo, stato")
+      .in("checklist_id", allowedChecklistIds)
+      .ilike("titolo", taskTitle);
+    if (taskErr) {
+      return NextResponse.json({ error: taskErr.message }, { status: 500 });
+    }
+
+    const stopSet = normalizeStatusSet(rule.stop_statuses);
+    const openTasks = ((taskRaw || []) as TaskRow[]).filter((t) => {
+      const stato = String(t.stato || "").trim().toUpperCase();
+      return !stopSet.has(stato);
+    });
+    if (openTasks.length === 0) continue;
+
+    const grouped = new Map<string, { checklist: ChecklistRow; tasks: TaskRow[] }>();
+    for (const task of openTasks) {
       const checklist = checklistById.get(task.checklist_id);
       if (!checklist) continue;
 
-      const taskTitle = (task.titolo || "Attività senza titolo").trim();
       const payloadHash = buildPayloadHash(todayRome, checklist.id, target, taskTitle);
       const { error: lockErr } = await supabase.from("notification_log").insert({
         sent_on: todayRome,
@@ -255,7 +295,6 @@ export async function GET(req: Request) {
         task_title: taskTitle,
         payload_hash: payloadHash,
       });
-
       if (lockErr) {
         if ((lockErr as any)?.code === "23505") {
           skippedAlreadySent += 1;
@@ -270,12 +309,10 @@ export async function GET(req: Request) {
     }
 
     if (grouped.size === 0) continue;
-    const toList = Array.from(recipients[target]);
-    if (toList.length === 0) continue;
 
-    const mail = buildRoleEmailBody(target, grouped, baseUrl);
+    const mail = buildEmailBody(rule, grouped, baseUrl);
     const sends = await Promise.allSettled(
-      toList.map((to) => sendEmail({ to, subject: mail.subject, text: mail.text, html: mail.html }))
+      recipients.map((to) => sendEmail({ to, subject: mail.subject, text: mail.text, html: mail.html }))
     );
     emailsSent += sends.filter((r) => r.status === "fulfilled").length;
   }
@@ -283,9 +320,7 @@ export async function GET(req: Request) {
   return NextResponse.json({
     ok: true,
     date: todayRome,
-    future_checklists: futureChecklists.length,
-    magazzino_open_tasks: openByTarget.MAGAZZINO.length,
-    tecnico_sw_open_tasks: openByTarget.TECNICO_SW.length,
+    future_checklists: futureChecklistsSet.size,
     emails_sent: emailsSent,
     skipped_already_sent: skippedAlreadySent,
   });
