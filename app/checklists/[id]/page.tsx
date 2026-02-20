@@ -1219,6 +1219,7 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
       if (!res.ok) {
         throw new Error(json?.error || "Errore caricamento regola.");
       }
+      console.log("Fetched rule:", json?.data);
       const row = Array.isArray(json?.data) ? json.data[0] : null;
       const nextDraft: NotificationRule = row
         ? {
