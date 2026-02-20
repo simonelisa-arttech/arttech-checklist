@@ -137,10 +137,12 @@ export async function POST(request: Request) {
 
   const taskTemplateId = String(body?.task_template_id || "").trim();
   const taskTitle = String(body?.task_title || "").trim();
-  const target = String(body?.target || "").trim().toUpperCase();
+  const target = String(body?.target || "GENERICA")
+    .trim()
+    .toUpperCase();
   const ignoreOnlyFuture = body?.ignore_only_future === true;
-  if (!taskTemplateId) {
-    return NextResponse.json({ error: "Missing task_template_id" }, { status: 400 });
+  if (!taskTitle) {
+    return NextResponse.json({ error: "Missing task_title" }, { status: 400 });
   }
   if (!target) {
     return NextResponse.json({ error: "Missing target" }, { status: 400 });
@@ -151,6 +153,14 @@ export async function POST(request: Request) {
     .select("id, enabled, mode, task_template_id, task_title, target, recipients, stop_statuses, only_future")
     .eq("task_template_id", taskTemplateId)
     .maybeSingle();
+  if (!taskTemplateId) {
+    ({ data: rule, error: ruleErr } = await auth.adminClient
+      .from("notification_rules")
+      .select("id, enabled, mode, task_template_id, task_title, target, recipients, stop_statuses, only_future")
+      .eq("task_title", taskTitle)
+      .eq("target", target)
+      .maybeSingle());
+  }
   if (ruleErr && String(ruleErr.message || "").toLowerCase().includes("task_template_id")) {
     ({ data: rule, error: ruleErr } = await auth.adminClient
       .from("notification_rules")
@@ -203,11 +213,16 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: true, emails_sent: 0, checklists: 0 });
   }
 
-  const { data: tasksRaw, error: tasksErr } = await auth.adminClient
+  let tasksQuery = auth.adminClient
     .from("checklist_tasks")
     .select("checklist_id, task_template_id, titolo, stato")
-    .in("checklist_id", allowedChecklistIds)
-    .eq("task_template_id", taskTemplateId);
+    .in("checklist_id", allowedChecklistIds);
+  if (taskTemplateId) {
+    tasksQuery = tasksQuery.eq("task_template_id", taskTemplateId);
+  } else {
+    tasksQuery = tasksQuery.ilike("titolo", taskTitle);
+  }
+  const { data: tasksRaw, error: tasksErr } = await tasksQuery;
   if (tasksErr) return NextResponse.json({ error: tasksErr.message }, { status: 500 });
 
   const stopSet = normalizeStatusSet(rule.stop_statuses);

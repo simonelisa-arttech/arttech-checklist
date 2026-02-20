@@ -51,14 +51,35 @@ async function requireUser(request: Request) {
   return { ok: true as const, adminClient };
 }
 
+function normalizeTarget(input: any) {
+  const raw = String(input || "")
+    .trim()
+    .toUpperCase();
+  if (raw === "MAGAZZINO" || raw === "TECNICO_SW") return raw;
+  if (raw === "ALTRO") return "GENERICA";
+  return raw || "GENERICA";
+}
+
+function sanitizeRecipients(input: any) {
+  if (!Array.isArray(input)) return [];
+  return Array.from(
+    new Set(
+      input
+        .map((x: any) => String(x || "").trim().toLowerCase())
+        .filter((x: string) => x.includes("@"))
+    )
+  );
+}
+
 export async function GET(request: Request) {
   const auth = await requireUser(request);
   if (!auth.ok) return auth.response;
 
   const url = new URL(request.url);
   const taskTemplateId = url.searchParams.get("task_template_id");
-  const taskTitle = url.searchParams.get("task_title");
-  const target = url.searchParams.get("target");
+  const taskTitle = String(url.searchParams.get("task_title") || "").trim();
+  const targetParam = url.searchParams.get("target");
+  const target = normalizeTarget(targetParam);
 
   const selectWithDay =
     "id, enabled, mode, task_template_id, task_title, target, recipients, frequency, send_time, timezone, day_of_week, stop_statuses, only_future, created_at, updated_at";
@@ -74,7 +95,7 @@ export async function GET(request: Request) {
       .order("created_at", { ascending: false });
     if (includeTemplateFilter && taskTemplateId) query = query.eq("task_template_id", taskTemplateId);
     if (taskTitle) query = query.eq("task_title", taskTitle);
-    if (target) query = query.eq("target", target);
+    if (targetParam) query = query.eq("target", target);
     return query;
   };
 
@@ -92,7 +113,34 @@ export async function GET(request: Request) {
     }
   }
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ ok: true, data: data || [] });
+
+  const rows = Array.isArray(data) ? data : [];
+  if (rows.length > 0) {
+    return NextResponse.json({ ok: true, data: rows });
+  }
+
+  if (!taskTitle) {
+    return NextResponse.json({ ok: true, data: [] });
+  }
+
+  const virtualRule = {
+    id: null,
+    task_template_id: taskTemplateId || null,
+    enabled: true,
+    mode: target === "MAGAZZINO" || target === "TECNICO_SW" ? "AUTOMATICA" : "MANUALE",
+    task_title: taskTitle,
+    target,
+    recipients: [],
+    frequency: "DAILY",
+    send_time: "07:30",
+    timezone: "Europe/Rome",
+    day_of_week: null,
+    stop_statuses: ["OK", "NON_NECESSARIO"],
+    only_future: true,
+    created_at: null,
+    updated_at: null,
+  };
+  return NextResponse.json({ ok: true, data: [virtualRule] });
 }
 
 export async function POST(request: Request) {
@@ -107,23 +155,18 @@ export async function POST(request: Request) {
   }
 
   const taskTemplateId = String(body?.task_template_id || "").trim();
-  if (!taskTemplateId) {
-    return NextResponse.json({ error: "Missing task_template_id" }, { status: 400 });
-  }
   const taskTitle = String(body?.task_title || "").trim();
-  const target = String(body?.target || "ALTRO").trim().toUpperCase() || "ALTRO";
+  const target = normalizeTarget(body?.target);
   if (!taskTitle) {
     return NextResponse.json({ error: "Missing task_title" }, { status: 400 });
   }
 
-  const recipients = Array.isArray(body?.recipients)
-    ? body.recipients.map((x: any) => String(x || "").trim().toLowerCase()).filter((x: string) => x.includes("@"))
-    : [];
+  const recipients = sanitizeRecipients(body?.recipients);
   const frequency = String(body?.frequency || "DAILY").trim().toUpperCase();
   const payloadBase = {
     enabled: body?.enabled !== false,
     mode: String(body?.mode || "MANUALE").trim().toUpperCase(),
-    task_template_id: taskTemplateId,
+    task_template_id: taskTemplateId || null,
     task_title: taskTitle,
     target,
     recipients,
@@ -153,14 +196,14 @@ export async function POST(request: Request) {
 
   let { data, error } = await auth.adminClient
     .from("notification_rules")
-    .upsert(payloadWithDay, { onConflict: "task_template_id" })
+    .upsert(payloadWithDay, { onConflict: "task_title,target" })
     .select(selectWithDay)
     .single();
 
   if (error && String(error.message || "").toLowerCase().includes("day_of_week")) {
     ({ data, error } = await auth.adminClient
       .from("notification_rules")
-      .upsert(payloadFallback, { onConflict: "task_template_id" })
+      .upsert(payloadFallback, { onConflict: "task_title,target" })
       .select(selectFallback)
       .single());
     if (!error && data) {

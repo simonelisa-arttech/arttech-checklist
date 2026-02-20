@@ -207,11 +207,11 @@ type FormData = {
 
 type NotificationRule = {
   id?: string;
-  task_template_id: string;
+  task_template_id: string | null;
   enabled: boolean;
   mode: "AUTOMATICA" | "MANUALE";
   task_title: string;
-  target: "MAGAZZINO" | "TECNICO_SW" | "ALTRO";
+  target: "MAGAZZINO" | "TECNICO_SW" | "GENERICA";
   recipients: string[];
   frequency: "DAILY" | "WEEKDAYS" | "WEEKLY";
   send_time: string;
@@ -1196,83 +1196,21 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
     );
   }
 
-  async function resolveTaskTemplateForRule(task: ChecklistTask) {
-    if (task.task_template_id) {
-      const { data: templateById, error: templateByIdErr } = await supabase
-        .from("checklist_task_templates")
-        .select("id, titolo, target")
-        .eq("id", task.task_template_id)
-        .maybeSingle();
-      if (templateByIdErr) {
-        throw new Error(templateByIdErr.message || "Errore caricamento template attività.");
-      }
-      if (!templateById?.id) {
-        throw new Error("Template attività non trovato.");
-      }
-      return {
-        id: String(templateById.id),
-        titolo: String(templateById.titolo || task.titolo),
-        target: String(templateById.target || "ALTRO").toUpperCase(),
-      };
-    }
-
-    let sezioneNorm = "";
-    if (typeof task.sezione === "number") {
-      sezioneNorm = task.sezione === 0 ? "DOCUMENTI" : `SEZIONE ${task.sezione}`;
-    } else {
-      sezioneNorm = String(task.sezione || "")
-        .toUpperCase()
-        .replace(/_/g, " ")
-        .trim();
-    }
-    const { data: templateByTitle, error: templateByTitleErr } = await supabase
-      .from("checklist_task_templates")
-      .select("id, titolo, target")
-      .eq("sezione", sezioneNorm)
-      .eq("titolo", task.titolo)
-      .limit(1)
-      .maybeSingle();
-
-    if (templateByTitleErr) {
-      throw new Error(templateByTitleErr.message || "Errore caricamento template attività.");
-    }
-    if (!templateByTitle?.id) {
-      throw new Error("Template attività non associato. Configura prima il template.");
-    }
-
-    const { error: bindErr } = await supabase
-      .from("checklist_tasks")
-      .update({ task_template_id: templateByTitle.id })
-      .eq("id", task.id);
-    if (bindErr) {
-      throw new Error(bindErr.message || "Errore collegamento task-template.");
-    }
-    setTasks((prev) =>
-      prev.map((t) =>
-        t.id === task.id ? { ...t, task_template_id: String(templateByTitle.id) } : t
-      )
-    );
-
-    return {
-      id: String(templateByTitle.id),
-      titolo: String(templateByTitle.titolo || task.titolo),
-      target: String(templateByTitle.target || "ALTRO").toUpperCase(),
-    };
-  }
-
   async function openRuleSettings(task: ChecklistTask) {
     setRuleTask(task);
     setRuleError(null);
     setRuleLoading(true);
     try {
-      const tpl = await resolveTaskTemplateForRule(task);
+      const targetRaw = String((task as any)?.target || "").trim().toUpperCase();
       const target =
-        tpl.target === "MAGAZZINO" || tpl.target === "TECNICO_SW" ? tpl.target : "ALTRO";
+        targetRaw === "MAGAZZINO" || targetRaw === "TECNICO_SW" ? targetRaw : "GENERICA";
       const query = new URLSearchParams({
-        task_template_id: tpl.id,
-        task_title: tpl.titolo,
+        task_title: task.titolo,
         target,
       });
+      if (task.task_template_id) {
+        query.set("task_template_id", task.task_template_id);
+      }
       const res = await fetch(`/api/notification-rules?${query.toString()}`, {
         method: "GET",
         credentials: "include",
@@ -1285,14 +1223,14 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
       const nextDraft: NotificationRule = row
         ? {
             id: row.id,
-            task_template_id: row.task_template_id || tpl.id,
+            task_template_id: row.task_template_id || task.task_template_id || null,
             enabled: row.enabled !== false,
             mode: row.mode === "MANUALE" ? "MANUALE" : "AUTOMATICA",
-            task_title: row.task_title || tpl.titolo,
+            task_title: row.task_title || task.titolo,
             target:
               row.target === "MAGAZZINO" || row.target === "TECNICO_SW"
                 ? row.target
-                : "ALTRO",
+                : "GENERICA",
             recipients: Array.isArray(row.recipients)
               ? row.recipients.map((x: any) => String(x || "").trim().toLowerCase()).filter((x: string) => x.includes("@"))
               : [],
@@ -1313,10 +1251,10 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
             only_future: row.only_future !== false,
           }
         : {
-            task_template_id: tpl.id,
+            task_template_id: task.task_template_id || null,
             enabled: true,
             mode: "MANUALE",
-            task_title: tpl.titolo,
+            task_title: task.titolo,
             target,
             recipients: [],
             frequency: "DAILY",
@@ -1371,14 +1309,14 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
       if (saved) {
         setRuleDraft({
           id: saved.id,
-          task_template_id: saved.task_template_id || payload.task_template_id,
+          task_template_id: saved.task_template_id || payload.task_template_id || null,
           enabled: saved.enabled !== false,
           mode: saved.mode === "MANUALE" ? "MANUALE" : "AUTOMATICA",
           task_title: saved.task_title || payload.task_title,
           target:
             saved.target === "MAGAZZINO" || saved.target === "TECNICO_SW"
               ? saved.target
-              : "ALTRO",
+              : "GENERICA",
           recipients: Array.isArray(saved.recipients)
             ? saved.recipients.map((x: any) => String(x || "").trim().toLowerCase()).filter((x: string) => x.includes("@"))
             : recipients,
