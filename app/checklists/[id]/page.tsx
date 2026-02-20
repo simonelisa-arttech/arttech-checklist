@@ -207,10 +207,11 @@ type FormData = {
 
 type NotificationRule = {
   id?: string;
+  task_template_id: string;
   enabled: boolean;
   mode: "AUTOMATICA" | "MANUALE";
   task_title: string;
-  target: "MAGAZZINO" | "TECNICO_SW";
+  target: "MAGAZZINO" | "TECNICO_SW" | "ALTRO";
   recipients: string[];
   frequency: "DAILY" | "WEEKDAYS" | "WEEKLY";
   send_time: string;
@@ -219,28 +220,6 @@ type NotificationRule = {
   stop_statuses: string[];
   only_future: boolean;
 };
-
-const TASK_MAGAZZINO_TITLE = "Preparazione / riserva disponibilità / ordine merce";
-const TASK_TECNICO_SW_TITLE = "Elettronica di controllo: schemi dati ed elettrici";
-
-function normalizeRuleTitle(value: string) {
-  return value
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .trim();
-}
-
-function getRuleTargetByTaskTitle(title: string): "MAGAZZINO" | "TECNICO_SW" | null {
-  const normalized = normalizeRuleTitle(title);
-  if (normalized === normalizeRuleTitle(TASK_MAGAZZINO_TITLE)) return "MAGAZZINO";
-  if (normalized === normalizeRuleTitle(TASK_TECNICO_SW_TITLE)) return "TECNICO_SW";
-  return null;
-}
-
-function isRuleConfigurableTask(title: string) {
-  return getRuleTargetByTaskTitle(title) !== null;
-}
 
 function toDateInput(value?: string | null) {
   if (!value) return "";
@@ -1217,16 +1196,81 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
     );
   }
 
-  async function openRuleSettings(task: ChecklistTask) {
-    const target = getRuleTargetByTaskTitle(task.titolo);
-    if (!target) return;
+  async function resolveTaskTemplateForRule(task: ChecklistTask) {
+    if (task.task_template_id) {
+      const { data: templateById, error: templateByIdErr } = await supabase
+        .from("checklist_task_templates")
+        .select("id, titolo, target")
+        .eq("id", task.task_template_id)
+        .maybeSingle();
+      if (templateByIdErr) {
+        throw new Error(templateByIdErr.message || "Errore caricamento template attività.");
+      }
+      if (!templateById?.id) {
+        throw new Error("Template attività non trovato.");
+      }
+      return {
+        id: String(templateById.id),
+        titolo: String(templateById.titolo || task.titolo),
+        target: String(templateById.target || "ALTRO").toUpperCase(),
+      };
+    }
 
+    let sezioneNorm = "";
+    if (typeof task.sezione === "number") {
+      sezioneNorm = task.sezione === 0 ? "DOCUMENTI" : `SEZIONE ${task.sezione}`;
+    } else {
+      sezioneNorm = String(task.sezione || "")
+        .toUpperCase()
+        .replace(/_/g, " ")
+        .trim();
+    }
+    const { data: templateByTitle, error: templateByTitleErr } = await supabase
+      .from("checklist_task_templates")
+      .select("id, titolo, target")
+      .eq("sezione", sezioneNorm)
+      .eq("titolo", task.titolo)
+      .limit(1)
+      .maybeSingle();
+
+    if (templateByTitleErr) {
+      throw new Error(templateByTitleErr.message || "Errore caricamento template attività.");
+    }
+    if (!templateByTitle?.id) {
+      throw new Error("Template attività non associato. Configura prima il template.");
+    }
+
+    const { error: bindErr } = await supabase
+      .from("checklist_tasks")
+      .update({ task_template_id: templateByTitle.id })
+      .eq("id", task.id);
+    if (bindErr) {
+      throw new Error(bindErr.message || "Errore collegamento task-template.");
+    }
+    setTasks((prev) =>
+      prev.map((t) =>
+        t.id === task.id ? { ...t, task_template_id: String(templateByTitle.id) } : t
+      )
+    );
+
+    return {
+      id: String(templateByTitle.id),
+      titolo: String(templateByTitle.titolo || task.titolo),
+      target: String(templateByTitle.target || "ALTRO").toUpperCase(),
+    };
+  }
+
+  async function openRuleSettings(task: ChecklistTask) {
     setRuleTask(task);
     setRuleError(null);
     setRuleLoading(true);
     try {
+      const tpl = await resolveTaskTemplateForRule(task);
+      const target =
+        tpl.target === "MAGAZZINO" || tpl.target === "TECNICO_SW" ? tpl.target : "ALTRO";
       const query = new URLSearchParams({
-        task_title: task.titolo,
+        task_template_id: tpl.id,
+        task_title: tpl.titolo,
         target,
       });
       const res = await fetch(`/api/notification-rules?${query.toString()}`, {
@@ -1241,10 +1285,14 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
       const nextDraft: NotificationRule = row
         ? {
             id: row.id,
+            task_template_id: row.task_template_id || tpl.id,
             enabled: row.enabled !== false,
             mode: row.mode === "MANUALE" ? "MANUALE" : "AUTOMATICA",
-            task_title: row.task_title || task.titolo,
-            target: row.target === "TECNICO_SW" ? "TECNICO_SW" : "MAGAZZINO",
+            task_title: row.task_title || tpl.titolo,
+            target:
+              row.target === "MAGAZZINO" || row.target === "TECNICO_SW"
+                ? row.target
+                : "ALTRO",
             recipients: Array.isArray(row.recipients)
               ? row.recipients.map((x: any) => String(x || "").trim().toLowerCase()).filter((x: string) => x.includes("@"))
               : [],
@@ -1265,9 +1313,10 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
             only_future: row.only_future !== false,
           }
         : {
+            task_template_id: tpl.id,
             enabled: true,
-            mode: "AUTOMATICA",
-            task_title: task.titolo,
+            mode: "MANUALE",
+            task_title: tpl.titolo,
             target,
             recipients: [],
             frequency: "DAILY",
@@ -1322,10 +1371,14 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
       if (saved) {
         setRuleDraft({
           id: saved.id,
+          task_template_id: saved.task_template_id || payload.task_template_id,
           enabled: saved.enabled !== false,
           mode: saved.mode === "MANUALE" ? "MANUALE" : "AUTOMATICA",
           task_title: saved.task_title || payload.task_title,
-          target: saved.target === "TECNICO_SW" ? "TECNICO_SW" : "MAGAZZINO",
+          target:
+            saved.target === "MAGAZZINO" || saved.target === "TECNICO_SW"
+              ? saved.target
+              : "ALTRO",
           recipients: Array.isArray(saved.recipients)
             ? saved.recipients.map((x: any) => String(x || "").trim().toLowerCase()).filter((x: string) => x.includes("@"))
             : recipients,
@@ -1372,6 +1425,7 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
         headers: { "Content-Type": "application/json" },
         credentials: "include",
         body: JSON.stringify({
+          task_template_id: ruleDraft.task_template_id,
           task_title: ruleDraft.task_title,
           target: ruleDraft.target,
         }),
@@ -3976,24 +4030,22 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
                         >
                           Invia alert
                         </button>
-                        {isRuleConfigurableTask(t.titolo) && (
-                          <button
-                            type="button"
-                            onClick={() => openRuleSettings(t)}
-                            style={{
-                              padding: "6px 9px",
-                              borderRadius: 8,
-                              border: "1px solid #d1d5db",
-                              background: "#f8fafc",
-                              color: "#111827",
-                              cursor: "pointer",
-                              fontSize: 12,
-                              fontWeight: 600,
-                            }}
-                          >
-                            ⚙ Regola
-                          </button>
-                        )}
+                        <button
+                          type="button"
+                          onClick={() => openRuleSettings(t)}
+                          style={{
+                            padding: "6px 9px",
+                            borderRadius: 8,
+                            border: "1px solid #d1d5db",
+                            background: "#f8fafc",
+                            color: "#111827",
+                            cursor: "pointer",
+                            fontSize: 12,
+                            fontWeight: 600,
+                          }}
+                        >
+                          ⚙ Regola
+                        </button>
                       </div>
                       {lastAlertByTask.has(t.id) && (
                         <div style={{ marginTop: 6, fontSize: 11, opacity: 0.7 }}>

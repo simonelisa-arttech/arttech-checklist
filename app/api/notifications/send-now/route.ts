@@ -15,6 +15,7 @@ type ChecklistRow = {
 
 type TaskRow = {
   checklist_id: string;
+  task_template_id: string | null;
   titolo: string | null;
   stato: string | null;
 };
@@ -134,18 +135,33 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
+  const taskTemplateId = String(body?.task_template_id || "").trim();
   const taskTitle = String(body?.task_title || "").trim();
   const target = String(body?.target || "").trim().toUpperCase();
-  if (!taskTitle || !target) {
-    return NextResponse.json({ error: "Missing task_title or target" }, { status: 400 });
+  const ignoreOnlyFuture = body?.ignore_only_future === true;
+  if (!taskTemplateId) {
+    return NextResponse.json({ error: "Missing task_template_id" }, { status: 400 });
+  }
+  if (!target) {
+    return NextResponse.json({ error: "Missing target" }, { status: 400 });
   }
 
-  const { data: rule, error: ruleErr } = await auth.adminClient
+  let { data: rule, error: ruleErr } = await auth.adminClient
     .from("notification_rules")
-    .select("id, enabled, mode, task_title, target, recipients, stop_statuses, only_future")
-    .eq("task_title", taskTitle)
-    .eq("target", target)
+    .select("id, enabled, mode, task_template_id, task_title, target, recipients, stop_statuses, only_future")
+    .eq("task_template_id", taskTemplateId)
     .maybeSingle();
+  if (ruleErr && String(ruleErr.message || "").toLowerCase().includes("task_template_id")) {
+    ({ data: rule, error: ruleErr } = await auth.adminClient
+      .from("notification_rules")
+      .select("id, enabled, mode, task_title, target, recipients, stop_statuses, only_future")
+      .eq("task_title", taskTitle)
+      .eq("target", target)
+      .maybeSingle());
+    if (!ruleErr && rule) {
+      rule = { ...(rule as any), task_template_id: null };
+    }
+  }
   if (ruleErr) return NextResponse.json({ error: ruleErr.message }, { status: 500 });
   if (!rule) return NextResponse.json({ error: "Rule not found" }, { status: 404 });
 
@@ -168,9 +184,16 @@ export async function POST(request: Request) {
   const checklists = (checklistsRaw || []) as ChecklistRow[];
   const allowedChecklistIds = checklists
     .filter((c) => {
+      const installDate = getEffectiveInstallDate(c);
+      if (!installDate) return false;
+
+      const mode = String(rule.mode || "").toUpperCase();
+      if (mode === "MANUALE" && ignoreOnlyFuture) {
+        return true;
+      }
+
       if (rule.only_future === true) {
-        const effective = getEffectiveInstallDate(c);
-        return Boolean(effective) && effective > todayRome;
+        return installDate > todayRome;
       }
       return true;
     })
@@ -182,9 +205,9 @@ export async function POST(request: Request) {
 
   const { data: tasksRaw, error: tasksErr } = await auth.adminClient
     .from("checklist_tasks")
-    .select("checklist_id, titolo, stato")
+    .select("checklist_id, task_template_id, titolo, stato")
     .in("checklist_id", allowedChecklistIds)
-    .ilike("titolo", taskTitle);
+    .eq("task_template_id", taskTemplateId);
   if (tasksErr) return NextResponse.json({ error: tasksErr.message }, { status: 500 });
 
   const stopSet = normalizeStatusSet(rule.stop_statuses);
@@ -202,12 +225,19 @@ export async function POST(request: Request) {
     const checklist = checklistById.get(task.checklist_id);
     if (!checklist) continue;
 
-    const payloadHash = buildManualPayloadHash(todayRome, checklist.id, target, taskTitle, stamp);
+    const effectiveTaskTitle = String((rule as any)?.task_title || taskTitle || "Attività").trim();
+    const payloadHash = buildManualPayloadHash(
+      todayRome,
+      checklist.id,
+      target,
+      effectiveTaskTitle,
+      stamp
+    );
     const { error: logErr } = await auth.adminClient.from("notification_log").insert({
       sent_on: todayRome,
       checklist_id: checklist.id,
       target,
-      task_title: taskTitle,
+      task_title: effectiveTaskTitle,
       payload_hash: payloadHash,
     });
     if (logErr) {
@@ -224,7 +254,8 @@ export async function POST(request: Request) {
   }
 
   const entries = Array.from(grouped.values());
-  const subject = `AT SYSTEM - Promemoria ${target} - ${taskTitle}`;
+  const effectiveTaskTitle = String((rule as any)?.task_title || taskTitle || "Attività").trim();
+  const subject = `AT SYSTEM - Promemoria ${target} - ${effectiveTaskTitle}`;
   const text = entries
     .map((item) => {
       const nome = item.checklist.nome_checklist || "—";

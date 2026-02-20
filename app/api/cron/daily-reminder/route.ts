@@ -15,6 +15,7 @@ type ChecklistRow = {
 
 type TaskRow = {
   checklist_id: string;
+  task_template_id: string | null;
   titolo: string | null;
   stato: string | null;
 };
@@ -25,6 +26,7 @@ type RuleRow = {
   mode: string | null;
   frequency: string | null;
   day_of_week: number | null;
+  task_template_id: string | null;
   task_title: string | null;
   target: string | null;
   recipients: any;
@@ -239,8 +241,10 @@ export async function GET(req: Request) {
   const baseUrl = getBaseUrl(req);
 
   const selectWithDay =
-    "id, enabled, mode, frequency, day_of_week, task_title, target, recipients, send_time, timezone, stop_statuses, only_future";
+    "id, enabled, mode, frequency, day_of_week, task_template_id, task_title, target, recipients, send_time, timezone, stop_statuses, only_future";
   const selectFallback =
+    "id, enabled, mode, frequency, task_template_id, task_title, target, recipients, send_time, timezone, stop_statuses, only_future";
+  const selectFallbackNoTemplate =
     "id, enabled, mode, frequency, task_title, target, recipients, send_time, timezone, stop_statuses, only_future";
 
   let { data: rulesRaw, error: rulesErr } = await supabase
@@ -258,6 +262,18 @@ export async function GET(req: Request) {
     rulesErr = fallbackRes.error as any;
     if (!rulesErr && Array.isArray(rulesRaw)) {
       rulesRaw = rulesRaw.map((r: any) => ({ ...r, day_of_week: null }));
+    }
+  }
+  if (rulesErr && String(rulesErr.message || "").toLowerCase().includes("task_template_id")) {
+    const fallbackNoTplRes = await supabase
+      .from("notification_rules")
+      .select(selectFallbackNoTemplate)
+      .eq("enabled", true)
+      .eq("mode", "AUTOMATICA");
+    rulesRaw = fallbackNoTplRes.data as any;
+    rulesErr = fallbackNoTplRes.error as any;
+    if (!rulesErr && Array.isArray(rulesRaw)) {
+      rulesRaw = rulesRaw.map((r: any) => ({ ...r, day_of_week: null, task_template_id: null }));
     }
   }
   if (rulesErr) {
@@ -318,8 +334,9 @@ export async function GET(req: Request) {
     rulesProcessed += 1;
 
     const target = String(rule.target || "").trim().toUpperCase();
-    const taskTitle = String(rule.task_title || "").trim();
-    if (!target || !taskTitle) continue;
+    const taskTemplateId = String(rule.task_template_id || "").trim();
+    const taskTitle = String(rule.task_title || "Attività").trim() || "Attività";
+    if (!target || !taskTemplateId) continue;
 
     const recipients = parseRecipients(rule.recipients);
     if (recipients.length === 0) {
@@ -329,8 +346,10 @@ export async function GET(req: Request) {
 
     const allowedChecklistIds = allChecklists
       .filter((c) => {
+        const installDate = getEffectiveInstallDate(c);
+        if (!installDate) return false;
         if (rule.only_future === true) {
-          return futureChecklistsSet.has(c.id);
+          return installDate > todayRome;
         }
         return true;
       })
@@ -340,9 +359,9 @@ export async function GET(req: Request) {
 
     const { data: taskRaw, error: taskErr } = await supabase
       .from("checklist_tasks")
-      .select("checklist_id, titolo, stato")
+      .select("checklist_id, task_template_id, titolo, stato")
       .in("checklist_id", allowedChecklistIds)
-      .ilike("titolo", taskTitle);
+      .eq("task_template_id", taskTemplateId);
     if (taskErr) {
       return NextResponse.json({ error: taskErr.message }, { status: 500 });
     }

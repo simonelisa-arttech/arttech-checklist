@@ -56,19 +56,23 @@ export async function GET(request: Request) {
   if (!auth.ok) return auth.response;
 
   const url = new URL(request.url);
+  const taskTemplateId = url.searchParams.get("task_template_id");
   const taskTitle = url.searchParams.get("task_title");
   const target = url.searchParams.get("target");
 
   const selectWithDay =
-    "id, enabled, mode, task_title, target, recipients, frequency, send_time, timezone, day_of_week, stop_statuses, only_future, created_at, updated_at";
+    "id, enabled, mode, task_template_id, task_title, target, recipients, frequency, send_time, timezone, day_of_week, stop_statuses, only_future, created_at, updated_at";
   const selectFallback =
+    "id, enabled, mode, task_template_id, task_title, target, recipients, frequency, send_time, timezone, stop_statuses, only_future, created_at, updated_at";
+  const selectFallbackNoTemplate =
     "id, enabled, mode, task_title, target, recipients, frequency, send_time, timezone, stop_statuses, only_future, created_at, updated_at";
 
-  const runQuery = async (selectExpr: string) => {
+  const runQuery = async (selectExpr: string, includeTemplateFilter = true) => {
     let query = auth.adminClient
       .from("notification_rules")
       .select(selectExpr)
       .order("created_at", { ascending: false });
+    if (includeTemplateFilter && taskTemplateId) query = query.eq("task_template_id", taskTemplateId);
     if (taskTitle) query = query.eq("task_title", taskTitle);
     if (target) query = query.eq("target", target);
     return query;
@@ -79,6 +83,12 @@ export async function GET(request: Request) {
     ({ data, error } = await runQuery(selectFallback));
     if (!error && Array.isArray(data)) {
       data = data.map((row: any) => ({ ...row, day_of_week: null }));
+    }
+  }
+  if (error && String(error.message || "").toLowerCase().includes("task_template_id")) {
+    ({ data, error } = await runQuery(selectFallbackNoTemplate, false));
+    if (!error && Array.isArray(data)) {
+      data = data.map((row: any) => ({ ...row, day_of_week: null, task_template_id: null }));
     }
   }
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
@@ -96,10 +106,14 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
+  const taskTemplateId = String(body?.task_template_id || "").trim();
+  if (!taskTemplateId) {
+    return NextResponse.json({ error: "Missing task_template_id" }, { status: 400 });
+  }
   const taskTitle = String(body?.task_title || "").trim();
-  const target = String(body?.target || "").trim().toUpperCase();
-  if (!taskTitle || !target) {
-    return NextResponse.json({ error: "Missing task_title or target" }, { status: 400 });
+  const target = String(body?.target || "ALTRO").trim().toUpperCase() || "ALTRO";
+  if (!taskTitle) {
+    return NextResponse.json({ error: "Missing task_title" }, { status: 400 });
   }
 
   const recipients = Array.isArray(body?.recipients)
@@ -108,7 +122,8 @@ export async function POST(request: Request) {
   const frequency = String(body?.frequency || "DAILY").trim().toUpperCase();
   const payloadBase = {
     enabled: body?.enabled !== false,
-    mode: String(body?.mode || "AUTOMATICA").trim().toUpperCase(),
+    mode: String(body?.mode || "MANUALE").trim().toUpperCase(),
+    task_template_id: taskTemplateId,
     task_title: taskTitle,
     target,
     recipients,
@@ -130,24 +145,38 @@ export async function POST(request: Request) {
   const payloadFallback = { ...payloadBase };
 
   const selectWithDay =
-    "id, enabled, mode, task_title, target, recipients, frequency, send_time, timezone, day_of_week, stop_statuses, only_future, created_at, updated_at";
+    "id, enabled, mode, task_template_id, task_title, target, recipients, frequency, send_time, timezone, day_of_week, stop_statuses, only_future, created_at, updated_at";
   const selectFallback =
+    "id, enabled, mode, task_template_id, task_title, target, recipients, frequency, send_time, timezone, stop_statuses, only_future, created_at, updated_at";
+  const selectFallbackNoTemplate =
     "id, enabled, mode, task_title, target, recipients, frequency, send_time, timezone, stop_statuses, only_future, created_at, updated_at";
 
   let { data, error } = await auth.adminClient
     .from("notification_rules")
-    .upsert(payloadWithDay, { onConflict: "task_title,target" })
+    .upsert(payloadWithDay, { onConflict: "task_template_id" })
     .select(selectWithDay)
     .single();
 
   if (error && String(error.message || "").toLowerCase().includes("day_of_week")) {
     ({ data, error } = await auth.adminClient
       .from("notification_rules")
-      .upsert(payloadFallback, { onConflict: "task_title,target" })
+      .upsert(payloadFallback, { onConflict: "task_template_id" })
       .select(selectFallback)
       .single());
     if (!error && data) {
       data = { ...(data as any), day_of_week: null };
+    }
+  }
+  if (error && String(error.message || "").toLowerCase().includes("task_template_id")) {
+    const payloadCompat = { ...payloadFallback };
+    delete (payloadCompat as any).task_template_id;
+    ({ data, error } = await auth.adminClient
+      .from("notification_rules")
+      .upsert(payloadCompat, { onConflict: "task_title,target" })
+      .select(selectFallbackNoTemplate)
+      .single());
+    if (!error && data) {
+      data = { ...(data as any), day_of_week: null, task_template_id: null };
     }
   }
 

@@ -34,10 +34,17 @@ export type SendAlertPayload = {
 };
 
 export async function sendAlert(payload: SendAlertPayload) {
+  const normalizedPayload: SendAlertPayload = {
+    ...payload,
+    message:
+      typeof payload.message === "string" && payload.message.trim().length > 0
+        ? payload.message
+        : payload.text ?? "",
+  };
   const res = await fetch("/api/send-alert", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
+    body: JSON.stringify(normalizedPayload),
   });
   let data: any = null;
   try {
