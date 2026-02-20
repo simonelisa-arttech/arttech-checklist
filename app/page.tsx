@@ -530,9 +530,9 @@ export default function Page() {
       const activeFilters = (Object.entries(saasServiceFilter) as Array<[SaasServiceFilter, boolean]>)
         .filter(([, enabled]) => enabled)
         .map(([key]) => key);
-      if (activeFilters.length > 0 && activeFilters.length < 4) {
-        const matchAny = activeFilters.some((f) => matchesSingleSaasService(c, f));
-        if (!matchAny) return false;
+      if (activeFilters.length > 0) {
+        const matchAll = activeFilters.every((f) => matchesSingleSaasService(c, f));
+        if (!matchAll) return false;
       }
       const docs = (c.checklist_documents ?? []) as any[];
       const hasProforma = docs.some((d) =>
