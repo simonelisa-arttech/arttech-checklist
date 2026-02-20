@@ -148,29 +148,46 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Missing target" }, { status: 400 });
   }
 
-  let { data: rule, error: ruleErr } = await auth.adminClient
-    .from("notification_rules")
-    .select("id, enabled, mode, task_template_id, task_title, target, recipients, stop_statuses, only_future")
-    .eq("task_template_id", taskTemplateId)
-    .maybeSingle();
-  if (!taskTemplateId) {
-    ({ data: rule, error: ruleErr } = await auth.adminClient
+  // 1) Provo prima per task_template_id + target (se ho il template)
+  let rule: any = null;
+  let ruleErr: any = null;
+
+  if (taskTemplateId) {
+    const res = await auth.adminClient
+      .from("notification_rules")
+      .select("id, enabled, mode, task_template_id, task_title, target, recipients, stop_statuses, only_future")
+      .eq("task_template_id", taskTemplateId)
+      .eq("target", target)
+      .maybeSingle();
+
+    rule = res.data;
+    ruleErr = res.error;
+  }
+
+  // 2) Fallback robusto: task_title + target (sempre)
+  if (!rule && !ruleErr) {
+    const res2 = await auth.adminClient
       .from("notification_rules")
       .select("id, enabled, mode, task_template_id, task_title, target, recipients, stop_statuses, only_future")
       .eq("task_title", taskTitle)
       .eq("target", target)
-      .maybeSingle());
+      .maybeSingle();
+
+    rule = res2.data;
+    ruleErr = res2.error;
   }
+
+  // 3) Se esiste un errore dovuto a colonna task_template_id (compat), riprovo senza selezionarla
   if (ruleErr && String(ruleErr.message || "").toLowerCase().includes("task_template_id")) {
-    ({ data: rule, error: ruleErr } = await auth.adminClient
+    const res3 = await auth.adminClient
       .from("notification_rules")
       .select("id, enabled, mode, task_title, target, recipients, stop_statuses, only_future")
       .eq("task_title", taskTitle)
       .eq("target", target)
-      .maybeSingle());
-    if (!ruleErr && rule) {
-      rule = { ...(rule as any), task_template_id: null };
-    }
+      .maybeSingle();
+
+    rule = res3.data ? { ...(res3.data as any), task_template_id: null } : null;
+    ruleErr = res3.error;
   }
   if (ruleErr) return NextResponse.json({ error: ruleErr.message }, { status: 500 });
   if (!rule) return NextResponse.json({ error: "Rule not found" }, { status: 404 });
@@ -304,7 +321,7 @@ export async function POST(request: Request) {
     .join("")}</ul></div>`;
 
   const sends = await Promise.allSettled(
-    recipients.map((to) => sendEmail({ to, subject, text, html }))
+    recipients.map((to: string) => sendEmail({ to, subject, text, html }))
   );
 
   return NextResponse.json({
