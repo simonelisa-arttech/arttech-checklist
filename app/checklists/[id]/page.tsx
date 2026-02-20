@@ -367,6 +367,8 @@ function saasLabelFromCode(code?: string | null) {
     "SAS-UL24": "CARE ULTRA",
     "SAS-UL36": "CARE ULTRA",
     "SAS-EVTR": "ART TECH EVENT",
+    "SAS-EVTF": "ART TECH EVENT (remoto)",
+    "SAS-EVTO": "ART TECH EVENT (onsite)",
     "SAS-MON": "MONITORAGGIO REMOTO & ALERT",
     "SAS-TCK": "TICKETING / HELP DESK",
     "SAS-SIM": "CONNETTIVITÀ SIM DATI",
@@ -710,7 +712,7 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
       nome_checklist: c.nome_checklist ?? "",
       proforma: c.proforma ?? "",
       magazzino_importazione: c.magazzino_importazione ?? "",
-      saas_tipo: null,
+      saas_tipo: c.saas_tipo ?? "",
       saas_piano: c.saas_piano ?? "",
       saas_scadenza: toDateInput(c.saas_scadenza),
       saas_stato: c.saas_stato ?? "",
@@ -1696,7 +1698,7 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
       magazzino_importazione: formData.magazzino_importazione.trim()
         ? formData.magazzino_importazione.trim()
         : null,
-      saas_tipo: null,
+      saas_tipo: (formData.saas_tipo ?? "").trim() ? (formData.saas_tipo ?? "").trim() : null,
       saas_piano: (formData.saas_piano ?? "").trim() ? (formData.saas_piano ?? "").trim() : null,
       saas_scadenza: formData.saas_scadenza.trim()
         ? formData.saas_scadenza.trim()
@@ -2981,6 +2983,31 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
                   )
                 : "—"
             }
+          />
+
+          <ServiceRow
+            label="Servizio aggiuntivo SAAS"
+            left={
+              editMode && formData ? (
+                <select
+                  value={formData.saas_tipo ?? ""}
+                  onChange={(e) => setFormData({ ...formData, saas_tipo: e.target.value || null })}
+                  style={{ width: "100%", padding: 10 }}
+                >
+                  <option value="">— nessuno —</option>
+                  <option value="SAS-EVTR">SAS-EVTR — ART TECH EVENT</option>
+                  <option value="SAS-EVTF">SAS-EVTF — ART TECH EVENT (remoto)</option>
+                  <option value="SAS-EVTO">SAS-EVTO — ART TECH EVENT (onsite)</option>
+                </select>
+              ) : (
+                <div>
+                  {checklist.saas_tipo
+                    ? `${checklist.saas_tipo} — ${saasLabelFromCode(checklist.saas_tipo) ?? "—"}`
+                    : "—"}
+                </div>
+              )
+            }
+            right="—"
           />
 
           <ServiceRow

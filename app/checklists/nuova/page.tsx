@@ -37,6 +37,12 @@ const SAAS_PIANI = [
   { code: "SAS-CYB", label: "CYBER / ANTIVIRUS / HARDENING PLAYER" },
 ];
 
+const SAAS_SERVIZI_AGGIUNTIVI = [
+  { code: "SAS-EVTR", label: "ART TECH EVENTS (generico)" },
+  { code: "SAS-EVTF", label: "ART TECH EVENTS (assistenza remota durante eventi)" },
+  { code: "SAS-EVTO", label: "ART TECH EVENTS (assistenza onsite durante eventi)" },
+];
+
 type ChecklistItem = {
   codice: string;
   descrizione: string;
@@ -182,6 +188,7 @@ export default function NuovaChecklistPage() {
   const [proforma, setProforma] = useState("");
   const [magazzinoImportazione, setMagazzinoImportazione] = useState("");
   const [saasPiano, setSaasPiano] = useState<string>("");
+  const [saasTipo, setSaasTipo] = useState<string>("");
   const [saasScadenza, setSaasScadenza] = useState("");
   const [saasNote, setSaasNote] = useState("");
   const [dataPrevista, setDataPrevista] = useState("");
@@ -480,9 +487,9 @@ export default function NuovaChecklistPage() {
         created_by_operatore: operatoreId,
         updated_by_operatore: operatoreId,
         saas_piano: saasPiano || null,
+        saas_tipo: saasTipo || null,
         saas_scadenza: saasScadenza.trim() ? saasScadenza.trim() : null,
         saas_note: saasNote.trim() ? saasNote.trim() : null,
-        saas_tipo: null,
         tipo_saas: null,
         data_prevista: dataPrevista.trim() ? dataPrevista.trim() : null,
         data_tassativa: dataTassativa.trim() ? dataTassativa.trim() : null,
@@ -1255,6 +1262,22 @@ export default function NuovaChecklistPage() {
             >
               <option value="">—</option>
               {SAAS_PIANI.map((p) => (
+                <option key={p.code} value={p.code}>
+                  {p.label}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label>
+            Servizio SAAS aggiuntivo<br />
+            <select
+              value={saasTipo}
+              onChange={(e) => setSaasTipo(e.target.value)}
+              style={{ width: "100%", padding: 10 }}
+            >
+              <option value="">— nessuno —</option>
+              {SAAS_SERVIZI_AGGIUNTIVI.map((p) => (
                 <option key={p.code} value={p.code}>
                   {p.label}
                 </option>
