@@ -60,7 +60,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ ok: true, operatore_id: opByUserId.id });
   }
 
-  const userEmail = (user.email || "").trim();
+  const userEmail = (user.email || "").trim().toLowerCase();
   if (!userEmail) {
     return NextResponse.json({ error: "Operatore non associato" }, { status: 404 });
   }
@@ -68,7 +68,8 @@ export async function GET(request: Request) {
   const { data: opByEmail, error: byEmailErr } = await supabaseAdmin
     .from("operatori")
     .select("id, user_id")
-    .eq("email", userEmail)
+    .ilike("email", userEmail)
+    .limit(1)
     .maybeSingle();
   if (byEmailErr) {
     return NextResponse.json({ error: byEmailErr.message }, { status: 500 });

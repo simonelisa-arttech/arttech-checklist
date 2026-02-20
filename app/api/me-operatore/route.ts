@@ -49,9 +49,44 @@ export async function GET(request: Request) {
   if (opErr) {
     return NextResponse.json({ error: opErr.message }, { status: 500 });
   }
-  if (!operatore?.id) {
+  if (operatore?.id) {
+    return NextResponse.json({ ok: true, operatore });
+  }
+
+  const userEmail = String(user.email || "")
+    .trim()
+    .toLowerCase();
+  if (!userEmail) {
     return NextResponse.json({ error: "Operatore non associato" }, { status: 404 });
   }
 
-  return NextResponse.json({ ok: true, operatore });
+  const { data: operatoreByEmail, error: byEmailErr } = await supabaseAdmin
+    .from("operatori")
+    .select("id, user_id, nome, ruolo, attivo")
+    .ilike("email", userEmail)
+    .limit(1)
+    .maybeSingle();
+
+  if (byEmailErr) {
+    return NextResponse.json({ error: byEmailErr.message }, { status: 500 });
+  }
+  if (!operatoreByEmail?.id) {
+    return NextResponse.json({ error: "Operatore non associato" }, { status: 404 });
+  }
+
+  const { error: updErr } = await supabaseAdmin
+    .from("operatori")
+    .update({ user_id: user.id })
+    .eq("id", operatoreByEmail.id);
+  if (updErr) {
+    return NextResponse.json({ error: updErr.message }, { status: 500 });
+  }
+
+  return NextResponse.json({
+    ok: true,
+    operatore: {
+      ...operatoreByEmail,
+      user_id: user.id,
+    },
+  });
 }
