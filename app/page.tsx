@@ -43,6 +43,30 @@ function saasLabelFromCode(code?: string | null) {
   return found ? found.label : "";
 }
 
+type SaasServiceFilter = "ALL" | "EVENTS" | "ULTRA" | "PREMIUM" | "PLUS";
+
+function matchesSaasServiceFilter(row: Checklist, filter: SaasServiceFilter) {
+  if (filter === "ALL") return true;
+  const piano = String(row.saas_piano || "")
+    .trim()
+    .toUpperCase();
+  const tipo = String(row.saas_tipo || "")
+    .trim()
+    .toUpperCase();
+  const combined = `${piano} ${tipo}`;
+  if (filter === "EVENTS") {
+    return (
+      combined.includes("SAS-EVT") ||
+      combined.includes("EVENT") ||
+      combined.includes("ART TECH EVENT")
+    );
+  }
+  if (filter === "ULTRA") return combined.includes("SAS-UL");
+  if (filter === "PREMIUM") return combined.includes("SAS-PR");
+  if (filter === "PLUS") return combined.includes("SAS-PL");
+  return true;
+}
+
 function renderStatusBadge(value?: string | null) {
   const label = value?.trim() || "—";
   const upper = label.toUpperCase();
@@ -402,6 +426,7 @@ export default function Page() {
 
   // dashboard: ricerca + ordinamento
   const [q, setQ] = useState("");
+  const [saasServiceFilter, setSaasServiceFilter] = useState<SaasServiceFilter>("ALL");
   type SortDir = "asc" | "desc";
   const [sortKey, setSortKey] = useState<
     | "created_at"
@@ -498,6 +523,7 @@ export default function Page() {
     const needle = rawNeedle.replace(/\bproforma:(si|no)\b/g, "").trim();
 
     const filtered = items.filter((c) => {
+      if (!matchesSaasServiceFilter(c, saasServiceFilter)) return false;
       const docs = (c.checklist_documents ?? []) as any[];
       const hasProforma = docs.some((d) =>
         String(d.tipo ?? "")
@@ -569,7 +595,7 @@ export default function Page() {
     });
 
     return sorted;
-  }, [items, q, sortKey, sortDir, serialsByChecklistId]);
+  }, [items, q, saasServiceFilter, sortKey, sortDir, serialsByChecklistId]);
 
   const clientiOptions = useMemo(() => {
     const set = new Set<string>();
@@ -1535,6 +1561,24 @@ export default function Page() {
                     minWidth: 280,
                   }}
                 />
+
+                <select
+                  value={saasServiceFilter}
+                  onChange={(e) => setSaasServiceFilter(e.target.value as SaasServiceFilter)}
+                  style={{
+                    padding: 10,
+                    borderRadius: 10,
+                    border: "1px solid #ddd",
+                    minWidth: 220,
+                    background: "white",
+                  }}
+                >
+                  <option value="ALL">Servizio SAAS: tutti</option>
+                  <option value="EVENTS">Solo Art Tech Events</option>
+                  <option value="ULTRA">Solo ULTRA</option>
+                  <option value="PREMIUM">Solo PREMIUM</option>
+                  <option value="PLUS">Solo PLUS</option>
+                </select>
 
                 <div style={{ fontSize: 12, opacity: 0.7 }}>
                   Risultati: {displayRows.length}
