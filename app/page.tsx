@@ -43,10 +43,9 @@ function saasLabelFromCode(code?: string | null) {
   return found ? found.label : "";
 }
 
-type SaasServiceFilter = "ALL" | "EVENTS" | "ULTRA" | "PREMIUM" | "PLUS";
+type SaasServiceFilter = "EVENTS" | "ULTRA" | "PREMIUM" | "PLUS";
 
-function matchesSaasServiceFilter(row: Checklist, filter: SaasServiceFilter) {
-  if (filter === "ALL") return true;
+function matchesSingleSaasService(row: Checklist, filter: SaasServiceFilter) {
   const piano = String(row.saas_piano || "")
     .trim()
     .toUpperCase();
@@ -426,7 +425,12 @@ export default function Page() {
 
   // dashboard: ricerca + ordinamento
   const [q, setQ] = useState("");
-  const [saasServiceFilter, setSaasServiceFilter] = useState<SaasServiceFilter>("ALL");
+  const [saasServiceFilter, setSaasServiceFilter] = useState<Record<SaasServiceFilter, boolean>>({
+    EVENTS: true,
+    ULTRA: true,
+    PREMIUM: true,
+    PLUS: true,
+  });
   type SortDir = "asc" | "desc";
   const [sortKey, setSortKey] = useState<
     | "created_at"
@@ -523,7 +527,13 @@ export default function Page() {
     const needle = rawNeedle.replace(/\bproforma:(si|no)\b/g, "").trim();
 
     const filtered = items.filter((c) => {
-      if (!matchesSaasServiceFilter(c, saasServiceFilter)) return false;
+      const activeFilters = (Object.entries(saasServiceFilter) as Array<[SaasServiceFilter, boolean]>)
+        .filter(([, enabled]) => enabled)
+        .map(([key]) => key);
+      if (activeFilters.length > 0 && activeFilters.length < 4) {
+        const matchAny = activeFilters.some((f) => matchesSingleSaasService(c, f));
+        if (!matchAny) return false;
+      }
       const docs = (c.checklist_documents ?? []) as any[];
       const hasProforma = docs.some((d) =>
         String(d.tipo ?? "")
@@ -1562,23 +1572,76 @@ export default function Page() {
                   }}
                 />
 
-                <select
-                  value={saasServiceFilter}
-                  onChange={(e) => setSaasServiceFilter(e.target.value as SaasServiceFilter)}
+                <div
                   style={{
-                    padding: 10,
-                    borderRadius: 10,
+                    display: "flex",
+                    gap: 10,
+                    alignItems: "center",
+                    flexWrap: "wrap",
+                    fontSize: 13,
+                    padding: "8px 10px",
                     border: "1px solid #ddd",
-                    minWidth: 220,
+                    borderRadius: 10,
                     background: "white",
                   }}
                 >
-                  <option value="ALL">Servizio SAAS: tutti</option>
-                  <option value="EVENTS">Solo Art Tech Events</option>
-                  <option value="ULTRA">Solo ULTRA</option>
-                  <option value="PREMIUM">Solo PREMIUM</option>
-                  <option value="PLUS">Solo PLUS</option>
-                </select>
+                  <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <input
+                      type="checkbox"
+                      checked={Object.values(saasServiceFilter).every(Boolean)}
+                      onChange={(e) => {
+                        const checked = e.target.checked;
+                        setSaasServiceFilter({
+                          EVENTS: checked,
+                          ULTRA: checked,
+                          PREMIUM: checked,
+                          PLUS: checked,
+                        });
+                      }}
+                    />
+                    Tutti
+                  </label>
+                  <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <input
+                      type="checkbox"
+                      checked={saasServiceFilter.EVENTS}
+                      onChange={(e) =>
+                        setSaasServiceFilter((prev) => ({ ...prev, EVENTS: e.target.checked }))
+                      }
+                    />
+                    Art Tech Events
+                  </label>
+                  <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <input
+                      type="checkbox"
+                      checked={saasServiceFilter.ULTRA}
+                      onChange={(e) =>
+                        setSaasServiceFilter((prev) => ({ ...prev, ULTRA: e.target.checked }))
+                      }
+                    />
+                    ULTRA
+                  </label>
+                  <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <input
+                      type="checkbox"
+                      checked={saasServiceFilter.PREMIUM}
+                      onChange={(e) =>
+                        setSaasServiceFilter((prev) => ({ ...prev, PREMIUM: e.target.checked }))
+                      }
+                    />
+                    PREMIUM
+                  </label>
+                  <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <input
+                      type="checkbox"
+                      checked={saasServiceFilter.PLUS}
+                      onChange={(e) =>
+                        setSaasServiceFilter((prev) => ({ ...prev, PLUS: e.target.checked }))
+                      }
+                    />
+                    PLUS
+                  </label>
+                </div>
 
                 <div style={{ fontSize: 12, opacity: 0.7 }}>
                   Risultati: {displayRows.length}
