@@ -30,6 +30,7 @@ export default function Toast({
 
   return (
     <div
+      data-testid={isError ? "toast-error" : "toast-success"}
       role="status"
       aria-live="polite"
       style={{

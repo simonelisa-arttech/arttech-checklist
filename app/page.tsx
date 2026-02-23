@@ -2257,6 +2257,8 @@ export default function Page() {
                     return (
                       <tr
                         key={c.id}
+                        data-testid="project-row"
+                        data-project-id={c.id}
                         role="button"
                         tabIndex={0}
                         onClick={() => router.push(`/checklists/${c.id}`)}
@@ -2480,6 +2482,7 @@ export default function Page() {
                         <td style={{ padding: "10px 12px", display: "flex", gap: 8 }}>
                           <button
                             type="button"
+                            data-testid="project-duplicate-btn"
                             onClick={(e) => {
                               e.stopPropagation();
                               openDuplicateModal(c.id);
@@ -2530,6 +2533,7 @@ export default function Page() {
 )}
       {dupModalOpen && (
         <div
+          data-testid="duplicate-modal"
           style={{
             position: "fixed",
             inset: 0,
@@ -2561,6 +2565,7 @@ export default function Page() {
             <label style={{ display: "block", marginBottom: 14 }}>
               Nome nuovo progetto
               <input
+                data-testid="duplicate-name-input"
                 value={dupNewName}
                 onChange={(e) => setDupNewName(e.target.value)}
                 style={{
@@ -2589,6 +2594,7 @@ export default function Page() {
             <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
               <button
                 type="button"
+                data-testid="duplicate-cancel-btn"
                 onClick={() => closeDupModal("cancel")}
                 style={{
                   padding: "8px 14px",
@@ -2602,6 +2608,7 @@ export default function Page() {
               </button>
               <button
                 type="button"
+                data-testid="duplicate-confirm-btn"
                 onClick={duplicateChecklist}
                 disabled={dupSaving || !dupNewName.trim()}
                 style={{

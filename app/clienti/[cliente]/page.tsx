@@ -4989,6 +4989,7 @@ ${rinnovi30ggBreakdown.debugSample
           <div style={{ marginTop: 8, opacity: 0.7 }}>Nessuna scadenza/rinnovo trovato</div>
         ) : (
           <div
+            data-testid="renewals-table"
             style={{
               marginTop: 10,
               border: "1px solid #eee",
@@ -5062,6 +5063,9 @@ ${rinnovi30ggBreakdown.debugSample
             return (
               <div
                 key={r.id}
+                data-testid="renewal-row"
+                data-item-tipo={String(r.item_tipo || "").toUpperCase()}
+                data-source={String(r.source || "")}
                 style={{
                   display: "grid",
                   gridTemplateColumns: "90px 1.1fr 110px 120px 120px 90px 330px",
@@ -5113,15 +5117,17 @@ ${rinnovi30ggBreakdown.debugSample
                     justifyContent: "center",
                   }}
                 >
-                  {isTagliando
-                    ? renderTagliandoStatoBadge(r.stato)
-                    : stato === "AVVISATO"
-                    ? renderAvvisatoBadge(alertStats, {
-                        cliente,
-                        checklist_id: r.checklist_id ?? null,
-                        tipo: r.item_tipo ?? null,
-                      })
-                    : renderRinnovoStatoBadge(stato)}
+                  <div data-testid="workflow-badge">
+                    {isTagliando
+                      ? renderTagliandoStatoBadge(r.stato)
+                      : stato === "AVVISATO"
+                      ? renderAvvisatoBadge(alertStats, {
+                          cliente,
+                          checklist_id: r.checklist_id ?? null,
+                          tipo: r.item_tipo ?? null,
+                        })
+                      : renderRinnovoStatoBadge(stato)}
+                  </div>
                 </div>
                 <div
                   title={lastSentTooltip}
@@ -5133,6 +5139,7 @@ ${rinnovi30ggBreakdown.debugSample
                   {isTagliando ? renderModalitaBadge(r.modalita) : "—"}
                 </div>
                 <div
+                  data-testid="workflow-actions-btn"
                   style={{
                     display: "grid",
                     gridTemplateColumns: "repeat(3, 110px)",
@@ -5150,6 +5157,8 @@ ${rinnovi30ggBreakdown.debugSample
                       >
                       <button
                         type="button"
+                        data-testid="send-alert-btn"
+                        data-status-target="AVVISATO"
                         onClick={() => openRinnoviAlert("stage1", false, [r])}
                         disabled={!canStage1}
                         title={
@@ -5175,6 +5184,7 @@ ${rinnovi30ggBreakdown.debugSample
                       {actions.fattura && (
                         <button
                           type="button"
+                          data-testid="set-status-DA_FATTURARE"
                           onClick={() => {
                             if (stato === "DA_FATTURARE") {
                               openRinnoviAlert("stage2", false, [r]);
@@ -5212,6 +5222,7 @@ ${rinnovi30ggBreakdown.debugSample
                       )}
                       <button
                         type="button"
+                        data-testid="edit-expiry-btn"
                         onClick={() => openEditScadenza(r)}
                         style={{
                           padding: "3px 6px",
@@ -5238,6 +5249,7 @@ ${rinnovi30ggBreakdown.debugSample
                       {actions.conferma && (
                         <button
                           type="button"
+                          data-testid="set-status-CONFERMATO"
                           onClick={() =>
                             isTagliando
                               ? markTagliandoOk(r)
@@ -5269,6 +5281,7 @@ ${rinnovi30ggBreakdown.debugSample
                       {actions.non_rinnovato && (
                         <button
                           type="button"
+                          data-testid="set-status-NON_RINNOVATO"
                           onClick={() =>
                             isLicenza
                               ? markLicenzaNonRinnovata(r)
@@ -5300,6 +5313,7 @@ ${rinnovi30ggBreakdown.debugSample
                       {actions.fattura && (
                         <button
                           type="button"
+                          data-testid="set-status-FATTURATO"
                           onClick={() =>
                             isTagliando
                               ? markTagliandoFatturato(r)

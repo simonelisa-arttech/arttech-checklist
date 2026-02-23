@@ -10,6 +10,11 @@ type SendEmailResult = {
 };
 
 export async function sendEmail({ to, subject, text, html }: SendEmailInput) {
+  if (process.env.E2E === "1") {
+    console.log("[E2E] sendEmail mocked:", { to, subject });
+    return { id: "e2e-mocked-email" } as SendEmailResult;
+  }
+
   const apiKey = process.env.RESEND_API_KEY;
   const from = process.env.EMAIL_FROM;
   if (!apiKey) {
