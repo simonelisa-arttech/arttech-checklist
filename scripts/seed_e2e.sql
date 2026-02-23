@@ -19,8 +19,8 @@ insert into public.checklists (
   '00000000-0000-0000-0000-00000000e201',
   'CLIENTE_E2E',
   'PROGETTO_E2E_RENEWALS',
-  'SAS-PL',
-  'SAS-EVTR',
+  'SAAS-PL',
+  'SAAS-EVTR',
   (current_date + interval '30 day')::date,
   (current_date + interval '30 day')::date,
   'IN_CORSO'

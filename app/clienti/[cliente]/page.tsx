@@ -1145,7 +1145,7 @@ export default function ClientePage({ params }: { params: any }) {
       const { data: pianiData, error: pianiErr } = await supabase
         .from("saas_piani")
         .select("codice, nome, interventi_inclusi")
-        .ilike("codice", "SAS-UL%")
+        .ilike("codice", "SAAS-UL%")
         .order("codice", { ascending: true });
 
       if (!pianiErr) {
@@ -1643,7 +1643,7 @@ export default function ClientePage({ params }: { params: any }) {
     return checklists.filter((c) => {
       const piano = String(c.saas_piano ?? "").trim().toUpperCase();
       if (!piano) return false;
-      return !piano.startsWith("SAS-UL");
+      return !piano.startsWith("SAAS-UL");
     });
   }, [checklists]);
 
@@ -4570,11 +4570,11 @@ ${rinnovi30ggBreakdown.debugSample
                 <option value="">—</option>
                 {[
                   ...ultraPiani,
-                  ...(ultraPiani.some((p) => p.codice === "SAS-UL8")
+                  ...(ultraPiani.some((p) => p.codice === "SAAS-UL8")
                     ? []
                     : [
                         {
-                          codice: "SAS-UL8",
+                          codice: "SAAS-UL8",
                           nome: "CARE ULTRA (H8)",
                           interventi_inclusi: null,
                         },

@@ -265,7 +265,7 @@ function normalizeCustomCode(code: string) {
 
 function startsWithTecOrSas(value?: string | null) {
   const v = String(value ?? "").trim().toUpperCase();
-  return v.startsWith("TEC") || v.startsWith("SAS");
+  return v.startsWith("TEC") || v.startsWith("SAAS");
 }
 
 function logSupabaseError(label: string, err: any) {
@@ -354,32 +354,32 @@ function getNextLicenzaScadenza(licenze: Array<{ scadenza?: string | null }>) {
 function saasLabelFromCode(code?: string | null) {
   const raw = (code || "").trim().toUpperCase();
   const map: Record<string, string> = {
-    "SAS-PL": "CARE PLUS",
-    "SAS-PR": "CARE PREMIUM",
-    "SAS-UL": "CARE ULTRA",
-    "SAS-UL-ILL": "CARE ULTRA (illimitato)",
-    "SAS-PR4": "CARE PREMIUM (H4)",
-    "SAS-PR8": "CARE PREMIUM (H8)",
-    "SAS-PR12": "CARE PREMIUM (H12)",
-    "SAS-PR24": "CARE PREMIUM (H24)",
-    "SAS-PR36": "CARE PREMIUM (H36)",
-    "SAS-UL4": "CARE ULTRA",
-    "SAS-UL8": "CARE ULTRA",
-    "SAS-UL12": "CARE ULTRA",
-    "SAS-UL24": "CARE ULTRA",
-    "SAS-UL36": "CARE ULTRA",
-    "SAS-EVTR": "ART TECH EVENT",
-    "SAS-EVTF": "ART TECH EVENT (remoto)",
-    "SAS-EVTO": "ART TECH EVENT (onsite)",
-    "SAS-MON": "MONITORAGGIO REMOTO & ALERT",
-    "SAS-TCK": "TICKETING / HELP DESK",
-    "SAS-SIM": "CONNETTIVITÀ SIM DATI",
-    "SAS-CMS": "LICENZA CMS / SOFTWARE TERZI",
-    "SAS-BKP": "BACKUP / RIPRISTINO",
-    "SAS-RPT": "REPORTISTICA",
-    "SAS-SLA": "SLA RIPRISTINO",
-    "SAS-EXT": "ESTENSIONE GARANZIA",
-    "SAS-CYB": "CYBER / HARDENING",
+    "SAAS-PL": "CARE PLUS",
+    "SAAS-PR": "CARE PREMIUM",
+    "SAAS-UL": "CARE ULTRA",
+    "SAAS-UL-ILL": "CARE ULTRA (illimitato)",
+    "SAAS-PR4": "CARE PREMIUM (H4)",
+    "SAAS-PR8": "CARE PREMIUM (H8)",
+    "SAAS-PR12": "CARE PREMIUM (H12)",
+    "SAAS-PR24": "CARE PREMIUM (H24)",
+    "SAAS-PR36": "CARE PREMIUM (H36)",
+    "SAAS-UL4": "CARE ULTRA",
+    "SAAS-UL8": "CARE ULTRA",
+    "SAAS-UL12": "CARE ULTRA",
+    "SAAS-UL24": "CARE ULTRA",
+    "SAAS-UL36": "CARE ULTRA",
+    "SAAS-EVTR": "ART TECH EVENT",
+    "SAAS-EVTF": "ART TECH EVENT (remoto)",
+    "SAAS-EVTO": "ART TECH EVENT (onsite)",
+    "SAAS-MON": "MONITORAGGIO REMOTO & ALERT",
+    "SAAS-TCK": "TICKETING / HELP DESK",
+    "SAAS-SIM": "CONNETTIVITÀ SIM DATI",
+    "SAAS-CMS": "LICENZA CMS / SOFTWARE TERZI",
+    "SAAS-BKP": "BACKUP / RIPRISTINO",
+    "SAAS-RPT": "REPORTISTICA",
+    "SAAS-SLA": "SLA RIPRISTINO",
+    "SAAS-EXT": "ESTENSIONE GARANZIA",
+    "SAAS-CYB": "CYBER / HARDENING",
   };
   return map[raw] ?? null;
 }
@@ -1032,7 +1032,7 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
   const vociProdottiOptions = catalogItems.filter((item) => {
     if (item.attivo === false) return false;
     const code = (item.codice ?? "").toUpperCase();
-    return !(code.startsWith("TEC") || code.startsWith("SAS"));
+    return !(code.startsWith("TEC") || code.startsWith("SAAS"));
   });
   const deviceOptions = deviceCatalogItems;
   const serialiControllo = assetSerials.filter((s) => s.tipo === "CONTROLLO");
@@ -1855,14 +1855,14 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
         return;
       }
       if (!isCustomCode(r.codice) && startsWithTecOrSas(r.codice)) {
-        setItemsError("TEC e SAS si gestiscono nelle sezioni dedicate.");
+        setItemsError("TEC e SAAS si gestiscono nelle sezioni dedicate.");
         return;
       }
       if (
         isCustomCode(r.codice) &&
         (startsWithTecOrSas(r.descrizione_custom) || startsWithTecOrSas(r.descrizione))
       ) {
-        setItemsError("TEC e SAS si gestiscono nelle sezioni dedicate.");
+        setItemsError("TEC e SAAS si gestiscono nelle sezioni dedicate.");
         return;
       }
       if (!r.codice || (!isCustomCode(r.codice) && !r.descrizione)) {
@@ -3001,30 +3001,30 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
                     style={{ width: "100%", padding: 10 }}
                   >
                     <option value="">—</option>
-                    <option value="SAS-PL">SAS-PL — CARE PLUS</option>
-                    <option value="SAS-PR">SAS-PR — CARE PREMIUM</option>
-                    <option value="SAS-UL">SAS-UL — CARE ULTRA</option>
-                    <option value="SAS-UL-ILL">SAS-UL-ILL — CARE ULTRA (illimitato)</option>
-                    <option value="SAS-PR4">SAS-PR4 — CARE PREMIUM (H4)</option>
-                    <option value="SAS-PR8">SAS-PR8 — CARE PREMIUM (H8)</option>
-                    <option value="SAS-PR12">SAS-PR12 — CARE PREMIUM (H12)</option>
-                    <option value="SAS-PR24">SAS-PR24 — CARE PREMIUM (H24)</option>
-                    <option value="SAS-PR36">SAS-PR36 — CARE PREMIUM (H36)</option>
-                    <option value="SAS-UL4">SAS-UL4 — CARE ULTRA (H4)</option>
-                    <option value="SAS-UL8">SAS-UL8 — CARE ULTRA (H8)</option>
-                    <option value="SAS-UL12">SAS-UL12 — CARE ULTRA (H12)</option>
-                    <option value="SAS-UL24">SAS-UL24 — CARE ULTRA (H24)</option>
-                    <option value="SAS-UL36">SAS-UL36 — CARE ULTRA (H36)</option>
-                    <option value="SAS-EVTR">SAS-EVTR — ART TECH EVENT</option>
-                    <option value="SAS-MON">SAS-MON — MONITORAGGIO REMOTO & ALERT</option>
-                    <option value="SAS-TCK">SAS-TCK — TICKETING / HELP DESK</option>
-                    <option value="SAS-SIM">SAS-SIM — CONNETTIVITÀ SIM DATI</option>
-                    <option value="SAS-CMS">SAS-CMS — LICENZA CMS / SOFTWARE TERZI</option>
-                    <option value="SAS-BKP">SAS-BKP — BACKUP / RIPRISTINO</option>
-                    <option value="SAS-RPT">SAS-RPT — REPORTISTICA</option>
-                    <option value="SAS-SLA">SAS-SLA — SLA RIPRISTINO</option>
-                    <option value="SAS-EXT">SAS-EXT — ESTENSIONE GARANZIA</option>
-                    <option value="SAS-CYB">SAS-CYB — CYBER / HARDENING</option>
+                    <option value="SAAS-PL">SAAS-PL — CARE PLUS</option>
+                    <option value="SAAS-PR">SAAS-PR — CARE PREMIUM</option>
+                    <option value="SAAS-UL">SAAS-UL — CARE ULTRA</option>
+                    <option value="SAAS-UL-ILL">SAAS-UL-ILL — CARE ULTRA (illimitato)</option>
+                    <option value="SAAS-PR4">SAAS-PR4 — CARE PREMIUM (H4)</option>
+                    <option value="SAAS-PR8">SAAS-PR8 — CARE PREMIUM (H8)</option>
+                    <option value="SAAS-PR12">SAAS-PR12 — CARE PREMIUM (H12)</option>
+                    <option value="SAAS-PR24">SAAS-PR24 — CARE PREMIUM (H24)</option>
+                    <option value="SAAS-PR36">SAAS-PR36 — CARE PREMIUM (H36)</option>
+                    <option value="SAAS-UL4">SAAS-UL4 — CARE ULTRA (H4)</option>
+                    <option value="SAAS-UL8">SAAS-UL8 — CARE ULTRA (H8)</option>
+                    <option value="SAAS-UL12">SAAS-UL12 — CARE ULTRA (H12)</option>
+                    <option value="SAAS-UL24">SAAS-UL24 — CARE ULTRA (H24)</option>
+                    <option value="SAAS-UL36">SAAS-UL36 — CARE ULTRA (H36)</option>
+                    <option value="SAAS-EVTR">SAAS-EVTR — ART TECH EVENT</option>
+                    <option value="SAAS-MON">SAAS-MON — MONITORAGGIO REMOTO & ALERT</option>
+                    <option value="SAAS-TCK">SAAS-TCK — TICKETING / HELP DESK</option>
+                    <option value="SAAS-SIM">SAAS-SIM — CONNETTIVITÀ SIM DATI</option>
+                    <option value="SAAS-CMS">SAAS-CMS — LICENZA CMS / SOFTWARE TERZI</option>
+                    <option value="SAAS-BKP">SAAS-BKP — BACKUP / RIPRISTINO</option>
+                    <option value="SAAS-RPT">SAAS-RPT — REPORTISTICA</option>
+                    <option value="SAAS-SLA">SAAS-SLA — SLA RIPRISTINO</option>
+                    <option value="SAAS-EXT">SAAS-EXT — ESTENSIONE GARANZIA</option>
+                    <option value="SAAS-CYB">SAAS-CYB — CYBER / HARDENING</option>
                   </select>
                   <input
                     type="date"
@@ -3071,9 +3071,9 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
                   style={{ width: "100%", padding: 10 }}
                 >
                   <option value="">— nessuno —</option>
-                  <option value="SAS-EVTR">SAS-EVTR — ART TECH EVENT</option>
-                  <option value="SAS-EVTF">SAS-EVTF — ART TECH EVENT (remoto)</option>
-                  <option value="SAS-EVTO">SAS-EVTO — ART TECH EVENT (onsite)</option>
+                  <option value="SAAS-EVTR">SAAS-EVTR — ART TECH EVENT</option>
+                  <option value="SAAS-EVTF">SAAS-EVTF — ART TECH EVENT (remoto)</option>
+                  <option value="SAAS-EVTO">SAAS-EVTO — ART TECH EVENT (onsite)</option>
                 </select>
               ) : (
                 <div>
@@ -3756,7 +3756,7 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
 
       <h2 style={{ marginTop: 22 }}>Voci / Prodotti</h2>
       <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 10 }}>
-        Accessori/Extra (no TEC, no SAS)
+        Accessori/Extra (no TEC, no SAAS)
       </div>
 
       {itemsError && (

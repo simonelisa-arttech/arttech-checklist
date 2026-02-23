@@ -11,30 +11,30 @@ import { calcM2FromDimensioni } from "@/lib/parseDimensioni";
 import { isSupabaseConfigured, supabase } from "@/lib/supabaseClient";
 
 const SAAS_PIANI = [
-  { code: "SAS-PL", label: "CARE PLUS (ASSISTENZA BASE)" },
-  { code: "SAS-PR", label: "CARE PREMIUM (ASSISTENZA AVANZATA + MONITORAGGIO)" },
-  { code: "SAS-UL", label: "CARE ULTRA (ASSISTENZA PRIORITARIA / H24 SE PREVISTA)" },
-  { code: "SAS-PR4", label: "CARE PREMIUM (ASSISTENZA AVANZATA / H4)" },
-  { code: "SAS-PR8", label: "CARE PREMIUM (ASSISTENZA AVANZATA / H8)" },
-  { code: "SAS-PR12", label: "CARE PREMIUM (ASSISTENZA AVANZATA / H12)" },
-  { code: "SAS-PR24", label: "CARE PREMIUM (ASSISTENZA AVANZATA / H24)" },
-  { code: "SAS-PR36", label: "CARE PREMIUM (ASSISTENZA AVANZATA / H36)" },
-  { code: "SAS-UL4", label: "CARE ULTRA (ASSISTENZA PRIORITARIA)" },
-  { code: "SAS-UL8", label: "CARE ULTRA (ASSISTENZA PRIORITARIA)" },
-  { code: "SAS-UL12", label: "CARE ULTRA (ASSISTENZA PRIORITARIA)" },
-  { code: "SAS-UL24", label: "CARE ULTRA (ASSISTENZA PRIORITARIA)" },
-  { code: "SAS-UL36", label: "CARE ULTRA (ASSISTENZA PRIORITARIA)" },
-  { code: "SAS-EVTF", label: "ART TECH EVENT (assistenza remota durante eventi)" },
-  { code: "SAS-EVTO", label: "ART TECH EVENT (assistenza onsite durante eventi)" },
-  { code: "SAS-MON", label: "MONITORAGGIO REMOTO & ALERT" },
-  { code: "SAS-TCK", label: "TICKETING / HELP DESK" },
-  { code: "SAS-SIM", label: "CONNETTIVITÀ SIM DATI" },
-  { code: "SAS-CMS", label: "LICENZA CMS / SOFTWARE TERZI" },
-  { code: "SAS-BKP", label: "BACKUP CONFIGURAZIONI / RIPRISTINO" },
-  { code: "SAS-RPT", label: "REPORTISTICA (LOG, UPTIME, ON-AIR)" },
-  { code: "SAS-SLA", label: "SLA RIPRISTINO (ES. ENTRO 2H) – OPZIONE" },
-  { code: "SAS-EXT", label: "ESTENSIONE GARANZIA / COPERTURE" },
-  { code: "SAS-CYB", label: "CYBER / ANTIVIRUS / HARDENING PLAYER" },
+  { code: "SAAS-PL", label: "CARE PLUS (ASSISTENZA BASE)" },
+  { code: "SAAS-PR", label: "CARE PREMIUM (ASSISTENZA AVANZATA + MONITORAGGIO)" },
+  { code: "SAAS-UL", label: "CARE ULTRA (ASSISTENZA PRIORITARIA / H24 SE PREVISTA)" },
+  { code: "SAAS-PR4", label: "CARE PREMIUM (ASSISTENZA AVANZATA / H4)" },
+  { code: "SAAS-PR8", label: "CARE PREMIUM (ASSISTENZA AVANZATA / H8)" },
+  { code: "SAAS-PR12", label: "CARE PREMIUM (ASSISTENZA AVANZATA / H12)" },
+  { code: "SAAS-PR24", label: "CARE PREMIUM (ASSISTENZA AVANZATA / H24)" },
+  { code: "SAAS-PR36", label: "CARE PREMIUM (ASSISTENZA AVANZATA / H36)" },
+  { code: "SAAS-UL4", label: "CARE ULTRA (ASSISTENZA PRIORITARIA)" },
+  { code: "SAAS-UL8", label: "CARE ULTRA (ASSISTENZA PRIORITARIA)" },
+  { code: "SAAS-UL12", label: "CARE ULTRA (ASSISTENZA PRIORITARIA)" },
+  { code: "SAAS-UL24", label: "CARE ULTRA (ASSISTENZA PRIORITARIA)" },
+  { code: "SAAS-UL36", label: "CARE ULTRA (ASSISTENZA PRIORITARIA)" },
+  { code: "SAAS-EVTF", label: "ART TECH EVENT (assistenza remota durante eventi)" },
+  { code: "SAAS-EVTO", label: "ART TECH EVENT (assistenza onsite durante eventi)" },
+  { code: "SAAS-MON", label: "MONITORAGGIO REMOTO & ALERT" },
+  { code: "SAAS-TCK", label: "TICKETING / HELP DESK" },
+  { code: "SAAS-SIM", label: "CONNETTIVITÀ SIM DATI" },
+  { code: "SAAS-CMS", label: "LICENZA CMS / SOFTWARE TERZI" },
+  { code: "SAAS-BKP", label: "BACKUP CONFIGURAZIONI / RIPRISTINO" },
+  { code: "SAAS-RPT", label: "REPORTISTICA (LOG, UPTIME, ON-AIR)" },
+  { code: "SAAS-SLA", label: "SLA RIPRISTINO (ES. ENTRO 2H) – OPZIONE" },
+  { code: "SAAS-EXT", label: "ESTENSIONE GARANZIA / COPERTURE" },
+  { code: "SAAS-CYB", label: "CYBER / ANTIVIRUS / HARDENING PLAYER" },
 ];
 
 function saasLabelFromCode(code?: string | null) {
@@ -56,14 +56,14 @@ function matchesSingleSaasService(row: Checklist, filter: SaasServiceFilter) {
   const combined = `${piano} ${tipo}`;
   if (filter === "EVENTS") {
     return (
-      combined.includes("SAS-EVT") ||
+      combined.includes("SAAS-EVT") ||
       combined.includes("EVENT") ||
       combined.includes("ART TECH EVENT")
     );
   }
-  if (filter === "ULTRA") return combined.includes("SAS-UL");
-  if (filter === "PREMIUM") return combined.includes("SAS-PR");
-  if (filter === "PLUS") return combined.includes("SAS-PL");
+  if (filter === "ULTRA") return combined.includes("SAAS-UL");
+  if (filter === "PREMIUM") return combined.includes("SAAS-PR");
+  if (filter === "PLUS") return combined.includes("SAAS-PL");
   return true;
 }
 
@@ -461,7 +461,7 @@ export default function Page() {
   }
 
   const isUltraOrPremium =
-    saasPiano.startsWith("SAS-UL") || saasPiano.startsWith("SAS-PR");
+    saasPiano.startsWith("SAAS-UL") || saasPiano.startsWith("SAAS-PR");
 
   const strutturaOptions = useMemo(() => {
     return catalogItems.filter((item) => {
