@@ -328,9 +328,11 @@ export async function GET(req: Request) {
     rule_id: string;
     target: string;
     task_title: string;
+    recipients: string[];
     allowed_checklists: number;
     tasks_found: number;
     open_tasks: number;
+    rule_subject: string;
     sent_now: number;
     skipped_reason: string | null;
   }> = [];
@@ -344,9 +346,11 @@ export async function GET(req: Request) {
       rule_id: String(rule.id || ""),
       target,
       task_title: effectiveTaskTitle,
+      recipients: [] as string[],
       allowed_checklists: 0,
       tasks_found: 0,
       open_tasks: 0,
+      rule_subject: "",
       sent_now: 0,
       skipped_reason: null as string | null,
     };
@@ -378,6 +382,7 @@ export async function GET(req: Request) {
     }
 
     const recipients = parseRecipients(rule.recipients);
+    ruleDbg.recipients = recipients;
     if (recipients.length === 0) {
       skippedNoRecipients += 1;
       if (debugMode) {
@@ -481,6 +486,7 @@ export async function GET(req: Request) {
     }
 
     const mail = buildEmailBody(rule, grouped, baseUrl);
+    ruleDbg.rule_subject = mail.subject;
     emailsAttempted += recipients.length;
     const sends = await Promise.allSettled(
       recipients.map((to) => sendEmail({ to, subject: mail.subject, text: mail.text, html: mail.html }))
