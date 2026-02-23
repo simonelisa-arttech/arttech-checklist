@@ -4243,6 +4243,12 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
             <div style={{ fontWeight: 700, marginBottom: 8 }}>Impostazioni notifiche</div>
             <div style={{ fontSize: 12, opacity: 0.75, marginBottom: 12 }}>
               Task: {ruleTask.titolo}
+              {ruleDraft ? (
+                <>
+                  <br />
+                  Target: <strong>{ruleDraft.target}</strong>
+                </>
+              ) : null}
             </div>
 
             {ruleLoading ? (
