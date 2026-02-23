@@ -10,6 +10,10 @@ const ASSET_FILE_RE =
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
+  if (process.env.E2E === "1") {
+    return NextResponse.next();
+  }
+
   if (
     pathname === "/favicon.ico" ||
     ASSET_PREFIXES.some((prefix) => pathname.startsWith(prefix)) ||
