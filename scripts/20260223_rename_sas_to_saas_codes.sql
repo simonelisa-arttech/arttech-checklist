@@ -1,8 +1,52 @@
 -- Rinomina codici SAS-* -> SAAS-* su DB (safe/idempotente)
+-- Nota: gestisce FK saas_contratti.piano_codice -> saas_piani.codice
 
 begin;
 
--- catalog_items.codice
+-- 0) Garantisce che in saas_piani esistano i codici SAAS-* corrispondenti ai SAS-*
+--    (clona le righe SAS-* con codice rinominato, senza toccare subito le vecchie).
+do $$
+declare
+  col_list text;
+  sel_list text;
+begin
+  if exists (
+    select 1
+    from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'saas_piani'
+      and column_name = 'codice'
+  ) then
+    select
+      string_agg(quote_ident(column_name), ', ' order by ordinal_position),
+      string_agg(
+        case
+          when column_name = 'codice'
+            then 'regexp_replace(p.codice, ''^SAS-'', ''SAAS-'') as codice'
+          else 'p.' || quote_ident(column_name)
+        end,
+        ', ' order by ordinal_position
+      )
+    into col_list, sel_list
+    from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'saas_piani';
+
+    execute format($f$
+      insert into public.saas_piani (%s)
+      select %s
+      from public.saas_piani p
+      where p.codice ~ '^SAS-'
+        and not exists (
+          select 1
+          from public.saas_piani n
+          where n.codice = regexp_replace(p.codice, '^SAS-', 'SAAS-')
+        )
+    $f$, col_list, sel_list);
+  end if;
+end $$;
+
+-- 1) catalog_items.codice
 do $$
 begin
   if exists (
@@ -18,7 +62,7 @@ begin
   end if;
 end $$;
 
--- checklists.saas_piano
+-- 2) checklists.saas_piano
 do $$
 begin
   if exists (
@@ -34,7 +78,7 @@ begin
   end if;
 end $$;
 
--- checklists.saas_tipo
+-- 3) checklists.saas_tipo
 do $$
 begin
   if exists (
@@ -50,7 +94,7 @@ begin
   end if;
 end $$;
 
--- saas_contratti.piano_codice (se presente)
+-- 4) saas_contratti.piano_codice (FK verso saas_piani.codice)
 do $$
 begin
   if exists (
