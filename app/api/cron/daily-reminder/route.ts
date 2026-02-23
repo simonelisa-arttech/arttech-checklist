@@ -34,6 +34,7 @@ type RuleRow = {
   timezone: string | null;
   stop_statuses: string[] | null;
   only_future: boolean | null;
+  last_sent_on: string | null;
 };
 
 function getBaseUrl(req: Request) {
@@ -152,9 +153,9 @@ function escapeHtml(value: string) {
     .replaceAll("'", "&#39;");
 }
 
-function buildPayloadHash(sentOn: string, checklistId: string, target: string, taskTitle: string) {
+function buildPayloadHash(sentOn: string, checklistId: string, target: string, ruleStableKey: string) {
   return createHash("sha256")
-    .update(`${sentOn}|${checklistId}|${target}|${taskTitle}`)
+    .update(`${sentOn}|${checklistId}|${target}|${ruleStableKey}`)
     .digest("hex");
 }
 
@@ -242,10 +243,16 @@ export async function GET(req: Request) {
   const baseUrl = getBaseUrl(req);
 
   const selectWithDay =
-    "id, enabled, mode, frequency, day_of_week, task_template_id, task_title, target, recipients, send_time, timezone, stop_statuses, only_future";
+    "id, enabled, mode, frequency, day_of_week, task_template_id, task_title, target, recipients, send_time, timezone, stop_statuses, only_future, last_sent_on";
   const selectFallback =
-    "id, enabled, mode, frequency, task_template_id, task_title, target, recipients, send_time, timezone, stop_statuses, only_future";
+    "id, enabled, mode, frequency, task_template_id, task_title, target, recipients, send_time, timezone, stop_statuses, only_future, last_sent_on";
   const selectFallbackNoTemplate =
+    "id, enabled, mode, frequency, task_title, target, recipients, send_time, timezone, stop_statuses, only_future, last_sent_on";
+  const selectWithDayNoLastSent =
+    "id, enabled, mode, frequency, day_of_week, task_template_id, task_title, target, recipients, send_time, timezone, stop_statuses, only_future";
+  const selectFallbackNoLastSent =
+    "id, enabled, mode, frequency, task_template_id, task_title, target, recipients, send_time, timezone, stop_statuses, only_future";
+  const selectFallbackNoTemplateNoLastSent =
     "id, enabled, mode, frequency, task_title, target, recipients, send_time, timezone, stop_statuses, only_future";
 
   let { data: rulesRaw, error: rulesErr } = await supabase
@@ -253,28 +260,45 @@ export async function GET(req: Request) {
     .select(selectWithDay)
     .eq("enabled", true)
     .eq("mode", "AUTOMATICA");
+  if (rulesErr && String(rulesErr.message || "").toLowerCase().includes("last_sent_on")) {
+    const noLastRes = await supabase
+      .from("notification_rules")
+      .select(selectWithDayNoLastSent)
+      .eq("enabled", true)
+      .eq("mode", "AUTOMATICA");
+    rulesRaw = noLastRes.data as any;
+    rulesErr = noLastRes.error as any;
+    if (!rulesErr && Array.isArray(rulesRaw)) {
+      rulesRaw = rulesRaw.map((r: any) => ({ ...r, last_sent_on: null }));
+    }
+  }
   if (rulesErr && String(rulesErr.message || "").toLowerCase().includes("day_of_week")) {
     const fallbackRes = await supabase
       .from("notification_rules")
-      .select(selectFallback)
+      .select(selectFallbackNoLastSent)
       .eq("enabled", true)
       .eq("mode", "AUTOMATICA");
     rulesRaw = fallbackRes.data as any;
     rulesErr = fallbackRes.error as any;
     if (!rulesErr && Array.isArray(rulesRaw)) {
-      rulesRaw = rulesRaw.map((r: any) => ({ ...r, day_of_week: null }));
+      rulesRaw = rulesRaw.map((r: any) => ({ ...r, day_of_week: null, last_sent_on: null }));
     }
   }
   if (rulesErr && String(rulesErr.message || "").toLowerCase().includes("task_template_id")) {
     const fallbackNoTplRes = await supabase
       .from("notification_rules")
-      .select(selectFallbackNoTemplate)
+      .select(selectFallbackNoTemplateNoLastSent)
       .eq("enabled", true)
       .eq("mode", "AUTOMATICA");
     rulesRaw = fallbackNoTplRes.data as any;
     rulesErr = fallbackNoTplRes.error as any;
     if (!rulesErr && Array.isArray(rulesRaw)) {
-      rulesRaw = rulesRaw.map((r: any) => ({ ...r, day_of_week: null, task_template_id: null }));
+      rulesRaw = rulesRaw.map((r: any) => ({
+        ...r,
+        day_of_week: null,
+        task_template_id: null,
+        last_sent_on: null,
+      }));
     }
   }
   if (rulesErr) {
@@ -391,6 +415,14 @@ export async function GET(req: Request) {
       }
       continue;
     }
+    if (toIsoDay(rule.last_sent_on) === todayRome) {
+      skippedAlreadySent += 1;
+      if (debugMode) {
+        ruleDbg.skipped_reason = "rule_already_sent";
+        rulesDebug.push(ruleDbg);
+      }
+      continue;
+    }
 
     const allowedChecklistIds = allChecklists
       .filter((c) => {
@@ -456,7 +488,8 @@ export async function GET(req: Request) {
       const checklist = checklistById.get(task.checklist_id);
       if (!checklist) continue;
 
-      const payloadHash = buildPayloadHash(todayRome, checklist.id, target, effectiveTaskTitle);
+      const ruleStableKey = String(rule.id || effectiveTaskTitle || "rule");
+      const payloadHash = buildPayloadHash(todayRome, checklist.id, target, ruleStableKey);
       const { error: lockErr } = await supabase.from("notification_log").insert({
         sent_on: todayRome,
         checklist_id: checklist.id,
