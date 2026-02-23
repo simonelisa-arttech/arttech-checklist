@@ -13,6 +13,15 @@ set target = 'TECNICO_SW'
 where coalesce(target, 'GENERICA') = 'GENERICA'
   and titolo ilike '%Elettronica di controllo: schemi dati ed elettrici%';
 
+-- 2a) Backfill task magazzino su MAGAZZINO (titolo noto)
+update public.checklist_tasks
+set target = 'MAGAZZINO'
+where coalesce(target, 'GENERICA') = 'GENERICA'
+  and (
+    titolo ilike '%Preparazione / riserva disponibilità / ordine merce%'
+    or titolo ilike '%ordine merce%'
+  );
+
 -- 2b) Se presente template con target, allinea i task collegati
 do $$
 begin
