@@ -220,6 +220,7 @@ export default function NuovaChecklistPage() {
   const [impiantoCodice, setImpiantoCodice] = useState("");
   const [impiantoDescrizione, setImpiantoDescrizione] = useState("");
   const [dimensioni, setDimensioni] = useState("");
+  const [impiantoQuantita, setImpiantoQuantita] = useState(1);
   const [numeroFacce, setNumeroFacce] = useState(1);
   const [garanziaScadenza, setGaranziaScadenza] = useState("");
   const [serialControlInput, setSerialControlInput] = useState("");
@@ -522,6 +523,10 @@ export default function NuovaChecklistPage() {
         impianto_codice: impiantoCodice.trim() ? impiantoCodice.trim() : null,
         impianto_descrizione: impiantoDescrizione.trim() ? impiantoDescrizione.trim() : null,
         dimensioni: dimensioni.trim() ? dimensioni.trim() : null,
+        impianto_quantita:
+          Number.isFinite(Number(impiantoQuantita)) && Number(impiantoQuantita) > 0
+            ? Number(impiantoQuantita)
+            : 1,
         numero_facce: numeroFacce,
         m2_calcolati: m2Calcolati != null ? m2Calcolati : null,
         m2_inclusi: m2Calcolati != null ? m2Calcolati : null,
@@ -538,6 +543,15 @@ export default function NuovaChecklistPage() {
           (msg.includes("cliente_id") && msg.includes("column"))
         );
       };
+      const isImpiantoQuantitaMissing = (err: any) => {
+        const msg = `${err?.message || ""}`.toLowerCase();
+        const code = `${err?.code || ""}`.toLowerCase();
+        return (
+          code === "pgrst204" ||
+          (msg.includes("impianto_quantita") && msg.includes("does not exist")) ||
+          (msg.includes("impianto_quantita") && msg.includes("column"))
+        );
+      };
 
       const tryInsert = async (payload: Partial<typeof payloadChecklist>) => {
         return supabase
@@ -551,6 +565,10 @@ export default function NuovaChecklistPage() {
 
       if (errCreate && isClienteIdMissing(errCreate)) {
         const { cliente_id, ...legacyPayload } = payloadChecklist;
+        ({ data: created, error: errCreate } = await tryInsert(legacyPayload));
+      }
+      if (errCreate && isImpiantoQuantitaMissing(errCreate)) {
+        const { impianto_quantita, ...legacyPayload } = payloadChecklist;
         ({ data: created, error: errCreate } = await tryInsert(legacyPayload));
       }
 
@@ -1185,6 +1203,20 @@ export default function NuovaChecklistPage() {
               value={dimensioni}
               onChange={(e) => setDimensioni(e.target.value)}
               placeholder="Es. 4x2 o 4,5 x 2,2"
+              style={{ width: "100%", padding: 10 }}
+            />
+          </label>
+          <label>
+            Quantita impianti<br />
+            <input
+              type="number"
+              min={1}
+              step={1}
+              value={impiantoQuantita}
+              onChange={(e) => {
+                const next = Number(e.target.value);
+                setImpiantoQuantita(Number.isFinite(next) && next > 0 ? Math.floor(next) : 1);
+              }}
               style={{ width: "100%", padding: 10 }}
             />
           </label>

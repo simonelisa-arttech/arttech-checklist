@@ -35,6 +35,7 @@ type Checklist = {
   impianto_codice: string | null;
   impianto_descrizione: string | null;
   dimensioni: string | null;
+  impianto_quantita: number | null;
   numero_facce: number | null;
   passo: string | null;
   note: string | null;
@@ -192,6 +193,7 @@ type FormData = {
   impianto_codice: string;
   impianto_descrizione: string;
   dimensioni: string;
+  impianto_quantita: number;
   numero_facce: number;
   passo: string;
   note: string;
@@ -724,6 +726,10 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
       impianto_codice: c.impianto_codice ?? "",
       impianto_descrizione: c.impianto_descrizione ?? "",
       dimensioni: c.dimensioni ?? "",
+      impianto_quantita:
+        Number.isFinite(Number(c.impianto_quantita)) && Number(c.impianto_quantita) > 0
+          ? Number(c.impianto_quantita)
+          : 1,
       numero_facce: Number(c.numero_facce ?? 1) > 1 ? 2 : 1,
       passo: c.passo ?? "",
       note: c.note ?? "",
@@ -1729,6 +1735,10 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
         ? formData.impianto_descrizione.trim()
         : null,
       dimensioni: formData.dimensioni.trim() ? formData.dimensioni.trim() : null,
+      impianto_quantita:
+        Number.isFinite(Number(formData.impianto_quantita)) && Number(formData.impianto_quantita) > 0
+          ? Number(formData.impianto_quantita)
+          : 1,
       numero_facce:
         Number.isFinite(Number(formData.numero_facce)) && Number(formData.numero_facce) > 0
           ? Number(formData.numero_facce)
@@ -1766,6 +1776,15 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
         (msg.includes("cliente_id") && msg.includes("column"))
       );
     };
+    const isImpiantoQuantitaMissing = (err: any) => {
+      const msg = `${err?.message || ""}`.toLowerCase();
+      const code = `${err?.code || ""}`.toLowerCase();
+      return (
+        code === "pgrst204" ||
+        (msg.includes("impianto_quantita") && msg.includes("does not exist")) ||
+        (msg.includes("impianto_quantita") && msg.includes("column"))
+      );
+    };
 
     const tryUpdate = async (payloadUpdate: Partial<typeof payload>) => {
       return supabase.from("checklists").update(payloadUpdate).eq("id", id);
@@ -1775,6 +1794,10 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
 
     if (errUpdate && isClienteIdMissing(errUpdate)) {
       const { cliente_id, ...legacyPayload } = payload;
+      ({ error: errUpdate } = await tryUpdate(legacyPayload));
+    }
+    if (errUpdate && isImpiantoQuantitaMissing(errUpdate)) {
+      const { impianto_quantita, ...legacyPayload } = payload;
       ({ error: errUpdate } = await tryUpdate(legacyPayload));
     }
 
@@ -2346,6 +2369,35 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
                       Bifacciale ({formData.numero_facce} facce)
                     </label>
                   </div>
+                ) : undefined
+              }
+              isEdit={isEdit}
+            />
+            <FieldRow
+              label="Quantita impianti"
+              view={
+                Number.isFinite(Number(checklist.impianto_quantita)) &&
+                Number(checklist.impianto_quantita) > 0
+                  ? String(checklist.impianto_quantita)
+                  : "1"
+              }
+              edit={
+                isEdit ? (
+                  <input
+                    type="number"
+                    min={1}
+                    step={1}
+                    value={formData.impianto_quantita}
+                    onChange={(e) => {
+                      const next = Number(e.target.value);
+                      setFormData({
+                        ...formData,
+                        impianto_quantita:
+                          Number.isFinite(next) && next > 0 ? Math.floor(next) : 1,
+                      });
+                    }}
+                    style={{ width: "100%", padding: 10 }}
+                  />
                 ) : undefined
               }
               isEdit={isEdit}
