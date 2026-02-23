@@ -34,6 +34,16 @@ on conflict (id) do update set
   garanzia_scadenza = excluded.garanzia_scadenza,
   stato_progetto = excluded.stato_progetto;
 
+update checklists
+set
+  saas_piano = 'E2E_PLAN',
+  saas_scadenza = (current_date + interval '30 day')::date,
+  saas_stato = 'ATTIVO',
+  saas_tipo = 'STANDARD',
+  garanzia_scadenza = (current_date + interval '30 day')::date,
+  garanzia_stato = 'ATTIVA'
+where id = '00000000-0000-0000-0000-00000000e201';
+
 insert into public.checklists (
   id,
   cliente,
