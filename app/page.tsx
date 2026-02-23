@@ -426,10 +426,10 @@ export default function Page() {
   // dashboard: ricerca + ordinamento
   const [q, setQ] = useState("");
   const [saasServiceFilter, setSaasServiceFilter] = useState<Record<SaasServiceFilter, boolean>>({
-    EVENTS: true,
-    ULTRA: true,
-    PREMIUM: true,
-    PLUS: true,
+    EVENTS: false,
+    ULTRA: false,
+    PREMIUM: false,
+    PLUS: false,
   });
   type SortDir = "asc" | "desc";
   const [sortKey, setSortKey] = useState<
