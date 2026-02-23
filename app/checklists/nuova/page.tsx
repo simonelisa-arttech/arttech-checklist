@@ -262,8 +262,15 @@ export default function NuovaChecklistPage() {
     return nomeChecklist.trim().length > 0 && cliente.trim().length > 0;
   }, [cliente, nomeChecklist]);
   const m2Calcolati = useMemo(
-    () => calcM2FromDimensioni(dimensioni, numeroFacce),
-    [dimensioni, numeroFacce]
+    () => {
+      const base = calcM2FromDimensioni(dimensioni, numeroFacce);
+      const qty =
+        Number.isFinite(Number(impiantoQuantita)) && Number(impiantoQuantita) > 0
+          ? Number(impiantoQuantita)
+          : 1;
+      return base == null ? null : base * qty;
+    },
+    [dimensioni, numeroFacce, impiantoQuantita]
   );
 
   const isUltraOrPremium =

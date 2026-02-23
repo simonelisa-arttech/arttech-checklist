@@ -1012,6 +1012,11 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
     formData?.dimensioni ?? null,
     formData?.numero_facce ?? 1
   );
+  const impiantoQuantitaForm =
+    Number.isFinite(Number(formData?.impianto_quantita)) && Number(formData?.impianto_quantita) > 0
+      ? Number(formData?.impianto_quantita)
+      : 1;
+  const m2CalcolatiTotali = m2Calcolati == null ? null : m2Calcolati * impiantoQuantitaForm;
 
   if (loading) return <div style={{ padding: 20 }}>Caricamento…</div>;
   if (error) return <div style={{ padding: 20, color: "crimson" }}>{error}</div>;
@@ -1032,9 +1037,17 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
   const deviceOptions = deviceCatalogItems;
   const serialiControllo = assetSerials.filter((s) => s.tipo === "CONTROLLO");
   const serialiModuli = assetSerials.filter((s) => s.tipo === "MODULO_LED");
-  const m2Persisted =
-    checklist.m2_calcolati ??
-    calcM2FromDimensioni(checklist.dimensioni, checklist.numero_facce ?? 1);
+  const m2Persisted = (() => {
+    if (typeof checklist.m2_calcolati === "number" && Number.isFinite(checklist.m2_calcolati)) {
+      return checklist.m2_calcolati;
+    }
+    const base = calcM2FromDimensioni(checklist.dimensioni, checklist.numero_facce ?? 1);
+    const qty =
+      Number.isFinite(Number(checklist.impianto_quantita)) && Number(checklist.impianto_quantita) > 0
+        ? Number(checklist.impianto_quantita)
+        : 1;
+    return base == null ? null : base * qty;
+  })();
 
   function updateRowFields(idx: number, patch: Partial<ChecklistItemRow>) {
     setRows((prev) => {
@@ -1692,7 +1705,12 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
       return;
     }
 
-    const m2Calcolati = calcM2FromDimensioni(formData.dimensioni, formData.numero_facce);
+    const baseM2 = calcM2FromDimensioni(formData.dimensioni, formData.numero_facce);
+    const qty =
+      Number.isFinite(Number(formData.impianto_quantita)) && Number(formData.impianto_quantita) > 0
+        ? Number(formData.impianto_quantita)
+        : 1;
+    const m2Calcolati = baseM2 == null ? null : baseM2 * qty;
 
     const payload = {
       cliente: formData.cliente.trim() ? formData.cliente.trim() : null,
@@ -2325,7 +2343,12 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
               label="Dimensioni + m²"
               view={`${checklist.dimensioni || "—"} — ${
                 m2Persisted != null ? m2Persisted.toFixed(2) : "—"
-              } (${checklist.numero_facce ?? 1} facce)`}
+              } (${checklist.numero_facce ?? 1} facce x ${
+                Number.isFinite(Number(checklist.impianto_quantita)) &&
+                Number(checklist.impianto_quantita) > 0
+                  ? Number(checklist.impianto_quantita)
+                  : 1
+              } impianti)`}
               edit={
                 isEdit ? (
                   <div style={{ display: "grid", gap: 8 }}>
@@ -2355,7 +2378,7 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
                           justifyContent: "flex-start",
                         }}
                       >
-                        {m2Calcolati != null ? m2Calcolati.toFixed(2) : ""}
+                        {m2CalcolatiTotali != null ? m2CalcolatiTotali.toFixed(2) : ""}
                       </div>
                     </div>
                     <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13 }}>

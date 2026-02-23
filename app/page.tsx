@@ -220,6 +220,7 @@ type Checklist = {
   tipo_impianto: string | null;
   impianto_indirizzo: string | null;
   dimensioni: string | null;
+  impianto_quantita: number | null;
   numero_facce: number | null;
   passo: string | null;
   note: string | null;
@@ -307,15 +308,24 @@ function normalizeCustomCode(code: string) {
   return isCustomCode(code) ? "CUSTOM" : code;
 }
 
-function calcM2(dimensioni: string | null, numeroFacce?: number | null): number | null {
-  return calcM2FromDimensioni(dimensioni, numeroFacce ?? 1);
+function calcM2(
+  dimensioni: string | null,
+  numeroFacce?: number | null,
+  impiantoQuantita?: number | null
+): number | null {
+  const base = calcM2FromDimensioni(dimensioni, numeroFacce ?? 1);
+  const qty =
+    Number.isFinite(Number(impiantoQuantita)) && Number(impiantoQuantita) > 0
+      ? Number(impiantoQuantita)
+      : 1;
+  return base == null ? null : base * qty;
 }
 
 function getChecklistM2(row: Checklist): number | null {
   if (typeof row.m2_calcolati === "number" && Number.isFinite(row.m2_calcolati)) {
     return row.m2_calcolati;
   }
-  return calcM2(row.dimensioni, row.numero_facce);
+  return calcM2(row.dimensioni, row.numero_facce, row.impianto_quantita);
 }
 
 function inferTaskTarget(titolo?: string | null, existingTarget?: string | null) {
@@ -995,9 +1005,10 @@ export default function Page() {
       passo: passo.trim() ? passo.trim() : null,
       tipo_impianto: tipoImpianto || null,
       dimensioni: dimensioni.trim() ? dimensioni.trim() : null,
+      impianto_quantita: 1,
       numero_facce: 1,
-      m2_calcolati: calcM2FromDimensioni(dimensioni.trim() ? dimensioni.trim() : null, 1),
-      m2_inclusi: calcM2FromDimensioni(dimensioni.trim() ? dimensioni.trim() : null, 1),
+      m2_calcolati: calcM2(dimensioni.trim() ? dimensioni.trim() : null, 1, 1),
+      m2_inclusi: calcM2(dimensioni.trim() ? dimensioni.trim() : null, 1, 1),
       m2_allocati: null,
       garanzia_scadenza: garanziaScadenza.trim()
         ? garanziaScadenza.trim()
