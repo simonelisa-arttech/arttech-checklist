@@ -322,10 +322,12 @@ function calcM2(
 }
 
 function getChecklistM2(row: Checklist): number | null {
+  const computed = calcM2(row.dimensioni, row.numero_facce, row.impianto_quantita);
+  if (computed != null) return computed;
   if (typeof row.m2_calcolati === "number" && Number.isFinite(row.m2_calcolati)) {
     return row.m2_calcolati;
   }
-  return calcM2(row.dimensioni, row.numero_facce, row.impianto_quantita);
+  return null;
 }
 
 function inferTaskTarget(titolo?: string | null, existingTarget?: string | null) {

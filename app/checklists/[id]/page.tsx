@@ -1038,15 +1038,16 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
   const serialiControllo = assetSerials.filter((s) => s.tipo === "CONTROLLO");
   const serialiModuli = assetSerials.filter((s) => s.tipo === "MODULO_LED");
   const m2Persisted = (() => {
-    if (typeof checklist.m2_calcolati === "number" && Number.isFinite(checklist.m2_calcolati)) {
-      return checklist.m2_calcolati;
-    }
     const base = calcM2FromDimensioni(checklist.dimensioni, checklist.numero_facce ?? 1);
     const qty =
       Number.isFinite(Number(checklist.impianto_quantita)) && Number(checklist.impianto_quantita) > 0
         ? Number(checklist.impianto_quantita)
         : 1;
-    return base == null ? null : base * qty;
+    if (base != null) return base * qty;
+    if (typeof checklist.m2_calcolati === "number" && Number.isFinite(checklist.m2_calcolati)) {
+      return checklist.m2_calcolati;
+    }
+    return null;
   })();
 
   function updateRowFields(idx: number, patch: Partial<ChecklistItemRow>) {
