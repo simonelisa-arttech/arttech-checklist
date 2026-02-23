@@ -15,10 +15,14 @@ test("Invio avviso aggiorna stato a AVVISATO (E2E seed)", async ({ page }) => {
 
   await saasRow.getByTestId("send-alert-btn").click();
 
-  const sendModal = page.getByRole("button", { name: /^Invia$/ }).first();
-  if (await sendModal.isVisible().catch(() => false)) {
-    await sendModal.click();
-  }
+  const alertModalTitle = page
+    .getByText(/Invia avviso rinnovi|Invia alert fatturazione rinnovi/i)
+    .first();
+  await expect(alertModalTitle).toBeVisible();
+
+  await page.getByLabel(/Email manuale/i).check();
+  await page.getByPlaceholder("Email").fill("qa-e2e@arttech.local");
+  await page.getByRole("button", { name: /^Invia$/ }).first().click();
 
   await expect(saasRow.getByTestId("workflow-badge")).toContainText("AVVISATO");
 });
