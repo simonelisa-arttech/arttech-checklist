@@ -621,29 +621,48 @@ export default function NuovaChecklistPage() {
       if ((existingTasksCount ?? 0) === 0) {
         let tpl: any[] | null = null;
         let tplErr: any = null;
+        const mapTaskTemplateRows = (rows: any[] | null | undefined) =>
+          (rows || []).map((x: any) => ({
+            sezione: x.sezione,
+            ordine: x.ordine,
+            titolo: x.titolo ?? x.voce,
+            target: x.target ?? null,
+          }));
+
         {
           const res = await supabase
-            .from("checklist_template_items")
-            .select("sezione, ordine, voce, target")
+            .from("checklist_task_templates")
+            .select("sezione, ordine, titolo, target")
             .eq("attivo", true)
             .order("sezione", { ascending: true })
             .order("ordine", { ascending: true });
-          tpl = res.data as any[] | null;
+          tpl = mapTaskTemplateRows(res.data as any[] | null);
           tplErr = res.error;
         }
 
         if (tplErr && String(tplErr.message || "").toLowerCase().includes("target")) {
+          const res = await supabase
+            .from("checklist_task_templates")
+            .select("sezione, ordine, titolo")
+            .eq("attivo", true)
+            .order("sezione", { ascending: true })
+            .order("ordine", { ascending: true });
+          tpl = mapTaskTemplateRows(res.data as any[] | null);
+          tplErr = res.error;
+        }
+
+        if (
+          tplErr &&
+          String(tplErr.message || "").toLowerCase().includes("checklist_task_templates")
+        ) {
           const res = await supabase
             .from("checklist_template_items")
             .select("sezione, ordine, voce")
             .eq("attivo", true)
             .order("sezione", { ascending: true })
             .order("ordine", { ascending: true });
-          tpl = res.data as any[] | null;
+          tpl = mapTaskTemplateRows(res.data as any[] | null);
           tplErr = res.error;
-          if (!tplErr && Array.isArray(tpl)) {
-            tpl = tpl.map((x: any) => ({ ...x, target: null }));
-          }
         }
 
         if (tplErr) {
@@ -655,8 +674,8 @@ export default function NuovaChecklistPage() {
           checklist_id: checklistId,
           sezione: mapSezioneToInt(t.sezione),
           ordine: t.ordine,
-          titolo: t.voce ?? t.titolo,
-          target: inferTaskTarget(t.voce ?? t.titolo, t.target),
+          titolo: t.titolo,
+          target: inferTaskTarget(t.titolo, t.target),
           stato: "DA_FARE",
         }));
 

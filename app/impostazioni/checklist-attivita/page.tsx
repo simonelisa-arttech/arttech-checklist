@@ -3,13 +3,14 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import ConfigMancante from "@/components/ConfigMancante";
-import { isSupabaseConfigured, supabase } from "@/lib/supabaseClient";
+import { isSupabaseConfigured } from "@/lib/supabaseClient";
 
 type TaskTemplateRow = {
   id?: string;
   sezione: string;
   ordine: number | null;
   titolo: string;
+  target: string;
   attivo: boolean;
   isNew?: boolean;
 };
@@ -21,29 +22,41 @@ export default function ChecklistAttivitaPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [rows, setRows] = useState<TaskTemplateRow[]>([]);
+  const [targetOptions, setTargetOptions] = useState<string[]>([
+    "GENERICA",
+    "MAGAZZINO",
+    "TECNICO_SW",
+  ]);
   const [filterSezione, setFilterSezione] = useState<string>("TUTTE");
   const [filterTitolo, setFilterTitolo] = useState<string>("");
 
   async function loadRows() {
     setLoading(true);
     setError(null);
-    const { data, error: err } = await supabase
-      .from("checklist_task_templates")
-      .select("id, sezione, ordine, titolo, attivo")
-      .order("sezione", { ascending: true })
-      .order("ordine", { ascending: true });
-
-    if (err) {
-      setError("Errore caricamento attività: " + err.message);
+    const res = await fetch("/api/impostazioni/checklist-attivita", {
+      method: "GET",
+      credentials: "include",
+    });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      setError("Errore caricamento attività: " + (json?.error || "Errore"));
       setLoading(false);
       return;
     }
+    const data = Array.isArray(json?.data) ? json.data : [];
+    const availableTargets = Array.isArray(json?.available_targets)
+      ? json.available_targets.map((x: any) => String(x || "").trim().toUpperCase()).filter(Boolean)
+      : [];
+    setTargetOptions(
+      Array.from(new Set(["GENERICA", "MAGAZZINO", "TECNICO_SW", ...availableTargets]))
+    );
 
-    const mapped = (data || []).map((r: any) => ({
+    const mapped = data.map((r: any) => ({
       id: r.id,
       sezione: r.sezione ?? "",
       ordine: Number.isFinite(Number(r.ordine)) ? Number(r.ordine) : null,
       titolo: r.titolo ?? "",
+      target: String(r.target || "GENERICA").trim().toUpperCase() || "GENERICA",
       attivo: Boolean(r.attivo),
       isNew: false,
     }));
@@ -61,6 +74,7 @@ export default function ChecklistAttivitaPage() {
         sezione: "DOCUMENTI",
         ordine: null,
         titolo: "",
+        target: "GENERICA",
         attivo: true,
         isNew: true,
       },
@@ -81,6 +95,7 @@ export default function ChecklistAttivitaPage() {
       sezione: row.sezione.trim() ? row.sezione.trim() : null,
       ordine: row.ordine != null ? row.ordine : null,
       titolo: row.titolo.trim() ? row.titolo.trim() : null,
+      target: String(row.target || "GENERICA").trim().toUpperCase() || "GENERICA",
       attivo: Boolean(row.attivo),
     };
 
@@ -90,20 +105,27 @@ export default function ChecklistAttivitaPage() {
     }
 
     if (row.id) {
-      const { error: err } = await supabase
-        .from("checklist_task_templates")
-        .update(payload)
-        .eq("id", row.id);
-      if (err) {
-        setError("Errore salvataggio attività: " + err.message);
+      const res = await fetch("/api/impostazioni/checklist-attivita", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ ...payload, id: row.id }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError("Errore salvataggio attività: " + (json?.error || "Errore"));
         return;
       }
     } else {
-      const { error: err } = await supabase
-        .from("checklist_task_templates")
-        .insert(payload);
-      if (err) {
-        setError("Errore inserimento attività: " + err.message);
+      const res = await fetch("/api/impostazioni/checklist-attivita", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify(payload),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setError("Errore inserimento attività: " + (json?.error || "Errore"));
         return;
       }
     }
@@ -227,7 +249,7 @@ export default function ChecklistAttivitaPage() {
           <div
             style={{
               display: "grid",
-              gridTemplateColumns: "1fr 120px 2fr 120px 140px",
+              gridTemplateColumns: "1fr 120px 2fr 180px 120px 140px",
               padding: "10px 12px",
               fontWeight: 700,
               background: "#fafafa",
@@ -237,6 +259,7 @@ export default function ChecklistAttivitaPage() {
             <div>Sezione</div>
             <div>Ordine</div>
             <div>Titolo</div>
+            <div>Target</div>
             <div>Attivo</div>
             <div>Salva</div>
           </div>
@@ -250,7 +273,7 @@ export default function ChecklistAttivitaPage() {
                 key={row.id ?? `new-${idx}`}
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "1fr 120px 2fr 120px 140px",
+                  gridTemplateColumns: "1fr 120px 2fr 180px 120px 140px",
                   padding: "10px 12px",
                   borderBottom: "1px solid #f3f4f6",
                   alignItems: "center",
@@ -283,6 +306,19 @@ export default function ChecklistAttivitaPage() {
                   onChange={(e) => updateRow(idx, { titolo: e.target.value })}
                   style={{ width: "100%", padding: 8, minWidth: 0 }}
                 />
+                <select
+                  value={row.target || "GENERICA"}
+                  onChange={(e) =>
+                    updateRow(idx, { target: String(e.target.value || "GENERICA").toUpperCase() })
+                  }
+                  style={{ width: "100%", padding: 8, minWidth: 0 }}
+                >
+                  {targetOptions.map((t) => (
+                    <option key={t} value={t}>
+                      {t}
+                    </option>
+                  ))}
+                </select>
                 <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
                   <input
                     type="checkbox"
