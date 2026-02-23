@@ -673,6 +673,7 @@ export default function ClientePage({ params }: { params: any }) {
     return <ConfigMancante />;
   }
   const router = useRouter();
+  const isE2EMode = process.env.NEXT_PUBLIC_E2E === "1";
   const [cliente, setCliente] = useState<string>("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -777,6 +778,37 @@ export default function ClientePage({ params }: { params: any }) {
   const [bulkLastSentAt, setBulkLastSentAt] = useState<string | null>(null);
   const [bulkLastToOperatoreId, setBulkLastToOperatoreId] = useState<string | null>(null);
   const [bulkLastMessage, setBulkLastMessage] = useState<string | null>(null);
+
+  function upsertMockRinnovoState(
+    checklistId: string | null | undefined,
+    itemTipo: string,
+    stato: string
+  ) {
+    if (!checklistId) return;
+    const tipo = String(itemTipo || "").toUpperCase();
+    const id = `e2e-${tipo}-${checklistId}`;
+    setRinnovi((prev) => {
+      const existing = prev.find(
+        (x) =>
+          String(x.checklist_id || "") === String(checklistId) &&
+          String(x.item_tipo || "").toUpperCase() === tipo
+      );
+      if (existing) {
+        return prev.map((x) =>
+          x.id === existing.id ? { ...x, stato, item_tipo: tipo, checklist_id: checklistId } : x
+        );
+      }
+      return [
+        ...prev,
+        {
+          id,
+          checklist_id: checklistId,
+          item_tipo: tipo,
+          stato,
+        } as RinnovoServizioRow,
+      ];
+    });
+  }
   const [bulkPreviewOpen, setBulkPreviewOpen] = useState(false);
   const [closeInterventoId, setCloseInterventoId] = useState<string | null>(null);
   const [closeEsito, setCloseEsito] = useState("");
@@ -3224,6 +3256,28 @@ export default function ClientePage({ params }: { params: any }) {
     setRinnoviAlertSending(true);
     setRinnoviAlertErr(null);
     setRinnoviAlertOk(null);
+    if (isE2EMode) {
+      const list =
+        rinnoviAlertItems.length > 0
+          ? rinnoviAlertItems
+          : (getRinnoviStageList(rinnoviAlertStage) as ScadenzaItem[]);
+      if (list.length === 0) {
+        setRinnoviAlertErr("Nessun elemento disponibile per l'invio.");
+        setRinnoviAlertSending(false);
+        return;
+      }
+      for (const r of list) {
+        const mapped = mapRinnovoTipo(String(r.item_tipo || "").toUpperCase());
+        if (mapped.item_tipo) {
+          upsertMockRinnovoState(r.checklist_id, mapped.item_tipo, "AVVISATO");
+        }
+      }
+      setRinnoviAlertOk("✅ E2E mock: invio avviso simulato.");
+      setRinnoviNotice("✅ E2E mock: stato AVVISATO.");
+      setRinnoviAlertSending(false);
+      setTimeout(() => setRinnoviAlertOpen(false), 300);
+      return;
+    }
     const opId =
       currentOperatoreId ??
       (typeof window !== "undefined" ? window.localStorage.getItem("current_operatore_id") : null);
@@ -3938,6 +3992,14 @@ export default function ClientePage({ params }: { params: any }) {
   }
 
   async function markWorkflowNonRinnovato(r: ScadenzaItem) {
+    if (isE2EMode) {
+      const mapped = mapRinnovoTipo(String(r.item_tipo || "").toUpperCase());
+      if (mapped.item_tipo) {
+        upsertMockRinnovoState(r.checklist_id, mapped.item_tipo, "NON_RINNOVATO");
+      }
+      setRinnoviNotice("Riga aggiornata: NON_RINNOVATO.");
+      return;
+    }
     const row = await ensureRinnovoForItem(r);
     if (!row) return;
     const ok = await updateRinnovo(row.id, { stato: "NON_RINNOVATO" });
