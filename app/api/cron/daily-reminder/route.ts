@@ -334,9 +334,9 @@ export async function GET(req: Request) {
     rulesProcessed += 1;
 
     const target = String(rule.target || "").trim().toUpperCase();
-    const taskTemplateId = String(rule.task_template_id || "").trim();
-    const taskTitle = String(rule.task_title || "Attività").trim() || "Attività";
-    if (!target || !taskTemplateId) continue;
+    const taskTemplateId = String((rule as any).task_template_id || "").trim();
+    const taskTitle = String(rule.task_title || "").trim();
+    if (!target) continue;
 
     const recipients = parseRecipients(rule.recipients);
     if (recipients.length === 0) {
@@ -357,11 +357,19 @@ export async function GET(req: Request) {
 
     if (allowedChecklistIds.length === 0) continue;
 
-    const { data: taskRaw, error: taskErr } = await supabase
+    let tasksQuery = supabase
       .from("checklist_tasks")
       .select("checklist_id, task_template_id, titolo, stato")
-      .in("checklist_id", allowedChecklistIds)
-      .eq("task_template_id", taskTemplateId);
+      .in("checklist_id", allowedChecklistIds);
+
+    if (taskTemplateId) {
+      tasksQuery = tasksQuery.eq("task_template_id", taskTemplateId);
+    } else {
+      if (!taskTitle) continue;
+      tasksQuery = tasksQuery.eq("titolo", taskTitle).eq("target", target);
+    }
+
+    const { data: taskRaw, error: taskErr } = await tasksQuery;
     if (taskErr) {
       return NextResponse.json({ error: taskErr.message }, { status: 500 });
     }
