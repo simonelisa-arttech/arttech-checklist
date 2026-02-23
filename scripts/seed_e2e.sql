@@ -40,6 +40,7 @@ set
   saas_scadenza = (current_date + interval '30 day')::date,
   saas_stato = 'ATTIVO',
   saas_tipo = 'STANDARD',
+  tipo_saas = 'SAAS',
   garanzia_scadenza = (current_date + interval '30 day')::date,
   garanzia_stato = 'ATTIVA'
 where id = '00000000-0000-0000-0000-00000000e201';
