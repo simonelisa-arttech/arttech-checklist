@@ -71,6 +71,15 @@ function sanitizeRecipients(input: any) {
   );
 }
 
+function parseOnlyFuture(input: any) {
+  if (typeof input === "boolean") return input;
+  const raw = String(input ?? "")
+    .trim()
+    .toLowerCase();
+  if (raw === "false" || raw === "0" || raw === "no") return false;
+  return true;
+}
+
 export async function GET(request: Request) {
   const auth = await requireUser(request);
   if (!auth.ok) return auth.response;
@@ -177,7 +186,7 @@ export async function POST(request: Request) {
       Array.isArray(body?.stop_statuses) && body.stop_statuses.length > 0
         ? body.stop_statuses.map((x: any) => String(x || "").trim().toUpperCase()).filter(Boolean)
         : ["OK", "NON_NECESSARIO"],
-    only_future: body?.only_future !== false,
+    only_future: parseOnlyFuture(body?.only_future),
   };
   const dayOfWeek =
     body?.day_of_week === null || body?.day_of_week === undefined || body?.day_of_week === ""
