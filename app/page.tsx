@@ -44,6 +44,7 @@ function saasLabelFromCode(code?: string | null) {
 }
 
 type SaasServiceFilter = "EVENTS" | "ULTRA" | "PREMIUM" | "PLUS";
+type ProjectStatusFilter = "IN_CORSO" | "CONSEGNATO" | "SOSPESO" | "CHIUSO";
 
 function matchesSingleSaasService(row: Checklist, filter: SaasServiceFilter) {
   const piano = String(row.saas_piano || "")
@@ -64,6 +65,18 @@ function matchesSingleSaasService(row: Checklist, filter: SaasServiceFilter) {
   if (filter === "PREMIUM") return combined.includes("SAS-PR");
   if (filter === "PLUS") return combined.includes("SAS-PL");
   return true;
+}
+
+function normalizeProjectStatus(value?: string | null): ProjectStatusFilter | null {
+  const raw = String(value || "")
+    .trim()
+    .toUpperCase()
+    .replace(/\s+/g, "_");
+  if (raw === "IN_CORSO") return "IN_CORSO";
+  if (raw === "CONSEGNATO") return "CONSEGNATO";
+  if (raw === "SOSPESO") return "SOSPESO";
+  if (raw === "CHIUSO") return "CHIUSO";
+  return null;
 }
 
 function renderStatusBadge(value?: string | null) {
@@ -453,6 +466,14 @@ export default function Page() {
     PREMIUM: false,
     PLUS: false,
   });
+  const [projectStatusFilter, setProjectStatusFilter] = useState<
+    Record<ProjectStatusFilter, boolean>
+  >({
+    IN_CORSO: true,
+    CONSEGNATO: false,
+    SOSPESO: false,
+    CHIUSO: false,
+  });
   type SortDir = "asc" | "desc";
   const [sortKey, setSortKey] = useState<
     | "created_at"
@@ -556,6 +577,15 @@ export default function Page() {
         const matchAll = activeFilters.every((f) => matchesSingleSaasService(c, f));
         if (!matchAll) return false;
       }
+      const activeStatusFilters = (
+        Object.entries(projectStatusFilter) as Array<[ProjectStatusFilter, boolean]>
+      )
+        .filter(([, enabled]) => enabled)
+        .map(([key]) => key);
+      if (activeStatusFilters.length > 0) {
+        const status = normalizeProjectStatus(c.stato_progetto);
+        if (!status || !activeStatusFilters.includes(status)) return false;
+      }
       const docs = (c.checklist_documents ?? []) as any[];
       const hasProforma = docs.some((d) =>
         String(d.tipo ?? "")
@@ -627,7 +657,7 @@ export default function Page() {
     });
 
     return sorted;
-  }, [items, q, saasServiceFilter, sortKey, sortDir, serialsByChecklistId]);
+  }, [items, q, saasServiceFilter, projectStatusFilter, sortKey, sortDir, serialsByChecklistId]);
 
   const clientiOptions = useMemo(() => {
     const set = new Set<string>();
@@ -1684,6 +1714,80 @@ export default function Page() {
                       }
                     />
                     PLUS
+                  </label>
+                </div>
+
+                <div
+                  style={{
+                    display: "flex",
+                    gap: 10,
+                    alignItems: "center",
+                    flexWrap: "wrap",
+                    fontSize: 13,
+                    padding: "8px 10px",
+                    border: "1px solid #ddd",
+                    borderRadius: 10,
+                    background: "white",
+                  }}
+                >
+                  <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <input
+                      type="checkbox"
+                      checked={Object.values(projectStatusFilter).every(Boolean)}
+                      onChange={(e) => {
+                        const checked = e.target.checked;
+                        setProjectStatusFilter({
+                          IN_CORSO: checked,
+                          CONSEGNATO: checked,
+                          SOSPESO: checked,
+                          CHIUSO: checked,
+                        });
+                      }}
+                    />
+                    Tutti stati
+                  </label>
+                  <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <input
+                      type="checkbox"
+                      checked={projectStatusFilter.IN_CORSO}
+                      onChange={(e) =>
+                        setProjectStatusFilter((prev) => ({ ...prev, IN_CORSO: e.target.checked }))
+                      }
+                    />
+                    In corso
+                  </label>
+                  <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <input
+                      type="checkbox"
+                      checked={projectStatusFilter.CONSEGNATO}
+                      onChange={(e) =>
+                        setProjectStatusFilter((prev) => ({
+                          ...prev,
+                          CONSEGNATO: e.target.checked,
+                        }))
+                      }
+                    />
+                    Consegnato
+                  </label>
+                  <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <input
+                      type="checkbox"
+                      checked={projectStatusFilter.SOSPESO}
+                      onChange={(e) =>
+                        setProjectStatusFilter((prev) => ({ ...prev, SOSPESO: e.target.checked }))
+                      }
+                    />
+                    Sospeso
+                  </label>
+                  <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <input
+                      type="checkbox"
+                      checked={projectStatusFilter.CHIUSO}
+                      onChange={(e) =>
+                        setProjectStatusFilter((prev) => ({ ...prev, CHIUSO: e.target.checked }))
+                      }
+                    />
+                    Chiuso
                   </label>
                 </div>
 
