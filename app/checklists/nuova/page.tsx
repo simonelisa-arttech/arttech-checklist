@@ -172,6 +172,23 @@ function startsWithTecOrSas(value?: string | null) {
   return v.startsWith("TEC") || v.startsWith("SAS");
 }
 
+function inferTaskTarget(titolo?: string | null, templateTarget?: string | null) {
+  const fromTemplate = String(templateTarget || "")
+    .trim()
+    .toUpperCase();
+  if (fromTemplate === "MAGAZZINO" || fromTemplate === "TECNICO_SW" || fromTemplate === "GENERICA") {
+    return fromTemplate;
+  }
+  const t = String(titolo || "")
+    .trim()
+    .toUpperCase();
+  if (t.includes("ELETTRONICA DI CONTROLLO: SCHEMI DATI ED ELETTRICI")) return "TECNICO_SW";
+  if (t.includes("PREPARAZIONE / RISERVA DISPONIBILIT") || t.includes("ORDINE MERCE")) {
+    return "MAGAZZINO";
+  }
+  return "GENERICA";
+}
+
 export default function NuovaChecklistPage() {
   if (!isSupabaseConfigured) {
     return <ConfigMancante />;
@@ -577,12 +594,32 @@ export default function NuovaChecklistPage() {
       }
 
       if ((existingTasksCount ?? 0) === 0) {
-        const { data: tpl, error: tplErr } = await supabase
-          .from("checklist_template_items")
-          .select("sezione, ordine, voce")
-          .eq("attivo", true)
-          .order("sezione", { ascending: true })
-          .order("ordine", { ascending: true });
+        let tpl: any[] | null = null;
+        let tplErr: any = null;
+        {
+          const res = await supabase
+            .from("checklist_template_items")
+            .select("sezione, ordine, voce, target")
+            .eq("attivo", true)
+            .order("sezione", { ascending: true })
+            .order("ordine", { ascending: true });
+          tpl = res.data as any[] | null;
+          tplErr = res.error;
+        }
+
+        if (tplErr && String(tplErr.message || "").toLowerCase().includes("target")) {
+          const res = await supabase
+            .from("checklist_template_items")
+            .select("sezione, ordine, voce")
+            .eq("attivo", true)
+            .order("sezione", { ascending: true })
+            .order("ordine", { ascending: true });
+          tpl = res.data as any[] | null;
+          tplErr = res.error;
+          if (!tplErr && Array.isArray(tpl)) {
+            tpl = tpl.map((x: any) => ({ ...x, target: null }));
+          }
+        }
 
         if (tplErr) {
           logSupabaseError(tplErr);
@@ -594,6 +631,7 @@ export default function NuovaChecklistPage() {
           sezione: mapSezioneToInt(t.sezione),
           ordine: t.ordine,
           titolo: t.voce ?? t.titolo,
+          target: inferTaskTarget(t.voce ?? t.titolo, t.target),
           stato: "DA_FARE",
         }));
 

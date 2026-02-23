@@ -305,6 +305,28 @@ function getChecklistM2(row: Checklist): number | null {
   return calcM2(row.dimensioni, row.numero_facce);
 }
 
+function inferTaskTarget(titolo?: string | null, existingTarget?: string | null) {
+  const rawTarget = String(existingTarget || "")
+    .trim()
+    .toUpperCase();
+  if (rawTarget === "MAGAZZINO" || rawTarget === "TECNICO_SW" || rawTarget === "GENERICA") {
+    return rawTarget;
+  }
+  const titoloNorm = String(titolo || "")
+    .trim()
+    .toUpperCase();
+  if (titoloNorm.includes("ELETTRONICA DI CONTROLLO: SCHEMI DATI ED ELETTRICI")) {
+    return "TECNICO_SW";
+  }
+  if (
+    titoloNorm.includes("PREPARAZIONE / RISERVA DISPONIBILIT") ||
+    titoloNorm.includes("ORDINE MERCE")
+  ) {
+    return "MAGAZZINO";
+  }
+  return "GENERICA";
+}
+
 export default function Page() {
   if (!isSupabaseConfigured) {
     return <ConfigMancante />;
@@ -1000,12 +1022,32 @@ export default function Page() {
     }
 
     if ((existingTasksCount ?? 0) === 0) {
-      const { data: tpl, error: tplErr } = await supabase
-        .from("checklist_template_items")
-        .select("sezione, ordine, voce")
-        .eq("attivo", true)
-        .order("sezione", { ascending: true })
-        .order("ordine", { ascending: true });
+      let tpl: any[] | null = null;
+      let tplErr: any = null;
+      {
+        const res = await supabase
+          .from("checklist_template_items")
+          .select("sezione, ordine, voce, target")
+          .eq("attivo", true)
+          .order("sezione", { ascending: true })
+          .order("ordine", { ascending: true });
+        tpl = res.data as any[] | null;
+        tplErr = res.error;
+      }
+
+      if (tplErr && String(tplErr.message || "").toLowerCase().includes("target")) {
+        const res = await supabase
+          .from("checklist_template_items")
+          .select("sezione, ordine, voce")
+          .eq("attivo", true)
+          .order("sezione", { ascending: true })
+          .order("ordine", { ascending: true });
+        tpl = res.data as any[] | null;
+        tplErr = res.error;
+        if (!tplErr && Array.isArray(tpl)) {
+          tpl = tpl.map((x: any) => ({ ...x, target: null }));
+        }
+      }
 
       if (tplErr) {
         logSupabaseError(tplErr);
@@ -1018,6 +1060,7 @@ export default function Page() {
         sezione: mapSezioneToInt(t.sezione), // int4
         ordine: t.ordine, // int4
         titolo: t.voce ?? t.titolo, // testo task
+        target: inferTaskTarget(t.voce ?? t.titolo, t.target),
         stato: "DA_FARE",
         };
       });
@@ -1242,7 +1285,7 @@ export default function Page() {
       // Duplica checklist_tasks (attività da template)
       const { data: srcTasks } = await supabase
         .from("checklist_tasks")
-        .select("sezione, ordine, titolo, task_template_id")
+        .select("sezione, ordine, titolo, task_template_id, target")
         .eq("checklist_id", dupSourceId);
       if (srcTasks && srcTasks.length > 0) {
         const taskRows = srcTasks.map((r: any) => ({
@@ -1252,6 +1295,7 @@ export default function Page() {
           titolo: r.titolo,
           stato: "DA_FARE",
           task_template_id: r.task_template_id,
+          target: inferTaskTarget(r.titolo, r.target),
         }));
         await supabase.from("checklist_tasks").insert(taskRows);
       }
