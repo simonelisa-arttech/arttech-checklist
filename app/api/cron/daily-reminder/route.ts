@@ -214,6 +214,7 @@ export async function GET(req: Request) {
   const authHeader = req.headers.get("authorization") || "";
   const headerSecret = req.headers.get("x-cron-secret") || "";
   const url = new URL(req.url);
+  const debugMode = url.searchParams.get("debug") === "1";
   const querySecret = url.searchParams.get("secret") || "";
   const hasSecret =
     Boolean(cronSecret) &&
@@ -307,8 +308,10 @@ export async function GET(req: Request) {
   const allChecklists = (checklistRaw || []) as ChecklistRow[];
   const futureChecklistsSet = new Set<string>();
   for (const c of allChecklists) {
-    const effective = getEffectiveInstallDate(c);
-    if (effective && effective > todayRome) {
+    const prevista = toIsoDay(c.data_prevista);
+    const tassativa = toIsoDay(c.data_tassativa);
+    const isFuture = (prevista && prevista > todayRome) || (tassativa && tassativa > todayRome);
+    if (isFuture) {
       futureChecklistsSet.add(c.id);
     }
   }
@@ -321,41 +324,89 @@ export async function GET(req: Request) {
   let emailsAttempted = 0;
   let emailsSent = 0;
   let skippedAlreadySent = 0;
+  const rulesDebug: Array<{
+    rule_id: string;
+    target: string;
+    task_title: string;
+    allowed_checklists: number;
+    tasks_found: number;
+    open_tasks: number;
+    sent_now: number;
+    skipped_reason: string | null;
+  }> = [];
 
   for (const rule of rules) {
+    const target = String(rule.target || "").trim().toUpperCase();
+    const taskTemplateId = String((rule as any).task_template_id || "").trim();
+    const taskTitle = String(rule.task_title || "").trim();
+    const effectiveTaskTitle = taskTitle || "Attività";
+    const ruleDbg = {
+      rule_id: String(rule.id || ""),
+      target,
+      task_title: effectiveTaskTitle,
+      allowed_checklists: 0,
+      tasks_found: 0,
+      open_tasks: 0,
+      sent_now: 0,
+      skipped_reason: null as string | null,
+    };
+
     if (!shouldRunByFrequency(rule)) {
       rulesSkippedFrequency += 1;
+      if (debugMode) {
+        ruleDbg.skipped_reason = "frequency";
+        rulesDebug.push(ruleDbg);
+      }
       continue;
     }
     if (!shouldSendNow(rule.send_time, rule.timezone)) {
       rulesSkippedTime += 1;
+      if (debugMode) {
+        ruleDbg.skipped_reason = "time";
+        rulesDebug.push(ruleDbg);
+      }
       continue;
     }
     rulesProcessed += 1;
 
-    const target = String(rule.target || "").trim().toUpperCase();
-    const taskTemplateId = String((rule as any).task_template_id || "").trim();
-    const taskTitle = String(rule.task_title || "").trim();
-    if (!target) continue;
+    if (!target) {
+      if (debugMode) {
+        ruleDbg.skipped_reason = "missing_target";
+        rulesDebug.push(ruleDbg);
+      }
+      continue;
+    }
 
     const recipients = parseRecipients(rule.recipients);
     if (recipients.length === 0) {
       skippedNoRecipients += 1;
+      if (debugMode) {
+        ruleDbg.skipped_reason = "no_recipients";
+        rulesDebug.push(ruleDbg);
+      }
       continue;
     }
 
     const allowedChecklistIds = allChecklists
       .filter((c) => {
-        const installDate = getEffectiveInstallDate(c);
-        if (!installDate) return false;
         if (rule.only_future === true) {
-          return installDate > todayRome;
+          const prevista = toIsoDay(c.data_prevista);
+          const tassativa = toIsoDay(c.data_tassativa);
+          const isFuture = (prevista && prevista > todayRome) || (tassativa && tassativa > todayRome);
+          return Boolean(isFuture);
         }
         return true;
       })
       .map((c) => c.id);
+    ruleDbg.allowed_checklists = allowedChecklistIds.length;
 
-    if (allowedChecklistIds.length === 0) continue;
+    if (allowedChecklistIds.length === 0) {
+      if (debugMode) {
+        ruleDbg.skipped_reason = "no_allowed_checklists";
+        rulesDebug.push(ruleDbg);
+      }
+      continue;
+    }
 
     let tasksQuery = supabase
       .from("checklist_tasks")
@@ -365,7 +416,13 @@ export async function GET(req: Request) {
     if (taskTemplateId) {
       tasksQuery = tasksQuery.eq("task_template_id", taskTemplateId);
     } else {
-      if (!taskTitle) continue;
+      if (!taskTitle) {
+        if (debugMode) {
+          ruleDbg.skipped_reason = "missing_task_title_fallback";
+          rulesDebug.push(ruleDbg);
+        }
+        continue;
+      }
       tasksQuery = tasksQuery.eq("titolo", taskTitle).eq("target", target);
     }
 
@@ -373,25 +430,33 @@ export async function GET(req: Request) {
     if (taskErr) {
       return NextResponse.json({ error: taskErr.message }, { status: 500 });
     }
+    ruleDbg.tasks_found = (taskRaw || []).length;
 
     const stopSet = normalizeStatusSet(rule.stop_statuses);
     const openTasks = ((taskRaw || []) as TaskRow[]).filter((t) => {
       const stato = String(t.stato || "").trim().toUpperCase();
       return !stopSet.has(stato);
     });
-    if (openTasks.length === 0) continue;
+    ruleDbg.open_tasks = openTasks.length;
+    if (openTasks.length === 0) {
+      if (debugMode) {
+        ruleDbg.skipped_reason = "no_open_tasks";
+        rulesDebug.push(ruleDbg);
+      }
+      continue;
+    }
 
     const grouped = new Map<string, { checklist: ChecklistRow; tasks: TaskRow[] }>();
     for (const task of openTasks) {
       const checklist = checklistById.get(task.checklist_id);
       if (!checklist) continue;
 
-      const payloadHash = buildPayloadHash(todayRome, checklist.id, target, taskTitle);
+      const payloadHash = buildPayloadHash(todayRome, checklist.id, target, effectiveTaskTitle);
       const { error: lockErr } = await supabase.from("notification_log").insert({
         sent_on: todayRome,
         checklist_id: checklist.id,
         target,
-        task_title: taskTitle,
+        task_title: effectiveTaskTitle,
         payload_hash: payloadHash,
       });
       if (lockErr) {
@@ -407,7 +472,13 @@ export async function GET(req: Request) {
       grouped.set(checklist.id, bucket);
     }
 
-    if (grouped.size === 0) continue;
+    if (grouped.size === 0) {
+      if (debugMode) {
+        ruleDbg.skipped_reason = "already_sent";
+        rulesDebug.push(ruleDbg);
+      }
+      continue;
+    }
 
     const mail = buildEmailBody(rule, grouped, baseUrl);
     emailsAttempted += recipients.length;
@@ -415,6 +486,11 @@ export async function GET(req: Request) {
       recipients.map((to) => sendEmail({ to, subject: mail.subject, text: mail.text, html: mail.html }))
     );
     const sentNow = sends.filter((r) => r.status === "fulfilled").length;
+    ruleDbg.sent_now = sentNow;
+    if (debugMode) {
+      ruleDbg.skipped_reason = sentNow > 0 ? null : "send_failed";
+      rulesDebug.push(ruleDbg);
+    }
     emailsSent += sentNow;
 
     if (sentNow > 0) {
@@ -437,5 +513,6 @@ export async function GET(req: Request) {
     emails_attempted: emailsAttempted,
     emails_sent: emailsSent,
     skipped_already_sent: skippedAlreadySent,
+    ...(debugMode ? { rules_debug: rulesDebug } : {}),
   });
 }
