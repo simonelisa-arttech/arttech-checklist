@@ -139,6 +139,16 @@ type ChecklistDocument = {
   uploaded_by_operatore: string | null;
 };
 
+type ChecklistTaskDocument = {
+  id: string;
+  checklist_id: string;
+  task_id: string;
+  filename: string;
+  storage_path: string;
+  uploaded_at: string | null;
+  uploaded_by_operatore: string | null;
+};
+
 type AssetSerial = {
   id: string;
   checklist_id: string;
@@ -527,6 +537,10 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
     { checklist_id: string; cliente: string | null; nome_checklist: string | null }[]
   >([]);
   const [documents, setDocuments] = useState<ChecklistDocument[]>([]);
+  const [taskDocuments, setTaskDocuments] = useState<ChecklistTaskDocument[]>([]);
+  const [taskFilesTask, setTaskFilesTask] = useState<ChecklistTask | null>(null);
+  const [taskDocFile, setTaskDocFile] = useState<File | null>(null);
+  const [taskDocError, setTaskDocError] = useState<string | null>(null);
   const [docType, setDocType] = useState("");
   const [docFile, setDocFile] = useState<File | null>(null);
   const [docError, setDocError] = useState<string | null>(null);
@@ -818,6 +832,28 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
       return;
     }
 
+    let taskDocsData: any[] = [];
+    {
+      const { data, error } = await supabase
+        .from("checklist_task_documents")
+        .select("id, checklist_id, task_id, filename, storage_path, uploaded_at, uploaded_by_operatore")
+        .eq("checklist_id", id)
+        .order("uploaded_at", { ascending: false });
+      if (error) {
+        const msg = String(error.message || "").toLowerCase();
+        const missingTable =
+          msg.includes("checklist_task_documents") &&
+          (msg.includes("does not exist") || msg.includes("relation"));
+        if (!missingTable) {
+          setError("Errore caricamento allegati task: " + error.message);
+          setLoading(false);
+          return;
+        }
+      } else {
+        taskDocsData = (data || []) as any[];
+      }
+    }
+
     const { data: serialsData, error: serialsErr } = await supabase
       .from("asset_serials")
       .select("*")
@@ -924,6 +960,7 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
     setTasks((tasks || []) as unknown as ChecklistTask[]);
     setLicenze((licenzeData || []) as Licenza[]);
     setDocuments((docsData || []) as ChecklistDocument[]);
+    setTaskDocuments(taskDocsData as ChecklistTaskDocument[]);
     setAssetSerials((serialsData || []) as AssetSerial[]);
 
     const { data: alertData, error: alertErr } = await supabase
@@ -1621,6 +1658,91 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
     await load(id);
   }
 
+  function openTaskFiles(task: ChecklistTask) {
+    setTaskFilesTask(task);
+    setTaskDocFile(null);
+    setTaskDocError(null);
+  }
+
+  function closeTaskFiles() {
+    setTaskFilesTask(null);
+    setTaskDocFile(null);
+    setTaskDocError(null);
+  }
+
+  async function uploadTaskDocument() {
+    if (!id || !taskFilesTask) return;
+    if (!taskDocFile) {
+      setTaskDocError("Seleziona un file.");
+      return;
+    }
+    const safeName = taskDocFile.name.replace(/[^\w.\-]+/g, "_");
+    const storagePath = `checklist-tasks/${id}/${taskFilesTask.id}/${Date.now()}_${safeName}`;
+
+    const { error: uploadErr } = await supabase.storage
+      .from("checklist-documents")
+      .upload(storagePath, taskDocFile, { upsert: false });
+    if (uploadErr) {
+      setTaskDocError("Errore upload file task: " + uploadErr.message);
+      return;
+    }
+
+    const { data: inserted, error: insErr } = await supabase
+      .from("checklist_task_documents")
+      .insert({
+        checklist_id: id,
+        task_id: taskFilesTask.id,
+        filename: taskDocFile.name,
+        storage_path: storagePath,
+        uploaded_by_operatore: currentOperatoreId || null,
+      })
+      .select("*")
+      .single();
+    if (insErr) {
+      setTaskDocError("Errore salvataggio metadati file task: " + insErr.message);
+      return;
+    }
+
+    setTaskDocuments((prev) => [inserted as ChecklistTaskDocument, ...prev]);
+    setTaskDocFile(null);
+    setTaskDocError(null);
+  }
+
+  async function openTaskDocument(doc: ChecklistTaskDocument, download = false) {
+    const { data, error: urlErr } = await supabase.storage
+      .from("checklist-documents")
+      .createSignedUrl(doc.storage_path, 60, download ? { download: true } : undefined);
+    if (urlErr || !data?.signedUrl) {
+      alert("Errore apertura file task.");
+      return;
+    }
+    window.open(data.signedUrl, "_blank", "noopener,noreferrer");
+  }
+
+  async function deleteTaskDocument(doc: ChecklistTaskDocument) {
+    const ok = confirm(`Eliminare file task "${doc.filename}"?`);
+    if (!ok) return;
+
+    const { error: storageErr } = await supabase.storage
+      .from("checklist-documents")
+      .remove([doc.storage_path]);
+    if (storageErr) {
+      alert("Errore eliminazione file task: " + storageErr.message);
+      return;
+    }
+
+    const { error: delErr } = await supabase
+      .from("checklist_task_documents")
+      .delete()
+      .eq("id", doc.id);
+    if (delErr) {
+      alert("Errore eliminazione metadati file task: " + delErr.message);
+      return;
+    }
+
+    setTaskDocuments((prev) => prev.filter((x) => x.id !== doc.id));
+  }
+
   async function openDocument(doc: ChecklistDocument, download: boolean) {
     const { data, error: urlErr } = await supabase.storage
       .from("checklist-documents")
@@ -2001,13 +2123,41 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
       setItemsError(msg);
       return;
     }
+
+    let taskDocsData: any[] = [];
+    {
+      const { data, error } = await supabase
+        .from("checklist_task_documents")
+        .select("id, storage_path")
+        .eq("checklist_id", id);
+      if (!error) {
+        taskDocsData = data || [];
+      } else {
+        const msg = String(error.message || "").toLowerCase();
+        const missingTable =
+          msg.includes("checklist_task_documents") &&
+          (msg.includes("does not exist") || msg.includes("relation"));
+        if (!missingTable) {
+          const emsg =
+            logSupabaseError("load checklist_task_documents", error) ||
+            "Errore caricamento allegati task";
+          alert(emsg);
+          setItemsError(emsg);
+          return;
+        }
+      }
+    }
     const paths = (docsData || [])
       .map((d: any) => d.storage_path)
       .filter(Boolean);
-    if (paths.length > 0) {
+    const taskPaths = (taskDocsData || [])
+      .map((d: any) => d.storage_path)
+      .filter(Boolean);
+    const allPaths = [...paths, ...taskPaths];
+    if (allPaths.length > 0) {
       const { error: storageErr } = await supabase.storage
         .from("checklist-documents")
-        .remove(paths);
+        .remove(allPaths);
       if (storageErr) {
         const msg =
           logSupabaseError("delete storage files", storageErr) ||
@@ -2029,6 +2179,25 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
       alert(msg);
       setItemsError(msg);
       return;
+    }
+
+    const { error: taskDocsDeleteErr } = await supabase
+      .from("checklist_task_documents")
+      .delete()
+      .eq("checklist_id", id);
+    if (taskDocsDeleteErr) {
+      const msgLower = String(taskDocsDeleteErr.message || "").toLowerCase();
+      const missingTable =
+        msgLower.includes("checklist_task_documents") &&
+        (msgLower.includes("does not exist") || msgLower.includes("relation"));
+      if (!missingTable) {
+        const msg =
+          logSupabaseError("delete checklist_task_documents", taskDocsDeleteErr) ||
+          "Errore eliminazione allegati task";
+        alert(msg);
+        setItemsError(msg);
+        return;
+      }
     }
 
     const { error: checklistErr } = await supabase.from("checklists").delete().eq("id", id);
@@ -4002,6 +4171,9 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
                   return false;
                 })
                 .map((t) => (
+                  (() => {
+                    const taskDocsCount = taskDocuments.filter((d) => d.task_id === t.id).length;
+                    return (
                   <div
                     key={t.id}
                     style={{
@@ -4088,6 +4260,27 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
                         >
                           ⚙ Regola
                         </button>
+                        <button
+                          type="button"
+                          onClick={() => openTaskFiles(t)}
+                          style={{
+                            padding: "6px 9px",
+                            borderRadius: 8,
+                            border: taskDocsCount > 0 ? "1px solid #16a34a" : "1px solid #d1d5db",
+                            background: taskDocsCount > 0 ? "#ecfdf5" : "#f8fafc",
+                            color: taskDocsCount > 0 ? "#166534" : "#111827",
+                            cursor: "pointer",
+                            fontSize: 12,
+                            fontWeight: 600,
+                          }}
+                          title={
+                            taskDocsCount > 0
+                              ? `${taskDocsCount} file caricati`
+                              : "Nessun file caricato"
+                          }
+                        >
+                          📎 File{taskDocsCount > 0 ? ` (${taskDocsCount})` : ""}
+                        </button>
                       </div>
                       {lastAlertByTask.has(t.id) && (
                         <div style={{ marginTop: 6, fontSize: 11, opacity: 0.7 }}>
@@ -4124,9 +4317,190 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
                       )}
                     </div>
                   </div>
+                    );
+                  })()
                 ))}
             </div>
           ))}
+        </div>
+      )}
+
+      {taskFilesTask && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.25)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 55,
+            padding: 16,
+          }}
+        >
+          <div
+            style={{
+              background: "white",
+              borderRadius: 12,
+              padding: 16,
+              width: "100%",
+              maxWidth: 760,
+              maxHeight: "85vh",
+              overflow: "auto",
+              boxShadow: "0 10px 30px rgba(0,0,0,0.15)",
+            }}
+          >
+            <div style={{ fontWeight: 700, marginBottom: 8 }}>Allegati task</div>
+            <div style={{ fontSize: 12, opacity: 0.75, marginBottom: 12 }}>
+              Task: {taskFilesTask.titolo}
+            </div>
+
+            {taskDocError && (
+              <div style={{ color: "#b91c1c", fontSize: 12, marginBottom: 10 }}>{taskDocError}</div>
+            )}
+
+            <div
+              style={{
+                marginBottom: 12,
+                padding: 12,
+                border: "1px solid #eee",
+                borderRadius: 12,
+                background: "white",
+                display: "grid",
+                gridTemplateColumns: "1fr 160px",
+                gap: 10,
+                alignItems: "end",
+              }}
+            >
+              <label>
+                File<br />
+                <input
+                  type="file"
+                  onChange={(e) => setTaskDocFile(e.target.files?.[0] ?? null)}
+                  style={{ width: "100%", padding: 8 }}
+                />
+              </label>
+              <button
+                type="button"
+                onClick={uploadTaskDocument}
+                style={{
+                  padding: "10px 12px",
+                  borderRadius: 10,
+                  border: "1px solid #111",
+                  background: "#111",
+                  color: "white",
+                  cursor: "pointer",
+                }}
+              >
+                Carica file
+              </button>
+            </div>
+
+            {(() => {
+              const rows = taskDocuments.filter((d) => d.task_id === taskFilesTask.id);
+              if (rows.length === 0) {
+                return <div style={{ opacity: 0.7 }}>Nessun file caricato per questo task</div>;
+              }
+              return (
+                <div style={{ border: "1px solid #eee", borderRadius: 12, overflow: "hidden" }}>
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "2fr 1fr 1fr 200px",
+                      padding: "10px 12px",
+                      fontWeight: 700,
+                      borderBottom: "1px solid #eee",
+                      background: "#fafafa",
+                    }}
+                  >
+                    <div>Nome file</div>
+                    <div>Data upload</div>
+                    <div>Caricato da</div>
+                    <div>Azioni</div>
+                  </div>
+                  {rows.map((d) => (
+                    <div
+                      key={d.id}
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "2fr 1fr 1fr 200px",
+                        padding: "10px 12px",
+                        borderBottom: "1px solid #f5f5f5",
+                        alignItems: "center",
+                        fontSize: 13,
+                      }}
+                    >
+                      <div>{d.filename}</div>
+                      <div>{d.uploaded_at ? new Date(d.uploaded_at).toLocaleString() : "—"}</div>
+                      <div>
+                        {d.uploaded_by_operatore
+                          ? operatoriMap.get(d.uploaded_by_operatore) ?? "—"
+                          : "—"}
+                      </div>
+                      <div style={{ display: "flex", gap: 8 }}>
+                        <button
+                          type="button"
+                          onClick={() => openTaskDocument(d, false)}
+                          style={{
+                            padding: "6px 10px",
+                            borderRadius: 8,
+                            border: "1px solid #ddd",
+                            background: "white",
+                            cursor: "pointer",
+                          }}
+                        >
+                          Apri
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => openTaskDocument(d, true)}
+                          style={{
+                            padding: "6px 10px",
+                            borderRadius: 8,
+                            border: "1px solid #ddd",
+                            background: "white",
+                            cursor: "pointer",
+                          }}
+                        >
+                          Scarica
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => deleteTaskDocument(d)}
+                          style={{
+                            padding: "6px 10px",
+                            borderRadius: 8,
+                            border: "1px solid #dc2626",
+                            background: "white",
+                            color: "#dc2626",
+                            cursor: "pointer",
+                          }}
+                        >
+                          Elimina
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
+
+            <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 12 }}>
+              <button
+                type="button"
+                onClick={closeTaskFiles}
+                style={{
+                  padding: "8px 12px",
+                  borderRadius: 10,
+                  border: "1px solid #ddd",
+                  background: "white",
+                  cursor: "pointer",
+                }}
+              >
+                Chiudi
+              </button>
+            </div>
+          </div>
         </div>
       )}
 
