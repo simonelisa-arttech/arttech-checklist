@@ -610,6 +610,8 @@ type EditScadenzaForm = {
   intestato_a: string;
   descrizione: string;
   saas_piano: string;
+  licenza_tipo: string;
+  licenza_class: "LICENZA" | "GARANZIA";
 };
 
 type AlertStats = {
@@ -739,6 +741,18 @@ export default function ClientePage({ params }: { params: any }) {
     note: "",
   });
   const [tagliandoSaving, setTagliandoSaving] = useState(false);
+  const [newServizioScadenza, setNewServizioScadenza] = useState({
+    checklist_id: "",
+    tipo: "SAAS",
+    riferimento: "",
+    scadenza: "",
+    stato: "DA_AVVISARE",
+    note: "",
+  });
+  const [servizioSaving, setServizioSaving] = useState(false);
+  const [applyUltraToAllProjects, setApplyUltraToAllProjects] = useState(false);
+  const [applyUltraToSelectedProjects, setApplyUltraToSelectedProjects] = useState(false);
+  const [selectedUltraProjectIds, setSelectedUltraProjectIds] = useState<string[]>([]);
   const [exportFrom, setExportFrom] = useState("");
   const [exportTo, setExportTo] = useState("");
   const [exportNotice, setExportNotice] = useState<string | null>(null);
@@ -828,6 +842,14 @@ export default function ClientePage({ params }: { params: any }) {
     Map<string, { toOperatoreId: string | null; toNome: string | null; createdAt: string }>
   >(new Map());
   const [alertStatsMap, setAlertStatsMap] = useState<Map<string, AlertStats>>(new Map());
+
+  useEffect(() => {
+    if (newServizioScadenza.tipo !== "SAAS_ULTRA") {
+      setApplyUltraToAllProjects(false);
+      setApplyUltraToSelectedProjects(false);
+      setSelectedUltraProjectIds([]);
+    }
+  }, [newServizioScadenza.tipo]);
   const [toast, setToast] = useState<{ message: string; variant: "success" | "error" } | null>(
     null
   );
@@ -2309,6 +2331,55 @@ export default function ClientePage({ params }: { params: any }) {
     return Math.max(0, interventiTotali - interventiInclusiUsati);
   }, [interventiTotali, interventiInclusiUsati]);
 
+  const ultraCoverageByChecklist = useMemo(() => {
+    const byChecklist = new Map<string, { total: number; unlimited: boolean }>();
+    const today = startOfToday();
+
+    for (const c of checklists) {
+      if (!c.id) continue;
+      const entry = byChecklist.get(c.id) || { total: 0, unlimited: false };
+      if (c.ultra_interventi_illimitati) {
+        entry.unlimited = true;
+      } else if (typeof c.ultra_interventi_inclusi === "number" && c.ultra_interventi_inclusi > 0) {
+        entry.total += c.ultra_interventi_inclusi;
+      }
+      byChecklist.set(c.id, entry);
+    }
+
+    for (const r of rinnovi) {
+      const itemTipo = String(r.item_tipo || "").toUpperCase();
+      const subtipo = String(r.subtipo || "").toUpperCase();
+      const checklistId = String(r.checklist_id || "");
+      if (!checklistId) continue;
+      if (itemTipo !== "SAAS" || subtipo !== "ULTRA") continue;
+      const stato = String(r.stato || "").toUpperCase();
+      if (["NON_RINNOVATO", "SCADUTO"].includes(stato)) continue;
+      const dt = parseLocalDay(r.scadenza || null);
+      if (dt && dt < today) continue;
+
+      const entry = byChecklist.get(checklistId) || { total: 0, unlimited: false };
+      const code = String(r.riferimento || "").trim().toUpperCase();
+      const piano = ultraPiani.find((p) => String(p.codice || "").trim().toUpperCase() === code);
+      const isUnlimited =
+        code.includes("ILL") || String(piano?.nome || "").toUpperCase().includes("ILLIMIT");
+      if (isUnlimited) {
+        entry.unlimited = true;
+      } else {
+        const included = Number(piano?.interventi_inclusi ?? 0);
+        if (Number.isFinite(included) && included > 0) {
+          entry.total += included;
+        }
+      }
+      byChecklist.set(checklistId, entry);
+    }
+
+    const out = new Map<string, number | null>();
+    for (const [checklistId, entry] of byChecklist.entries()) {
+      out.set(checklistId, entry.unlimited ? null : entry.total);
+    }
+    return out;
+  }, [checklists, rinnovi, ultraPiani]);
+
   useEffect(() => {
     let alive = true;
     (async () => {
@@ -2507,16 +2578,31 @@ export default function ClientePage({ params }: { params: any }) {
 
     let inclusoToSave = newIntervento.incluso;
     let noteTecnicheToSave: string | null = null;
-    if (
-      contratto &&
-      !contratto.illimitati &&
-      interventiTotali != null &&
-      interventiInclusiUsati >= interventiTotali &&
-      newIntervento.incluso
-    ) {
-      inclusoToSave = false;
-      setInterventiInfo("Interventi inclusi terminati → registrato come EXTRA");
-      noteTecnicheToSave = "Auto-EXTRA: inclusi finiti";
+    if (newIntervento.incluso) {
+      const checklistId = String(newIntervento.checklistId || "");
+      const projectCap = ultraCoverageByChecklist.get(checklistId);
+      if (projectCap !== undefined && projectCap !== null) {
+        const usedOnProject = interventi.filter(
+          (i) => i.incluso && String(i.checklist_id || "") === checklistId
+        ).length;
+        if (usedOnProject >= projectCap) {
+          inclusoToSave = false;
+          setInterventiInfo(
+            `Interventi inclusi terminati sul progetto (${usedOnProject}/${projectCap}) → registrato come EXTRA`
+          );
+          noteTecnicheToSave = "Auto-EXTRA: inclusi ULTRA progetto finiti";
+        }
+      } else if (
+        contratto &&
+        !contratto.illimitati &&
+        interventiTotali != null &&
+        interventiInclusiUsati >= interventiTotali
+      ) {
+        // fallback legacy cliente-wide
+        inclusoToSave = false;
+        setInterventiInfo("Interventi inclusi terminati → registrato come EXTRA");
+        noteTecnicheToSave = "Auto-EXTRA: inclusi finiti";
+      }
     }
 
     const dataValue =
@@ -2888,6 +2974,108 @@ export default function ClientePage({ params }: { params: any }) {
     }
   }
 
+  async function addServizioScadenza() {
+    const clienteKey = (cliente || "").trim();
+    if (!clienteKey) {
+      setRinnoviError("Cliente non valido per inserire il servizio.");
+      return;
+    }
+    const tipo = String(newServizioScadenza.tipo || "SAAS").toUpperCase();
+    const applyAllForUltra = tipo === "SAAS_ULTRA" && applyUltraToAllProjects;
+    const applySelectedForUltra =
+      tipo === "SAAS_ULTRA" && !applyAllForUltra && applyUltraToSelectedProjects;
+    if (!applyAllForUltra && !applySelectedForUltra && !newServizioScadenza.checklist_id) {
+      setRinnoviError("Seleziona il progetto da associare al servizio.");
+      return;
+    }
+    if (!newServizioScadenza.scadenza) {
+      setRinnoviError("Inserisci la scadenza del servizio.");
+      return;
+    }
+    const checklistIds = applyAllForUltra
+      ? checklists.map((c) => c.id)
+      : applySelectedForUltra
+      ? selectedUltraProjectIds
+      : [newServizioScadenza.checklist_id];
+    if (checklistIds.length === 0) {
+      setRinnoviError("Nessun progetto disponibile per aggregare SAAS ULTRA.");
+      return;
+    }
+
+    const tipoMapped = mapRinnovoTipo(tipo);
+    const riferimento = (newServizioScadenza.riferimento || "").trim();
+    const targetRiferimento =
+      riferimento || (tipo === "SAAS_ULTRA" ? "ULTRA progetto" : "SAAS progetto");
+    const targetStato = String(newServizioScadenza.stato || "DA_AVVISARE").toUpperCase();
+
+    const payload = checklistIds
+      .filter(Boolean)
+      .filter((checklistId) => {
+        // Skip exact duplicates if same item already exists for this project and service code.
+        return !rinnovi.some((r) => {
+          const sameChecklist = String(r.checklist_id || "") === String(checklistId || "");
+          const sameTipo = String(r.item_tipo || "").toUpperCase() === tipoMapped.item_tipo;
+          const sameSubtipo = String(r.subtipo || "").toUpperCase() === String(tipoMapped.subtipo || "").toUpperCase();
+          const sameRif = String(r.riferimento || "").trim().toUpperCase() === targetRiferimento.toUpperCase();
+          return sameChecklist && sameTipo && sameSubtipo && sameRif;
+        });
+      })
+      .map((checklistId) => {
+        const checklist = checklistById.get(checklistId);
+        return {
+          cliente: clienteKey,
+          checklist_id: checklistId,
+          item_tipo: tipoMapped.item_tipo,
+          subtipo: tipoMapped.subtipo,
+          riferimento: targetRiferimento,
+          descrizione: (newServizioScadenza.note || "").trim() || null,
+          scadenza: newServizioScadenza.scadenza,
+          stato: targetStato,
+          proforma: checklist?.proforma ?? null,
+          cod_magazzino: checklist?.magazzino_importazione ?? null,
+        };
+      });
+    if (payload.length === 0) {
+      setRinnoviError("Servizio già presente sui progetti selezionati.");
+      return;
+    }
+
+    setServizioSaving(true);
+    setRinnoviError(null);
+    try {
+      const { data, error } = await supabase
+        .from("rinnovi_servizi")
+        .insert(payload)
+        .select("*");
+      if (error) {
+        setRinnoviError("Errore inserimento servizio: " + error.message);
+        return;
+      }
+      if (data && Array.isArray(data) && data.length > 0) {
+        setRinnovi((prev) => [...prev, ...(data as RinnovoServizioRow[])]);
+      }
+      setNewServizioScadenza({
+        checklist_id: "",
+        tipo: "SAAS",
+        riferimento: "",
+        scadenza: "",
+        stato: "DA_AVVISARE",
+        note: "",
+      });
+      setApplyUltraToAllProjects(false);
+      setApplyUltraToSelectedProjects(false);
+      setSelectedUltraProjectIds([]);
+      setRinnoviNotice(
+        payload.length > 1
+          ? `Servizio aggiunto a ${payload.length} progetti.`
+          : "Servizio aggiunto al progetto."
+      );
+      await fetchRinnovi(clienteKey);
+    } finally {
+      setServizioSaving(false);
+    }
+  }
+
   function getRinnovoReference(r: RinnovoServizioRow) {
     return r.riferimento || r.descrizione || r.checklist_id?.slice(0, 8) || "—";
   }
@@ -3086,6 +3274,8 @@ export default function ClientePage({ params }: { params: any }) {
       intestato_a: "",
       descrizione: r.descrizione ?? "",
       saas_piano: "",
+      licenza_tipo: "",
+      licenza_class: "LICENZA",
     };
     if (r.source === "licenze") {
       const l = licenze.find((x) => x.id === r.id);
@@ -3097,6 +3287,8 @@ export default function ClientePage({ params }: { params: any }) {
         note: l?.note ?? "",
         fornitore: l?.fornitore ?? "",
         intestato_a: l?.intestata_a ?? "",
+        licenza_tipo: l?.tipo ?? "",
+        licenza_class: "LICENZA",
       };
     } else if (r.source === "tagliandi") {
       const t = tagliandi.find((x) => x.id === r.id);
@@ -3158,6 +3350,41 @@ export default function ClientePage({ params }: { params: any }) {
     setEditScadenzaErr(null);
     try {
       if (editScadenzaForm.tipo === "LICENZA") {
+        const l = licenze.find((x) => x.id === editScadenzaItem.id);
+        const checklistId = l?.checklist_id ?? editScadenzaItem.checklist_id ?? null;
+        if (editScadenzaForm.licenza_class === "GARANZIA") {
+          if (!checklistId) {
+            throw new Error(
+              "Questa licenza non è associata a un progetto. Impossibile convertirla in garanzia."
+            );
+          }
+          const { error: updChecklistErr } = await supabase
+            .from("checklists")
+            .update({ garanzia_scadenza: editScadenzaForm.scadenza || null })
+            .eq("id", checklistId);
+          if (updChecklistErr) throw new Error(updChecklistErr.message);
+
+          const { error: delLicErr } = await supabase
+            .from("licenses")
+            .delete()
+            .eq("id", editScadenzaItem.id);
+          if (delLicErr) throw new Error(delLicErr.message);
+
+          setLicenze((prev) => prev.filter((x) => x.id !== editScadenzaItem.id));
+          setChecklists((prev) =>
+            prev.map((c) =>
+              c.id === checklistId
+                ? {
+                    ...c,
+                    garanzia_scadenza: editScadenzaForm.scadenza || null,
+                  }
+                : c
+            )
+          );
+          showToast("✅ Voce convertita da licenza a garanzia", "success");
+          setEditScadenzaOpen(false);
+          return;
+        }
         const { error } = await supabase
           .from("licenses")
           .update({
@@ -3166,6 +3393,7 @@ export default function ClientePage({ params }: { params: any }) {
             note: editScadenzaForm.note || null,
             fornitore: editScadenzaForm.fornitore || null,
             intestata_a: editScadenzaForm.intestato_a || null,
+            tipo: editScadenzaForm.licenza_tipo || null,
           })
           .eq("id", editScadenzaItem.id);
         if (error) throw new Error(error.message);
@@ -3179,6 +3407,7 @@ export default function ClientePage({ params }: { params: any }) {
                   note: editScadenzaForm.note || null,
                   fornitore: editScadenzaForm.fornitore || null,
                   intestata_a: editScadenzaForm.intestato_a || null,
+                  tipo: editScadenzaForm.licenza_tipo || null,
                 }
               : l
           )
@@ -3327,6 +3556,76 @@ export default function ClientePage({ params }: { params: any }) {
       await fetchSaasContratti(clienteKey);
       setEditScadenzaOpen(false);
       showToast("✅ Contratto eliminato", "success");
+    } catch (err: any) {
+      setEditScadenzaErr(briefError(err));
+      showToast(`❌ Eliminazione fallita: ${briefError(err)}`, "error");
+    } finally {
+      setEditScadenzaSaving(false);
+    }
+  }
+
+  async function deleteScadenzaItemFromEdit() {
+    if (!editScadenzaItem || !editScadenzaForm) return;
+    const ok = window.confirm("Eliminare questa voce da Scadenze & Rinnovi?");
+    if (!ok) return;
+    setEditScadenzaSaving(true);
+    setEditScadenzaErr(null);
+    try {
+      if (editScadenzaForm.tipo === "LICENZA") {
+        const { error } = await supabase.from("licenses").delete().eq("id", editScadenzaItem.id);
+        if (error) throw new Error(error.message);
+        setLicenze((prev) => prev.filter((x) => x.id !== editScadenzaItem.id));
+      } else if (editScadenzaForm.tipo === "TAGLIANDO") {
+        const { error } = await supabase.from("tagliandi").delete().eq("id", editScadenzaItem.id);
+        if (error) throw new Error(error.message);
+        setTagliandi((prev) => prev.filter((x) => x.id !== editScadenzaItem.id));
+      } else if (editScadenzaForm.tipo === "RINNOVO") {
+        const { error } = await supabase
+          .from("rinnovi_servizi")
+          .delete()
+          .eq("id", editScadenzaItem.id);
+        if (error) throw new Error(error.message);
+        setRinnovi((prev) => prev.filter((x) => x.id !== editScadenzaItem.id));
+      } else if (editScadenzaForm.tipo === "SAAS_ULTRA") {
+        await deleteContrattoFromScadenza();
+        return;
+      } else if (editScadenzaForm.tipo === "SAAS") {
+        const checklistId = editScadenzaItem.checklist_id;
+        if (!checklistId) throw new Error("Checklist non trovata");
+        const { error } = await supabase
+          .from("checklists")
+          .update({
+            saas_piano: null,
+            saas_scadenza: null,
+            saas_tipo: null,
+            saas_note: null,
+          })
+          .eq("id", checklistId);
+        if (error) throw new Error(error.message);
+        setChecklists((prev) =>
+          prev.map((c) =>
+            c.id === checklistId
+              ? { ...c, saas_piano: null, saas_scadenza: null, saas_tipo: null, saas_note: null }
+              : c
+          )
+        );
+      } else if (editScadenzaForm.tipo === "GARANZIA") {
+        const checklistId = editScadenzaItem.checklist_id;
+        if (!checklistId) throw new Error("Checklist non trovata");
+        const { error } = await supabase
+          .from("checklists")
+          .update({ garanzia_scadenza: null })
+          .eq("id", checklistId);
+        if (error) throw new Error(error.message);
+        setChecklists((prev) =>
+          prev.map((c) => (c.id === checklistId ? { ...c, garanzia_scadenza: null } : c))
+        );
+      } else {
+        setEditScadenzaErr("Tipo voce non supportato.");
+        return;
+      }
+      setEditScadenzaOpen(false);
+      showToast("✅ Voce eliminata", "success");
     } catch (err: any) {
       setEditScadenzaErr(briefError(err));
       showToast(`❌ Eliminazione fallita: ${briefError(err)}`, "error");
@@ -5285,6 +5584,250 @@ ${rinnovi30ggBreakdown.debugSample
           </div>
         </div>
 
+        <div
+          style={{
+            marginTop: 10,
+            border: "1px solid #eee",
+            borderRadius: 10,
+            padding: 10,
+            background: "#fcfcfc",
+          }}
+        >
+          <div style={{ fontWeight: 700, marginBottom: 8 }}>
+            Aggiungi servizio SAAS / ULTRA associato al progetto
+          </div>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns:
+                "minmax(220px,1.4fr) 140px minmax(180px,1fr) 140px 160px minmax(180px,1fr) auto",
+              gap: 8,
+              alignItems: "end",
+            }}
+          >
+            <div>
+              <div style={{ fontSize: 12, marginBottom: 4 }}>Progetto</div>
+              <select
+                value={newServizioScadenza.checklist_id}
+                onChange={(e) =>
+                  setNewServizioScadenza((prev) => ({ ...prev, checklist_id: e.target.value }))
+                }
+                disabled={
+                  newServizioScadenza.tipo === "SAAS_ULTRA" &&
+                  (applyUltraToAllProjects || applyUltraToSelectedProjects)
+                }
+                style={{
+                  width: "100%",
+                  border: "1px solid #ddd",
+                  borderRadius: 8,
+                  padding: "8px 10px",
+                  background:
+                    newServizioScadenza.tipo === "SAAS_ULTRA" &&
+                    (applyUltraToAllProjects || applyUltraToSelectedProjects)
+                      ? "#f9fafb"
+                      : "white",
+                }}
+              >
+                <option value="">— seleziona progetto —</option>
+                {checklists.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.nome_checklist || c.id}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <div style={{ fontSize: 12, marginBottom: 4 }}>Tipo</div>
+              <select
+                value={newServizioScadenza.tipo}
+                onChange={(e) =>
+                  setNewServizioScadenza((prev) => ({
+                    ...prev,
+                    tipo: e.target.value,
+                  }))
+                }
+                style={{
+                  width: "100%",
+                  border: "1px solid #ddd",
+                  borderRadius: 8,
+                  padding: "8px 10px",
+                  background: "white",
+                }}
+              >
+                <option value="SAAS">SAAS</option>
+                <option value="SAAS_ULTRA">SAAS_ULTRA</option>
+              </select>
+            </div>
+            <div>
+              <div style={{ fontSize: 12, marginBottom: 4 }}>Piano / Codice</div>
+              <input
+                value={newServizioScadenza.riferimento}
+                onChange={(e) =>
+                  setNewServizioScadenza((prev) => ({ ...prev, riferimento: e.target.value }))
+                }
+                placeholder="es. SAAS-PL / SAAS-UL4"
+                style={{
+                  width: "100%",
+                  border: "1px solid #ddd",
+                  borderRadius: 8,
+                  padding: "8px 10px",
+                  background: "white",
+                }}
+              />
+              {newServizioScadenza.tipo === "SAAS_ULTRA" && (
+                <div style={{ marginTop: 6, display: "grid", gap: 6 }}>
+                  <label
+                    style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={applyUltraToSelectedProjects}
+                      onChange={(e) => {
+                        const checked = e.target.checked;
+                        setApplyUltraToSelectedProjects(checked);
+                        if (checked) setApplyUltraToAllProjects(false);
+                        if (!checked) setSelectedUltraProjectIds([]);
+                      }}
+                    />
+                    Applica a progetti selezionati
+                  </label>
+                  <label
+                    style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={applyUltraToAllProjects}
+                      onChange={(e) => {
+                        const checked = e.target.checked;
+                        setApplyUltraToAllProjects(checked);
+                        if (checked) {
+                          setApplyUltraToSelectedProjects(false);
+                          setSelectedUltraProjectIds([]);
+                        }
+                      }}
+                    />
+                    Applica a tutti i progetti del cliente
+                  </label>
+                  {applyUltraToSelectedProjects && (
+                    <div
+                      style={{
+                        border: "1px solid #e5e7eb",
+                        borderRadius: 8,
+                        padding: 8,
+                        maxHeight: 120,
+                        overflowY: "auto",
+                        background: "white",
+                      }}
+                    >
+                      {checklists.map((c) => {
+                        const checked = selectedUltraProjectIds.includes(c.id);
+                        return (
+                          <label
+                            key={c.id}
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 6,
+                              fontSize: 12,
+                              marginBottom: 4,
+                            }}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={(e) => {
+                                setSelectedUltraProjectIds((prev) => {
+                                  if (e.target.checked) return Array.from(new Set([...prev, c.id]));
+                                  return prev.filter((id) => id !== c.id);
+                                });
+                              }}
+                            />
+                            {c.nome_checklist || c.id}
+                          </label>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+            <div>
+              <div style={{ fontSize: 12, marginBottom: 4 }}>Scadenza</div>
+              <input
+                type="date"
+                value={newServizioScadenza.scadenza}
+                onChange={(e) =>
+                  setNewServizioScadenza((prev) => ({ ...prev, scadenza: e.target.value }))
+                }
+                style={{
+                  width: "100%",
+                  border: "1px solid #ddd",
+                  borderRadius: 8,
+                  padding: "8px 10px",
+                  background: "white",
+                }}
+              />
+            </div>
+            <div>
+              <div style={{ fontSize: 12, marginBottom: 4 }}>Stato</div>
+              <select
+                value={newServizioScadenza.stato}
+                onChange={(e) =>
+                  setNewServizioScadenza((prev) => ({ ...prev, stato: e.target.value }))
+                }
+                style={{
+                  width: "100%",
+                  border: "1px solid #ddd",
+                  borderRadius: 8,
+                  padding: "8px 10px",
+                  background: "white",
+                }}
+              >
+                {RINNOVO_STATI.map((s) => (
+                  <option key={s} value={s}>
+                    {s}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <div style={{ fontSize: 12, marginBottom: 4 }}>Note</div>
+              <input
+                value={newServizioScadenza.note}
+                onChange={(e) =>
+                  setNewServizioScadenza((prev) => ({ ...prev, note: e.target.value }))
+                }
+                placeholder="Opzionale"
+                style={{
+                  width: "100%",
+                  border: "1px solid #ddd",
+                  borderRadius: 8,
+                  padding: "8px 10px",
+                  background: "white",
+                }}
+              />
+            </div>
+            <button
+              type="button"
+              onClick={addServizioScadenza}
+              disabled={servizioSaving}
+              style={{
+                padding: "8px 12px",
+                borderRadius: 8,
+                border: "1px solid #111",
+                background: "#111",
+                color: "white",
+                fontWeight: 700,
+                cursor: servizioSaving ? "not-allowed" : "pointer",
+                opacity: servizioSaving ? 0.7 : 1,
+                whiteSpace: "nowrap",
+              }}
+            >
+              {servizioSaving ? "Salvataggio..." : "Aggiungi"}
+            </button>
+          </div>
+        </div>
+
         {rinnoviError && (
           <div style={{ marginTop: 6, color: "crimson", fontSize: 12 }}>{rinnoviError}</div>
         )}
@@ -7112,6 +7655,43 @@ ${rinnovi30ggBreakdown.debugSample
               {editScadenzaForm.tipo === "LICENZA" && (
                 <>
                   <label>
+                    Classe voce<br />
+                    <select
+                      value={editScadenzaForm.licenza_class}
+                      onChange={(e) =>
+                        setEditScadenzaForm({
+                          ...editScadenzaForm,
+                          licenza_class: (e.target.value as "LICENZA" | "GARANZIA") || "LICENZA",
+                        })
+                      }
+                      style={{ width: "100%", padding: 8 }}
+                    >
+                      <option value="LICENZA">LICENZA</option>
+                      <option value="GARANZIA">GARANZIA (converte questa voce)</option>
+                    </select>
+                  </label>
+                  <label>
+                    Tipo / Piano<br />
+                    <input
+                      value={editScadenzaForm.licenza_tipo}
+                      onChange={(e) =>
+                        setEditScadenzaForm({ ...editScadenzaForm, licenza_tipo: e.target.value })
+                      }
+                      disabled={editScadenzaForm.licenza_class === "GARANZIA"}
+                      style={{
+                        width: "100%",
+                        padding: 8,
+                        background:
+                          editScadenzaForm.licenza_class === "GARANZIA" ? "#f9fafb" : "white",
+                      }}
+                    />
+                  </label>
+                  {editScadenzaForm.licenza_class === "GARANZIA" && (
+                    <div style={{ fontSize: 12, color: "#92400e" }}>
+                      Al salvataggio la licenza verrà rimossa e sarà impostata la scadenza garanzia sul progetto.
+                    </div>
+                  )}
+                  <label>
                     Stato<br />
                     <select
                       value={editScadenzaForm.stato}
@@ -7271,10 +7851,12 @@ ${rinnovi30ggBreakdown.debugSample
             )}
 
             <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 12 }}>
-              {editScadenzaForm.tipo === "SAAS_ULTRA" && (
+              {["LICENZA", "TAGLIANDO", "RINNOVO", "SAAS_ULTRA", "SAAS", "GARANZIA"].includes(
+                editScadenzaForm.tipo
+              ) && (
                 <button
                   type="button"
-                  onClick={deleteContrattoFromScadenza}
+                  onClick={deleteScadenzaItemFromEdit}
                   disabled={editScadenzaSaving}
                   style={{
                     marginRight: "auto",
@@ -7287,7 +7869,7 @@ ${rinnovi30ggBreakdown.debugSample
                     opacity: editScadenzaSaving ? 0.6 : 1,
                   }}
                 >
-                  Elimina contratto
+                  Elimina voce
                 </button>
               )}
               <button

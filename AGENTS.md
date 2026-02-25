@@ -137,6 +137,15 @@ Quando modifichi codice:
 
 Se non sei sicuro: chiedi chiarimenti prima di cambiare architettura.
 
+## 🔟 Agenti Interni Specializzati
+Per lavorare in modo stabile per competenza, usare anche:
+- `docs/AGENT_OPERATING_MODEL.md`
+- `docs/AGENT_MEMORY.md`
+
+Regola operativa:
+- Ogni task deve essere assegnato all'agente di dominio corretto.
+- Dopo modifiche rilevanti, aggiornare `docs/AGENT_MEMORY.md` (snapshot + obiettivi aperti).
+
 ## 🔎 Perché questa struttura è utile per AT SYSTEM
 Il problema principale è mantenere coerenza tra:
 - UI
