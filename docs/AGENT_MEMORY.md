@@ -44,6 +44,10 @@
 3. Uniformare conversioni/cancellazioni servizi senza ambiguita' tra righe strutturali e righe rinnovo.
 4. Continuare allineamento notifiche automatiche per target/task su dati reali.
 
+## Governance agenti (attiva)
+- Ruoli e confini operativi ufficiali in `docs/AGENT_OPERATING_MODEL.md`.
+- Regola: ogni modifica cross-dominio richiede aggiornamento di questo file (snapshot operativo).
+
 ## Query rapide di controllo (manuali)
 ```sql
 -- Tagliandi cliente con progetto associato
@@ -63,4 +67,3 @@ from public.saas_interventi
 where lower(cliente) = lower('<CLIENTE>') and incluso = true
 group by checklist_id;
 ```
-
