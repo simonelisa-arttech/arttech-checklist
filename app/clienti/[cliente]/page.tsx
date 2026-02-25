@@ -6087,6 +6087,25 @@ ${rinnovi30ggBreakdown.debugSample
                       style={{
                         padding: "3px 6px",
                         borderRadius: 6,
+                        border: "1px solid #d1d5db",
+                        background: "#f8fafc",
+                        cursor: "pointer",
+                        width: "100%",
+                        whiteSpace: "nowrap",
+                        fontSize: 12,
+                      }}
+                    title="Apri allegati intervento"
+                  >
+                    📎 File ({(interventoFilesById.get(i.id) || []).length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setExpandedInterventoId(expandedInterventoId === i.id ? null : i.id)
+                    }
+                      style={{
+                        padding: "3px 6px",
+                        borderRadius: 6,
                         border: "1px solid #ddd",
                         background: "white",
                         cursor: "pointer",
