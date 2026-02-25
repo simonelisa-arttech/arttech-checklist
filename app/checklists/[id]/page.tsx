@@ -1716,6 +1716,25 @@ function buildFormData(c: Checklist): FormData {
     setEditingLicenza(null);
   }
 
+  async function deleteLicenza(licenzaId: string) {
+    if (!id) return;
+    const ok = window.confirm("Eliminare questa licenza?");
+    if (!ok) return;
+    const { error: delErr } = await supabase.from("licenses").delete().eq("id", licenzaId);
+    if (delErr) {
+      const msg =
+        logSupabaseError("delete license", delErr) || "Errore eliminazione licenza";
+      alert(msg);
+      setItemsError(msg);
+      return;
+    }
+    if (editingLicenzaId === licenzaId) {
+      setEditingLicenzaId(null);
+      setEditingLicenza(null);
+    }
+    await load(id);
+  }
+
   async function uploadDocument() {
     if (!id) return;
     if (!docFile) {
@@ -3683,6 +3702,20 @@ function buildFormData(c: Checklist): FormData {
                     {editMode ? (
                       editingLicenzaId === l.id ? (
                         <>
+                          <button
+                            type="button"
+                            onClick={() => deleteLicenza(l.id)}
+                            style={{
+                              padding: "6px 10px",
+                              borderRadius: 8,
+                              border: "1px solid #dc2626",
+                              background: "white",
+                              color: "#dc2626",
+                              cursor: "pointer",
+                            }}
+                          >
+                            Elimina
+                          </button>
                           <button
                             type="button"
                             onClick={saveEditLicenza}
