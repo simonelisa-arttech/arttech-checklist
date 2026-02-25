@@ -176,7 +176,24 @@ function inferTaskTarget(titolo?: string | null, templateTarget?: string | null)
   const fromTemplate = String(templateTarget || "")
     .trim()
     .toUpperCase();
-  if (fromTemplate === "MAGAZZINO" || fromTemplate === "TECNICO_SW" || fromTemplate === "GENERICA") {
+  const normalizedFromTemplate =
+    fromTemplate === "MAGAZZINO"
+      ? "MAGAZZINO"
+      : fromTemplate === "TECNICO_SW" ||
+          fromTemplate === "TECNICO SW" ||
+          fromTemplate === "TECNICO-SW"
+        ? "TECNICO_SW"
+        : fromTemplate === "GENERICA"
+          ? "GENERICA"
+          : "";
+  if (normalizedFromTemplate) {
+    return normalizedFromTemplate;
+  }
+  if (
+    fromTemplate === "MAGAZZINO" ||
+    fromTemplate === "TECNICO_SW" ||
+    fromTemplate === "GENERICA"
+  ) {
     return fromTemplate;
   }
   const t = String(titolo || "")
@@ -684,6 +701,82 @@ export default function NuovaChecklistPage() {
           if (insErr) {
             logSupabaseError(insErr);
             throw insErr;
+          }
+        }
+      }
+
+      // Alcuni ambienti creano task via trigger DB: riallineo comunque il target dal template/titolo.
+      {
+        const { data: createdTasks, error: createdTasksErr } = await supabase
+          .from("checklist_tasks")
+          .select("id, titolo, target, task_template_id")
+          .eq("checklist_id", checklistId);
+        if (createdTasksErr) {
+          logSupabaseError(createdTasksErr);
+          throw createdTasksErr;
+        }
+
+        if (createdTasks && createdTasks.length > 0) {
+          const templateIds = Array.from(
+            new Set(
+              createdTasks
+                .map((t: any) => String(t.task_template_id || "").trim())
+                .filter(Boolean)
+            )
+          );
+          const templateById = new Map<string, string | null>();
+          const templateByTitle = new Map<string, string | null>();
+
+          if (templateIds.length > 0) {
+            const { data: templatesById, error: templatesByIdErr } = await supabase
+              .from("checklist_task_templates")
+              .select("id, target")
+              .in("id", templateIds);
+            if (templatesByIdErr && !String(templatesByIdErr.message || "").toLowerCase().includes("target")) {
+              logSupabaseError(templatesByIdErr);
+              throw templatesByIdErr;
+            }
+            (templatesById || []).forEach((tpl: any) => {
+              templateById.set(String(tpl.id), tpl.target ?? null);
+            });
+          }
+
+          const { data: templatesByTitle, error: templatesByTitleErr } = await supabase
+            .from("checklist_task_templates")
+            .select("titolo, target")
+            .eq("attivo", true);
+          if (templatesByTitleErr && !String(templatesByTitleErr.message || "").toLowerCase().includes("target")) {
+            logSupabaseError(templatesByTitleErr);
+            throw templatesByTitleErr;
+          }
+          (templatesByTitle || []).forEach((tpl: any) => {
+            const key = String(tpl.titolo || "").trim().toLowerCase();
+            if (key && !templateByTitle.has(key)) {
+              templateByTitle.set(key, tpl.target ?? null);
+            }
+          });
+
+          for (const task of createdTasks as any[]) {
+            const taskId = String(task.id || "");
+            if (!taskId) continue;
+            const taskTitle = String(task.titolo || "").trim();
+            const currentTarget = String(task.target || "").trim().toUpperCase();
+            const templateId = String(task.task_template_id || "").trim();
+            const templateTargetById = templateId ? templateById.get(templateId) ?? null : null;
+            const templateTargetByTitle = taskTitle
+              ? templateByTitle.get(taskTitle.toLowerCase()) ?? null
+              : null;
+            const desiredTarget = inferTaskTarget(taskTitle, templateTargetById ?? templateTargetByTitle);
+            if (currentTarget !== desiredTarget) {
+              const { error: updTargetErr } = await supabase
+                .from("checklist_tasks")
+                .update({ target: desiredTarget })
+                .eq("id", taskId);
+              if (updTargetErr && !String(updTargetErr.message || "").toLowerCase().includes("target")) {
+                logSupabaseError(updTargetErr);
+                throw updTargetErr;
+              }
+            }
           }
         }
       }

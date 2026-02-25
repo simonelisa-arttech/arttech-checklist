@@ -83,6 +83,7 @@ type ChecklistTask = {
   titolo: string;
   stato: string;
   note: string | null;
+  target: string | null;
   task_template_id: string | null;
   updated_at: string | null;
   updated_by_operatore: string | null;
@@ -236,6 +237,15 @@ type NotificationRule = {
 function toDateInput(value?: string | null) {
   if (!value) return "";
   return value.slice(0, 10);
+}
+
+function normalizeRuleTargetValue(value?: string | null): "MAGAZZINO" | "TECNICO_SW" | "GENERICA" {
+  const raw = String(value || "")
+    .trim()
+    .toUpperCase();
+  if (raw === "MAGAZZINO") return "MAGAZZINO";
+  if (raw === "TECNICO_SW" || raw === "TECNICO SW" || raw === "TECNICO-SW") return "TECNICO_SW";
+  return "GENERICA";
 }
 
 function isFiniteNumberString(v: string) {
@@ -789,14 +799,32 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
       return;
     }
 
-    const { data: tasks, error: tasksErr } = await supabase
-      .from("checklist_tasks")
-      .select(
-        "id, sezione, ordine, titolo, stato, note, task_template_id, updated_at, updated_by_operatore, operatori:updated_by_operatore ( id, nome )"
-      )
-      .eq("checklist_id", id)
-      .order("sezione", { ascending: true })
-      .order("ordine", { ascending: true });
+    let tasks: any[] | null = null;
+    let tasksErr: any = null;
+    {
+      const res = await supabase
+        .from("checklist_tasks")
+        .select(
+          "id, sezione, ordine, titolo, stato, note, target, task_template_id, updated_at, updated_by_operatore, operatori:updated_by_operatore ( id, nome )"
+        )
+        .eq("checklist_id", id)
+        .order("sezione", { ascending: true })
+        .order("ordine", { ascending: true });
+      tasks = res.data as any[] | null;
+      tasksErr = res.error;
+    }
+    if (tasksErr && String(tasksErr.message || "").toLowerCase().includes("target")) {
+      const res = await supabase
+        .from("checklist_tasks")
+        .select(
+          "id, sezione, ordine, titolo, stato, note, task_template_id, updated_at, updated_by_operatore, operatori:updated_by_operatore ( id, nome )"
+        )
+        .eq("checklist_id", id)
+        .order("sezione", { ascending: true })
+        .order("ordine", { ascending: true });
+      tasks = (res.data as any[] | null)?.map((r: any) => ({ ...r, target: null })) ?? [];
+      tasksErr = res.error;
+    }
 
     if (tasksErr) {
       setError("Errore caricamento task: " + tasksErr.message);
@@ -1041,7 +1069,9 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
         alert_tasks: normalizeAlertTasks(o.alert_tasks),
       }));
       (data || []).forEach((o: any) => {
-        if (o?.id) map.set(o.id, o.nome ?? o.id);
+        const id = String(o?.id || "").trim();
+        const nome = String(o?.nome || "").trim();
+        if (id && nome) map.set(id, nome);
       });
       setOperatoriMap(map);
       setAlertOperatori(list);
@@ -1263,9 +1293,7 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
     setRuleError(null);
     setRuleLoading(true);
     try {
-      const targetRaw = String((task as any)?.target || "").trim().toUpperCase();
-      const target =
-        targetRaw === "MAGAZZINO" || targetRaw === "TECNICO_SW" ? targetRaw : "GENERICA";
+      const target = normalizeRuleTargetValue((task as any)?.target);
       const query = new URLSearchParams({
         task_title: task.titolo,
         target,
@@ -1290,10 +1318,7 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
             enabled: row.enabled !== false,
             mode: row.mode === "MANUALE" ? "MANUALE" : "AUTOMATICA",
             task_title: row.task_title || task.titolo,
-            target:
-              row.target === "MAGAZZINO" || row.target === "TECNICO_SW"
-                ? row.target
-                : "GENERICA",
+            target: normalizeRuleTargetValue(row.target || target),
             recipients: Array.isArray(row.recipients)
               ? row.recipients.map((x: any) => String(x || "").trim().toLowerCase()).filter((x: string) => x.includes("@"))
               : [],
@@ -1376,10 +1401,7 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
           enabled: saved.enabled !== false,
           mode: saved.mode === "MANUALE" ? "MANUALE" : "AUTOMATICA",
           task_title: saved.task_title || payload.task_title,
-          target:
-            saved.target === "MAGAZZINO" || saved.target === "TECNICO_SW"
-              ? saved.target
-              : "GENERICA",
+          target: normalizeRuleTargetValue(saved.target || payload.target),
           recipients: Array.isArray(saved.recipients)
             ? saved.recipients.map((x: any) => String(x || "").trim().toLowerCase()).filter((x: string) => x.includes("@"))
             : recipients,
@@ -4152,7 +4174,7 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
               <div
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "1fr 160px 120px 220px",
+                  gridTemplateColumns: "1fr 160px 180px 220px",
                   gap: 12,
                   fontSize: 12,
                   opacity: 0.6,
@@ -4161,7 +4183,7 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
               >
                 <div></div>
                 <div>Stato</div>
-                <div>Alert inviato</div>
+                <div>Azioni</div>
                 <div style={{ textAlign: "right" }}>Ultima modifica da</div>
               </div>
 
@@ -4184,7 +4206,7 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
                     key={t.id}
                     style={{
                       display: "grid",
-                      gridTemplateColumns: "1fr 160px 120px 220px",
+                      gridTemplateColumns: "1fr 160px 180px 220px",
                       gap: 12,
                       padding: "6px 0",
                       alignItems: "center",
@@ -4222,6 +4244,13 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
                                       ...x,
                                       stato: newStato,
                                       updated_by_operatore: currentOperatoreId || null,
+                                      operatori:
+                                        (currentOperatoreId && operatoriMap.get(currentOperatoreId))
+                                          ? {
+                                              id: currentOperatoreId,
+                                              nome: operatoriMap.get(currentOperatoreId) || null,
+                                            }
+                                          : x.operatori,
                                       updated_at: new Date().toISOString(),
                                     }
                                   : x
@@ -4236,25 +4265,27 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
                       </select>
                     </div>
                     <div>
-                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                      <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
                         <button
                           type="button"
                           onClick={() => setAlertTask(t)}
                           style={{
-                            padding: "6px 10px",
+                            padding: "6px 8px",
                             borderRadius: 8,
                             border: "1px solid #ddd",
                             background: "white",
                             cursor: "pointer",
+                            fontSize: 12,
+                            whiteSpace: "nowrap",
                           }}
                         >
-                          Invia alert
+                          Invia
                         </button>
                         <button
                           type="button"
                           onClick={() => openRuleSettings(t)}
                           style={{
-                            padding: "6px 9px",
+                            padding: "6px 8px",
                             borderRadius: 8,
                             border: "1px solid #d1d5db",
                             background: "#f8fafc",
@@ -4262,6 +4293,7 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
                             cursor: "pointer",
                             fontSize: 12,
                             fontWeight: 600,
+                            whiteSpace: "nowrap",
                           }}
                         >
                           ⚙ Regola
@@ -4270,7 +4302,7 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
                           type="button"
                           onClick={() => openTaskFiles(t)}
                           style={{
-                            padding: "6px 9px",
+                            padding: "6px 8px",
                             borderRadius: 8,
                             border: taskDocsCount > 0 ? "1px solid #16a34a" : "1px solid #d1d5db",
                             background: taskDocsCount > 0 ? "#ecfdf5" : "#f8fafc",
@@ -4278,6 +4310,7 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
                             cursor: "pointer",
                             fontSize: 12,
                             fontWeight: 600,
+                            minWidth: 34,
                           }}
                           title={
                             taskDocsCount > 0
@@ -4285,7 +4318,7 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
                               : "Nessun file caricato"
                           }
                         >
-                          📎 File{taskDocsCount > 0 ? ` (${taskDocsCount})` : ""}
+                          📎{taskDocsCount > 0 ? ` ${taskDocsCount}` : ""}
                         </button>
                       </div>
                       {lastAlertByTask.has(t.id) && (
@@ -4312,9 +4345,7 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
                       {t.updated_at ? (
                         <>
                           <div>
-                            ✔{" "}
-                            {t.operatori?.nome ??
-                              (t.updated_by_operatore ? `ID: ${t.updated_by_operatore}` : "—")}
+                            ✔ {t.operatori?.nome ?? operatoriMap.get(t.updated_by_operatore || "") ?? "—"}
                           </div>
                           <div>{new Date(t.updated_at).toLocaleString()}</div>
                         </>
