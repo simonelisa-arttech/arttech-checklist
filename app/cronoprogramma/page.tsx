@@ -31,7 +31,8 @@ type InterventoRow = {
 type TimelineRow = {
   kind: "INSTALLAZIONE" | "INTERVENTO";
   id: string;
-  date: string;
+  data_prevista: string;
+  data_tassativa: string;
   cliente: string;
   checklist_id: string | null;
   ticket_no?: string | null;
@@ -58,26 +59,24 @@ function inferInterventoTipologia(text?: string | null) {
 function downloadCsv(filename: string, rows: TimelineRow[]) {
   const header = [
     "tipo_evento",
-    "data",
+    "data_prevista",
+    "data_tassativa",
     "cliente",
     "progetto",
-    "tipologia",
     "ticket_no",
     "descrizione",
-    "stato",
     "checklist_link",
   ];
   const lines = [header.join(",")];
   for (const r of rows) {
     const cells = [
       r.kind,
-      r.date,
+      r.data_prevista,
+      r.data_tassativa,
       r.cliente,
       r.progetto,
-      r.tipologia,
       r.ticket_no || "",
       r.descrizione,
-      r.stato,
       r.checklist_id ? `/checklists/${r.checklist_id}` : "",
     ].map((x) => `"${String(x || "").replaceAll('"', '""')}"`);
     lines.push(cells.join(","));
@@ -172,7 +171,8 @@ export default function CronoprogrammaPage() {
         timeline.push({
           kind: "INSTALLAZIONE",
           id: `install:${c.id}`,
-          date,
+          data_prevista: toIsoDay(c.data_prevista) || date,
+          data_tassativa: toIsoDay(c.data_tassativa) || date,
           cliente: String(c.cliente || "—"),
           checklist_id: c.id,
           progetto: String(c.nome_checklist || c.id),
@@ -188,10 +188,13 @@ export default function CronoprogrammaPage() {
         const date = toIsoDay(i.data);
         if (!date) continue;
         const c = i.checklist_id ? checklistById.get(i.checklist_id) : null;
+        const prevista = toIsoDay(c?.data_prevista) || date;
+        const tassativa = toIsoDay(c?.data_tassativa) || date;
         timeline.push({
           kind: "INTERVENTO",
           id: `intervento:${i.id}`,
-          date,
+          data_prevista: prevista,
+          data_tassativa: tassativa,
           cliente: String(i.cliente || c?.cliente || "—"),
           checklist_id: i.checklist_id,
           ticket_no: i.ticket_no ?? null,
@@ -202,7 +205,9 @@ export default function CronoprogrammaPage() {
         });
       }
 
-      timeline.sort((a, b) => a.date.localeCompare(b.date));
+      timeline.sort((a, b) =>
+        (a.data_tassativa || a.data_prevista).localeCompare(b.data_tassativa || b.data_prevista)
+      );
       setRows(timeline);
       setLoading(false);
     })();
@@ -217,12 +222,13 @@ export default function CronoprogrammaPage() {
   const filtered = useMemo(() => {
     const needle = q.trim().toLowerCase();
     return rows.filter((r) => {
-      if (fromDate && r.date < fromDate) return false;
-      if (toDate && r.date > toDate) return false;
+      const rifDate = r.data_tassativa || r.data_prevista;
+      if (fromDate && rifDate < fromDate) return false;
+      if (toDate && rifDate > toDate) return false;
       if (clienteFilter !== "TUTTI" && r.cliente !== clienteFilter) return false;
       if (kindFilter !== "TUTTI" && r.kind !== kindFilter) return false;
       if (!needle) return true;
-      return `${r.cliente} ${r.progetto} ${r.tipologia} ${r.ticket_no || ""} ${r.descrizione} ${r.stato}`
+      return `${r.cliente} ${r.progetto} ${r.ticket_no || ""} ${r.descrizione} ${r.stato}`
         .toLowerCase()
         .includes(needle);
     });
@@ -364,7 +370,7 @@ export default function CronoprogrammaPage() {
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "120px 120px 1.2fr 1.2fr 160px 1fr 160px",
+            gridTemplateColumns: "120px 120px 120px 1.1fr 1.1fr 1fr 140px",
             gap: 10,
             padding: "10px 12px",
             fontWeight: 700,
@@ -372,13 +378,13 @@ export default function CronoprogrammaPage() {
             borderBottom: "1px solid #eee",
           }}
         >
-          <div>Data</div>
+          <div>Data prevista</div>
+          <div>Data tassativa</div>
           <div>Evento</div>
           <div>Cliente</div>
           <div>Progetto</div>
-          <div>Tipologia</div>
           <div>Dettaglio</div>
-          <div>Stato</div>
+          <div>Ticket</div>
         </div>
         {loading ? (
           <div style={{ padding: 12, opacity: 0.7 }}>Caricamento...</div>
@@ -390,14 +396,15 @@ export default function CronoprogrammaPage() {
               key={r.id}
               style={{
                 display: "grid",
-                gridTemplateColumns: "120px 120px 1.2fr 1.2fr 160px 1fr 160px",
+                gridTemplateColumns: "120px 120px 120px 1.1fr 1.1fr 1fr 140px",
                 gap: 10,
                 padding: "10px 12px",
                 borderBottom: "1px solid #f3f4f6",
                 alignItems: "center",
               }}
             >
-              <div>{new Date(r.date).toLocaleDateString("it-IT")}</div>
+              <div>{r.data_prevista ? new Date(r.data_prevista).toLocaleDateString("it-IT") : "—"}</div>
+              <div>{r.data_tassativa ? new Date(r.data_tassativa).toLocaleDateString("it-IT") : "—"}</div>
               <div>{r.kind}</div>
               <div>{r.cliente}</div>
               <div>
@@ -409,20 +416,13 @@ export default function CronoprogrammaPage() {
                     >
                       {r.progetto}
                     </Link>
-                    <Link
-                      href={`/checklists/${r.checklist_id}`}
-                      style={{ fontSize: 12, color: "#2563eb", textDecoration: "underline" }}
-                    >
-                      Apri
-                    </Link>
                   </div>
                 ) : (
                   r.progetto
                 )}
               </div>
-              <div>{r.tipologia}</div>
-              <div>{r.ticket_no ? `#${r.ticket_no} · ${r.descrizione}` : r.descrizione}</div>
-              <div>{r.stato}</div>
+              <div>{r.descrizione}</div>
+              <div>{r.ticket_no || "—"}</div>
             </div>
           ))
         )}

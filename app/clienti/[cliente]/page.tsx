@@ -5920,14 +5920,14 @@ ${rinnovi30ggBreakdown.debugSample
               style={{
                 display: "grid",
                 gridTemplateColumns:
-                  "90px minmax(170px,1fr) minmax(220px,1.4fr) 110px 90px 160px 140px 130px 140px",
+                  "90px minmax(180px,1fr) minmax(240px,1.5fr) 110px 90px 120px 150px 150px 130px 150px",
                 columnGap: 8,
                 padding: "6px 8px",
                 fontWeight: 800,
                 background: "#fafafa",
                 borderBottom: "1px solid #eee",
                 fontSize: 12,
-                minWidth: 1240,
+                minWidth: 1410,
                 tableLayout: "fixed",
               }}
             >
@@ -5948,19 +5948,19 @@ ${rinnovi30ggBreakdown.debugSample
                   style={{
                     display: "grid",
                     gridTemplateColumns:
-                      "90px minmax(170px,1fr) minmax(220px,1.4fr) 110px 90px 160px 140px 130px 140px",
+                      "90px minmax(180px,1fr) minmax(240px,1.5fr) 110px 90px 120px 150px 150px 130px 150px",
                     columnGap: 8,
                     padding: "6px 8px",
                     alignItems: "center",
                     fontSize: 12,
-                    minWidth: 1240,
+                    minWidth: 1410,
                     tableLayout: "fixed",
                   }}
                 >
                   <div style={{ whiteSpace: "nowrap" }}>
                     {i.data ? new Date(i.data).toLocaleDateString() : "—"}
                   </div>
-                  <div style={{ whiteSpace: "nowrap" }}>
+                  <div style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                     {i.checklist?.nome_checklist
                       ? i.checklist.nome_checklist
                       : i.checklist_id
@@ -6028,6 +6028,7 @@ ${rinnovi30ggBreakdown.debugSample
                       gap: 6,
                       alignItems: "stretch",
                       whiteSpace: "nowrap",
+                      minWidth: 0,
                     }}
                   >
                   <button
