@@ -522,6 +522,7 @@ type InterventoRow = {
   contratto_id: string | null;
   ticket_no: string | null;
   data: string;
+  data_tassativa: string | null;
   descrizione: string;
   incluso: boolean;
   proforma: string | null;
@@ -827,6 +828,8 @@ export default function ClientePage({ params }: { params: any }) {
   const autoFatturazioneSent = useRef<Set<string>>(new Set());
   const autoFatturazioneInFlight = useRef(false);
   const [editIntervento, setEditIntervento] = useState({
+    data: "",
+    dataTassativa: "",
     descrizione: "",
     ticketNo: "",
     incluso: true,
@@ -842,6 +845,7 @@ export default function ClientePage({ params }: { params: any }) {
   });
   const [newIntervento, setNewIntervento] = useState({
     data: "",
+    dataTassativa: "",
     tipo: "",
     ticketNo: "",
     incluso: true,
@@ -1223,18 +1227,29 @@ export default function ClientePage({ params }: { params: any }) {
       const res = await supabase
         .from("saas_interventi")
         .select(
-          "id, cliente, checklist_id, contratto_id, ticket_no, data, descrizione, incluso, proforma, codice_magazzino, fatturazione_stato, stato_intervento, esito_fatturazione, chiuso_il, chiuso_da_operatore, alert_fattura_last_sent_at, alert_fattura_last_sent_by, numero_fattura, fatturato_il, note, note_tecniche, created_at, checklist:checklists(id, nome_checklist, proforma, magazzino_importazione)"
+          "id, cliente, checklist_id, contratto_id, ticket_no, data, data_tassativa, descrizione, incluso, proforma, codice_magazzino, fatturazione_stato, stato_intervento, esito_fatturazione, chiuso_il, chiuso_da_operatore, alert_fattura_last_sent_at, alert_fattura_last_sent_by, numero_fattura, fatturato_il, note, note_tecniche, created_at, checklist:checklists(id, nome_checklist, proforma, magazzino_importazione)"
         )
         .ilike("cliente", cleanCliente)
         .order("data", { ascending: false });
       ints = res.data;
       intsErr = res.error;
     }
+    if (intsErr && String(intsErr.message || "").toLowerCase().includes("data_tassativa")) {
+      const res = await supabase
+        .from("saas_interventi")
+        .select(
+          "id, cliente, checklist_id, contratto_id, ticket_no, data, descrizione, incluso, proforma, codice_magazzino, fatturazione_stato, stato_intervento, esito_fatturazione, chiuso_il, chiuso_da_operatore, alert_fattura_last_sent_at, alert_fattura_last_sent_by, numero_fattura, fatturato_il, note, note_tecniche, created_at, checklist:checklists(id, nome_checklist, proforma, magazzino_importazione)"
+        )
+        .ilike("cliente", cleanCliente)
+        .order("data", { ascending: false });
+      ints = (res.data || []).map((x: any) => ({ ...x, data_tassativa: null }));
+      intsErr = res.error;
+    }
     if (intsErr && String(intsErr.message || "").toLowerCase().includes("ticket_no")) {
       const res = await supabase
         .from("saas_interventi")
         .select(
-          "id, cliente, checklist_id, contratto_id, data, descrizione, incluso, proforma, codice_magazzino, fatturazione_stato, stato_intervento, esito_fatturazione, chiuso_il, chiuso_da_operatore, alert_fattura_last_sent_at, alert_fattura_last_sent_by, numero_fattura, fatturato_il, note, note_tecniche, created_at, checklist:checklists(id, nome_checklist, proforma, magazzino_importazione)"
+          "id, cliente, checklist_id, contratto_id, data, data_tassativa, descrizione, incluso, proforma, codice_magazzino, fatturazione_stato, stato_intervento, esito_fatturazione, chiuso_il, chiuso_da_operatore, alert_fattura_last_sent_at, alert_fattura_last_sent_by, numero_fattura, fatturato_il, note, note_tecniche, created_at, checklist:checklists(id, nome_checklist, proforma, magazzino_importazione)"
         )
         .ilike("cliente", cleanCliente)
         .order("data", { ascending: false });
@@ -1433,6 +1448,8 @@ export default function ClientePage({ params }: { params: any }) {
   function startEditIntervento(i: InterventoRow) {
     setEditInterventoId(i.id);
     setEditIntervento({
+      data: i.data ? String(i.data).slice(0, 10) : "",
+      dataTassativa: i.data_tassativa ? String(i.data_tassativa).slice(0, 10) : "",
       descrizione: i.descrizione ?? "",
       ticketNo: i.ticket_no ?? "",
       incluso: Boolean(i.incluso),
@@ -1459,6 +1476,8 @@ export default function ClientePage({ params }: { params: any }) {
     }
 
     const payload = {
+      data: editIntervento.data?.trim() ? editIntervento.data.trim() : null,
+      data_tassativa: editIntervento.dataTassativa?.trim() ? editIntervento.dataTassativa.trim() : null,
       descrizione: editIntervento.descrizione.trim(),
       ticket_no: editIntervento.ticketNo.trim() ? editIntervento.ticketNo.trim() : null,
       incluso: editIntervento.incluso,
@@ -1488,6 +1507,14 @@ export default function ClientePage({ params }: { params: any }) {
       .eq("id", editInterventoId);
     if (updErr && String(updErr.message || "").toLowerCase().includes("ticket_no")) {
       const { ticket_no, ...legacyPayload } = payload as any;
+      const retry = await supabase
+        .from("saas_interventi")
+        .update(legacyPayload)
+        .eq("id", editInterventoId);
+      updErr = retry.error;
+    }
+    if (updErr && String(updErr.message || "").toLowerCase().includes("data_tassativa")) {
+      const { data_tassativa, ...legacyPayload } = payload as any;
       const retry = await supabase
         .from("saas_interventi")
         .update(legacyPayload)
@@ -2487,6 +2514,7 @@ export default function ClientePage({ params }: { params: any }) {
       contratto_id: contratto?.id ?? null,
       ticket_no: newIntervento.ticketNo.trim() ? newIntervento.ticketNo.trim() : null,
       data: dataValue,
+      data_tassativa: newIntervento.dataTassativa?.trim() ? newIntervento.dataTassativa.trim() : null,
       tipo: descrizione,
       descrizione,
       incluso: inclusoToSave,
@@ -2528,6 +2556,16 @@ export default function ClientePage({ params }: { params: any }) {
       inserted = res.data;
       insertErr = res.error;
     }
+    if (insertErr && String(insertErr.message || "").toLowerCase().includes("data_tassativa")) {
+      const { data_tassativa, ...legacyPayload } = payload as any;
+      const res = await supabase
+        .from("saas_interventi")
+        .insert(legacyPayload)
+        .select("id")
+        .single();
+      inserted = res.data;
+      insertErr = res.error;
+    }
 
     if (insertErr) {
       setInterventiError("Errore inserimento intervento: " + insertErr.message);
@@ -2542,6 +2580,7 @@ export default function ClientePage({ params }: { params: any }) {
 
     setNewIntervento({
       data: "",
+      dataTassativa: "",
       tipo: "",
       ticketNo: "",
       incluso: true,
@@ -5674,6 +5713,15 @@ ${rinnovi30ggBreakdown.debugSample
                 style={{ width: "100%", padding: 8 }}
               />
             </label>
+            <label>
+              Data tassativa<br />
+              <input
+                type="date"
+                value={newIntervento.dataTassativa}
+                onChange={(e) => setNewIntervento({ ...newIntervento, dataTassativa: e.target.value })}
+                style={{ width: "100%", padding: 8 }}
+              />
+            </label>
 
             <label>
               Descrizione<br />
@@ -6190,10 +6238,32 @@ ${rinnovi30ggBreakdown.debugSample
                     <div
                       style={{
                         display: "grid",
-                        gridTemplateColumns: "1fr 140px 1fr 1fr 1fr",
+                        gridTemplateColumns: "1fr 1fr 140px 1fr 1fr 1fr",
                         gap: 10,
                       }}
                     >
+                      <label>
+                        Data<br />
+                        <input
+                          type="date"
+                          value={editIntervento.data}
+                          onChange={(e) =>
+                            setEditIntervento({ ...editIntervento, data: e.target.value })
+                          }
+                          style={{ width: "100%", padding: 8 }}
+                        />
+                      </label>
+                      <label>
+                        Data tassativa<br />
+                        <input
+                          type="date"
+                          value={editIntervento.dataTassativa}
+                          onChange={(e) =>
+                            setEditIntervento({ ...editIntervento, dataTassativa: e.target.value })
+                          }
+                          style={{ width: "100%", padding: 8 }}
+                        />
+                      </label>
                       <label>
                         Descrizione<br />
                         <input

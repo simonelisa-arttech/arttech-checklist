@@ -21,6 +21,7 @@ type InterventoRow = {
   checklist_id: string | null;
   ticket_no?: string | null;
   data: string | null;
+  data_tassativa?: string | null;
   descrizione: string | null;
   tipo?: string | null;
   proforma: string | null;
@@ -137,18 +138,30 @@ export default function CronoprogrammaPage() {
         const res = await supabase
           .from("saas_interventi")
           .select(
-            "id, cliente, checklist_id, ticket_no, data, descrizione, tipo, proforma, stato_intervento, fatturazione_stato"
+            "id, cliente, checklist_id, ticket_no, data, data_tassativa, descrizione, tipo, proforma, stato_intervento, fatturazione_stato"
           )
           .order("data", { ascending: true });
         interventi = res.data as InterventoRow[] | null;
         iErr = res.error;
       }
+      if (iErr && String(iErr.message || "").toLowerCase().includes("data_tassativa")) {
+        const res = await supabase
+          .from("saas_interventi")
+          .select(
+            "id, cliente, checklist_id, ticket_no, data, descrizione, tipo, proforma, stato_intervento, fatturazione_stato"
+          )
+          .order("data", { ascending: true });
+        interventi = (res.data as InterventoRow[] | null)?.map((r) => ({ ...r, data_tassativa: null })) ?? [];
+        iErr = res.error;
+      }
       if (iErr && String(iErr.message || "").toLowerCase().includes("ticket_no")) {
         const res = await supabase
           .from("saas_interventi")
-          .select("id, cliente, checklist_id, data, descrizione, tipo, proforma, stato_intervento, fatturazione_stato")
+          .select("id, cliente, checklist_id, data, data_tassativa, descrizione, tipo, proforma, stato_intervento, fatturazione_stato")
           .order("data", { ascending: true });
-        interventi = (res.data as InterventoRow[] | null)?.map((r) => ({ ...r, ticket_no: null })) ?? [];
+        interventi =
+          (res.data as InterventoRow[] | null)?.map((r) => ({ ...r, ticket_no: null, data_tassativa: r.data_tassativa ?? null })) ??
+          [];
         iErr = res.error;
       }
 
@@ -188,8 +201,8 @@ export default function CronoprogrammaPage() {
         const date = toIsoDay(i.data);
         if (!date) continue;
         const c = i.checklist_id ? checklistById.get(i.checklist_id) : null;
-        const prevista = toIsoDay(c?.data_prevista) || date;
-        const tassativa = toIsoDay(c?.data_tassativa) || date;
+        const prevista = toIsoDay(i.data) || date;
+        const tassativa = toIsoDay(i.data_tassativa) || toIsoDay(i.data) || date;
         timeline.push({
           kind: "INTERVENTO",
           id: `intervento:${i.id}`,
