@@ -732,6 +732,13 @@ export default function ClientePage({ params }: { params: any }) {
   const [alertTemplates, setAlertTemplates] = useState<AlertMessageTemplate[]>([]);
   const [selectedPresetId, setSelectedPresetId] = useState<string>("");
   const [tagliandi, setTagliandi] = useState<TagliandoRow[]>([]);
+  const [newTagliando, setNewTagliando] = useState({
+    checklist_id: "",
+    scadenza: "",
+    fatturazione: "INCLUSO",
+    note: "",
+  });
+  const [tagliandoSaving, setTagliandoSaving] = useState(false);
   const [exportFrom, setExportFrom] = useState("");
   const [exportTo, setExportTo] = useState("");
   const [exportNotice, setExportNotice] = useState<string | null>(null);
@@ -2826,6 +2833,59 @@ export default function ClientePage({ params }: { params: any }) {
       return;
     }
     setTagliandi((data || []) as TagliandoRow[]);
+  }
+
+  async function addTagliandoPeriodico() {
+    const clienteKey = (cliente || "").trim();
+    if (!clienteKey) {
+      setRinnoviError("Cliente non valido per inserire il tagliando.");
+      return;
+    }
+    if (!newTagliando.checklist_id) {
+      setRinnoviError("Seleziona il progetto del tagliando.");
+      return;
+    }
+    if (!newTagliando.scadenza) {
+      setRinnoviError("Inserisci la scadenza del tagliando.");
+      return;
+    }
+
+    const fatt = String(newTagliando.fatturazione || "INCLUSO").toUpperCase();
+    const modalita = fatt === "INCLUSO" ? "INCLUSO" : "EXTRA";
+    const stato =
+      fatt === "FATTURATO"
+        ? "FATTURATO"
+        : fatt === "DA_FATTURARE"
+        ? "DA_FATTURARE"
+        : "DA_AVVISARE";
+
+    setTagliandoSaving(true);
+    setRinnoviError(null);
+    try {
+      const payload = {
+        cliente: clienteKey,
+        checklist_id: newTagliando.checklist_id,
+        scadenza: newTagliando.scadenza,
+        modalita,
+        stato,
+        note: (newTagliando.note || "").trim() || "Tagliando periodico",
+      };
+      const { error } = await supabase.from("tagliandi").insert(payload);
+      if (error) {
+        setRinnoviError("Errore inserimento tagliando: " + error.message);
+        return;
+      }
+      setNewTagliando({
+        checklist_id: "",
+        scadenza: "",
+        fatturazione: "INCLUSO",
+        note: "",
+      });
+      setRinnoviNotice("Tagliando periodico inserito.");
+      await fetchTagliandi(clienteKey);
+    } finally {
+      setTagliandoSaving(false);
+    }
   }
 
   function getRinnovoReference(r: RinnovoServizioRow) {
@@ -5107,6 +5167,122 @@ ${rinnovi30ggBreakdown.debugSample
             />
             Solo da fatturare
           </label>
+        </div>
+
+        <div
+          style={{
+            marginTop: 10,
+            border: "1px solid #eee",
+            borderRadius: 10,
+            padding: 10,
+            background: "#fcfcfc",
+          }}
+        >
+          <div style={{ fontWeight: 700, marginBottom: 8 }}>Aggiungi tagliando periodico</div>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "minmax(220px,1.4fr) 140px 180px minmax(220px,1fr) auto",
+              gap: 8,
+              alignItems: "end",
+            }}
+          >
+            <div>
+              <div style={{ fontSize: 12, marginBottom: 4 }}>Progetto</div>
+              <select
+                value={newTagliando.checklist_id}
+                onChange={(e) =>
+                  setNewTagliando((prev) => ({ ...prev, checklist_id: e.target.value }))
+                }
+                style={{
+                  width: "100%",
+                  border: "1px solid #ddd",
+                  borderRadius: 8,
+                  padding: "8px 10px",
+                  background: "white",
+                }}
+              >
+                <option value="">— seleziona progetto —</option>
+                {checklists.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.nome_checklist || c.id}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <div style={{ fontSize: 12, marginBottom: 4 }}>Scadenza</div>
+              <input
+                type="date"
+                value={newTagliando.scadenza}
+                onChange={(e) =>
+                  setNewTagliando((prev) => ({ ...prev, scadenza: e.target.value }))
+                }
+                style={{
+                  width: "100%",
+                  border: "1px solid #ddd",
+                  borderRadius: 8,
+                  padding: "8px 10px",
+                  background: "white",
+                }}
+              />
+            </div>
+            <div>
+              <div style={{ fontSize: 12, marginBottom: 4 }}>Fatturazione</div>
+              <select
+                value={newTagliando.fatturazione}
+                onChange={(e) =>
+                  setNewTagliando((prev) => ({ ...prev, fatturazione: e.target.value }))
+                }
+                style={{
+                  width: "100%",
+                  border: "1px solid #ddd",
+                  borderRadius: 8,
+                  padding: "8px 10px",
+                  background: "white",
+                }}
+              >
+                <option value="INCLUSO">INCLUSO</option>
+                <option value="DA_FATTURARE">DA_FATTURARE</option>
+                <option value="FATTURATO">FATTURATO</option>
+              </select>
+            </div>
+            <div>
+              <div style={{ fontSize: 12, marginBottom: 4 }}>Note</div>
+              <input
+                value={newTagliando.note}
+                onChange={(e) =>
+                  setNewTagliando((prev) => ({ ...prev, note: e.target.value }))
+                }
+                placeholder="Tagliando annuale / periodico"
+                style={{
+                  width: "100%",
+                  border: "1px solid #ddd",
+                  borderRadius: 8,
+                  padding: "8px 10px",
+                  background: "white",
+                }}
+              />
+            </div>
+            <button
+              type="button"
+              onClick={addTagliandoPeriodico}
+              disabled={tagliandoSaving}
+              style={{
+                padding: "8px 12px",
+                borderRadius: 8,
+                border: "1px solid #111",
+                background: "#111",
+                color: "white",
+                fontWeight: 700,
+                cursor: tagliandoSaving ? "not-allowed" : "pointer",
+                opacity: tagliandoSaving ? 0.7 : 1,
+                whiteSpace: "nowrap",
+              }}
+            >
+              {tagliandoSaving ? "Salvataggio..." : "Aggiungi"}
+            </button>
+          </div>
         </div>
 
         {rinnoviError && (
