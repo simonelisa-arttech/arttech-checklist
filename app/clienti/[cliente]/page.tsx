@@ -1206,75 +1206,84 @@ export default function ClientePage({ params }: { params: any }) {
     return () => clearTimeout(t);
   }, [exportNotice]);
 
+  async function loadInterventiForCliente(clienteKey: string) {
+    const cleanCliente = String(clienteKey || "").trim();
+    if (!cleanCliente) {
+      setInterventi([]);
+      setInterventoFilesById(new Map());
+      return;
+    }
+
+    const { data: ints, error: intsErr } = await supabase
+      .from("saas_interventi")
+      .select(
+        "id, cliente, checklist_id, contratto_id, data, descrizione, incluso, proforma, codice_magazzino, fatturazione_stato, stato_intervento, esito_fatturazione, chiuso_il, chiuso_da_operatore, alert_fattura_last_sent_at, alert_fattura_last_sent_by, numero_fattura, fatturato_il, note, note_tecniche, created_at, checklist:checklists(id, nome_checklist, proforma, magazzino_importazione)"
+      )
+      .ilike("cliente", cleanCliente)
+      .order("data", { ascending: false });
+
+    if (intsErr) {
+      setInterventiError("Errore caricamento interventi: " + intsErr.message);
+      return;
+    }
+
+    setInterventi((ints || []) as unknown as InterventoRow[]);
+    setInterventiError(null);
+    const ids = (ints || []).map((i: any) => i.id).filter(Boolean);
+    if (ids.length === 0) {
+      setInterventoFilesById(new Map());
+      setLastAlertByIntervento(new Map());
+      return;
+    }
+
+    const { data: filesData, error: filesErr } = await supabase
+      .from("saas_interventi_files")
+      .select("id, intervento_id, filename, storage_path, uploaded_at, uploaded_by_operatore")
+      .in("intervento_id", ids)
+      .order("uploaded_at", { ascending: false });
+
+    if (!filesErr) {
+      const map = new Map<string, InterventoFile[]>();
+      for (const f of (filesData || []) as InterventoFile[]) {
+        const list = map.get(f.intervento_id) || [];
+        list.push(f);
+        map.set(f.intervento_id, list);
+      }
+      setInterventoFilesById(map);
+    }
+
+    const { data: alertsData, error: alertsErr } = await supabase
+      .from("checklist_alert_log")
+      .select("intervento_id, to_operatore_id, created_at")
+      .in("intervento_id", ids)
+      .order("created_at", { ascending: false });
+
+    if (!alertsErr) {
+      const map = new Map<string, { toOperatoreId: string | null; toNome: string | null; createdAt: string }>();
+      for (const a of (alertsData || []) as any[]) {
+        if (!map.has(a.intervento_id)) {
+          map.set(a.intervento_id, {
+            toOperatoreId: a.to_operatore_id ?? null,
+            toNome: null,
+            createdAt: a.created_at,
+          });
+        }
+      }
+      setLastAlertByIntervento(map);
+    }
+  }
+
   useEffect(() => {
     let alive = true;
     (async () => {
-      if (!contratto?.id) {
-        setInterventi([]);
-        setInterventoFilesById(new Map());
-        return;
-      }
-
-      const { data: ints, error: intsErr } = await supabase
-        .from("saas_interventi")
-        .select(
-          "id, cliente, checklist_id, contratto_id, data, descrizione, incluso, proforma, codice_magazzino, fatturazione_stato, stato_intervento, esito_fatturazione, chiuso_il, chiuso_da_operatore, alert_fattura_last_sent_at, alert_fattura_last_sent_by, numero_fattura, fatturato_il, note, note_tecniche, created_at, checklist:checklists(id, nome_checklist, proforma, magazzino_importazione)"
-        )
-        .eq("contratto_id", contratto.id)
-        .order("data", { ascending: false });
-
+      await loadInterventiForCliente(cliente);
       if (!alive) return;
-
-      if (intsErr) {
-        setInterventiError("Errore caricamento interventi: " + intsErr.message);
-      } else {
-        setInterventi((ints || []) as unknown as InterventoRow[]);
-        setInterventiError(null);
-        const ids = (ints || []).map((i: any) => i.id).filter(Boolean);
-        if (ids.length > 0) {
-          const { data: filesData, error: filesErr } = await supabase
-            .from("saas_interventi_files")
-            .select("id, intervento_id, filename, storage_path, uploaded_at, uploaded_by_operatore")
-            .in("intervento_id", ids)
-            .order("uploaded_at", { ascending: false });
-
-          if (!filesErr) {
-            const map = new Map<string, InterventoFile[]>();
-            for (const f of (filesData || []) as InterventoFile[]) {
-              const list = map.get(f.intervento_id) || [];
-              list.push(f);
-              map.set(f.intervento_id, list);
-            }
-            setInterventoFilesById(map);
-          }
-
-          const { data: alertsData, error: alertsErr } = await supabase
-            .from("checklist_alert_log")
-            .select("intervento_id, to_operatore_id, created_at")
-            .in("intervento_id", ids)
-            .order("created_at", { ascending: false });
-
-          if (!alertsErr) {
-            const map = new Map<string, { toOperatoreId: string | null; toNome: string | null; createdAt: string }>();
-            for (const a of (alertsData || []) as any[]) {
-              if (!map.has(a.intervento_id)) {
-                map.set(a.intervento_id, {
-                  toOperatoreId: a.to_operatore_id ?? null,
-                  toNome: null,
-                  createdAt: a.created_at,
-                });
-              }
-            }
-            setLastAlertByIntervento(map);
-          }
-        }
-      }
     })();
 
     return () => {
       alive = false;
     };
-  }, [contratto?.id]);
+  }, [contratto?.id, cliente]);
 
   useEffect(() => {
     let alive = true;
@@ -1419,7 +1428,7 @@ export default function ClientePage({ params }: { params: any }) {
   }
 
   async function saveEditIntervento() {
-    if (!editInterventoId || !contratto?.id) return;
+    if (!editInterventoId) return;
     if (
       editIntervento.fatturazioneStato === "FATTURATO" &&
       !editIntervento.numeroFattura.trim()
@@ -1461,17 +1470,7 @@ export default function ClientePage({ params }: { params: any }) {
       return;
     }
 
-    const { data: ints, error: intsErr } = await supabase
-      .from("saas_interventi")
-      .select(
-        "id, cliente, checklist_id, contratto_id, data, descrizione, incluso, proforma, codice_magazzino, fatturazione_stato, stato_intervento, esito_fatturazione, chiuso_il, chiuso_da_operatore, alert_fattura_last_sent_at, alert_fattura_last_sent_by, numero_fattura, fatturato_il, note, note_tecniche, created_at, checklist:checklists(id, nome_checklist, proforma, magazzino_importazione)"
-      )
-      .eq("contratto_id", contratto.id)
-      .order("data", { ascending: false });
-
-    if (!intsErr) {
-      setInterventi((ints || []) as unknown as InterventoRow[]);
-    }
+    await loadInterventiForCliente(cliente);
     setEditInterventoId(null);
     setInterventiError(null);
   }
@@ -2425,10 +2424,6 @@ export default function ClientePage({ params }: { params: any }) {
       setInterventiError("Inserisci la descrizione intervento.");
       return;
     }
-    if (!contratto?.id) {
-      setInterventiError("Crea o seleziona un contratto SAAS attivo.");
-      return;
-    }
     if (!newIntervento.checklistId) {
       setInterventiError("Seleziona un PROGETTO per l'intervento.");
       return;
@@ -2437,6 +2432,7 @@ export default function ClientePage({ params }: { params: any }) {
     let inclusoToSave = newIntervento.incluso;
     let noteTecnicheToSave: string | null = null;
     if (
+      contratto &&
       !contratto.illimitati &&
       interventiTotali != null &&
       interventiInclusiUsati >= interventiTotali &&
@@ -2458,7 +2454,7 @@ export default function ClientePage({ params }: { params: any }) {
     const payload = {
       cliente: clienteKey,
       checklist_id: newIntervento.checklistId,
-      contratto_id: contratto.id,
+      contratto_id: contratto?.id ?? null,
       data: dataValue,
       tipo: descrizione,
       descrizione,
@@ -2495,17 +2491,7 @@ export default function ClientePage({ params }: { params: any }) {
       await uploadInterventoFilesList(inserted.id, newInterventoFiles);
     }
 
-    const { data: ints, error: intsErr } = await supabase
-      .from("saas_interventi")
-      .select(
-        "id, cliente, checklist_id, contratto_id, data, descrizione, incluso, proforma, codice_magazzino, fatturazione_stato, stato_intervento, esito_fatturazione, chiuso_il, chiuso_da_operatore, alert_fattura_last_sent_at, alert_fattura_last_sent_by, numero_fattura, fatturato_il, note, note_tecniche, created_at, checklist:checklists(id, nome_checklist, proforma, magazzino_importazione)"
-      )
-      .eq("contratto_id", contratto.id)
-      .order("data", { ascending: false });
-
-    if (!intsErr) {
-      setInterventi((ints || []) as unknown as InterventoRow[]);
-    }
+    await loadInterventiForCliente(clienteKey);
 
     setNewIntervento({
       data: "",
@@ -2669,17 +2655,7 @@ export default function ClientePage({ params }: { params: any }) {
       return;
     }
 
-    const { data: ints, error: intsErr } = await supabase
-      .from("saas_interventi")
-      .select(
-        "id, cliente, checklist_id, contratto_id, data, descrizione, incluso, proforma, codice_magazzino, fatturazione_stato, stato_intervento, esito_fatturazione, chiuso_il, chiuso_da_operatore, alert_fattura_last_sent_at, alert_fattura_last_sent_by, numero_fattura, fatturato_il, note, note_tecniche, created_at, checklist:checklists(id, nome_checklist, proforma, magazzino_importazione)"
-      )
-      .eq("contratto_id", contratto?.id)
-      .order("data", { ascending: false });
-
-    if (!intsErr) {
-      setInterventi((ints || []) as unknown as InterventoRow[]);
-    }
+    await loadInterventiForCliente(cliente);
 
     setCloseInterventoId(null);
     setCloseEsito("");
@@ -4303,17 +4279,7 @@ export default function ClientePage({ params }: { params: any }) {
       }
     }
 
-    const { data: ints, error: intsErr } = await supabase
-      .from("saas_interventi")
-      .select(
-        "id, cliente, checklist_id, contratto_id, data, descrizione, incluso, proforma, codice_magazzino, fatturazione_stato, stato_intervento, esito_fatturazione, chiuso_il, chiuso_da_operatore, numero_fattura, fatturato_il, note, note_tecniche, created_at, checklist:checklists(id, nome_checklist, proforma, magazzino_importazione)"
-      )
-      .eq("contratto_id", contratto?.id)
-      .order("data", { ascending: false });
-
-    if (!intsErr) {
-      setInterventi((ints || []) as unknown as InterventoRow[]);
-    }
+    await loadInterventiForCliente(cliente);
   }
 
   async function sendInterventoAlert() {

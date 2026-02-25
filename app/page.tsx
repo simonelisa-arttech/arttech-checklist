@@ -481,7 +481,7 @@ export default function Page() {
   const [projectStatusFilter, setProjectStatusFilter] = useState<
     Record<ProjectStatusFilter, boolean>
   >({
-    IN_CORSO: true,
+    IN_CORSO: false,
     CONSEGNATO: false,
     SOSPESO: false,
     CHIUSO: false,
@@ -1621,6 +1621,20 @@ export default function Page() {
           >
             + Aggiungi intervento
           </button>
+          <Link
+            href="/cronoprogramma"
+            style={{
+              padding: "10px 14px",
+              borderRadius: 10,
+              border: "1px solid #ddd",
+              cursor: "pointer",
+              background: "white",
+              textDecoration: "none",
+              color: "inherit",
+            }}
+          >
+            Cronoprogramma
+          </Link>
           <button
             type="button"
             onClick={handleLogout}
