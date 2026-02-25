@@ -843,7 +843,10 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
         const msg = String(error.message || "").toLowerCase();
         const missingTable =
           msg.includes("checklist_task_documents") &&
-          (msg.includes("does not exist") || msg.includes("relation"));
+          (msg.includes("does not exist") ||
+            msg.includes("relation") ||
+            msg.includes("could not find the table") ||
+            msg.includes("schema cache"));
         if (!missingTable) {
           setError("Errore caricamento allegati task: " + error.message);
           setLoading(false);
@@ -2136,7 +2139,10 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
         const msg = String(error.message || "").toLowerCase();
         const missingTable =
           msg.includes("checklist_task_documents") &&
-          (msg.includes("does not exist") || msg.includes("relation"));
+          (msg.includes("does not exist") ||
+            msg.includes("relation") ||
+            msg.includes("could not find the table") ||
+            msg.includes("schema cache"));
         if (!missingTable) {
           const emsg =
             logSupabaseError("load checklist_task_documents", error) ||
