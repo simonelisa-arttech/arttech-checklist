@@ -55,7 +55,8 @@ function normalizeTarget(input: any) {
   const raw = String(input || "")
     .trim()
     .toUpperCase();
-  if (raw === "MAGAZZINO" || raw === "TECNICO_SW") return raw;
+  if (raw === "MAGAZZINO") return "MAGAZZINO";
+  if (raw === "TECNICO_SW" || raw === "TECNICO SW" || raw === "TECNICO-SW") return "TECNICO_SW";
   if (raw === "ALTRO") return "GENERICA";
   return raw || "GENERICA";
 }

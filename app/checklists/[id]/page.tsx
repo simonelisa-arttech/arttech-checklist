@@ -1255,6 +1255,34 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
       return;
     }
 
+    {
+      const nowIso = new Date().toISOString();
+      const { error: updErr } = await supabase
+        .from("checklist_tasks")
+        .update({
+          updated_by_operatore: opId,
+          updated_at: nowIso,
+        })
+        .eq("id", alertTask.id);
+      if (!updErr) {
+        setTasks((prev) =>
+          prev.map((x) =>
+            x.id === alertTask.id
+              ? {
+                  ...x,
+                  updated_by_operatore: opId,
+                  operatori:
+                    operatoriMap.get(opId) != null
+                      ? { id: opId, nome: operatoriMap.get(opId) || null }
+                      : x.operatori,
+                  updated_at: nowIso,
+                }
+              : x
+          )
+        );
+      }
+    }
+
     showToast(alertSendEmail ? "✅ Email inviata" : "✅ Avviso registrato", "success");
     setAlertNotice(
       alertSendEmail ? "✅ Email inviata e log registrato." : "Log registrato (email disattivata)."
