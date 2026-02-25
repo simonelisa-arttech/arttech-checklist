@@ -643,6 +643,7 @@ type InterventoFile = {
 
 type OperatoreRow = {
   id: string;
+  user_id?: string | null;
   nome: string | null;
   ruolo: string | null;
   email?: string | null;
@@ -863,6 +864,16 @@ export default function ClientePage({ params }: { params: any }) {
     if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
     setToast({ message, variant });
     toastTimerRef.current = setTimeout(() => setToast(null), duration);
+  }
+
+  function getOperatoreNome(value?: string | null) {
+    const key = String(value || "").trim();
+    if (!key) return "—";
+    const byId = alertOperatori.find((o) => String(o.id || "").trim() === key);
+    if (byId?.nome) return byId.nome;
+    const byUserId = alertOperatori.find((o) => String(o.user_id || "").trim() === key);
+    if (byUserId?.nome) return byUserId.nome;
+    return key;
   }
 
   function alertKey(tipo?: string | null, checklistId?: string | null, riferimento?: string | null) {
@@ -1161,12 +1172,13 @@ export default function ClientePage({ params }: { params: any }) {
 
       const { data: opsData } = await supabase
         .from("operatori")
-        .select("id, nome, ruolo, email, attivo, alert_enabled, alert_tasks")
+        .select("id, user_id, nome, ruolo, email, attivo, alert_enabled, alert_tasks")
         .order("ruolo", { ascending: true })
         .order("nome", { ascending: true });
       if (opsData) {
         const mapped = (opsData || []).map((o: any) => ({
           id: o.id,
+          user_id: o.user_id ?? null,
           nome: o.nome ?? null,
           ruolo: o.ruolo ?? null,
           email: o.email ?? null,
@@ -6028,24 +6040,6 @@ ${rinnovi30ggBreakdown.debugSample
                   >
                     <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
                       {renderInterventoBadge(i.incluso ? "INCLUSO" : "EXTRA")}
-                      {!i.incluso &&
-                        i.note_tecniche &&
-                        i.note_tecniche.includes("Auto-EXTRA") && (
-                          <span
-                            style={{
-                              display: "inline-block",
-                              padding: "2px 6px",
-                              borderRadius: 999,
-                              fontSize: 11,
-                              fontWeight: 700,
-                              background: "#e5e7eb",
-                              color: "#374151",
-                              whiteSpace: "nowrap",
-                            }}
-                          >
-                            AUTO
-                          </span>
-                        )}
                     </div>
                   </div>
                   <div style={{ whiteSpace: "nowrap" }}>
@@ -6244,9 +6238,7 @@ ${rinnovi30ggBreakdown.debugSample
                         {renderFatturazioneBadge(getEsitoFatturazione(i) || "—")}
                         <div style={{ fontSize: 12, opacity: 0.7, marginLeft: 8 }}>Chiuso da</div>
                         <div style={{ fontSize: 12 }}>
-                          {alertOperatori.find((o) => o.id === i.chiuso_da_operatore)?.nome ??
-                            i.chiuso_da_operatore ??
-                            "—"}
+                          {getOperatoreNome(i.chiuso_da_operatore)}
                         </div>
                         <div style={{ fontSize: 12, opacity: 0.7 }}>Chiuso il</div>
                         <div style={{ fontSize: 12 }}>

@@ -9,6 +9,7 @@ type ChecklistRow = {
   id: string;
   cliente: string | null;
   nome_checklist: string | null;
+  proforma: string | null;
   data_prevista: string | null;
   data_tassativa: string | null;
   noleggio_vendita: string | null;
@@ -37,6 +38,7 @@ type TimelineRow = {
   cliente: string;
   checklist_id: string | null;
   ticket_no?: string | null;
+  proforma?: string | null;
   progetto: string;
   tipologia: string;
   descrizione: string;
@@ -123,7 +125,7 @@ export default function CronoprogrammaPage() {
 
       const { data: checklists, error: cErr } = await supabase
         .from("checklists")
-        .select("id, cliente, nome_checklist, data_prevista, data_tassativa, noleggio_vendita, tipo_impianto")
+        .select("id, cliente, nome_checklist, proforma, data_prevista, data_tassativa, noleggio_vendita, tipo_impianto")
         .order("created_at", { ascending: false });
 
       if (cErr) {
@@ -189,6 +191,7 @@ export default function CronoprogrammaPage() {
           cliente: String(c.cliente || "—"),
           checklist_id: c.id,
           progetto: String(c.nome_checklist || c.id),
+          proforma: c.proforma ?? null,
           tipologia: String(c.noleggio_vendita || "INSTALLAZIONE").toUpperCase(),
           descrizione:
             [c.tipo_impianto || "", c.noleggio_vendita || ""].filter(Boolean).join(" · ") ||
@@ -211,6 +214,7 @@ export default function CronoprogrammaPage() {
           cliente: String(i.cliente || c?.cliente || "—"),
           checklist_id: i.checklist_id,
           ticket_no: i.ticket_no ?? null,
+          proforma: i.proforma ?? c?.proforma ?? null,
           progetto: String(c?.nome_checklist || i.checklist_id || "—"),
           tipologia: String(i.tipo || inferInterventoTipologia(i.descrizione)).toUpperCase(),
           descrizione: String(i.descrizione || "Intervento"),
@@ -397,7 +401,7 @@ export default function CronoprogrammaPage() {
           <div>Cliente</div>
           <div>Progetto</div>
           <div>Dettaglio</div>
-          <div>Ticket</div>
+          <div>Ticket/Pf</div>
         </div>
         {loading ? (
           <div style={{ padding: 12, opacity: 0.7 }}>Caricamento...</div>
@@ -435,7 +439,7 @@ export default function CronoprogrammaPage() {
                 )}
               </div>
               <div>{r.descrizione}</div>
-              <div>{r.ticket_no || "—"}</div>
+              <div>{r.ticket_no || r.proforma || "—"}</div>
             </div>
           ))
         )}
