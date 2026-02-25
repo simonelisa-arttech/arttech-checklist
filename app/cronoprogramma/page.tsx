@@ -404,7 +404,19 @@ export default function CronoprogrammaPage() {
               <div>{r.kind}</div>
               <div>{r.cliente}</div>
               <div>
-                {r.checklist_id ? <Link href={`/checklists/${r.checklist_id}`}>{r.progetto}</Link> : r.progetto}
+                {r.checklist_id ? (
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                    <Link href={`/checklists/${r.checklist_id}`}>{r.progetto}</Link>
+                    <Link
+                      href={`/checklists/${r.checklist_id}`}
+                      style={{ fontSize: 12, opacity: 0.8 }}
+                    >
+                      Apri
+                    </Link>
+                  </div>
+                ) : (
+                  r.progetto
+                )}
               </div>
               <div>{r.tipologia}</div>
               <div>{r.descrizione}</div>

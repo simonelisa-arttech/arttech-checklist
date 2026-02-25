@@ -237,7 +237,18 @@ type NotificationRule = {
 
 function toDateInput(value?: string | null) {
   if (!value) return "";
-  return value.slice(0, 10);
+  const raw = String(value).trim();
+  if (!raw) return "";
+  const iso = /^(\d{4})-(\d{2})-(\d{2})/.exec(raw);
+  if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
+  const it = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(raw);
+  if (it) return `${it[3]}-${it[2]}-${it[1]}`;
+  return "";
+}
+
+function asText(value: unknown): string {
+  if (value === null || value === undefined) return "";
+  return String(value);
 }
 
 function normalizeRuleTargetValue(value?: string | null): string {
@@ -734,38 +745,38 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
     return { task_template_ids: [], all_task_status_change: false };
   }
 
-  function buildFormData(c: Checklist): FormData {
+function buildFormData(c: Checklist): FormData {
     return {
-      cliente: c.cliente ?? "",
-      cliente_id: c.cliente_id ?? "",
-      nome_checklist: c.nome_checklist ?? "",
-      proforma: c.proforma ?? "",
-      magazzino_importazione: c.magazzino_importazione ?? "",
-      saas_tipo: c.saas_tipo ?? "",
-      saas_piano: c.saas_piano ?? "",
+      cliente: asText(c.cliente),
+      cliente_id: asText(c.cliente_id),
+      nome_checklist: asText(c.nome_checklist),
+      proforma: asText(c.proforma),
+      magazzino_importazione: asText(c.magazzino_importazione),
+      saas_tipo: asText(c.saas_tipo),
+      saas_piano: asText(c.saas_piano),
       saas_scadenza: toDateInput(c.saas_scadenza),
-      saas_stato: c.saas_stato ?? "",
-      saas_note: c.saas_note ?? "",
+      saas_stato: asText(c.saas_stato),
+      saas_note: asText(c.saas_note),
       data_prevista: toDateInput(c.data_prevista),
       data_tassativa: toDateInput(c.data_tassativa),
-      tipo_impianto: c.tipo_impianto ?? "",
-      impianto_indirizzo: c.impianto_indirizzo ?? "",
-      impianto_codice: c.impianto_codice ?? "",
-      impianto_descrizione: c.impianto_descrizione ?? "",
-      dimensioni: c.dimensioni ?? "",
+      tipo_impianto: asText(c.tipo_impianto),
+      impianto_indirizzo: asText(c.impianto_indirizzo),
+      impianto_codice: asText(c.impianto_codice),
+      impianto_descrizione: asText(c.impianto_descrizione),
+      dimensioni: asText(c.dimensioni),
       impianto_quantita:
         Number.isFinite(Number(c.impianto_quantita)) && Number(c.impianto_quantita) > 0
           ? Number(c.impianto_quantita)
           : 1,
       numero_facce: Number(c.numero_facce ?? 1) > 1 ? 2 : 1,
-      passo: c.passo ?? "",
-      note: c.note ?? "",
-      tipo_struttura: c.tipo_struttura ?? "",
-      noleggio_vendita: c.noleggio_vendita ?? "",
+      passo: asText(c.passo),
+      note: asText(c.note),
+      tipo_struttura: asText(c.tipo_struttura),
+      noleggio_vendita: asText(c.noleggio_vendita),
       fine_noleggio: toDateInput(c.fine_noleggio),
-      mercato: c.mercato ?? "",
-      modello: c.modello ?? "",
-      stato_progetto: c.stato_progetto ?? "IN_CORSO",
+      mercato: asText(c.mercato),
+      modello: asText(c.modello),
+      stato_progetto: asText(c.stato_progetto) || "IN_CORSO",
       data_installazione_reale: toDateInput(c.data_installazione_reale),
       garanzia_scadenza: toDateInput(c.garanzia_scadenza),
     };
@@ -2310,6 +2321,19 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
   }
 
   const isEdit = editMode && formData != null;
+  function enterEditMode() {
+    if (!checklist) return;
+    try {
+      setFormData(buildFormData(checklist));
+      setEditMode(true);
+      setError(null);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      setError(`Errore apertura modifica: ${msg}`);
+      setEditMode(false);
+    }
+  }
+
   const proformaDocs = documents.filter(
     (d) => String(d.tipo ?? "").toUpperCase() === "FATTURA_PROFORMA" || String(d.tipo ?? "").toUpperCase() === "PROFORMA"
   );
@@ -2344,7 +2368,7 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
       <div style={{ display: "flex", gap: 10, marginTop: 12, marginBottom: 10 }}>
         {!editMode ? (
           <button
-            onClick={() => setEditMode(true)}
+            onClick={enterEditMode}
             style={{
               padding: "8px 12px",
               borderRadius: 10,
