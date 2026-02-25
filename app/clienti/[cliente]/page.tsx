@@ -743,7 +743,7 @@ export default function ClientePage({ params }: { params: any }) {
   const [tagliandoSaving, setTagliandoSaving] = useState(false);
   const [newServizioScadenza, setNewServizioScadenza] = useState({
     checklist_id: "",
-    tipo: "SAAS",
+    tipo: "SAAS_ULTRA",
     riferimento: "",
     scadenza: "",
     stato: "DA_AVVISARE",
@@ -2980,7 +2980,7 @@ export default function ClientePage({ params }: { params: any }) {
       setRinnoviError("Cliente non valido per inserire il servizio.");
       return;
     }
-    const tipo = String(newServizioScadenza.tipo || "SAAS").toUpperCase();
+    const tipo = "SAAS_ULTRA";
     const applyAllForUltra = tipo === "SAAS_ULTRA" && applyUltraToAllProjects;
     const applySelectedForUltra =
       tipo === "SAAS_ULTRA" && !applyAllForUltra && applyUltraToSelectedProjects;
@@ -3056,7 +3056,7 @@ export default function ClientePage({ params }: { params: any }) {
       }
       setNewServizioScadenza({
         checklist_id: "",
-        tipo: "SAAS",
+        tipo: "SAAS_ULTRA",
         riferimento: "",
         scadenza: "",
         stato: "DA_AVVISARE",
@@ -3263,6 +3263,10 @@ export default function ClientePage({ params }: { params: any }) {
   ];
 
   function openEditScadenza(r: ScadenzaItem) {
+    if (r.source === "saas" || r.source === "garanzie") {
+      showToast("Modifica SAAS/Garanzia disponibile nella pagina Progetto (Checklist).", "error");
+      return;
+    }
     setEditScadenzaErr(null);
     let form: EditScadenzaForm = {
       tipo: "RINNOVO",
@@ -3300,16 +3304,6 @@ export default function ClientePage({ params }: { params: any }) {
         modalita: String(t?.modalita || r.modalita || ""),
         note: t?.note ?? "",
       };
-    } else if (r.source === "saas") {
-      const c = r.checklist_id ? checklistById.get(r.checklist_id) : null;
-      form = {
-        ...form,
-        tipo: "SAAS",
-        scadenza: c?.saas_scadenza ?? r.scadenza ?? "",
-        stato: "",
-        note: c?.saas_note ?? "",
-        saas_piano: c?.saas_piano ?? "",
-      };
     } else if (r.source === "saas_contratto") {
       const c = r.contratto_id ? contrattiRows.find((x) => x.id === r.contratto_id) : null;
       form = {
@@ -3319,15 +3313,6 @@ export default function ClientePage({ params }: { params: any }) {
         stato: "",
         note: "",
         saas_piano: c?.piano_codice ?? r.riferimento ?? "",
-      };
-    } else if (r.source === "garanzie") {
-      const c = r.checklist_id ? checklistById.get(r.checklist_id) : null;
-      form = {
-        ...form,
-        tipo: "GARANZIA",
-        scadenza: c?.garanzia_scadenza ?? r.scadenza ?? "",
-        stato: "",
-        note: "",
       };
     } else {
       const rr = rinnovi.find((x) => x.id === r.id);
@@ -3589,39 +3574,10 @@ export default function ClientePage({ params }: { params: any }) {
       } else if (editScadenzaForm.tipo === "SAAS_ULTRA") {
         await deleteContrattoFromScadenza();
         return;
-      } else if (editScadenzaForm.tipo === "SAAS") {
-        const checklistId = editScadenzaItem.checklist_id;
-        if (!checklistId) throw new Error("Checklist non trovata");
-        const { error } = await supabase
-          .from("checklists")
-          .update({
-            saas_piano: null,
-            saas_scadenza: null,
-            saas_tipo: null,
-            saas_note: null,
-          })
-          .eq("id", checklistId);
-        if (error) throw new Error(error.message);
-        setChecklists((prev) =>
-          prev.map((c) =>
-            c.id === checklistId
-              ? { ...c, saas_piano: null, saas_scadenza: null, saas_tipo: null, saas_note: null }
-              : c
-          )
-        );
-      } else if (editScadenzaForm.tipo === "GARANZIA") {
-        const checklistId = editScadenzaItem.checklist_id;
-        if (!checklistId) throw new Error("Checklist non trovata");
-        const { error } = await supabase
-          .from("checklists")
-          .update({ garanzia_scadenza: null })
-          .eq("id", checklistId);
-        if (error) throw new Error(error.message);
-        setChecklists((prev) =>
-          prev.map((c) => (c.id === checklistId ? { ...c, garanzia_scadenza: null } : c))
-        );
       } else {
-        setEditScadenzaErr("Tipo voce non supportato.");
+        setEditScadenzaErr(
+          "Questa voce va gestita nella pagina Progetto (Checklist), non dalla scheda cliente."
+        );
         return;
       }
       setEditScadenzaOpen(false);
@@ -5594,7 +5550,7 @@ ${rinnovi30ggBreakdown.debugSample
           }}
         >
           <div style={{ fontWeight: 700, marginBottom: 8 }}>
-            Aggiungi servizio SAAS / ULTRA associato al progetto
+            Aggiungi SAAS ULTRA associata al progetto
           </div>
           <div
             style={{
@@ -5638,25 +5594,17 @@ ${rinnovi30ggBreakdown.debugSample
             </div>
             <div>
               <div style={{ fontSize: 12, marginBottom: 4 }}>Tipo</div>
-              <select
-                value={newServizioScadenza.tipo}
-                onChange={(e) =>
-                  setNewServizioScadenza((prev) => ({
-                    ...prev,
-                    tipo: e.target.value,
-                  }))
-                }
+              <input
+                value="SAAS_ULTRA"
+                readOnly
                 style={{
                   width: "100%",
                   border: "1px solid #ddd",
                   borderRadius: 8,
                   padding: "8px 10px",
-                  background: "white",
+                  background: "#f9fafb",
                 }}
-              >
-                <option value="SAAS">SAAS</option>
-                <option value="SAAS_ULTRA">SAAS_ULTRA</option>
-              </select>
+              />
             </div>
             <div>
               <div style={{ fontSize: 12, marginBottom: 4 }}>Piano / Codice</div>
