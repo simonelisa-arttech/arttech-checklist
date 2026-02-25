@@ -19,6 +19,7 @@ type InterventoRow = {
   id: string;
   cliente: string | null;
   checklist_id: string | null;
+  ticket_no?: string | null;
   data: string | null;
   descrizione: string | null;
   tipo?: string | null;
@@ -33,6 +34,7 @@ type TimelineRow = {
   date: string;
   cliente: string;
   checklist_id: string | null;
+  ticket_no?: string | null;
   progetto: string;
   tipologia: string;
   descrizione: string;
@@ -60,6 +62,7 @@ function downloadCsv(filename: string, rows: TimelineRow[]) {
     "cliente",
     "progetto",
     "tipologia",
+    "ticket_no",
     "descrizione",
     "stato",
     "checklist_link",
@@ -72,6 +75,7 @@ function downloadCsv(filename: string, rows: TimelineRow[]) {
       r.cliente,
       r.progetto,
       r.tipologia,
+      r.ticket_no || "",
       r.descrizione,
       r.stato,
       r.checklist_id ? `/checklists/${r.checklist_id}` : "",
@@ -100,7 +104,6 @@ export default function CronoprogrammaPage() {
   const [toDate, setToDate] = useState("");
   const [clienteFilter, setClienteFilter] = useState("TUTTI");
   const [kindFilter, setKindFilter] = useState<"TUTTI" | "INSTALLAZIONE" | "INTERVENTO">("TUTTI");
-  const [tipologiaFilter, setTipologiaFilter] = useState("TUTTE");
   const [q, setQ] = useState("");
 
   useEffect(() => {
@@ -129,10 +132,26 @@ export default function CronoprogrammaPage() {
         return;
       }
 
-      const { data: interventi, error: iErr } = await supabase
-        .from("saas_interventi")
-        .select("id, cliente, checklist_id, data, descrizione, tipo, proforma, stato_intervento, fatturazione_stato")
-        .order("data", { ascending: true });
+      let interventi: InterventoRow[] | null = null;
+      let iErr: any = null;
+      {
+        const res = await supabase
+          .from("saas_interventi")
+          .select(
+            "id, cliente, checklist_id, ticket_no, data, descrizione, tipo, proforma, stato_intervento, fatturazione_stato"
+          )
+          .order("data", { ascending: true });
+        interventi = res.data as InterventoRow[] | null;
+        iErr = res.error;
+      }
+      if (iErr && String(iErr.message || "").toLowerCase().includes("ticket_no")) {
+        const res = await supabase
+          .from("saas_interventi")
+          .select("id, cliente, checklist_id, data, descrizione, tipo, proforma, stato_intervento, fatturazione_stato")
+          .order("data", { ascending: true });
+        interventi = (res.data as InterventoRow[] | null)?.map((r) => ({ ...r, ticket_no: null })) ?? [];
+        iErr = res.error;
+      }
 
       if (iErr) {
         setError("Errore caricamento interventi: " + iErr.message);
@@ -175,6 +194,7 @@ export default function CronoprogrammaPage() {
           date,
           cliente: String(i.cliente || c?.cliente || "—"),
           checklist_id: i.checklist_id,
+          ticket_no: i.ticket_no ?? null,
           progetto: String(c?.nome_checklist || i.checklist_id || "—"),
           tipologia: String(i.tipo || inferInterventoTipologia(i.descrizione)).toUpperCase(),
           descrizione: String(i.descrizione || "Intervento"),
@@ -194,12 +214,6 @@ export default function CronoprogrammaPage() {
     );
   }, [rows]);
 
-  const tipologie = useMemo(() => {
-    return Array.from(new Set(rows.map((r) => r.tipologia).filter(Boolean))).sort((a, b) =>
-      a.localeCompare(b, "it", { sensitivity: "base" })
-    );
-  }, [rows]);
-
   const filtered = useMemo(() => {
     const needle = q.trim().toLowerCase();
     return rows.filter((r) => {
@@ -207,13 +221,12 @@ export default function CronoprogrammaPage() {
       if (toDate && r.date > toDate) return false;
       if (clienteFilter !== "TUTTI" && r.cliente !== clienteFilter) return false;
       if (kindFilter !== "TUTTI" && r.kind !== kindFilter) return false;
-      if (tipologiaFilter !== "TUTTE" && r.tipologia !== tipologiaFilter) return false;
       if (!needle) return true;
-      return `${r.cliente} ${r.progetto} ${r.tipologia} ${r.descrizione} ${r.stato}`
+      return `${r.cliente} ${r.progetto} ${r.tipologia} ${r.ticket_no || ""} ${r.descrizione} ${r.stato}`
         .toLowerCase()
         .includes(needle);
     });
-  }, [rows, fromDate, toDate, clienteFilter, kindFilter, tipologiaFilter, q]);
+  }, [rows, fromDate, toDate, clienteFilter, kindFilter, q]);
 
   return (
     <div style={{ maxWidth: 1250, margin: "28px auto", padding: 16 }}>
@@ -255,7 +268,7 @@ export default function CronoprogrammaPage() {
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "repeat(6,minmax(120px,1fr))",
+          gridTemplateColumns: "repeat(5,minmax(120px,1fr))",
           gap: 10,
           marginBottom: 12,
         }}
@@ -310,28 +323,12 @@ export default function CronoprogrammaPage() {
           </select>
         </label>
         <label>
-          Tipologia
-          <br />
-          <select
-            value={tipologiaFilter}
-            onChange={(e) => setTipologiaFilter(e.target.value)}
-            style={{ width: "100%", padding: 8 }}
-          >
-            <option value="TUTTE">Tutte</option>
-            {tipologie.map((t) => (
-              <option key={t} value={t}>
-                {t}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
           Cerca
           <br />
           <input
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            placeholder="cliente/progetto/descrizione"
+            placeholder="cliente/progetto/ticket/descrizione"
             style={{ width: "100%", padding: 8 }}
           />
         </label>
@@ -406,10 +403,15 @@ export default function CronoprogrammaPage() {
               <div>
                 {r.checklist_id ? (
                   <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                    <Link href={`/checklists/${r.checklist_id}`}>{r.progetto}</Link>
                     <Link
                       href={`/checklists/${r.checklist_id}`}
-                      style={{ fontSize: 12, opacity: 0.8 }}
+                      style={{ color: "#2563eb", textDecoration: "underline", fontWeight: 600 }}
+                    >
+                      {r.progetto}
+                    </Link>
+                    <Link
+                      href={`/checklists/${r.checklist_id}`}
+                      style={{ fontSize: 12, color: "#2563eb", textDecoration: "underline" }}
                     >
                       Apri
                     </Link>
@@ -419,7 +421,7 @@ export default function CronoprogrammaPage() {
                 )}
               </div>
               <div>{r.tipologia}</div>
-              <div>{r.descrizione}</div>
+              <div>{r.ticket_no ? `#${r.ticket_no} · ${r.descrizione}` : r.descrizione}</div>
               <div>{r.stato}</div>
             </div>
           ))

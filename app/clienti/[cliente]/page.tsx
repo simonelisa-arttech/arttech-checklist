@@ -520,6 +520,7 @@ type InterventoRow = {
   cliente: string;
   checklist_id: string | null;
   contratto_id: string | null;
+  ticket_no: string | null;
   data: string;
   descrizione: string;
   incluso: boolean;
@@ -827,6 +828,7 @@ export default function ClientePage({ params }: { params: any }) {
   const autoFatturazioneInFlight = useRef(false);
   const [editIntervento, setEditIntervento] = useState({
     descrizione: "",
+    ticketNo: "",
     incluso: true,
     proforma: "",
     codiceMagazzino: "",
@@ -841,6 +843,7 @@ export default function ClientePage({ params }: { params: any }) {
   const [newIntervento, setNewIntervento] = useState({
     data: "",
     tipo: "",
+    ticketNo: "",
     incluso: true,
     note: "",
     checklistId: "",
@@ -1214,13 +1217,30 @@ export default function ClientePage({ params }: { params: any }) {
       return;
     }
 
-    const { data: ints, error: intsErr } = await supabase
-      .from("saas_interventi")
-      .select(
-        "id, cliente, checklist_id, contratto_id, data, descrizione, incluso, proforma, codice_magazzino, fatturazione_stato, stato_intervento, esito_fatturazione, chiuso_il, chiuso_da_operatore, alert_fattura_last_sent_at, alert_fattura_last_sent_by, numero_fattura, fatturato_il, note, note_tecniche, created_at, checklist:checklists(id, nome_checklist, proforma, magazzino_importazione)"
-      )
-      .ilike("cliente", cleanCliente)
-      .order("data", { ascending: false });
+    let ints: any[] | null = null;
+    let intsErr: any = null;
+    {
+      const res = await supabase
+        .from("saas_interventi")
+        .select(
+          "id, cliente, checklist_id, contratto_id, ticket_no, data, descrizione, incluso, proforma, codice_magazzino, fatturazione_stato, stato_intervento, esito_fatturazione, chiuso_il, chiuso_da_operatore, alert_fattura_last_sent_at, alert_fattura_last_sent_by, numero_fattura, fatturato_il, note, note_tecniche, created_at, checklist:checklists(id, nome_checklist, proforma, magazzino_importazione)"
+        )
+        .ilike("cliente", cleanCliente)
+        .order("data", { ascending: false });
+      ints = res.data;
+      intsErr = res.error;
+    }
+    if (intsErr && String(intsErr.message || "").toLowerCase().includes("ticket_no")) {
+      const res = await supabase
+        .from("saas_interventi")
+        .select(
+          "id, cliente, checklist_id, contratto_id, data, descrizione, incluso, proforma, codice_magazzino, fatturazione_stato, stato_intervento, esito_fatturazione, chiuso_il, chiuso_da_operatore, alert_fattura_last_sent_at, alert_fattura_last_sent_by, numero_fattura, fatturato_il, note, note_tecniche, created_at, checklist:checklists(id, nome_checklist, proforma, magazzino_importazione)"
+        )
+        .ilike("cliente", cleanCliente)
+        .order("data", { ascending: false });
+      ints = (res.data || []).map((x: any) => ({ ...x, ticket_no: null }));
+      intsErr = res.error;
+    }
 
     if (intsErr) {
       setInterventiError("Errore caricamento interventi: " + intsErr.message);
@@ -1414,6 +1434,7 @@ export default function ClientePage({ params }: { params: any }) {
     setEditInterventoId(i.id);
     setEditIntervento({
       descrizione: i.descrizione ?? "",
+      ticketNo: i.ticket_no ?? "",
       incluso: Boolean(i.incluso),
       proforma: i.proforma ?? i.checklist?.proforma ?? "",
       codiceMagazzino: i.codice_magazzino ?? i.checklist?.magazzino_importazione ?? "",
@@ -1439,6 +1460,7 @@ export default function ClientePage({ params }: { params: any }) {
 
     const payload = {
       descrizione: editIntervento.descrizione.trim(),
+      ticket_no: editIntervento.ticketNo.trim() ? editIntervento.ticketNo.trim() : null,
       incluso: editIntervento.incluso,
       proforma: editIntervento.proforma.trim() ? editIntervento.proforma.trim() : null,
       codice_magazzino: editIntervento.codiceMagazzino.trim()
@@ -1460,10 +1482,18 @@ export default function ClientePage({ params }: { params: any }) {
       note: editIntervento.note.trim() ? editIntervento.note.trim() : null,
     };
 
-    const { error: updErr } = await supabase
+    let { error: updErr } = await supabase
       .from("saas_interventi")
       .update(payload)
       .eq("id", editInterventoId);
+    if (updErr && String(updErr.message || "").toLowerCase().includes("ticket_no")) {
+      const { ticket_no, ...legacyPayload } = payload as any;
+      const retry = await supabase
+        .from("saas_interventi")
+        .update(legacyPayload)
+        .eq("id", editInterventoId);
+      updErr = retry.error;
+    }
 
     if (updErr) {
       setInterventiError("Errore aggiornamento intervento: " + updErr.message);
@@ -2455,6 +2485,7 @@ export default function ClientePage({ params }: { params: any }) {
       cliente: clienteKey,
       checklist_id: newIntervento.checklistId,
       contratto_id: contratto?.id ?? null,
+      ticket_no: newIntervento.ticketNo.trim() ? newIntervento.ticketNo.trim() : null,
       data: dataValue,
       tipo: descrizione,
       descrizione,
@@ -2476,11 +2507,27 @@ export default function ClientePage({ params }: { params: any }) {
       note_tecniche: noteTecnicheToSave,
     };
 
-    const { data: inserted, error: insertErr } = await supabase
-      .from("saas_interventi")
-      .insert(payload)
-      .select("id")
-      .single();
+    let inserted: any = null;
+    let insertErr: any = null;
+    {
+      const res = await supabase
+        .from("saas_interventi")
+        .insert(payload)
+        .select("id")
+        .single();
+      inserted = res.data;
+      insertErr = res.error;
+    }
+    if (insertErr && String(insertErr.message || "").toLowerCase().includes("ticket_no")) {
+      const { ticket_no, ...legacyPayload } = payload as any;
+      const res = await supabase
+        .from("saas_interventi")
+        .insert(legacyPayload)
+        .select("id")
+        .single();
+      inserted = res.data;
+      insertErr = res.error;
+    }
 
     if (insertErr) {
       setInterventiError("Errore inserimento intervento: " + insertErr.message);
@@ -2496,6 +2543,7 @@ export default function ClientePage({ params }: { params: any }) {
     setNewIntervento({
       data: "",
       tipo: "",
+      ticketNo: "",
       incluso: true,
       note: "",
       checklistId: "",
@@ -2908,6 +2956,12 @@ export default function ClientePage({ params }: { params: any }) {
   const TAGLIANDO_STATI = ["DA_AVVISARE", "AVVISATO", "OK", "SCADUTO", "DA_FATTURARE", "FATTURATO"];
   const RINNOVO_STATI = ["DA_AVVISARE", "AVVISATO", "CONFERMATO", "DA_FATTURARE", "FATTURATO", "NON_RINNOVATO"];
   const TAGLIANDO_MODALITA = ["INCLUSO", "EXTRA", "AUTORIZZATO_CLIENTE"];
+  const FATTURAZIONE_MENU_OPTIONS = [
+    "DA_FATTURARE",
+    "FATTURATO",
+    "NON_FATTURARE",
+    "INCLUSO_DA_CONSUNTIVO",
+  ];
 
   function openEditScadenza(r: ScadenzaItem) {
     setEditScadenzaErr(null);
@@ -5632,6 +5686,16 @@ ${rinnovi30ggBreakdown.debugSample
             </label>
 
             <label>
+              Ticket n°<br />
+              <input
+                value={newIntervento.ticketNo}
+                onChange={(e) => setNewIntervento({ ...newIntervento, ticketNo: e.target.value })}
+                style={{ width: "100%", padding: 8 }}
+                placeholder="es. 1234"
+              />
+            </label>
+
+            <label>
               Incluso / Extra<br />
               <select
                 value={newIntervento.incluso ? "INCLUSO" : "EXTRA"}
@@ -5707,9 +5771,11 @@ ${rinnovi30ggBreakdown.debugSample
                 }}
                 style={{ width: "100%", padding: 8 }}
               >
-                <option value="DA_FATTURARE">DA_FATTURARE</option>
-                <option value="FATTURATO">FATTURATO</option>
-                <option value="NON_FATTURARE">NON_FATTURARE</option>
+                {FATTURAZIONE_MENU_OPTIONS.map((opt) => (
+                  <option key={opt} value={opt}>
+                    {opt}
+                  </option>
+                ))}
               </select>
             </label>
 
@@ -5854,20 +5920,21 @@ ${rinnovi30ggBreakdown.debugSample
               style={{
                 display: "grid",
                 gridTemplateColumns:
-                  "70px 100px minmax(160px, 1fr) 70px 70px 70px 70px 130px 120px",
+                  "90px minmax(170px,1fr) minmax(220px,1.4fr) 110px 90px 160px 140px 130px 140px",
                 columnGap: 8,
                 padding: "6px 8px",
                 fontWeight: 800,
                 background: "#fafafa",
                 borderBottom: "1px solid #eee",
                 fontSize: 12,
-                minWidth: 860,
+                minWidth: 1240,
                 tableLayout: "fixed",
               }}
             >
               <div style={{ whiteSpace: "nowrap" }}>Data</div>
               <div style={{ whiteSpace: "nowrap" }}>PROGETTO</div>
               <div>Descrizione</div>
+              <div style={{ whiteSpace: "nowrap" }}>Ticket n°</div>
               <div style={{ whiteSpace: "nowrap" }}>Tipo</div>
               <div style={{ whiteSpace: "nowrap" }}>Stato</div>
               <div style={{ whiteSpace: "nowrap" }}>Proforma</div>
@@ -5881,12 +5948,12 @@ ${rinnovi30ggBreakdown.debugSample
                   style={{
                     display: "grid",
                     gridTemplateColumns:
-                      "70px 100px minmax(160px, 1fr) 70px 70px 70px 70px 130px 120px",
+                      "90px minmax(170px,1fr) minmax(220px,1.4fr) 110px 90px 160px 140px 130px 140px",
                     columnGap: 8,
                     padding: "6px 8px",
                     alignItems: "center",
                     fontSize: 12,
-                    minWidth: 860,
+                    minWidth: 1240,
                     tableLayout: "fixed",
                   }}
                 >
@@ -5900,7 +5967,8 @@ ${rinnovi30ggBreakdown.debugSample
                       ? i.checklist_id.slice(0, 8)
                       : "—"}
                   </div>
-                  <div style={{ whiteSpace: "normal" }}>{i.descrizione}</div>
+                  <div style={{ whiteSpace: "normal", overflowWrap: "anywhere" }}>{i.descrizione}</div>
+                  <div style={{ whiteSpace: "nowrap" }}>{i.ticket_no || "—"}</div>
                   <div
                     style={{
                       display: "flex",
@@ -5935,10 +6003,10 @@ ${rinnovi30ggBreakdown.debugSample
                   <div style={{ whiteSpace: "nowrap" }}>
                     {renderStatoInterventoBadge(getInterventoStato(i))}
                   </div>
-                  <div style={{ whiteSpace: "nowrap" }}>
+                  <div style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                     {i.proforma || i.checklist?.proforma || "—"}
                   </div>
-                  <div style={{ whiteSpace: "nowrap" }}>
+                  <div style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                     {i.codice_magazzino || i.checklist?.magazzino_importazione || "—"}
                   </div>
                   <div style={{ display: "flex", flexDirection: "column", gap: 6, whiteSpace: "nowrap" }}>
@@ -6121,7 +6189,7 @@ ${rinnovi30ggBreakdown.debugSample
                     <div
                       style={{
                         display: "grid",
-                        gridTemplateColumns: "1fr 140px 1fr 1fr",
+                        gridTemplateColumns: "1fr 140px 1fr 1fr 1fr",
                         gap: 10,
                       }}
                     >
@@ -6151,6 +6219,16 @@ ${rinnovi30ggBreakdown.debugSample
                           <option value="INCLUSO">INCLUSO</option>
                           <option value="EXTRA">EXTRA</option>
                         </select>
+                      </label>
+                      <label>
+                        Ticket n°<br />
+                        <input
+                          value={editIntervento.ticketNo}
+                          onChange={(e) =>
+                            setEditIntervento({ ...editIntervento, ticketNo: e.target.value })
+                          }
+                          style={{ width: "100%", padding: 8 }}
+                        />
                       </label>
                       <label>
                         Proforma<br />
@@ -6185,58 +6263,57 @@ ${rinnovi30ggBreakdown.debugSample
                         marginTop: 10,
                       }}
                     >
-                      {editIntervento.statoIntervento === "CHIUSO" ? (
-                        <>
-                          <label>
-                            Stato fatturazione<br />
-                            <select
-                              value={editIntervento.fatturazioneStato}
-                              onChange={(e) =>
-                                setEditIntervento({
-                                  ...editIntervento,
-                                  fatturazioneStato: e.target.value,
-                                })
-                              }
-                              style={{ width: "100%", padding: 8 }}
-                            >
-                              <option value="DA_FATTURARE">DA_FATTURARE</option>
-                              <option value="FATTURATO">FATTURATO</option>
-                              <option value="NON_FATTURARE">NON_FATTURARE</option>
-                            </select>
-                          </label>
-                          <label>
-                            Numero fattura<br />
-                            <input
-                              value={editIntervento.numeroFattura}
-                              onChange={(e) =>
-                                setEditIntervento({
-                                  ...editIntervento,
-                                  numeroFattura: e.target.value,
-                                })
-                              }
-                              disabled={editIntervento.fatturazioneStato !== "FATTURATO"}
-                              style={{ width: "100%", padding: 8 }}
-                            />
-                          </label>
-                          <label>
-                            Fatturato il<br />
-                            <input
-                              type="date"
-                              value={editIntervento.fatturatoIl}
-                              onChange={(e) =>
-                                setEditIntervento({
-                                  ...editIntervento,
-                                  fatturatoIl: e.target.value,
-                                })
-                              }
-                              disabled={editIntervento.fatturazioneStato !== "FATTURATO"}
-                              style={{ width: "100%", padding: 8 }}
-                            />
-                          </label>
-                        </>
-                      ) : (
+                      <label>
+                        Stato fatturazione<br />
+                        <select
+                          value={editIntervento.fatturazioneStato}
+                          onChange={(e) =>
+                            setEditIntervento({
+                              ...editIntervento,
+                              fatturazioneStato: e.target.value,
+                            })
+                          }
+                          style={{ width: "100%", padding: 8 }}
+                        >
+                          {FATTURAZIONE_MENU_OPTIONS.map((opt) => (
+                            <option key={opt} value={opt}>
+                              {opt}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label>
+                        Numero fattura<br />
+                        <input
+                          value={editIntervento.numeroFattura}
+                          onChange={(e) =>
+                            setEditIntervento({
+                              ...editIntervento,
+                              numeroFattura: e.target.value,
+                            })
+                          }
+                          disabled={editIntervento.fatturazioneStato !== "FATTURATO"}
+                          style={{ width: "100%", padding: 8 }}
+                        />
+                      </label>
+                      <label>
+                        Fatturato il<br />
+                        <input
+                          type="date"
+                          value={editIntervento.fatturatoIl}
+                          onChange={(e) =>
+                            setEditIntervento({
+                              ...editIntervento,
+                              fatturatoIl: e.target.value,
+                            })
+                          }
+                          disabled={editIntervento.fatturazioneStato !== "FATTURATO"}
+                          style={{ width: "100%", padding: 8 }}
+                        />
+                      </label>
+                      {editIntervento.statoIntervento !== "CHIUSO" && (
                         <div style={{ gridColumn: "1 / span 3", fontSize: 12, opacity: 0.7 }}>
-                          Intervento da chiudere per gestire la fatturazione.
+                          Intervento aperto: la fatturazione verrà completata alla chiusura.
                         </div>
                       )}
                       <label>
@@ -6520,9 +6597,11 @@ ${rinnovi30ggBreakdown.debugSample
                   style={{ width: "100%", padding: 8 }}
                 >
                   <option value="">—</option>
-                  <option value="DA_FATTURARE">DA_FATTURARE</option>
-                  <option value="NON_FATTURARE">NON_FATTURARE</option>
-                  <option value="INCLUSO_DA_CONSUNTIVO">INCLUSO_DA_CONSUNTIVO</option>
+                  {FATTURAZIONE_MENU_OPTIONS.filter((opt) => opt !== "FATTURATO").map((opt) => (
+                    <option key={opt} value={opt}>
+                      {opt}
+                    </option>
+                  ))}
                 </select>
               </label>
               <label style={{ display: "block", marginBottom: 10 }}>
