@@ -15,6 +15,23 @@ type TaskTemplateRow = {
   isNew?: boolean;
 };
 
+type RuleDraft = {
+  id?: string;
+  checklist_id: string | null;
+  task_template_id: string | null;
+  task_title: string;
+  target: string;
+  enabled: boolean;
+  mode: "AUTOMATICA" | "MANUALE";
+  recipients: string[];
+  frequency: "DAILY" | "WEEKDAYS" | "WEEKLY";
+  send_time: string;
+  timezone: string;
+  day_of_week: number | null;
+  stop_statuses: string[];
+  only_future: boolean;
+};
+
 export default function ChecklistAttivitaPage() {
   if (!isSupabaseConfigured) {
     return <ConfigMancante />;
@@ -29,6 +46,11 @@ export default function ChecklistAttivitaPage() {
   ]);
   const [filterSezione, setFilterSezione] = useState<string>("TUTTE");
   const [filterTitolo, setFilterTitolo] = useState<string>("");
+  const [ruleTask, setRuleTask] = useState<TaskTemplateRow | null>(null);
+  const [ruleDraft, setRuleDraft] = useState<RuleDraft | null>(null);
+  const [ruleRecipientsInput, setRuleRecipientsInput] = useState("");
+  const [ruleLoading, setRuleLoading] = useState(false);
+  const [ruleSaving, setRuleSaving] = useState(false);
 
   async function loadRows() {
     setLoading(true);
@@ -131,6 +153,122 @@ export default function ChecklistAttivitaPage() {
     }
 
     await loadRows();
+  }
+
+  function parseRecipientsInput(input: string) {
+    return Array.from(
+      new Set(
+        input
+          .split(/[\n,;]+/)
+          .map((s) => s.trim().toLowerCase())
+          .filter((s) => s.includes("@"))
+      )
+    );
+  }
+
+  async function openGlobalRule(task: TaskTemplateRow) {
+    setRuleTask(task);
+    setRuleLoading(true);
+    setError(null);
+    try {
+      const query = new URLSearchParams({
+        task_title: task.titolo,
+        target: String(task.target || "GENERICA").trim().toUpperCase(),
+      });
+      if (task.id) query.set("task_template_id", task.id);
+      const res = await fetch(`/api/notification-rules?${query.toString()}`, {
+        method: "GET",
+        credentials: "include",
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json?.error || "Errore caricamento regola.");
+      const row = json?.global_rule || json?.effective_rule || (Array.isArray(json?.data) ? json.data[0] : null);
+      const target = String(task.target || "GENERICA").trim().toUpperCase() || "GENERICA";
+      const next: RuleDraft = row
+        ? {
+            id: row.id,
+            checklist_id: null,
+            task_template_id: row.task_template_id || task.id || null,
+            task_title: row.task_title || task.titolo,
+            target: String(row.target || target).trim().toUpperCase() || "GENERICA",
+            enabled: row.enabled !== false,
+            mode: row.mode === "MANUALE" ? "MANUALE" : "AUTOMATICA",
+            recipients: Array.isArray(row.recipients)
+              ? row.recipients.map((x: any) => String(x || "").trim().toLowerCase()).filter((x: string) => x.includes("@"))
+              : [],
+            frequency:
+              row.frequency === "WEEKLY" || row.frequency === "WEEKDAYS"
+                ? row.frequency
+                : "DAILY",
+            send_time: String(row.send_time || "07:30").slice(0, 5),
+            timezone: String(row.timezone || "Europe/Rome"),
+            day_of_week:
+              row.day_of_week === null || row.day_of_week === undefined ? null : Number(row.day_of_week),
+            stop_statuses:
+              Array.isArray(row.stop_statuses) && row.stop_statuses.length > 0
+                ? row.stop_statuses.map((x: any) => String(x || "").trim().toUpperCase())
+                : ["OK", "NON_NECESSARIO"],
+            only_future: row.only_future !== false,
+          }
+        : {
+            checklist_id: null,
+            task_template_id: task.id || null,
+            task_title: task.titolo,
+            target,
+            enabled: true,
+            mode: target === "MAGAZZINO" || target === "TECNICO_SW" ? "AUTOMATICA" : "MANUALE",
+            recipients: [],
+            frequency: "DAILY",
+            send_time: "07:30",
+            timezone: "Europe/Rome",
+            day_of_week: null,
+            stop_statuses: ["OK", "NON_NECESSARIO"],
+            only_future: true,
+          };
+      setRuleDraft(next);
+      setRuleRecipientsInput(next.recipients.join(", "));
+    } catch (err: any) {
+      setError(err?.message || "Errore caricamento regola.");
+      setRuleTask(null);
+      setRuleDraft(null);
+    } finally {
+      setRuleLoading(false);
+    }
+  }
+
+  function closeRuleModal() {
+    setRuleTask(null);
+    setRuleDraft(null);
+    setRuleRecipientsInput("");
+    setRuleLoading(false);
+    setRuleSaving(false);
+  }
+
+  async function saveGlobalRule() {
+    if (!ruleDraft) return;
+    setRuleSaving(true);
+    setError(null);
+    try {
+      const payload = {
+        ...ruleDraft,
+        checklist_id: null,
+        recipients: parseRecipientsInput(ruleRecipientsInput),
+        day_of_week: ruleDraft.frequency === "WEEKLY" ? ruleDraft.day_of_week ?? 1 : null,
+      };
+      const res = await fetch("/api/notification-rules", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify(payload),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(json?.error || "Errore salvataggio regola.");
+      closeRuleModal();
+    } catch (err: any) {
+      setError(err?.message || "Errore salvataggio regola.");
+    } finally {
+      setRuleSaving(false);
+    }
   }
 
   const sezioneOptions = Array.from(
@@ -249,7 +387,7 @@ export default function ChecklistAttivitaPage() {
           <div
             style={{
               display: "grid",
-              gridTemplateColumns: "1fr 120px 2fr 180px 120px 140px",
+              gridTemplateColumns: "1fr 120px 2fr 180px 120px 140px 170px",
               padding: "10px 12px",
               fontWeight: 700,
               background: "#fafafa",
@@ -262,6 +400,7 @@ export default function ChecklistAttivitaPage() {
             <div>Target</div>
             <div>Attivo</div>
             <div>Salva</div>
+            <div>Regola globale</div>
           </div>
           {filteredRows.length === 0 ? (
             <div style={{ padding: 12, opacity: 0.7 }}>Nessuna attività</div>
@@ -273,7 +412,7 @@ export default function ChecklistAttivitaPage() {
                 key={row.id ?? `new-${idx}`}
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "1fr 120px 2fr 180px 120px 140px",
+                  gridTemplateColumns: "1fr 120px 2fr 180px 120px 140px 170px",
                   padding: "10px 12px",
                   borderBottom: "1px solid #f3f4f6",
                   alignItems: "center",
@@ -343,9 +482,208 @@ export default function ChecklistAttivitaPage() {
                     Salva
                   </button>
                 </div>
+                <div>
+                  <button
+                    type="button"
+                    onClick={() => openGlobalRule(row)}
+                    style={{
+                      padding: "6px 10px",
+                      borderRadius: 8,
+                      border: "1px solid #0f172a",
+                      background: "#f8fafc",
+                      cursor: "pointer",
+                    }}
+                  >
+                    ⚙ Regola globale
+                  </button>
+                </div>
               </div>
             )})
           )}
+        </div>
+      )}
+      {ruleTask && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.25)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 55,
+            padding: 16,
+          }}
+        >
+          <div
+            style={{
+              background: "white",
+              borderRadius: 12,
+              padding: 16,
+              width: "100%",
+              maxWidth: 640,
+              boxShadow: "0 10px 30px rgba(0,0,0,0.15)",
+            }}
+          >
+            <div style={{ fontWeight: 700, marginBottom: 8 }}>Regola globale notifiche</div>
+            <div style={{ fontSize: 12, opacity: 0.75, marginBottom: 12 }}>
+              Task: {ruleTask.titolo}
+              <br />
+              Target: <strong>{ruleDraft?.target || ruleTask.target}</strong>
+            </div>
+            {ruleLoading || !ruleDraft ? (
+              <div style={{ fontSize: 13, opacity: 0.7 }}>Caricamento...</div>
+            ) : (
+              <>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                  <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                    <input
+                      type="checkbox"
+                      checked={ruleDraft.enabled}
+                      onChange={(e) =>
+                        setRuleDraft((prev) => (prev ? { ...prev, enabled: e.target.checked } : prev))
+                      }
+                    />
+                    Abilitata
+                  </label>
+                  <label>
+                    Mode<br />
+                    <select
+                      value={ruleDraft.mode}
+                      onChange={(e) =>
+                        setRuleDraft((prev) =>
+                          prev
+                            ? { ...prev, mode: e.target.value === "MANUALE" ? "MANUALE" : "AUTOMATICA" }
+                            : prev
+                        )
+                      }
+                      style={{ width: "100%", padding: 8 }}
+                    >
+                      <option value="AUTOMATICA">AUTOMATICA</option>
+                      <option value="MANUALE">MANUALE</option>
+                    </select>
+                  </label>
+                </div>
+                <label style={{ display: "block", marginTop: 10 }}>
+                  Destinatari (email separate da virgola o newline)<br />
+                  <textarea
+                    value={ruleRecipientsInput}
+                    onChange={(e) => setRuleRecipientsInput(e.target.value)}
+                    rows={3}
+                    style={{ width: "100%", padding: 8 }}
+                  />
+                </label>
+                <label style={{ display: "block", marginTop: 10 }}>
+                  Stop statuses (comma separated)<br />
+                  <input
+                    value={ruleDraft.stop_statuses.join(",")}
+                    onChange={(e) =>
+                      setRuleDraft((prev) =>
+                        prev
+                          ? {
+                              ...prev,
+                              stop_statuses: e.target.value
+                                .split(",")
+                                .map((s) => s.trim().toUpperCase())
+                                .filter(Boolean),
+                            }
+                          : prev
+                      )
+                    }
+                    style={{ width: "100%", padding: 8 }}
+                  />
+                </label>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginTop: 10 }}>
+                  <label>
+                    Frequenza<br />
+                    <select
+                      value={ruleDraft.frequency}
+                      onChange={(e) =>
+                        setRuleDraft((prev) =>
+                          prev
+                            ? {
+                                ...prev,
+                                frequency:
+                                  e.target.value === "WEEKLY"
+                                    ? "WEEKLY"
+                                    : e.target.value === "WEEKDAYS"
+                                      ? "WEEKDAYS"
+                                      : "DAILY",
+                              }
+                            : prev
+                        )
+                      }
+                      style={{ width: "100%", padding: 8 }}
+                    >
+                      <option value="DAILY">DAILY</option>
+                      <option value="WEEKDAYS">WEEKDAYS</option>
+                      <option value="WEEKLY">WEEKLY</option>
+                    </select>
+                  </label>
+                  <label>
+                    Ora invio<br />
+                    <input
+                      type="time"
+                      value={ruleDraft.send_time}
+                      onChange={(e) =>
+                        setRuleDraft((prev) => (prev ? { ...prev, send_time: e.target.value } : prev))
+                      }
+                      style={{ width: "100%", padding: 8 }}
+                    />
+                  </label>
+                  <label>
+                    Timezone<br />
+                    <input
+                      value={ruleDraft.timezone}
+                      onChange={(e) =>
+                        setRuleDraft((prev) => (prev ? { ...prev, timezone: e.target.value } : prev))
+                      }
+                      style={{ width: "100%", padding: 8 }}
+                    />
+                  </label>
+                </div>
+                <label style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 10 }}>
+                  <input
+                    type="checkbox"
+                    checked={ruleDraft.only_future}
+                    onChange={(e) =>
+                      setRuleDraft((prev) => (prev ? { ...prev, only_future: e.target.checked } : prev))
+                    }
+                  />
+                  Solo checklist future
+                </label>
+                <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 14 }}>
+                  <button
+                    type="button"
+                    onClick={closeRuleModal}
+                    style={{
+                      padding: "8px 12px",
+                      borderRadius: 8,
+                      border: "1px solid #ddd",
+                      background: "white",
+                    }}
+                  >
+                    Chiudi
+                  </button>
+                  <button
+                    type="button"
+                    onClick={saveGlobalRule}
+                    disabled={ruleSaving}
+                    style={{
+                      padding: "8px 12px",
+                      borderRadius: 8,
+                      border: "1px solid #111",
+                      background: "#111",
+                      color: "white",
+                      opacity: ruleSaving ? 0.7 : 1,
+                    }}
+                  >
+                    {ruleSaving ? "Salvataggio..." : "Salva regola globale"}
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
         </div>
       )}
     </div>

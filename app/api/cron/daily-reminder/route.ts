@@ -22,6 +22,7 @@ type TaskRow = {
 
 type RuleRow = {
   id: string;
+  checklist_id: string | null;
   enabled: boolean;
   mode: string | null;
   frequency: string | null;
@@ -243,17 +244,17 @@ export async function GET(req: Request) {
   const baseUrl = getBaseUrl(req);
 
   const selectWithDay =
-    "id, enabled, mode, frequency, day_of_week, task_template_id, task_title, target, recipients, send_time, timezone, stop_statuses, only_future, last_sent_on";
+    "id, enabled, mode, frequency, day_of_week, checklist_id, task_template_id, task_title, target, recipients, send_time, timezone, stop_statuses, only_future, last_sent_on";
   const selectFallback =
-    "id, enabled, mode, frequency, task_template_id, task_title, target, recipients, send_time, timezone, stop_statuses, only_future, last_sent_on";
+    "id, enabled, mode, frequency, checklist_id, task_template_id, task_title, target, recipients, send_time, timezone, stop_statuses, only_future, last_sent_on";
   const selectFallbackNoTemplate =
-    "id, enabled, mode, frequency, task_title, target, recipients, send_time, timezone, stop_statuses, only_future, last_sent_on";
+    "id, enabled, mode, frequency, checklist_id, task_title, target, recipients, send_time, timezone, stop_statuses, only_future, last_sent_on";
   const selectWithDayNoLastSent =
-    "id, enabled, mode, frequency, day_of_week, task_template_id, task_title, target, recipients, send_time, timezone, stop_statuses, only_future";
+    "id, enabled, mode, frequency, day_of_week, checklist_id, task_template_id, task_title, target, recipients, send_time, timezone, stop_statuses, only_future";
   const selectFallbackNoLastSent =
-    "id, enabled, mode, frequency, task_template_id, task_title, target, recipients, send_time, timezone, stop_statuses, only_future";
+    "id, enabled, mode, frequency, checklist_id, task_template_id, task_title, target, recipients, send_time, timezone, stop_statuses, only_future";
   const selectFallbackNoTemplateNoLastSent =
-    "id, enabled, mode, frequency, task_title, target, recipients, send_time, timezone, stop_statuses, only_future";
+    "id, enabled, mode, frequency, checklist_id, task_title, target, recipients, send_time, timezone, stop_statuses, only_future";
 
   let { data: rulesRaw, error: rulesErr } = await supabase
     .from("notification_rules")
@@ -290,16 +291,32 @@ export async function GET(req: Request) {
       .select(selectFallbackNoTemplateNoLastSent)
       .eq("enabled", true)
       .eq("mode", "AUTOMATICA");
-    rulesRaw = fallbackNoTplRes.data as any;
-    rulesErr = fallbackNoTplRes.error as any;
-    if (!rulesErr && Array.isArray(rulesRaw)) {
-      rulesRaw = rulesRaw.map((r: any) => ({
-        ...r,
-        day_of_week: null,
-        task_template_id: null,
-        last_sent_on: null,
-      }));
-    }
+      rulesRaw = fallbackNoTplRes.data as any;
+      rulesErr = fallbackNoTplRes.error as any;
+      if (!rulesErr && Array.isArray(rulesRaw)) {
+        rulesRaw = rulesRaw.map((r: any) => ({
+          ...r,
+          day_of_week: null,
+          task_template_id: null,
+          checklist_id: null,
+          last_sent_on: null,
+        }));
+      }
+  }
+  if (rulesErr && String(rulesErr.message || "").toLowerCase().includes("checklist_id")) {
+    const fallbackNoChecklistRes = await supabase
+      .from("notification_rules")
+      .select(
+        "id, enabled, mode, frequency, task_template_id, task_title, target, recipients, send_time, timezone, stop_statuses, only_future, last_sent_on"
+      )
+      .eq("enabled", true)
+      .eq("mode", "AUTOMATICA");
+    rulesRaw = ((fallbackNoChecklistRes.data as any[] | null) || []).map((r: any) => ({
+      ...r,
+      checklist_id: null,
+      day_of_week: null,
+    }));
+    rulesErr = fallbackNoChecklistRes.error as any;
   }
   if (rulesErr) {
     return NextResponse.json({ error: rulesErr.message }, { status: 500 });
@@ -360,6 +377,25 @@ export async function GET(req: Request) {
     sent_now: number;
     skipped_reason: string | null;
   }> = [];
+
+  const allOverrides = new Set<string>();
+  {
+    const { data: overrideRows, error: overrideErr } = await supabase
+      .from("notification_rules")
+      .select("checklist_id, target, task_title, task_template_id")
+      .not("checklist_id", "is", null);
+    if (overrideErr && !String(overrideErr.message || "").toLowerCase().includes("checklist_id")) {
+      return NextResponse.json({ error: overrideErr.message }, { status: 500 });
+    }
+    for (const row of overrideRows || []) {
+      const checklistId = String((row as any).checklist_id || "").trim();
+      if (!checklistId) continue;
+      const rowTarget = String((row as any).target || "").trim().toUpperCase();
+      const rowTitle = String((row as any).task_title || "").trim();
+      const rowTemplate = String((row as any).task_template_id || "").trim();
+      allOverrides.add(`${checklistId}|${rowTarget}|${rowTitle}|${rowTemplate}`);
+    }
+  }
 
   for (const rule of rules) {
     const target = String(rule.target || "").trim().toUpperCase();
@@ -424,8 +460,9 @@ export async function GET(req: Request) {
       continue;
     }
 
-    const allowedChecklistIds = allChecklists
+    let allowedChecklistIds = allChecklists
       .filter((c) => {
+        if (rule.checklist_id && c.id !== rule.checklist_id) return false;
         if (rule.only_future === true) {
           const prevista = toIsoDay(c.data_prevista);
           const tassativa = toIsoDay(c.data_tassativa);
@@ -435,6 +472,23 @@ export async function GET(req: Request) {
         return true;
       })
       .map((c) => c.id);
+
+    if (!rule.checklist_id && taskTitle) {
+      const overrideChecklistIds = new Set(
+        Array.from(allOverrides)
+          .filter((k) => {
+            const [checklistId, rowTarget, rowTitle, rowTemplate] = k.split("|");
+            return (
+              Boolean(checklistId) &&
+              rowTarget === target &&
+              rowTitle === taskTitle &&
+              rowTemplate === taskTemplateId
+            );
+          })
+          .map((k) => k.split("|")[0])
+      );
+      allowedChecklistIds = allowedChecklistIds.filter((id) => !overrideChecklistIds.has(id));
+    }
     ruleDbg.allowed_checklists = allowedChecklistIds.length;
 
     if (allowedChecklistIds.length === 0) {

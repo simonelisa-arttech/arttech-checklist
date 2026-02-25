@@ -176,24 +176,9 @@ function inferTaskTarget(titolo?: string | null, templateTarget?: string | null)
   const fromTemplate = String(templateTarget || "")
     .trim()
     .toUpperCase();
-  const normalizedFromTemplate =
-    fromTemplate === "MAGAZZINO"
-      ? "MAGAZZINO"
-      : fromTemplate === "TECNICO_SW" ||
-          fromTemplate === "TECNICO SW" ||
-          fromTemplate === "TECNICO-SW"
-        ? "TECNICO_SW"
-        : fromTemplate === "GENERICA"
-          ? "GENERICA"
-          : "";
-  if (normalizedFromTemplate) {
-    return normalizedFromTemplate;
-  }
-  if (
-    fromTemplate === "MAGAZZINO" ||
-    fromTemplate === "TECNICO_SW" ||
-    fromTemplate === "GENERICA"
-  ) {
+  if (fromTemplate) {
+    if (fromTemplate === "TECNICO SW" || fromTemplate === "TECNICO-SW") return "TECNICO_SW";
+    if (fromTemplate === "ALTRO") return "GENERICA";
     return fromTemplate;
   }
   const t = String(titolo || "")

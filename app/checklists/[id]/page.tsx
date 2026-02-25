@@ -220,11 +220,12 @@ type FormData = {
 
 type NotificationRule = {
   id?: string;
+  checklist_id?: string | null;
   task_template_id: string | null;
   enabled: boolean;
   mode: "AUTOMATICA" | "MANUALE";
   task_title: string;
-  target: "MAGAZZINO" | "TECNICO_SW" | "GENERICA";
+  target: string;
   recipients: string[];
   frequency: "DAILY" | "WEEKDAYS" | "WEEKLY";
   send_time: string;
@@ -239,13 +240,14 @@ function toDateInput(value?: string | null) {
   return value.slice(0, 10);
 }
 
-function normalizeRuleTargetValue(value?: string | null): "MAGAZZINO" | "TECNICO_SW" | "GENERICA" {
+function normalizeRuleTargetValue(value?: string | null): string {
   const raw = String(value || "")
     .trim()
     .toUpperCase();
-  if (raw === "MAGAZZINO") return "MAGAZZINO";
-  if (raw === "TECNICO_SW" || raw === "TECNICO SW" || raw === "TECNICO-SW") return "TECNICO_SW";
-  return "GENERICA";
+  if (!raw) return "GENERICA";
+  if (raw === "TECNICO SW" || raw === "TECNICO-SW") return "TECNICO_SW";
+  if (raw === "ALTRO") return "GENERICA";
+  return raw;
 }
 
 function isFiniteNumberString(v: string) {
@@ -573,7 +575,8 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
   const [ruleRecipientsInput, setRuleRecipientsInput] = useState("");
   const [ruleLoading, setRuleLoading] = useState(false);
   const [ruleSaving, setRuleSaving] = useState(false);
-  const [ruleSendingNow, setRuleSendingNow] = useState(false);
+  const [ruleGlobal, setRuleGlobal] = useState<NotificationRule | null>(null);
+  const [ruleOverride, setRuleOverride] = useState<NotificationRule | null>(null);
   const [ruleError, setRuleError] = useState<string | null>(null);
   const [lastAlertByTask, setLastAlertByTask] = useState<
     Map<string, { toOperatoreId: string; createdAt: string }>
@@ -1326,6 +1329,7 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
         task_title: task.titolo,
         target,
       });
+      if (id) query.set("checklist_id", id);
       if (task.task_template_id) {
         query.set("task_template_id", task.task_template_id);
       }
@@ -1338,10 +1342,13 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
         throw new Error(json?.error || "Errore caricamento regola.");
       }
       console.log("Fetched rule:", json?.data);
-      const row = Array.isArray(json?.data) ? json.data[0] : null;
+      const row = json?.effective_rule ?? (Array.isArray(json?.data) ? json.data[0] : null);
+      const globalRule = json?.global_rule ?? null;
+      const overrideRule = json?.override_rule ?? null;
       const nextDraft: NotificationRule = row
         ? {
             id: row.id,
+            checklist_id: id ?? null,
             task_template_id: row.task_template_id || task.task_template_id || null,
             enabled: row.enabled !== false,
             mode: row.mode === "MANUALE" ? "MANUALE" : "AUTOMATICA",
@@ -1367,9 +1374,11 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
             only_future: row.only_future !== false,
           }
         : {
+            checklist_id: id ?? null,
             task_template_id: task.task_template_id || null,
             enabled: true,
-            mode: "MANUALE",
+            mode:
+              target === "MAGAZZINO" || target === "TECNICO_SW" ? "AUTOMATICA" : "MANUALE",
             task_title: task.titolo,
             target,
             recipients: [],
@@ -1381,6 +1390,26 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
             only_future: true,
           };
       setRuleDraft(nextDraft);
+      setRuleGlobal(
+        globalRule
+          ? {
+              ...nextDraft,
+              ...globalRule,
+              target: normalizeRuleTargetValue(globalRule.target || target),
+              checklist_id: null,
+            }
+          : null
+      );
+      setRuleOverride(
+        overrideRule
+          ? {
+              ...nextDraft,
+              ...overrideRule,
+              target: normalizeRuleTargetValue(overrideRule.target || target),
+              checklist_id: id ?? null,
+            }
+          : null
+      );
       setRuleRecipientsInput(nextDraft.recipients.join(", "));
     } catch (err: any) {
       setRuleError(err?.message || "Errore caricamento regola.");
@@ -1397,7 +1426,8 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
     setRuleError(null);
     setRuleLoading(false);
     setRuleSaving(false);
-    setRuleSendingNow(false);
+    setRuleGlobal(null);
+    setRuleOverride(null);
   }
 
   async function saveRuleSettings() {
@@ -1405,6 +1435,7 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
     const recipients = parseRecipientsInput(ruleRecipientsInput);
     const payload = {
       ...ruleDraft,
+      checklist_id: id || null,
       recipients,
       day_of_week: ruleDraft.frequency === "WEEKLY" ? ruleDraft.day_of_week ?? 1 : null,
     };
@@ -1423,8 +1454,9 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
       }
       const saved = json?.data;
       if (saved) {
-        setRuleDraft({
+        const nextRule: NotificationRule = {
           id: saved.id,
+          checklist_id: saved.checklist_id ?? (id || null),
           task_template_id: saved.task_template_id || payload.task_template_id || null,
           enabled: saved.enabled !== false,
           mode: saved.mode === "MANUALE" ? "MANUALE" : "AUTOMATICA",
@@ -1448,7 +1480,9 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
               ? saved.stop_statuses.map((x: any) => String(x || "").trim().toUpperCase())
               : ["OK", "NON_NECESSARIO"],
           only_future: saved.only_future !== false,
-        });
+        };
+        setRuleDraft(nextRule);
+        setRuleOverride(nextRule);
         setRuleRecipientsInput(
           Array.isArray(saved.recipients)
             ? saved.recipients
@@ -1466,30 +1500,36 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
     }
   }
 
-  async function sendRuleNow() {
-    if (!ruleDraft) return;
-    setRuleSendingNow(true);
+  async function resetRuleOverride() {
+    if (!ruleDraft || !id) return;
+    setRuleSaving(true);
     setRuleError(null);
     try {
-      const res = await fetch("/api/notifications/send-now", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
+      const query = new URLSearchParams({
+        checklist_id: id,
+        task_title: ruleDraft.task_title,
+        target: ruleDraft.target,
+      });
+      const res = await fetch(`/api/notification-rules?${query.toString()}`, {
+        method: "DELETE",
         credentials: "include",
-        body: JSON.stringify({
-          task_template_id: ruleDraft.task_template_id,
-          task_title: ruleDraft.task_title,
-          target: ruleDraft.target,
-        }),
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) {
-        throw new Error(json?.error || "Errore invio manuale.");
+        throw new Error(json?.error || "Errore ripristino default.");
       }
-      showToast(`Invio manuale completato (${json?.emails_sent ?? 0} email)`, "success");
+      setRuleOverride(null);
+      if (ruleGlobal) {
+        setRuleDraft({ ...ruleGlobal, checklist_id: id });
+        setRuleRecipientsInput((ruleGlobal.recipients || []).join(", "));
+      } else {
+        setRuleDraft((prev) => (prev ? { ...prev, id: undefined } : prev));
+      }
+      showToast("Override rimosso: ora usa regola globale/default", "success");
     } catch (err: any) {
-      setRuleError(err?.message || "Errore invio manuale.");
+      setRuleError(err?.message || "Errore ripristino default.");
     } finally {
-      setRuleSendingNow(false);
+      setRuleSaving(false);
     }
   }
 
@@ -4762,6 +4802,8 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
                 <>
                   <br />
                   Target: <strong>{ruleDraft.target}</strong>
+                  <br />
+                  Regola effettiva: <strong>{ruleOverride ? "OVERRIDE PROGETTO" : ruleGlobal ? "GLOBALE" : "DEFAULT"}</strong>
                 </>
               ) : null}
             </div>
@@ -4813,6 +4855,26 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
                     value={ruleRecipientsInput}
                     onChange={(e) => setRuleRecipientsInput(e.target.value)}
                     rows={3}
+                    style={{ width: "100%", padding: 8 }}
+                  />
+                </label>
+                <label style={{ display: "block", marginTop: 10 }}>
+                  Stop statuses (comma separated)<br />
+                  <input
+                    value={ruleDraft.stop_statuses.join(",")}
+                    onChange={(e) =>
+                      setRuleDraft((prev) =>
+                        prev
+                          ? {
+                              ...prev,
+                              stop_statuses: e.target.value
+                                .split(",")
+                                .map((s) => s.trim().toUpperCase())
+                                .filter(Boolean),
+                            }
+                          : prev
+                      )
+                    }
                     style={{ width: "100%", padding: 8 }}
                   />
                 </label>
@@ -4918,21 +4980,21 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
                   >
                     Chiudi
                   </button>
-                  {ruleDraft.mode === "MANUALE" && (
+                  {ruleOverride && (
                     <button
                       type="button"
-                      onClick={sendRuleNow}
-                      disabled={ruleSendingNow}
+                      onClick={resetRuleOverride}
+                      disabled={ruleSaving}
                       style={{
                         padding: "8px 12px",
                         borderRadius: 8,
-                        border: "1px solid #2563eb",
-                        background: "#2563eb",
-                        color: "white",
-                        opacity: ruleSendingNow ? 0.7 : 1,
+                        border: "1px solid #b91c1c",
+                        background: "white",
+                        color: "#b91c1c",
+                        opacity: ruleSaving ? 0.7 : 1,
                       }}
                     >
-                      {ruleSendingNow ? "Invio..." : "Invia ora"}
+                      Ripristina default
                     </button>
                   )}
                   <button
@@ -4948,7 +5010,7 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
                       opacity: ruleSaving ? 0.7 : 1,
                     }}
                   >
-                    {ruleSaving ? "Salvataggio..." : "Salva"}
+                    {ruleSaving ? "Salvataggio..." : "Salva override progetto"}
                   </button>
                 </div>
               </>
