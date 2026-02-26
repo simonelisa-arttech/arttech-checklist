@@ -118,6 +118,16 @@ type Licenza = {
   created_at: string | null;
 };
 
+type Tagliando = {
+  id: string;
+  checklist_id: string;
+  scadenza: string | null;
+  stato: string | null;
+  modalita: string | null;
+  note: string | null;
+  created_at: string | null;
+};
+
 type NewLicenza = {
   tipo: string;
   scadenza: string;
@@ -586,6 +596,7 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
   const [deviceCatalogItems, setDeviceCatalogItems] = useState<CatalogItem[]>([]);
   const [catalogLoaded, setCatalogLoaded] = useState(false);
   const [licenze, setLicenze] = useState<Licenza[]>([]);
+  const [projectTagliandi, setProjectTagliandi] = useState<Tagliando[]>([]);
   const [newLicenza, setNewLicenza] = useState<NewLicenza>({
     tipo: "",
     scadenza: "",
@@ -1106,6 +1117,18 @@ function buildFormData(c: Checklist): FormData {
       return;
     }
 
+    const { data: tagliandiData, error: tagliandiErr } = await supabase
+      .from("tagliandi")
+      .select("id, checklist_id, scadenza, stato, modalita, note, created_at")
+      .eq("checklist_id", id)
+      .order("scadenza", { ascending: true });
+
+    if (tagliandiErr) {
+      setError("Errore caricamento tagliandi: " + tagliandiErr.message);
+      setLoading(false);
+      return;
+    }
+
     const { data: docsData, error: docsErr } = await supabase
       .from("checklist_documents")
       .select(
@@ -1274,6 +1297,7 @@ function buildFormData(c: Checklist): FormData {
     setOriginalRowIds((items || []).map((r) => r.id));
     setTasks((tasks || []) as unknown as ChecklistTask[]);
     setLicenze((licenzeData || []) as Licenza[]);
+    setProjectTagliandi((tagliandiData || []) as Tagliando[]);
     setDocuments((docsData || []) as ChecklistDocument[]);
     setTaskDocuments(taskDocsData as ChecklistTaskDocument[]);
     setAssetSerials((serialsData || []) as AssetSerial[]);
@@ -3735,6 +3759,109 @@ function buildFormData(c: Checklist): FormData {
           </div>
         </div>
       )}
+      <div style={{ marginTop: 12 }}>
+        <div
+          style={{
+            border: "1px solid #eee",
+            borderRadius: 12,
+            padding: 12,
+            background: "white",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+            <div style={{ fontWeight: 800 }}>Scadenze &amp; Rinnovi (progetto)</div>
+            {checklist?.cliente ? (
+              <Link
+                href={`/clienti/${encodeURIComponent(checklist.cliente)}`}
+                style={{ fontSize: 12, color: "#2563eb", textDecoration: "underline" }}
+              >
+                Apri gestione completa in scheda cliente
+              </Link>
+            ) : null}
+          </div>
+          <div style={{ border: "1px solid #f1f5f9", borderRadius: 10, overflow: "hidden" }}>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "120px 1.3fr 130px 130px 130px",
+                gap: 8,
+                padding: "10px 12px",
+                fontWeight: 700,
+                background: "#fafafa",
+                borderBottom: "1px solid #eee",
+                fontSize: 12,
+              }}
+            >
+              <div>Tipo</div>
+              <div>Riferimento</div>
+              <div>Scadenza</div>
+              <div>Stato</div>
+              <div>Modalità</div>
+            </div>
+            {[
+              ...(checklist?.saas_piano
+                ? [
+                    {
+                      key: "SAAS",
+                      tipo: "SAAS",
+                      riferimento: checklist.saas_piano || "—",
+                      scadenza: checklist.saas_scadenza || null,
+                      stato: checklist.saas_stato || "DA_AVVISARE",
+                      modalita: "—",
+                    },
+                  ]
+                : []),
+              ...(checklist?.garanzia_scadenza
+                ? [
+                    {
+                      key: "GARANZIA",
+                      tipo: "GARANZIA",
+                      riferimento: "Garanzia impianto",
+                      scadenza: checklist.garanzia_scadenza || null,
+                      stato: "DA_AVVISARE",
+                      modalita: "—",
+                    },
+                  ]
+                : []),
+              ...licenze.map((l) => ({
+                key: `LIC-${l.id}`,
+                tipo: "LICENZA",
+                riferimento: l.tipo || "—",
+                scadenza: l.scadenza || null,
+                stato: l.stato || "ATTIVA",
+                modalita: "—",
+              })),
+              ...projectTagliandi.map((t) => ({
+                key: `TAG-${t.id}`,
+                tipo: "TAGLIANDO",
+                riferimento: t.note || "Tagliando periodico",
+                scadenza: t.scadenza || null,
+                stato: t.stato || "ATTIVA",
+                modalita: t.modalita || "—",
+              })),
+            ].map((r) => (
+              <div
+                key={r.key}
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "120px 1.3fr 130px 130px 130px",
+                  gap: 8,
+                  padding: "10px 12px",
+                  borderBottom: "1px solid #f3f4f6",
+                  fontSize: 12,
+                  alignItems: "center",
+                }}
+              >
+                <div>{r.tipo}</div>
+                <div>{r.riferimento}</div>
+                <div>{r.scadenza ? new Date(r.scadenza).toLocaleDateString() : "—"}</div>
+                <div>{renderBadge(String(r.stato || "—").toUpperCase())}</div>
+                <div>{r.modalita}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
       <div style={{ marginTop: 12 }}>
         <div
           style={{

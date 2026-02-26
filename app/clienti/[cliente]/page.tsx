@@ -3023,13 +3023,13 @@ export default function ClientePage({ params }: { params: any }) {
 
   function getAlertRecipients() {
     return alertOperatori.filter(
-      (o) => o.attivo !== false && String(o.email || "").includes("@")
+      (o) => o.attivo !== false
     );
   }
 
   function getFatturaAlertRecipients() {
     return alertOperatori.filter(
-      (o) => o.attivo !== false && String(o.email || "").includes("@")
+      (o) => o.attivo !== false
     );
   }
 
@@ -3326,7 +3326,15 @@ export default function ClientePage({ params }: { params: any }) {
     "NON_RINNOVATO",
     "ANNULLATO",
   ];
-  const TAGLIANDO_STATI = ["DA_AVVISARE", "AVVISATO", "OK", "SCADUTO", "DA_FATTURARE", "FATTURATO"];
+  const TAGLIANDO_STATI = [
+    "DA_AVVISARE",
+    "AVVISATO",
+    "CONFERMATO",
+    "DA_FATTURARE",
+    "FATTURATO",
+    "NON_RINNOVATO",
+    "SCADUTO",
+  ];
   const RINNOVO_STATI = ["DA_AVVISARE", "AVVISATO", "CONFERMATO", "DA_FATTURARE", "FATTURATO", "NON_RINNOVATO"];
   const TAGLIANDO_MODALITA = ["INCLUSO", "EXTRA", "AUTORIZZATO_CLIENTE"];
   const FATTURAZIONE_MENU_OPTIONS = [
@@ -3372,7 +3380,7 @@ export default function ClientePage({ params }: { params: any }) {
         ...form,
         tipo: "TAGLIANDO",
         scadenza: t?.scadenza ?? r.scadenza ?? "",
-        stato: String(t?.stato || r.stato || "").toUpperCase(),
+        stato: getWorkflowStato(r),
         modalita: String(t?.modalita || r.modalita || ""),
         note: t?.note ?? "",
       };
@@ -3479,23 +3487,36 @@ export default function ClientePage({ params }: { params: any }) {
           )
         );
       } else if (editScadenzaForm.tipo === "TAGLIANDO") {
-        const { error } = await supabase
-          .from("tagliandi")
-          .update({
-            scadenza: editScadenzaForm.scadenza || null,
-            stato: editScadenzaForm.stato || null,
-            modalita: editScadenzaForm.modalita || null,
-            note: editScadenzaForm.note || null,
-          })
-          .eq("id", editScadenzaItem.id);
-        if (error) throw new Error(error.message);
+        const workflowStato = String(editScadenzaForm.stato || "").toUpperCase();
+        const dbStato =
+          workflowStato === "FATTURATO"
+            ? "FATTURATO"
+            : workflowStato === "NON_RINNOVATO" || workflowStato === "SCADUTO"
+            ? "SCADUTO"
+            : "ATTIVA";
+        const okTag = await updateTagliando(editScadenzaItem.id, {
+          scadenza: editScadenzaForm.scadenza || null,
+          stato: dbStato,
+          modalita: editScadenzaForm.modalita || null,
+          note: editScadenzaForm.note || null,
+        });
+        if (!okTag) throw new Error("Errore aggiornamento tagliando");
+        if (workflowStato) {
+          await setTagliandoWorkflow(
+            {
+              ...editScadenzaItem,
+              scadenza: editScadenzaForm.scadenza || editScadenzaItem.scadenza || null,
+            },
+            workflowStato
+          );
+        }
         setTagliandi((prev) =>
           prev.map((t) =>
             t.id === editScadenzaItem.id
               ? {
                   ...t,
                   scadenza: editScadenzaForm.scadenza || null,
-                  stato: editScadenzaForm.stato || null,
+                  stato: dbStato,
                   modalita: editScadenzaForm.modalita || null,
                   note: editScadenzaForm.note || null,
                 }
@@ -4155,30 +4176,42 @@ export default function ClientePage({ params }: { params: any }) {
     return true;
   }
 
+  async function setTagliandoWorkflow(r: ScadenzaItem, stato: string) {
+    const existing = await ensureRinnovoForItem(r);
+    if (!existing) return false;
+    const ok = await updateRinnovo(existing.id, { stato });
+    if (ok) {
+      await fetchRinnovi((cliente || "").trim());
+    }
+    return ok;
+  }
+
   async function markTagliandoOk(r: ScadenzaItem) {
     const nextScadenza = promptNextScadenza(r.scadenza ?? null, "TAGLIANDO");
     if (!nextScadenza) return;
-    const ok = await updateTagliando(r.id, { stato: "DA_FATTURARE", scadenza: nextScadenza });
+    const ok = await updateTagliando(r.id, { stato: "ATTIVA", scadenza: nextScadenza });
     if (ok) {
       setTagliandi((prev) =>
-        prev.map((t) => (t.id === r.id ? { ...t, scadenza: nextScadenza, stato: "DA_FATTURARE" } : t))
+        prev.map((t) => (t.id === r.id ? { ...t, scadenza: nextScadenza, stato: "ATTIVA" } : t))
       );
-      setRinnoviNotice("Tagliando confermato: DA_FATTURARE.");
+      await setTagliandoWorkflow({ ...r, scadenza: nextScadenza }, "CONFERMATO");
+      setRinnoviNotice("Tagliando confermato.");
       await fetchTagliandi((cliente || "").trim());
     }
   }
 
   async function markTagliandoDaFatturare(r: ScadenzaItem) {
-    const ok = await updateTagliando(r.id, { stato: "DA_FATTURARE" });
+    const ok = await setTagliandoWorkflow(r, "DA_FATTURARE");
     if (ok) {
       setRinnoviNotice("Tagliando segnato DA_FATTURARE.");
       await fetchTagliandi((cliente || "").trim());
-      openRinnoviAlert("stage2", false, [r]);
     }
   }
 
   async function markTagliandoFatturato(r: ScadenzaItem) {
-    const ok = await updateTagliando(r.id, { stato: "FATTURATO" });
+    const okTag = await updateTagliando(r.id, { stato: "FATTURATO" });
+    if (!okTag) return;
+    const ok = await setTagliandoWorkflow(r, "FATTURATO");
     if (ok) {
       setRinnoviNotice("Tagliando fatturato.");
       await fetchTagliandi((cliente || "").trim());
@@ -4368,6 +4401,10 @@ export default function ClientePage({ params }: { params: any }) {
 
   function getWorkflowStato(r: ScadenzaItem) {
     const tipo = String(r.item_tipo || "").toUpperCase();
+    if (r.source === "tagliandi") {
+      const match = getRinnovoMatch(r);
+      if (match?.stato) return String(match.stato).toUpperCase();
+    }
     if (tipo === "SAAS" || tipo === "GARANZIA" || tipo === "SAAS_ULTRA") {
       const match = getRinnovoMatch(r);
       return String(match?.stato || "DA_AVVISARE").toUpperCase();
@@ -5913,16 +5950,14 @@ ${rinnovi30ggBreakdown.debugSample
                   : !["CONFERMATO", "DA_FATTURARE", "FATTURATO", "NON_RINNOVATO"].includes(stato)
                 : false;
             const canStage2 = actions.fattura
-                ? isTagliando
-                  ? stato === "DA_FATTURARE" || stato === "OK"
-                  : stato === "CONFERMATO" || stato === "DA_FATTURARE"
+                ? !["FATTURATO", "NON_RINNOVATO", "SCADUTO"].includes(stato)
                 : false;
             const canNonRinnovato = actions.non_rinnovato
                 ? isTagliando
                   ? !["FATTURATO", "SCADUTO"].includes(stato)
                   : !["FATTURATO", "NON_RINNOVATO"].includes(stato)
                 : false;
-            const canFatturato = actions.fattura ? (isTagliando ? stato === "DA_FATTURARE" : stato === "DA_FATTURARE") : false;
+            const canFatturato = actions.fattura ? stato === "DA_FATTURARE" : false;
             const alertStats = alertStatsMap.get(getAlertKeyForRow(r)) || null;
             const lastSent = alertStats?.last_sent_at
               ? new Date(alertStats.last_sent_at).toLocaleString()
@@ -6057,7 +6092,7 @@ ${rinnovi30ggBreakdown.debugSample
                           data-testid="set-status-DA_FATTURARE"
                           onClick={() => {
                             if (stato === "DA_FATTURARE") {
-                              openRinnoviAlert("stage2", false, [r]);
+                              setRinnoviNotice("Riga già in stato DA_FATTURARE.");
                             } else {
                               if (isTagliando) {
                                 markTagliandoDaFatturare(r);
@@ -6071,8 +6106,8 @@ ${rinnovi30ggBreakdown.debugSample
                           disabled={!canStage2}
                           title={
                             canStage2
-                              ? "Invia admin (stage2)"
-                              : "Disponibile solo dopo CONFERMATO"
+                              ? "Segna DA_FATTURARE"
+                              : "Non disponibile per lo stato corrente"
                           }
                           style={{
                             padding: "4px 8px",
@@ -6087,27 +6122,41 @@ ${rinnovi30ggBreakdown.debugSample
                             textAlign: "center",
                           }}
                         >
-                          Invia admin
+                          DA_FATTURARE
                         </button>
                       )}
-                      <button
-                        type="button"
-                        data-testid="edit-expiry-btn"
-                        onClick={() => openEditScadenza(r)}
-                        style={{
-                          padding: "3px 6px",
-                          width: 110,
-                          borderRadius: 6,
-                          border: "1px solid #111",
-                          background: "white",
-                          cursor: "pointer",
-                          fontSize: 11,
-                          fontWeight: 700,
-                          textAlign: "center",
-                        }}
-                      >
-                        Modifica
-                      </button>
+                      {actions.fattura && (
+                        <button
+                          type="button"
+                          data-testid="set-status-FATTURATO"
+                          onClick={() =>
+                            isTagliando
+                              ? markTagliandoFatturato(r)
+                              : isLicenza
+                              ? markLicenzaFatturato(r)
+                              : markRinnovoFatturato(r as RinnovoServizioRow)
+                          }
+                          disabled={!canFatturato}
+                          title={
+                            canFatturato
+                              ? "Segna come FATTURATO"
+                              : "Disponibile solo per stato DA_FATTURARE"
+                          }
+                          style={{
+                            padding: "3px 6px",
+                            width: 110,
+                            borderRadius: 6,
+                            border: "1px solid #ddd",
+                            background: "#f9fafb",
+                            cursor: canFatturato ? "pointer" : "not-allowed",
+                            fontSize: 11,
+                            opacity: canFatturato ? 1 : 0.5,
+                            textAlign: "center",
+                          }}
+                        >
+                          FATTURATO
+                        </button>
+                      )}
                     </div>
                     )}
                     {actions.conferma || actions.non_rinnovato || actions.fattura ? (
@@ -6180,38 +6229,24 @@ ${rinnovi30ggBreakdown.debugSample
                           NON_RINNOVATO
                         </button>
                       )}
-                      {actions.fattura && (
-                        <button
-                          type="button"
-                          data-testid="set-status-FATTURATO"
-                          onClick={() =>
-                            isTagliando
-                              ? markTagliandoFatturato(r)
-                              : isLicenza
-                              ? markLicenzaFatturato(r)
-                              : markRinnovoFatturato(r as RinnovoServizioRow)
-                          }
-                          disabled={!canFatturato}
-                          title={
-                            canFatturato
-                              ? "Segna come FATTURATO"
-                              : "Disponibile solo per stato DA_FATTURARE"
-                          }
-                          style={{
-                            padding: "3px 6px",
-                            width: 110,
-                            borderRadius: 6,
-                            border: "1px solid #ddd",
-                            background: "#f9fafb",
-                            cursor: canFatturato ? "pointer" : "not-allowed",
-                            fontSize: 11,
-                            opacity: canFatturato ? 1 : 0.5,
-                            textAlign: "center",
-                          }}
-                        >
-                          FATTURATO
-                        </button>
-                      )}
+                      <button
+                        type="button"
+                        data-testid="edit-expiry-btn"
+                        onClick={() => openEditScadenza(r)}
+                        style={{
+                          padding: "3px 6px",
+                          width: 110,
+                          borderRadius: 6,
+                          border: "1px solid #111",
+                          background: "white",
+                          cursor: "pointer",
+                          fontSize: 11,
+                          fontWeight: 700,
+                          textAlign: "center",
+                        }}
+                      >
+                        Modifica
+                      </button>
                     </div>
                     ) : null}
                     {isExpiryOnly && (
@@ -7532,7 +7567,7 @@ ${rinnovi30ggBreakdown.debugSample
               </label>
               {getAlertRecipients().length === 0 && (
                 <div style={{ marginTop: -6, marginBottom: 10, fontSize: 12, color: "#b91c1c" }}>
-                  Nessun operatore attivo con email valida
+                  Nessun operatore attivo disponibile
                 </div>
               )}
               <label style={{ display: "block", marginBottom: 10 }}>
@@ -8162,7 +8197,7 @@ ${rinnovi30ggBreakdown.debugSample
               </label>
               {getFatturaAlertRecipients().length === 0 && (
                 <div style={{ marginTop: -6, marginBottom: 10, fontSize: 12, color: "#b91c1c" }}>
-                  Nessun operatore attivo con email valida
+                  Nessun operatore attivo disponibile
                 </div>
               )}
               <label style={{ display: "block", marginBottom: 10 }}>
@@ -8416,13 +8451,11 @@ ${rinnovi30ggBreakdown.debugSample
                     style={{ width: "100%", padding: 8 }}
                   >
                     <option value="">—</option>
-                    {alertOperatori
-                      .filter((o) => o.attivo !== false && String(o.email || "").includes("@"))
-                      .map((op) => (
+                    {getAlertRecipients().map((op) => (
                         <option key={op.id} value={op.id}>
                           {op.nome ?? "—"}
                           {op.ruolo ? ` — ${op.ruolo}` : ""}
-                          {op.email ? ` — ${op.email}` : ""}
+                          {op.email ? ` — ${op.email}` : " — (senza email)"}
                         </option>
                       ))}
                   </select>
