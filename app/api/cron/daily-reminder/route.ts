@@ -27,7 +27,6 @@ type RuleRow = {
   mode: string | null;
   frequency: string | null;
   day_of_week: number | null;
-  task_template_id: string | null;
   task_title: string | null;
   target: string | null;
   recipients: any;
@@ -244,15 +243,15 @@ export async function GET(req: Request) {
   const baseUrl = getBaseUrl(req);
 
   const selectWithDay =
-    "id, enabled, mode, frequency, day_of_week, checklist_id, task_template_id, task_title, target, recipients, send_time, timezone, stop_statuses, only_future, last_sent_on";
+    "id, enabled, mode, frequency, day_of_week, checklist_id, task_title, target, recipients, send_time, timezone, stop_statuses, only_future, last_sent_on";
   const selectFallback =
-    "id, enabled, mode, frequency, checklist_id, task_template_id, task_title, target, recipients, send_time, timezone, stop_statuses, only_future, last_sent_on";
+    "id, enabled, mode, frequency, checklist_id, task_title, target, recipients, send_time, timezone, stop_statuses, only_future, last_sent_on";
   const selectFallbackNoTemplate =
     "id, enabled, mode, frequency, checklist_id, task_title, target, recipients, send_time, timezone, stop_statuses, only_future, last_sent_on";
   const selectWithDayNoLastSent =
-    "id, enabled, mode, frequency, day_of_week, checklist_id, task_template_id, task_title, target, recipients, send_time, timezone, stop_statuses, only_future";
+    "id, enabled, mode, frequency, day_of_week, checklist_id, task_title, target, recipients, send_time, timezone, stop_statuses, only_future";
   const selectFallbackNoLastSent =
-    "id, enabled, mode, frequency, checklist_id, task_template_id, task_title, target, recipients, send_time, timezone, stop_statuses, only_future";
+    "id, enabled, mode, frequency, checklist_id, task_title, target, recipients, send_time, timezone, stop_statuses, only_future";
   const selectFallbackNoTemplateNoLastSent =
     "id, enabled, mode, frequency, checklist_id, task_title, target, recipients, send_time, timezone, stop_statuses, only_future";
 
@@ -297,7 +296,6 @@ export async function GET(req: Request) {
         rulesRaw = rulesRaw.map((r: any) => ({
           ...r,
           day_of_week: null,
-          task_template_id: null,
           checklist_id: null,
           last_sent_on: null,
         }));
@@ -307,7 +305,7 @@ export async function GET(req: Request) {
     const fallbackNoChecklistRes = await supabase
       .from("notification_rules")
       .select(
-        "id, enabled, mode, frequency, task_template_id, task_title, target, recipients, send_time, timezone, stop_statuses, only_future, last_sent_on"
+        "id, enabled, mode, frequency, task_title, target, recipients, send_time, timezone, stop_statuses, only_future, last_sent_on"
       )
       .eq("enabled", true)
       .eq("mode", "AUTOMATICA");
@@ -382,7 +380,7 @@ export async function GET(req: Request) {
   {
     const { data: overrideRows, error: overrideErr } = await supabase
       .from("notification_rules")
-      .select("checklist_id, target, task_title, task_template_id")
+      .select("checklist_id, target, task_title")
       .not("checklist_id", "is", null);
     if (overrideErr && !String(overrideErr.message || "").toLowerCase().includes("checklist_id")) {
       return NextResponse.json({ error: overrideErr.message }, { status: 500 });
@@ -392,8 +390,7 @@ export async function GET(req: Request) {
       if (!checklistId) continue;
       const rowTarget = String((row as any).target || "").trim().toUpperCase();
       const rowTitle = String((row as any).task_title || "").trim();
-      const rowTemplate = String((row as any).task_template_id || "").trim();
-      allOverrides.add(`${checklistId}|${rowTarget}|${rowTitle}|${rowTemplate}`);
+      allOverrides.add(`${checklistId}|${rowTarget}|${rowTitle}`);
     }
   }
 
@@ -477,12 +474,11 @@ export async function GET(req: Request) {
       const overrideChecklistIds = new Set(
         Array.from(allOverrides)
           .filter((k) => {
-            const [checklistId, rowTarget, rowTitle, rowTemplate] = k.split("|");
+            const [checklistId, rowTarget, rowTitle] = k.split("|");
             return (
               Boolean(checklistId) &&
               rowTarget === target &&
-              rowTitle === taskTitle &&
-              rowTemplate === taskTemplateId
+              rowTitle === taskTitle
             );
           })
           .map((k) => k.split("|")[0])
