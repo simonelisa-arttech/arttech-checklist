@@ -36,6 +36,14 @@ type RuleRow = {
   last_sent_on: string | null;
 };
 
+type OperatoreRow = {
+  email: string | null;
+  ruolo: string | null;
+  attivo: boolean | null;
+  riceve_notifiche?: boolean | null;
+  alert_enabled?: boolean | null;
+};
+
 function getBaseUrl(req: Request) {
   const env =
     process.env.NEXT_PUBLIC_SITE_URL ||
@@ -141,6 +149,48 @@ function parseRecipients(input: any) {
       .filter((v) => v.includes("@"));
   }
   return [];
+}
+
+function normalizeTarget(value: string | null | undefined) {
+  const raw = String(value || "")
+    .trim()
+    .toUpperCase();
+  if (raw === "TECNICO SW" || raw === "TECNICO-SW") return "TECNICO_SW";
+  if (raw === "ALTRO") return "GENERICA";
+  return raw || "GENERICA";
+}
+
+async function listOperatoriForNotifications(supabase: any): Promise<OperatoreRow[]> {
+  const withRiceve = await supabase
+    .from("operatori")
+    .select("email, ruolo, attivo, riceve_notifiche")
+    .eq("attivo", true);
+  if (!withRiceve.error) return (withRiceve.data || []) as OperatoreRow[];
+  if (!String(withRiceve.error.message || "").toLowerCase().includes("riceve_notifiche")) {
+    throw new Error(withRiceve.error.message);
+  }
+  const fallback = await supabase
+    .from("operatori")
+    .select("email, ruolo, attivo, alert_enabled")
+    .eq("attivo", true);
+  if (fallback.error) throw new Error(fallback.error.message);
+  return ((fallback.data || []) as OperatoreRow[]).map((o) => ({
+    ...o,
+    riceve_notifiche: o.alert_enabled !== false,
+  }));
+}
+
+function getAutoRecipients(target: string, operatori: OperatoreRow[]) {
+  const normalizedTarget = normalizeTarget(target);
+  return Array.from(
+    new Set(
+      operatori
+        .filter((o) => o.riceve_notifiche !== false)
+        .filter((o) => normalizeTarget(o.ruolo) === normalizedTarget)
+        .map((o) => String(o.email || "").trim().toLowerCase())
+        .filter((email) => email.includes("@"))
+    )
+  );
 }
 
 function escapeHtml(value: string) {
@@ -337,6 +387,13 @@ export async function GET(req: Request) {
     return NextResponse.json({ error: checklistErr.message }, { status: 500 });
   }
 
+  let operatori: OperatoreRow[] = [];
+  try {
+    operatori = await listOperatoriForNotifications(supabase);
+  } catch (err: any) {
+    return NextResponse.json({ error: err?.message || "Errore caricamento operatori" }, { status: 500 });
+  }
+
   const allChecklists = (checklistRaw || []) as ChecklistRow[];
   const futureChecklistsSet = new Set<string>();
   for (const c of allChecklists) {
@@ -361,6 +418,9 @@ export async function GET(req: Request) {
     target: string;
     task_title: string;
     recipients: string[];
+    auto_recipients_count: number;
+    extra_recipients_count: number;
+    effective_recipients: string[];
     allowed_checklists: number;
     tasks_found: number;
     open_tasks: number;
@@ -397,6 +457,9 @@ export async function GET(req: Request) {
       target,
       task_title: effectiveTaskTitle,
       recipients: [] as string[],
+      auto_recipients_count: 0,
+      extra_recipients_count: 0,
+      effective_recipients: [] as string[],
       allowed_checklists: 0,
       tasks_found: 0,
       open_tasks: 0,
@@ -431,8 +494,13 @@ export async function GET(req: Request) {
       continue;
     }
 
-    const recipients = parseRecipients(rule.recipients);
+    const extraRecipients = parseRecipients(rule.recipients);
+    const autoRecipients = getAutoRecipients(target, operatori);
+    const recipients = Array.from(new Set([...autoRecipients, ...extraRecipients]));
     ruleDbg.recipients = recipients;
+    ruleDbg.auto_recipients_count = autoRecipients.length;
+    ruleDbg.extra_recipients_count = extraRecipients.length;
+    ruleDbg.effective_recipients = recipients.slice(0, 10);
     if (recipients.length === 0) {
       skippedNoRecipients += 1;
       if (debugMode) {

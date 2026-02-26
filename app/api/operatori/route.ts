@@ -10,6 +10,7 @@ type OperatorePayload = {
   email: string | null;
   attivo: boolean;
   alert_enabled: boolean;
+  riceve_notifiche?: boolean;
   alert_tasks: {
     task_template_ids: string[];
     all_task_status_change: boolean;
@@ -82,11 +83,20 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Missing SUPABASE_SERVICE_ROLE_KEY" }, { status: 500 });
   }
 
-  const { data, error } = await supabase
+  let { data, error } = await supabase
     .from("operatori")
-    .select("id, user_id, nome, ruolo, email, attivo, alert_enabled, alert_tasks")
+    .select("id, user_id, nome, ruolo, email, attivo, alert_enabled, riceve_notifiche, alert_tasks")
     .order("ruolo", { ascending: true })
     .order("nome", { ascending: true });
+  if (error && String(error.message || "").toLowerCase().includes("riceve_notifiche")) {
+    const fallback = await supabase
+      .from("operatori")
+      .select("id, user_id, nome, ruolo, email, attivo, alert_enabled, alert_tasks")
+      .order("ruolo", { ascending: true })
+      .order("nome", { ascending: true });
+    data = (fallback.data || []).map((r: any) => ({ ...r, riceve_notifiche: r.alert_enabled !== false }));
+    error = fallback.error as any;
+  }
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
@@ -109,11 +119,21 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
 
-  const { data, error } = await supabase
+  const payload: any = {
+    ...body,
+    riceve_notifiche: body.riceve_notifiche !== false,
+  };
+  let { data, error } = await supabase
     .from("operatori")
-    .insert(body)
+    .insert(payload)
     .select("id")
     .single();
+  if (error && String(error.message || "").toLowerCase().includes("riceve_notifiche")) {
+    delete payload.riceve_notifiche;
+    const fallback = await supabase.from("operatori").insert(payload).select("id").single();
+    data = fallback.data;
+    error = fallback.error as any;
+  }
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
@@ -139,7 +159,14 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ error: "Missing id" }, { status: 400 });
   }
 
-  const { error } = await supabase.from("operatori").update(body).eq("id", body.id);
+  const payload: any = { ...body };
+  if (payload.riceve_notifiche === undefined) payload.riceve_notifiche = true;
+  let { error } = await supabase.from("operatori").update(payload).eq("id", body.id);
+  if (error && String(error.message || "").toLowerCase().includes("riceve_notifiche")) {
+    delete payload.riceve_notifiche;
+    const fallback = await supabase.from("operatori").update(payload).eq("id", body.id);
+    error = fallback.error as any;
+  }
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }

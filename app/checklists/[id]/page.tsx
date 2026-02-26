@@ -226,7 +226,7 @@ type NotificationRule = {
   mode: "AUTOMATICA" | "MANUALE";
   task_title: string;
   target: string;
-  recipients: string[];
+  recipients: string[]; // extra recipients only
   frequency: "DAILY" | "WEEKDAYS" | "WEEKLY";
   send_time: string;
   timezone: string;
@@ -261,6 +261,11 @@ function normalizeRuleTargetValue(value?: string | null): string {
   return raw;
 }
 
+function isSameClienteOperator(checklistCliente?: string | null, operatoreCliente?: string | null) {
+  if (!checklistCliente || !operatoreCliente) return true;
+  return String(checklistCliente).trim() === String(operatoreCliente).trim();
+}
+
 function isFiniteNumberString(v: string) {
   if (v.trim() === "") return false;
   const n = Number(v);
@@ -277,6 +282,24 @@ function parseNum(v: any): number | null {
   if (!s) return null;
   const n = Number(s);
   return Number.isFinite(n) ? n : null;
+}
+
+function getImpiantoSelectValue(
+  options: CatalogItem[],
+  codice: string,
+  descrizione: string
+) {
+  const code = String(codice || "").trim();
+  const desc = String(descrizione || "").trim();
+  if (!code) return "";
+  const exact = options.find(
+    (i) =>
+      String(i.codice || "").trim() === code &&
+      String(i.descrizione || "").trim() === desc
+  );
+  if (exact?.id) return exact.id;
+  const byCode = options.find((i) => String(i.codice || "").trim() === code);
+  return byCode?.id || "";
 }
 
 function taskStyle(stato: string) {
@@ -584,6 +607,8 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
   const [ruleTask, setRuleTask] = useState<ChecklistTask | null>(null);
   const [ruleDraft, setRuleDraft] = useState<NotificationRule | null>(null);
   const [ruleRecipientsInput, setRuleRecipientsInput] = useState("");
+  const [ruleAutoRecipients, setRuleAutoRecipients] = useState<string[]>([]);
+  const [ruleEffectiveRecipients, setRuleEffectiveRecipients] = useState<string[]>([]);
   const [ruleLoading, setRuleLoading] = useState(false);
   const [ruleSaving, setRuleSaving] = useState(false);
   const [ruleGlobal, setRuleGlobal] = useState<NotificationRule | null>(null);
@@ -1144,15 +1169,27 @@ function buildFormData(c: Checklist): FormData {
 
   function getEligibleOperatori(task: ChecklistTask | null) {
     if (!task) return [];
-    return alertOperatori.filter((o) => {
-      if (!o.attivo || !o.alert_enabled) return false;
-      if (checklist?.cliente && o.cliente && String(o.cliente).trim() !== String(checklist.cliente).trim()) {
-        return false;
-      }
+    const taskTarget = normalizeRuleTargetValue(task.target);
+    const strict = alertOperatori.filter((o) => {
+      if (!o.attivo) return false;
+      if (!isSameClienteOperator(checklist?.cliente, o.cliente)) return false;
+      const roleTarget = normalizeRuleTargetValue(o.ruolo);
+      if (taskTarget !== "GENERICA" && roleTarget === taskTarget) return true;
+      if (!o.alert_enabled) return false;
       if (o.alert_tasks?.all_task_status_change) return true;
       if (!task.task_template_id) return true;
       return o.alert_tasks?.task_template_ids?.includes(task.task_template_id);
     });
+    if (strict.length > 0) return strict;
+
+    const fallback = alertOperatori.filter((o) => {
+      if (!o.attivo) return false;
+      if (!isSameClienteOperator(checklist?.cliente, o.cliente)) return false;
+      if (taskTarget === "GENERICA") return true;
+      const roleTarget = normalizeRuleTargetValue(o.ruolo);
+      return roleTarget === taskTarget;
+    });
+    return fallback;
   }
 
   async function handleSendAlert() {
@@ -1320,14 +1357,10 @@ function buildFormData(c: Checklist): FormData {
   }
 
   function parseRecipientsInput(input: string) {
-    return Array.from(
-      new Set(
-        input
-          .split(/[\n,;]+/)
-          .map((s) => s.trim().toLowerCase())
-          .filter((s) => s.includes("@"))
-      )
-    );
+    return input
+      .split(/[\n,;]+/)
+      .map((s) => s.trim())
+      .filter(Boolean);
   }
 
   async function openRuleSettings(task: ChecklistTask) {
@@ -1365,8 +1398,10 @@ function buildFormData(c: Checklist): FormData {
             mode: row.mode === "MANUALE" ? "MANUALE" : "AUTOMATICA",
             task_title: row.task_title || task.titolo,
             target: normalizeRuleTargetValue(row.target || target),
-            recipients: Array.isArray(row.recipients)
-              ? row.recipients.map((x: any) => String(x || "").trim().toLowerCase()).filter((x: string) => x.includes("@"))
+            recipients: Array.isArray(row.extra_recipients)
+              ? row.extra_recipients
+                  .map((x: any) => String(x || "").trim().toLowerCase())
+                  .filter((x: string) => x.includes("@"))
               : [],
             frequency:
               row.frequency === "WEEKLY" || row.frequency === "WEEKDAYS"
@@ -1419,6 +1454,20 @@ function buildFormData(c: Checklist): FormData {
           : null
       );
       setRuleRecipientsInput(nextDraft.recipients.join(", "));
+      setRuleAutoRecipients(
+        Array.isArray(json?.auto_recipients)
+          ? json.auto_recipients
+              .map((x: any) => String(x || "").trim().toLowerCase())
+              .filter((x: string) => x.includes("@"))
+          : []
+      );
+      setRuleEffectiveRecipients(
+        Array.isArray(json?.effective_recipients)
+          ? json.effective_recipients
+              .map((x: any) => String(x || "").trim().toLowerCase())
+              .filter((x: string) => x.includes("@"))
+          : []
+      );
     } catch (err: any) {
       setRuleError(err?.message || "Errore caricamento regola.");
       setRuleDraft(null);
@@ -1431,6 +1480,8 @@ function buildFormData(c: Checklist): FormData {
     setRuleTask(null);
     setRuleDraft(null);
     setRuleRecipientsInput("");
+    setRuleAutoRecipients([]);
+    setRuleEffectiveRecipients([]);
     setRuleError(null);
     setRuleLoading(false);
     setRuleSaving(false);
@@ -1470,8 +1521,10 @@ function buildFormData(c: Checklist): FormData {
           mode: saved.mode === "MANUALE" ? "MANUALE" : "AUTOMATICA",
           task_title: saved.task_title || payload.task_title,
           target: normalizeRuleTargetValue(saved.target || payload.target),
-          recipients: Array.isArray(saved.recipients)
-            ? saved.recipients.map((x: any) => String(x || "").trim().toLowerCase()).filter((x: string) => x.includes("@"))
+          recipients: Array.isArray(saved.extra_recipients)
+            ? saved.extra_recipients
+                .map((x: any) => String(x || "").trim().toLowerCase())
+                .filter((x: string) => x.includes("@"))
             : recipients,
           frequency:
             saved.frequency === "WEEKLY" || saved.frequency === "WEEKDAYS"
@@ -1489,12 +1542,26 @@ function buildFormData(c: Checklist): FormData {
         setRuleDraft(nextRule);
         setRuleOverride(nextRule);
         setRuleRecipientsInput(
-          Array.isArray(saved.recipients)
-            ? saved.recipients
+          Array.isArray(saved.extra_recipients)
+            ? saved.extra_recipients
                 .map((x: any) => String(x || "").trim().toLowerCase())
                 .filter((x: string) => x.includes("@"))
                 .join(", ")
             : recipients.join(", ")
+        );
+        setRuleAutoRecipients(
+          Array.isArray(saved.auto_recipients)
+            ? saved.auto_recipients
+                .map((x: any) => String(x || "").trim().toLowerCase())
+                .filter((x: string) => x.includes("@"))
+            : []
+        );
+        setRuleEffectiveRecipients(
+          Array.isArray(saved.effective_recipients)
+            ? saved.effective_recipients
+                .map((x: any) => String(x || "").trim().toLowerCase())
+                .filter((x: string) => x.includes("@"))
+            : []
         );
       }
       showToast("Regola notifiche salvata", "success");
@@ -1527,6 +1594,8 @@ function buildFormData(c: Checklist): FormData {
       if (ruleGlobal) {
         setRuleDraft({ ...ruleGlobal, checklist_id: id });
         setRuleRecipientsInput((ruleGlobal.recipients || []).join(", "));
+        setRuleAutoRecipients([]);
+        setRuleEffectiveRecipients([]);
       } else {
         setRuleDraft((prev) => (prev ? { ...prev, id: undefined } : prev));
       }
@@ -2639,13 +2708,16 @@ function buildFormData(c: Checklist): FormData {
               edit={
                 isEdit ? (
                   <select
-                    value={formData.impianto_codice}
+                    value={getImpiantoSelectValue(
+                      impiantoOptions as any,
+                      formData.impianto_codice,
+                      formData.impianto_descrizione
+                    )}
                     onChange={(e) => {
-                      const code = e.target.value;
-                      const selected = impiantoOptions.find((i) => (i.codice ?? "") === code);
+                      const selected = impiantoOptions.find((i) => i.id === e.target.value);
                       setFormData({
                         ...formData,
-                        impianto_codice: code,
+                        impianto_codice: selected?.codice ?? "",
                         impianto_descrizione: selected?.descrizione ?? "",
                       });
                     }}
@@ -2653,7 +2725,7 @@ function buildFormData(c: Checklist): FormData {
                   >
                     <option value="">— seleziona impianto TEC —</option>
                     {impiantoOptions.map((item) => (
-                      <option key={item.id} value={item.codice ?? ""}>
+                      <option key={item.id} value={item.id}>
                         {item.codice ?? "—"} — {item.descrizione ?? "—"}
                       </option>
                     ))}
@@ -4090,7 +4162,7 @@ function buildFormData(c: Checklist): FormData {
         )}
       </div>
 
-      <h2 style={{ marginTop: 22 }}>Voci / Prodotti</h2>
+      <h2 style={{ marginTop: 22 }}>Accessori / Ricambi</h2>
       <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 10 }}>
         Accessori/Extra (no TEC, no SAAS)
       </div>
@@ -4921,7 +4993,25 @@ function buildFormData(c: Checklist): FormData {
                 </div>
 
                 <label style={{ display: "block", marginTop: 10 }}>
-                  Destinatari (email separate da virgola o newline)<br />
+                  Destinatari automatici (da target)<br />
+                  <div
+                    style={{
+                      minHeight: 38,
+                      border: "1px solid #e5e7eb",
+                      borderRadius: 8,
+                      padding: "8px 10px",
+                      fontSize: 13,
+                      background: "#fafafa",
+                    }}
+                  >
+                    {ruleAutoRecipients.length
+                      ? ruleAutoRecipients.join(", ")
+                      : "Nessun operatore attivo con riceve_notifiche per questo target."}
+                  </div>
+                </label>
+
+                <label style={{ display: "block", marginTop: 10 }}>
+                  Email extra (opzionali, puoi scrivere email o nome operatore)<br />
                   <textarea
                     value={ruleRecipientsInput}
                     onChange={(e) => setRuleRecipientsInput(e.target.value)}
@@ -4929,6 +5019,10 @@ function buildFormData(c: Checklist): FormData {
                     style={{ width: "100%", padding: 8 }}
                   />
                 </label>
+                <div style={{ marginTop: 6, fontSize: 12, opacity: 0.7 }}>
+                  Destinatari effettivi:{" "}
+                  {ruleEffectiveRecipients.length ? ruleEffectiveRecipients.join(", ") : "—"}
+                </div>
 
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginTop: 10 }}>
                   <label>

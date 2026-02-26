@@ -23,7 +23,7 @@ type RuleDraft = {
   target: string;
   enabled: boolean;
   mode: "AUTOMATICA" | "MANUALE";
-  recipients: string[];
+  recipients: string[]; // extra recipients only
   frequency: "DAILY" | "WEEKDAYS" | "WEEKLY";
   send_time: string;
   timezone: string;
@@ -49,6 +49,8 @@ export default function ChecklistAttivitaPage() {
   const [ruleTask, setRuleTask] = useState<TaskTemplateRow | null>(null);
   const [ruleDraft, setRuleDraft] = useState<RuleDraft | null>(null);
   const [ruleRecipientsInput, setRuleRecipientsInput] = useState("");
+  const [ruleAutoRecipients, setRuleAutoRecipients] = useState<string[]>([]);
+  const [ruleEffectiveRecipients, setRuleEffectiveRecipients] = useState<string[]>([]);
   const [ruleLoading, setRuleLoading] = useState(false);
   const [ruleSaving, setRuleSaving] = useState(false);
 
@@ -156,14 +158,10 @@ export default function ChecklistAttivitaPage() {
   }
 
   function parseRecipientsInput(input: string) {
-    return Array.from(
-      new Set(
-        input
-          .split(/[\n,;]+/)
-          .map((s) => s.trim().toLowerCase())
-          .filter((s) => s.includes("@"))
-      )
-    );
+    return input
+      .split(/[\n,;]+/)
+      .map((s) => s.trim())
+      .filter(Boolean);
   }
 
   async function openGlobalRule(task: TaskTemplateRow) {
@@ -194,7 +192,9 @@ export default function ChecklistAttivitaPage() {
             enabled: row.enabled !== false,
             mode: row.mode === "MANUALE" ? "MANUALE" : "AUTOMATICA",
             recipients: Array.isArray(row.recipients)
-              ? row.recipients.map((x: any) => String(x || "").trim().toLowerCase()).filter((x: string) => x.includes("@"))
+              ? (row.extra_recipients || row.recipients)
+                  .map((x: any) => String(x || "").trim().toLowerCase())
+                  .filter((x: string) => x.includes("@"))
               : [],
             frequency:
               row.frequency === "WEEKLY" || row.frequency === "WEEKDAYS"
@@ -224,6 +224,20 @@ export default function ChecklistAttivitaPage() {
           };
       setRuleDraft(next);
       setRuleRecipientsInput(next.recipients.join(", "));
+      setRuleAutoRecipients(
+        Array.isArray(json?.auto_recipients)
+          ? json.auto_recipients
+              .map((x: any) => String(x || "").trim().toLowerCase())
+              .filter((x: string) => x.includes("@"))
+          : []
+      );
+      setRuleEffectiveRecipients(
+        Array.isArray(json?.effective_recipients)
+          ? json.effective_recipients
+              .map((x: any) => String(x || "").trim().toLowerCase())
+              .filter((x: string) => x.includes("@"))
+          : []
+      );
     } catch (err: any) {
       setError(err?.message || "Errore caricamento regola.");
       setRuleTask(null);
@@ -237,6 +251,8 @@ export default function ChecklistAttivitaPage() {
     setRuleTask(null);
     setRuleDraft(null);
     setRuleRecipientsInput("");
+    setRuleAutoRecipients([]);
+    setRuleEffectiveRecipients([]);
     setRuleLoading(false);
     setRuleSaving(false);
   }
@@ -284,7 +300,7 @@ export default function ChecklistAttivitaPage() {
   });
 
   return (
-    <div style={{ maxWidth: 1100, margin: "40px auto", padding: 16 }}>
+    <div style={{ maxWidth: 1240, margin: "40px auto", padding: 16 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
         <div>
           <h1 style={{ margin: 0, fontSize: 34 }}>AT SYSTEM</h1>
@@ -379,12 +395,14 @@ export default function ChecklistAttivitaPage() {
             border: "1px solid #eee",
             borderRadius: 12,
             overflowX: "auto",
+            fontSize: 14,
           }}
         >
           <div
             style={{
               display: "grid",
-              gridTemplateColumns: "1fr 120px 2fr 180px 120px 140px 170px",
+              gridTemplateColumns:
+                "minmax(120px,0.9fr) 72px minmax(360px,2.8fr) 170px 86px 92px 150px",
               padding: "10px 12px",
               fontWeight: 700,
               background: "#fafafa",
@@ -409,7 +427,8 @@ export default function ChecklistAttivitaPage() {
                 key={row.id ?? `new-${idx}`}
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "1fr 120px 2fr 180px 120px 140px 170px",
+                  gridTemplateColumns:
+                    "minmax(120px,0.9fr) 72px minmax(360px,2.8fr) 170px 86px 92px 150px",
                   padding: "10px 12px",
                   borderBottom: "1px solid #f3f4f6",
                   alignItems: "center",
@@ -419,7 +438,7 @@ export default function ChecklistAttivitaPage() {
                 <select
                   value={row.sezione}
                   onChange={(e) => updateRow(idx, { sezione: e.target.value })}
-                  style={{ width: "100%", padding: 8, minWidth: 0 }}
+                  style={{ width: "100%", padding: "6px 8px", minWidth: 0, fontSize: 14 }}
                 >
                   {sezioneOptions.map((s) => (
                     <option key={s} value={s}>
@@ -435,19 +454,19 @@ export default function ChecklistAttivitaPage() {
                       ordine: e.target.value === "" ? null : Number(e.target.value),
                     })
                   }
-                  style={{ width: "100%", padding: 8 }}
+                  style={{ width: "100%", padding: "6px 8px", fontSize: 14 }}
                 />
                 <input
                   value={row.titolo}
                   onChange={(e) => updateRow(idx, { titolo: e.target.value })}
-                  style={{ width: "100%", padding: 8, minWidth: 0 }}
+                  style={{ width: "100%", padding: "6px 8px", minWidth: 0, fontSize: 14 }}
                 />
                 <select
                   value={row.target || "GENERICA"}
                   onChange={(e) =>
                     updateRow(idx, { target: String(e.target.value || "GENERICA").toUpperCase() })
                   }
-                  style={{ width: "100%", padding: 8, minWidth: 0 }}
+                  style={{ width: "100%", padding: "6px 8px", minWidth: 0, fontSize: 14 }}
                 >
                   {targetOptions.map((t) => (
                     <option key={t} value={t}>
@@ -468,12 +487,13 @@ export default function ChecklistAttivitaPage() {
                     type="button"
                     onClick={() => saveRow(row)}
                     style={{
-                      padding: "6px 10px",
+                      padding: "5px 10px",
                       borderRadius: 8,
                       border: "1px solid #111",
                       background: "#111",
                       color: "white",
                       cursor: "pointer",
+                      fontSize: 13,
                     }}
                   >
                     Salva
@@ -484,11 +504,13 @@ export default function ChecklistAttivitaPage() {
                     type="button"
                     onClick={() => openGlobalRule(row)}
                     style={{
-                      padding: "6px 10px",
+                      padding: "5px 8px",
                       borderRadius: 8,
                       border: "1px solid #0f172a",
                       background: "#f8fafc",
                       cursor: "pointer",
+                      fontSize: 13,
+                      whiteSpace: "nowrap",
                     }}
                   >
                     ⚙ Regola globale
@@ -562,7 +584,24 @@ export default function ChecklistAttivitaPage() {
                   </label>
                 </div>
                 <label style={{ display: "block", marginTop: 10 }}>
-                  Destinatari (email separate da virgola o newline)<br />
+                  Destinatari automatici (da target)<br />
+                  <div
+                    style={{
+                      minHeight: 38,
+                      border: "1px solid #e5e7eb",
+                      borderRadius: 8,
+                      padding: "8px 10px",
+                      fontSize: 13,
+                      background: "#fafafa",
+                    }}
+                  >
+                    {ruleAutoRecipients.length
+                      ? ruleAutoRecipients.join(", ")
+                      : "Nessun operatore attivo con riceve_notifiche per questo target."}
+                  </div>
+                </label>
+                <label style={{ display: "block", marginTop: 10 }}>
+                  Email extra (opzionali, puoi scrivere email o nome operatore)<br />
                   <textarea
                     value={ruleRecipientsInput}
                     onChange={(e) => setRuleRecipientsInput(e.target.value)}
@@ -570,6 +609,10 @@ export default function ChecklistAttivitaPage() {
                     style={{ width: "100%", padding: 8 }}
                   />
                 </label>
+                <div style={{ marginTop: 6, fontSize: 12, opacity: 0.7 }}>
+                  Destinatari effettivi:{" "}
+                  {ruleEffectiveRecipients.length ? ruleEffectiveRecipients.join(", ") : "—"}
+                </div>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginTop: 10 }}>
                   <label>
                     Frequenza<br />

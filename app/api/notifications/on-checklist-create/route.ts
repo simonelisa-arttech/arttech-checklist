@@ -21,6 +21,14 @@ type RuleRow = {
   only_future: boolean | null;
 };
 
+type OperatoreRow = {
+  email: string | null;
+  ruolo: string | null;
+  attivo: boolean | null;
+  riceve_notifiche?: boolean | null;
+  alert_enabled?: boolean | null;
+};
+
 function getAccessTokenFromCookieHeader(cookieHeader: string | null) {
   if (!cookieHeader) return "";
   const raw = cookieHeader
@@ -56,6 +64,48 @@ function parseRecipients(input: any) {
       input
         .map((v: any) => String(v || "").trim().toLowerCase())
         .filter((v: string) => v.includes("@"))
+    )
+  );
+}
+
+function normalizeTarget(value: string | null | undefined) {
+  const raw = String(value || "")
+    .trim()
+    .toUpperCase();
+  if (raw === "TECNICO SW" || raw === "TECNICO-SW") return "TECNICO_SW";
+  if (raw === "ALTRO") return "GENERICA";
+  return raw || "GENERICA";
+}
+
+async function listOperatoriForNotifications(adminClient: any): Promise<OperatoreRow[]> {
+  const withRiceve = await adminClient
+    .from("operatori")
+    .select("email, ruolo, attivo, riceve_notifiche")
+    .eq("attivo", true);
+  if (!withRiceve.error) return (withRiceve.data || []) as OperatoreRow[];
+  if (!String(withRiceve.error.message || "").toLowerCase().includes("riceve_notifiche")) {
+    throw new Error(withRiceve.error.message);
+  }
+  const fallback = await adminClient
+    .from("operatori")
+    .select("email, ruolo, attivo, alert_enabled")
+    .eq("attivo", true);
+  if (fallback.error) throw new Error(fallback.error.message);
+  return ((fallback.data || []) as OperatoreRow[]).map((o) => ({
+    ...o,
+    riceve_notifiche: o.alert_enabled !== false,
+  }));
+}
+
+function getAutoRecipients(target: string, operatori: OperatoreRow[]) {
+  const normalizedTarget = normalizeTarget(target);
+  return Array.from(
+    new Set(
+      operatori
+        .filter((o) => o.riceve_notifiche !== false)
+        .filter((o) => normalizeTarget(o.ruolo) === normalizedTarget)
+        .map((o) => String(o.email || "").trim().toLowerCase())
+        .filter((email) => email.includes("@"))
     )
   );
 }
@@ -150,6 +200,13 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: true, sent: 0, skipped: "no_matching_rules" });
   }
 
+  let operatori: OperatoreRow[] = [];
+  try {
+    operatori = await listOperatoriForNotifications(adminClient);
+  } catch (err: any) {
+    return NextResponse.json({ error: err?.message || "Errore caricamento operatori" }, { status: 500 });
+  }
+
   const CLOSED = new Set(["OK", "NON_NECESSARIO"]);
   const baseUrl =
     (process.env.NEXT_PUBLIC_SITE_URL || process.env.NEXT_PUBLIC_APP_URL || "https://atsystem.arttechworld.com").replace(
@@ -196,7 +253,9 @@ export async function POST(request: Request) {
     }
     locksAcquired += 1;
 
-    const recipients = parseRecipients(rule.recipients);
+    const extraRecipients = parseRecipients(rule.recipients);
+    const autoRecipients = getAutoRecipients(target, operatori);
+    const recipients = Array.from(new Set([...autoRecipients, ...extraRecipients]));
     if (!byTarget.has(target)) {
       byTarget.set(target, { recipients: new Set<string>(), ruleItems: [] });
     }
@@ -262,4 +321,3 @@ export async function POST(request: Request) {
     targets: Array.from(byTarget.keys()),
   });
 }
-

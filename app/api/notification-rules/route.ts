@@ -70,7 +70,7 @@ function normalizeTarget(input: any) {
   return raw || "GENERICA";
 }
 
-function sanitizeRecipients(input: any) {
+function sanitizeEmailList(input: any) {
   if (!Array.isArray(input)) return [];
   return Array.from(
     new Set(
@@ -79,6 +79,21 @@ function sanitizeRecipients(input: any) {
         .filter((x: string) => x.includes("@"))
     )
   );
+}
+
+function parseRecipientTokens(input: any) {
+  if (Array.isArray(input)) {
+    return input
+      .map((x: any) => String(x || "").trim())
+      .filter(Boolean);
+  }
+  if (typeof input === "string") {
+    return input
+      .split(/[\n,;]+/)
+      .map((x) => x.trim())
+      .filter(Boolean);
+  }
+  return [];
 }
 
 function parseOnlyFuture(input: any) {
@@ -98,6 +113,17 @@ function isMissingColumn(err: any, col: string) {
   return String(err?.message || "").toLowerCase().includes(col.toLowerCase());
 }
 
+function isLegacyTaskTargetUniqueViolation(err: any) {
+  const code = String(err?.code || "").toLowerCase();
+  const msg = String(err?.message || "").toLowerCase();
+  return (
+    code === "23505" &&
+    (msg.includes("notification_rules_task_target_uniq") ||
+      msg.includes("task_target_uniq") ||
+      (msg.includes("duplicate key") && msg.includes("task_title") && msg.includes("target")))
+  );
+}
+
 async function getAvailableTargets(adminClient: any) {
   const base = ["GENERICA", "MAGAZZINO", "TECNICO_SW"];
   const out = new Set<string>(base);
@@ -107,6 +133,119 @@ async function getAvailableTargets(adminClient: any) {
     if (role) out.add(role);
   }
   return Array.from(out);
+}
+
+type OperatoreRecipientRow = {
+  nome: string | null;
+  email: string | null;
+  ruolo: string | null;
+  attivo: boolean | null;
+  riceve_notifiche?: boolean | null;
+  alert_enabled?: boolean | null;
+};
+
+async function listOperatoriForNotifications(adminClient: any): Promise<OperatoreRecipientRow[]> {
+  const withRiceve = await adminClient
+    .from("operatori")
+    .select("nome, email, ruolo, attivo, riceve_notifiche")
+    .eq("attivo", true);
+  if (!withRiceve.error) return (withRiceve.data || []) as OperatoreRecipientRow[];
+  if (!isMissingColumn(withRiceve.error, "riceve_notifiche")) {
+    throw new Error(withRiceve.error.message);
+  }
+
+  const fallback = await adminClient
+    .from("operatori")
+    .select("nome, email, ruolo, attivo, alert_enabled")
+    .eq("attivo", true);
+  if (fallback.error) throw new Error(fallback.error.message);
+  return ((fallback.data || []) as OperatoreRecipientRow[]).map((o) => ({
+    ...o,
+    riceve_notifiche: o.alert_enabled !== false,
+  }));
+}
+
+function buildAutoRecipients(target: string, operatori: OperatoreRecipientRow[]) {
+  const normalizedTarget = normalizeTarget(target);
+  return Array.from(
+    new Set(
+      operatori
+        .filter((o) => normalizeTarget(o.ruolo) === normalizedTarget)
+        .filter((o) => o.riceve_notifiche !== false)
+        .map((o) => String(o.email || "").trim().toLowerCase())
+        .filter((email) => email.includes("@"))
+    )
+  );
+}
+
+function normalizeLooseText(value: string) {
+  return value
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function resolveExtraRecipientsFromTokens(tokens: string[], operatori: OperatoreRecipientRow[]) {
+  const unresolved: string[] = [];
+  const resolved: string[] = [];
+  const byEmail = new Map<string, string>();
+  const byName = new Map<string, string>();
+
+  for (const op of operatori) {
+    const email = String(op.email || "").trim().toLowerCase();
+    if (!email.includes("@")) continue;
+    byEmail.set(email, email);
+    const nameKey = normalizeLooseText(String(op.nome || ""));
+    if (nameKey) byName.set(nameKey, email);
+  }
+
+  for (const rawToken of tokens) {
+    const token = rawToken.trim();
+    if (!token) continue;
+    const low = token.toLowerCase();
+    if (low.includes("@")) {
+      resolved.push(low);
+      continue;
+    }
+    const normalized = normalizeLooseText(token);
+    if (!normalized) continue;
+
+    const exact = byName.get(normalized);
+    if (exact) {
+      resolved.push(exact);
+      continue;
+    }
+
+    const containsMatches = Array.from(byName.entries())
+      .filter(([name]) => name.includes(normalized) || normalized.includes(name))
+      .map(([, email]) => email);
+    const unique = Array.from(new Set(containsMatches));
+    if (unique.length === 1) {
+      resolved.push(unique[0]);
+    } else {
+      unresolved.push(token);
+    }
+  }
+
+  return {
+    extraRecipients: Array.from(new Set(resolved)),
+    unresolved,
+  };
+}
+
+function withRecipients(rule: any, operatori: OperatoreRecipientRow[]) {
+  const extra_recipients = sanitizeEmailList(rule?.recipients);
+  const auto_recipients = buildAutoRecipients(String(rule?.target || "GENERICA"), operatori);
+  const effective_recipients = Array.from(new Set([...auto_recipients, ...extra_recipients]));
+  return {
+    ...(rule || {}),
+    recipients: extra_recipients,
+    extra_recipients,
+    auto_recipients,
+    effective_recipients,
+  };
 }
 
 async function listRulesForTask(
@@ -211,6 +350,12 @@ export async function GET(request: Request) {
   const checklistId = String(url.searchParams.get("checklist_id") || "").trim() || null;
 
   const availableTargets = await getAvailableTargets(auth.adminClient);
+  let operatori: OperatoreRecipientRow[] = [];
+  try {
+    operatori = await listOperatoriForNotifications(auth.adminClient);
+  } catch (err: any) {
+    return NextResponse.json({ error: err?.message || "Errore caricamento operatori" }, { status: 500 });
+  }
 
   if (!taskTitle) {
     return NextResponse.json({
@@ -255,15 +400,20 @@ export async function GET(request: Request) {
     updated_at: null,
   };
 
-  const effectiveRule = overrideRule || globalRule || virtualRule;
+  const effectiveRule = withRecipients(overrideRule || globalRule || virtualRule, operatori);
+  const globalWithRecipients = globalRule ? withRecipients(globalRule, operatori) : null;
+  const overrideWithRecipients = overrideRule ? withRecipients(overrideRule, operatori) : null;
 
   return NextResponse.json({
     ok: true,
     effective_rule: effectiveRule,
-    global_rule: globalRule,
-    override_rule: overrideRule,
+    global_rule: globalWithRecipients,
+    override_rule: overrideWithRecipients,
     data: [effectiveRule],
     available_targets: availableTargets,
+    auto_recipients: effectiveRule.auto_recipients,
+    extra_recipients: effectiveRule.extra_recipients,
+    effective_recipients: effectiveRule.effective_recipients,
   });
 }
 
@@ -286,7 +436,25 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Missing task_title" }, { status: 400 });
   }
 
-  const recipients = sanitizeRecipients(body?.recipients);
+  const tokens = parseRecipientTokens(body?.recipients);
+  let operatori: OperatoreRecipientRow[] = [];
+  try {
+    operatori = await listOperatoriForNotifications(auth.adminClient);
+  } catch (err: any) {
+    return NextResponse.json({ error: err?.message || "Errore caricamento operatori" }, { status: 500 });
+  }
+  const resolvedExtra = resolveExtraRecipientsFromTokens(tokens, operatori);
+  if (resolvedExtra.unresolved.length > 0) {
+    return NextResponse.json(
+      {
+        error:
+          `Destinatari non riconosciuti: ${resolvedExtra.unresolved.join(", ")}. ` +
+          "Usa email valide o nomi operatore esatti.",
+        unresolved_tokens: resolvedExtra.unresolved,
+      },
+      { status: 400 }
+    );
+  }
   const frequency = String(body?.frequency || "DAILY").trim().toUpperCase();
   const dayOfWeek =
     body?.day_of_week === null || body?.day_of_week === undefined || body?.day_of_week === ""
@@ -300,7 +468,7 @@ export async function POST(request: Request) {
     task_template_id: taskTemplateId,
     task_title: taskTitle,
     target,
-    recipients,
+    recipients: resolvedExtra.extraRecipients,
     frequency,
     send_time: String(body?.send_time || "07:30").trim(),
     timezone: String(body?.timezone || "Europe/Rome").trim() || "Europe/Rome",
@@ -356,7 +524,8 @@ export async function POST(request: Request) {
         )
         .single();
       if (res.error) return NextResponse.json({ error: res.error.message }, { status: 500 });
-      return NextResponse.json({ ok: true, data: { ...(res.data as any), send_on_create: false } });
+      const dataWithRecipients = withRecipients({ ...(res.data as any), send_on_create: false }, operatori);
+      return NextResponse.json({ ok: true, data: dataWithRecipients });
     }
     if (error && isMissingColumn(error, "checklist_id")) {
       const compatPayload = { ...payload } as any;
@@ -371,7 +540,11 @@ export async function POST(request: Request) {
         )
         .single();
       if (res.error) return NextResponse.json({ error: res.error.message }, { status: 500 });
-      return NextResponse.json({ ok: true, data: { ...(res.data as any), checklist_id: null, day_of_week: null } });
+      const dataWithRecipients = withRecipients(
+        { ...(res.data as any), checklist_id: null, day_of_week: null },
+        operatori
+      );
+      return NextResponse.json({ ok: true, data: dataWithRecipients });
     }
     if (error && isMissingColumn(error, "day_of_week")) {
       const compatPayload = { ...payload } as any;
@@ -385,7 +558,8 @@ export async function POST(request: Request) {
         )
         .single();
       if (res.error) return NextResponse.json({ error: res.error.message }, { status: 500 });
-      return NextResponse.json({ ok: true, data: { ...(res.data as any), day_of_week: null } });
+      const dataWithRecipients = withRecipients({ ...(res.data as any), day_of_week: null }, operatori);
+      return NextResponse.json({ ok: true, data: dataWithRecipients });
     }
     if (error && isMissingColumn(error, "task_template_id")) {
       const compatPayload = { ...payload } as any;
@@ -409,19 +583,21 @@ export async function POST(request: Request) {
           )
           .single();
         if (res2.error) return NextResponse.json({ error: res2.error.message }, { status: 500 });
-        return NextResponse.json({
-          ok: true,
-          data: { ...(res2.data as any), checklist_id: null, task_template_id: null, day_of_week: null },
-        });
+        const dataWithRecipients = withRecipients(
+          { ...(res2.data as any), checklist_id: null, task_template_id: null, day_of_week: null },
+          operatori
+        );
+        return NextResponse.json({ ok: true, data: dataWithRecipients });
       }
       if (res.error) return NextResponse.json({ error: res.error.message }, { status: 500 });
-      return NextResponse.json({
-        ok: true,
-        data: { ...(res.data as any), task_template_id: null, day_of_week: null },
-      });
+      const dataWithRecipients = withRecipients(
+        { ...(res.data as any), task_template_id: null, day_of_week: null },
+        operatori
+      );
+      return NextResponse.json({ ok: true, data: dataWithRecipients });
     }
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-    return NextResponse.json({ ok: true, data });
+    return NextResponse.json({ ok: true, data: withRecipients(data, operatori) });
   }
 
   const { data, error } = await auth.adminClient
@@ -429,6 +605,34 @@ export async function POST(request: Request) {
     .insert(payload)
     .select(selectSaved)
     .single();
+  if (error && isLegacyTaskTargetUniqueViolation(error)) {
+    // Compat mode per schema legacy: esiste unicità globale (task_title,target)
+    // e non può coesistere override progetto + globale.
+    // In questo caso aggiorniamo la regola esistente invece di fallire.
+    const { data: legacyExisting, error: legacyErr } = await auth.adminClient
+      .from("notification_rules")
+      .select("id")
+      .eq("task_title", taskTitle)
+      .eq("target", target)
+      .limit(1)
+      .maybeSingle();
+    if (legacyErr) return NextResponse.json({ error: legacyErr.message }, { status: 500 });
+    if (!legacyExisting?.id) return NextResponse.json({ error: error.message }, { status: 500 });
+
+    const { data: legacySaved, error: legacySaveErr } = await auth.adminClient
+      .from("notification_rules")
+      .update(payload)
+      .eq("id", legacyExisting.id)
+      .select(selectSaved)
+      .single();
+    if (legacySaveErr) return NextResponse.json({ error: legacySaveErr.message }, { status: 500 });
+    return NextResponse.json({
+      ok: true,
+      data: withRecipients(legacySaved, operatori),
+      warning:
+        "Schema legacy: override progetto non separabile da regola globale (vincolo unico task_title,target).",
+    });
+  }
   if (error && isMissingColumn(error, "send_on_create")) {
     const compatPayload = { ...payload } as any;
     delete compatPayload.send_on_create;
@@ -440,7 +644,10 @@ export async function POST(request: Request) {
       )
       .single();
     if (res.error) return NextResponse.json({ error: res.error.message }, { status: 500 });
-    return NextResponse.json({ ok: true, data: { ...(res.data as any), send_on_create: false } });
+    return NextResponse.json({
+      ok: true,
+      data: withRecipients({ ...(res.data as any), send_on_create: false }, operatori),
+    });
   }
   if (error && isMissingColumn(error, "checklist_id")) {
     if (checklistId) {
@@ -460,7 +667,10 @@ export async function POST(request: Request) {
       )
       .single();
     if (res.error) return NextResponse.json({ error: res.error.message }, { status: 500 });
-    return NextResponse.json({ ok: true, data: { ...(res.data as any), checklist_id: null, day_of_week: null } });
+    return NextResponse.json({
+      ok: true,
+      data: withRecipients({ ...(res.data as any), checklist_id: null, day_of_week: null }, operatori),
+    });
   }
   if (error && isMissingColumn(error, "day_of_week")) {
     const compatPayload = { ...payload } as any;
@@ -473,7 +683,10 @@ export async function POST(request: Request) {
       )
       .single();
     if (res.error) return NextResponse.json({ error: res.error.message }, { status: 500 });
-    return NextResponse.json({ ok: true, data: { ...(res.data as any), day_of_week: null } });
+    return NextResponse.json({
+      ok: true,
+      data: withRecipients({ ...(res.data as any), day_of_week: null }, operatori),
+    });
   }
   if (error && isMissingColumn(error, "task_template_id")) {
     const compatPayload = { ...payload } as any;
@@ -503,17 +716,20 @@ export async function POST(request: Request) {
       if (res2.error) return NextResponse.json({ error: res2.error.message }, { status: 500 });
       return NextResponse.json({
         ok: true,
-        data: { ...(res2.data as any), checklist_id: null, task_template_id: null, day_of_week: null },
+        data: withRecipients(
+          { ...(res2.data as any), checklist_id: null, task_template_id: null, day_of_week: null },
+          operatori
+        ),
       });
     }
     if (res.error) return NextResponse.json({ error: res.error.message }, { status: 500 });
     return NextResponse.json({
       ok: true,
-      data: { ...(res.data as any), task_template_id: null, day_of_week: null },
+      data: withRecipients({ ...(res.data as any), task_template_id: null, day_of_week: null }, operatori),
     });
   }
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ ok: true, data });
+  return NextResponse.json({ ok: true, data: withRecipients(data, operatori) });
 }
 
 export async function DELETE(request: Request) {

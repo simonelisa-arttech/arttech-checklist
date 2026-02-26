@@ -91,7 +91,7 @@ export async function POST(request: Request) {
   }
 
   if (existing?.id) {
-    const { error: updErr } = await adminClient
+    let { error: updErr } = await adminClient
       .from("operatori")
       .update({
         nome,
@@ -99,21 +99,48 @@ export async function POST(request: Request) {
         email,
         attivo: true,
         user_id: userId,
+        riceve_notifiche: true,
       })
       .eq("id", existing.id);
+    if (updErr && String(updErr.message || "").toLowerCase().includes("riceve_notifiche")) {
+      const fallback = await adminClient
+        .from("operatori")
+        .update({
+          nome,
+          ruolo,
+          email,
+          attivo: true,
+          user_id: userId,
+        })
+        .eq("id", existing.id);
+      updErr = fallback.error as any;
+    }
     if (updErr) {
       return NextResponse.json({ error: updErr.message }, { status: 500 });
     }
   } else {
-    const { error: insErr } = await adminClient.from("operatori").insert({
+    let { error: insErr } = await adminClient.from("operatori").insert({
       nome,
       ruolo,
       email,
       attivo: true,
       user_id: userId,
       alert_enabled: true,
+      riceve_notifiche: true,
       alert_tasks: { task_template_ids: [], all_task_status_change: false },
     });
+    if (insErr && String(insErr.message || "").toLowerCase().includes("riceve_notifiche")) {
+      const fallback = await adminClient.from("operatori").insert({
+        nome,
+        ruolo,
+        email,
+        attivo: true,
+        user_id: userId,
+        alert_enabled: true,
+        alert_tasks: { task_template_ids: [], all_task_status_change: false },
+      });
+      insErr = fallback.error as any;
+    }
     if (insErr) {
       return NextResponse.json({ error: insErr.message }, { status: 500 });
     }

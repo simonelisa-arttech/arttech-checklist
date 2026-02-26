@@ -219,6 +219,8 @@ type Checklist = {
   data_tassativa: string | null;
   tipo_impianto: string | null;
   impianto_indirizzo: string | null;
+  impianto_codice: string | null;
+  impianto_descrizione: string | null;
   dimensioni: string | null;
   impianto_quantita: number | null;
   numero_facce: number | null;
@@ -415,7 +417,7 @@ export default function Page() {
   const [ultraScope, setUltraScope] = useState<"CLIENTE" | "CHECKLIST">("CLIENTE");
   const [ultraInclusi, setUltraInclusi] = useState<string>("");
 
-  // righe (voci/prodotti)
+  // righe (accessori/ricambi)
   const [rows, setRows] = useState<ChecklistItem[]>([
     { codice: "", descrizione: "", qty: "", note: "", search: "" },
   ]);
@@ -745,10 +747,6 @@ export default function Page() {
         "id, checklist_id, tipo, scadenza, note, ref_univoco, telefono, intestatario, gestore, fornitore"
       );
 
-    const { data: mainItems, error: mainItemsErr } = await supabase
-      .from("checklist_main_item_view")
-      .select("checklist_id, codice, descrizione");
-
     const { data: serialsData, error: serialsErr } = await supabase
       .from("asset_serials")
       .select("checklist_id, seriale");
@@ -781,23 +779,6 @@ export default function Page() {
           licenze_prossima_scadenza: r.licenze_prossima_scadenza ?? null,
           licenze_dettaglio: r.licenze_dettaglio ?? null,
         };
-      }
-    }
-
-    const mainByChecklistId: Record<string, { codice: string | null; descrizione: string | null }> =
-      {};
-    if (mainItemsErr) {
-      console.error("Errore caricamento main items", mainItemsErr);
-    } else if (mainItems) {
-      for (const r of mainItems as any[]) {
-        const checklistId = String(r.checklist_id ?? "");
-        if (!checklistId) continue;
-        if (!mainByChecklistId[checklistId]) {
-          mainByChecklistId[checklistId] = {
-            codice: r.codice ?? null,
-            descrizione: r.descrizione ?? null,
-          };
-        }
       }
     }
 
@@ -851,7 +832,8 @@ export default function Page() {
           cliente: clienteLabel || c.cliente,
           ...(sectionsByChecklistId[c.id] || {}),
           ...(licenzeByChecklistId[c.id] || {}),
-          ...(mainByChecklistId[c.id] || {}),
+          codice: c.impianto_codice ?? null,
+          descrizione: c.impianto_descrizione ?? null,
           license_search: licenseSearchByChecklistId.get(c.id) || null,
         };
       });
@@ -1705,6 +1687,7 @@ export default function Page() {
                     background: "white",
                   }}
                 >
+                  <span style={{ fontWeight: 700, opacity: 0.85 }}>SaaS</span>
                   <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
                     <input
                       type="checkbox"

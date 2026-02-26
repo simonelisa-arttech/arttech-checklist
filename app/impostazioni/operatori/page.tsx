@@ -13,6 +13,7 @@ type OperatoreRow = {
   email: string;
   attivo: boolean;
   alert_enabled?: boolean;
+  riceve_notifiche?: boolean;
   alert_tasks?: {
     task_template_ids: string[];
     all_task_status_change: boolean;
@@ -108,6 +109,7 @@ export default function OperatoriPage() {
       email: r.email ?? "",
       attivo: Boolean(r.attivo),
       alert_enabled: Boolean(r.alert_enabled),
+      riceve_notifiche: r.riceve_notifiche !== false,
       alert_tasks: normalizeAlertTasks(r.alert_tasks),
       isNew: false,
     }));
@@ -153,6 +155,7 @@ export default function OperatoriPage() {
         email: "",
         attivo: true,
         alert_enabled: false,
+        riceve_notifiche: true,
         alert_tasks: { task_template_ids: [], all_task_status_change: false },
         isNew: true,
       },
@@ -176,6 +179,7 @@ export default function OperatoriPage() {
       email: row.email.trim() ? row.email.trim() : null,
       attivo: row.attivo,
       alert_enabled: Boolean(row.alert_enabled),
+      riceve_notifiche: row.riceve_notifiche !== false,
       alert_tasks: normalizeAlertTasks(row.alert_tasks),
     };
 
@@ -234,6 +238,7 @@ export default function OperatoriPage() {
         email,
         attivo: true,
         alert_enabled: true,
+        riceve_notifiche: true,
         alert_tasks: { task_template_ids: [], all_task_status_change: false },
       };
       const res = await fetch("/api/operatori", {
@@ -581,7 +586,7 @@ export default function OperatoriPage() {
             style={{
               display: "grid",
               gridTemplateColumns:
-                "minmax(180px, 1.4fr) minmax(120px, 1fr) minmax(220px, 1.6fr) 90px 110px minmax(220px, 1fr)",
+                "minmax(180px, 1.4fr) minmax(120px, 1fr) minmax(220px, 1.6fr) 90px 110px 150px minmax(220px, 1fr)",
               padding: "10px 12px",
               fontWeight: 700,
               background: "#fafafa",
@@ -593,6 +598,7 @@ export default function OperatoriPage() {
             <div>Email</div>
             <div>Attivo</div>
             <div>Alert</div>
+            <div>Riceve notif.</div>
             <div>Azioni</div>
           </div>
           {rows.length === 0 ? (
@@ -604,7 +610,7 @@ export default function OperatoriPage() {
                   style={{
                     display: "grid",
                     gridTemplateColumns:
-                      "minmax(180px, 1.4fr) minmax(120px, 1fr) minmax(220px, 1.6fr) 90px 110px minmax(220px, 1fr)",
+                      "minmax(180px, 1.4fr) minmax(120px, 1fr) minmax(220px, 1.6fr) 90px 110px 150px minmax(220px, 1fr)",
                     padding: "10px 12px",
                     borderBottom: "1px solid #f3f4f6",
                     alignItems: "center",
@@ -650,6 +656,16 @@ export default function OperatoriPage() {
                       }
                     />
                     {row.alert_enabled ? "ON" : "OFF"}
+                  </label>
+                  <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <input
+                      type="checkbox"
+                      checked={row.riceve_notifiche !== false}
+                      onChange={(e) =>
+                        updateRow(idx, { riceve_notifiche: e.target.checked })
+                      }
+                    />
+                    {row.riceve_notifiche !== false ? "SI" : "NO"}
                   </label>
                   <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                     <button
