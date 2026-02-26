@@ -10,39 +10,6 @@ import { isSupabaseConfigured, supabase } from "@/lib/supabaseClient";
 import { sendAlert } from "@/lib/sendAlert";
 import { calcM2FromDimensioni } from "@/lib/parseDimensioni";
 
-const SAAS_PIANI = [
-  { code: "SAAS-PL", label: "CARE PLUS (ASSISTENZA BASE)" },
-  { code: "SAAS-PR", label: "CARE PREMIUM (ASSISTENZA AVANZATA + MONITORAGGIO)" },
-  { code: "SAAS-UL", label: "CARE ULTRA (ASSISTENZA PRIORITARIA / H24 SE PREVISTA)" },
-  { code: "SAAS-PR4", label: "CARE PREMIUM (ASSISTENZA AVANZATA / H4)" },
-  { code: "SAAS-PR8", label: "CARE PREMIUM (ASSISTENZA AVANZATA / H8)" },
-  { code: "SAAS-PR12", label: "CARE PREMIUM (ASSISTENZA AVANZATA / H12)" },
-  { code: "SAAS-PR24", label: "CARE PREMIUM (ASSISTENZA AVANZATA / H24)" },
-  { code: "SAAS-PR36", label: "CARE PREMIUM (ASSISTENZA AVANZATA / H36)" },
-  { code: "SAAS-UL4", label: "CARE ULTRA (ASSISTENZA PRIORITARIA)" },
-  { code: "SAAS-UL8", label: "CARE ULTRA (ASSISTENZA PRIORITARIA)" },
-  { code: "SAAS-UL12", label: "CARE ULTRA (ASSISTENZA PRIORITARIA)" },
-  { code: "SAAS-UL24", label: "CARE ULTRA (ASSISTENZA PRIORITARIA)" },
-  { code: "SAAS-UL36", label: "CARE ULTRA (ASSISTENZA PRIORITARIA)" },
-  { code: "SAAS-EVTF", label: "ART TECH EVENT (assistenza remota durante eventi)" },
-  { code: "SAAS-EVTO", label: "ART TECH EVENT (assistenza onsite durante eventi)" },
-  { code: "SAAS-MON", label: "MONITORAGGIO REMOTO & ALERT" },
-  { code: "SAAS-TCK", label: "TICKETING / HELP DESK" },
-  { code: "SAAS-SIM", label: "CONNETTIVITÀ SIM DATI" },
-  { code: "SAAS-CMS", label: "LICENZA CMS / SOFTWARE TERZI" },
-  { code: "SAAS-BKP", label: "BACKUP CONFIGURAZIONI / RIPRISTINO" },
-  { code: "SAAS-RPT", label: "REPORTISTICA (LOG, UPTIME, ON-AIR)" },
-  { code: "SAAS-SLA", label: "SLA RIPRISTINO (ES. ENTRO 2H) – OPZIONE" },
-  { code: "SAAS-EXT", label: "ESTENSIONE GARANZIA / COPERTURE" },
-  { code: "SAAS-CYB", label: "CYBER / ANTIVIRUS / HARDENING PLAYER" },
-];
-
-const SAAS_SERVIZI_AGGIUNTIVI = [
-  { code: "SAAS-EVTR", label: "ART TECH EVENTS (generico)" },
-  { code: "SAAS-EVTF", label: "ART TECH EVENTS (assistenza remota durante eventi)" },
-  { code: "SAAS-EVTO", label: "ART TECH EVENTS (assistenza onsite durante eventi)" },
-];
-
 type ChecklistItem = {
   codice: string;
   descrizione: string;
@@ -191,6 +158,24 @@ function inferTaskTarget(titolo?: string | null, templateTarget?: string | null)
   return "GENERICA";
 }
 
+function getImpiantoSelectValue(
+  options: CatalogItem[],
+  codice: string,
+  descrizione: string
+) {
+  const code = String(codice || "").trim();
+  const desc = String(descrizione || "").trim();
+  if (!code) return "";
+  const exact = options.find(
+    (i) =>
+      String(i.codice || "").trim() === code &&
+      String(i.descrizione || "").trim() === desc
+  );
+  if (exact?.id) return exact.id;
+  const byCode = options.find((i) => String(i.codice || "").trim() === code);
+  return byCode?.id || "";
+}
+
 export default function NuovaChecklistPage() {
   if (!isSupabaseConfigured) {
     return <ConfigMancante />;
@@ -295,6 +280,22 @@ export default function NuovaChecklistPage() {
     });
   }, [catalogItems]);
   const deviceOptions = useMemo(() => deviceCatalogItems, [deviceCatalogItems]);
+  const saasPianoOptions = useMemo(() => {
+    return catalogItems
+      .filter((item) => String(item.codice || "").toUpperCase().startsWith("SAAS-"))
+      .map((item) => ({
+        code: String(item.codice || "").trim(),
+        label: `${String(item.codice || "").trim()} — ${String(item.descrizione || "—").trim() || "—"}`,
+      }));
+  }, [catalogItems]);
+  const saasServiziAggiuntivi = useMemo(() => {
+    return catalogItems
+      .filter((item) => String(item.codice || "").toUpperCase().startsWith("SAAS-EVT"))
+      .map((item) => ({
+        code: String(item.codice || "").trim(),
+        label: `${String(item.codice || "").trim()} — ${String(item.descrizione || "—").trim() || "—"}`,
+      }));
+  }, [catalogItems]);
 
   useEffect(() => {
     const stored =
@@ -1309,18 +1310,17 @@ export default function NuovaChecklistPage() {
           <label>
             Descrizione impianto (TEC)<br />
             <select
-              value={impiantoCodice}
+              value={getImpiantoSelectValue(impiantoOptions, impiantoCodice, impiantoDescrizione)}
               onChange={(e) => {
-                const code = e.target.value;
-                const selected = impiantoOptions.find((i) => (i.codice ?? "") === code);
-                setImpiantoCodice(code);
+                const selected = impiantoOptions.find((i) => i.id === e.target.value);
+                setImpiantoCodice(selected?.codice ?? "");
                 setImpiantoDescrizione(selected?.descrizione ?? "");
               }}
               style={{ width: "100%", padding: 10 }}
             >
               <option value="">— seleziona impianto TEC —</option>
               {impiantoOptions.map((item) => (
-                <option key={item.id} value={item.codice ?? ""}>
+                <option key={item.id} value={item.id}>
                   {item.codice ?? "—"} — {item.descrizione ?? "—"}
                 </option>
               ))}
@@ -1461,7 +1461,7 @@ export default function NuovaChecklistPage() {
               style={{ width: "100%", padding: 10 }}
             >
               <option value="">—</option>
-              {SAAS_PIANI.map((p) => (
+              {saasPianoOptions.map((p) => (
                 <option key={p.code} value={p.code}>
                   {p.label}
                 </option>
@@ -1477,7 +1477,7 @@ export default function NuovaChecklistPage() {
               style={{ width: "100%", padding: 10 }}
             >
               <option value="">— nessuno —</option>
-              {SAAS_SERVIZI_AGGIUNTIVI.map((p) => (
+              {saasServiziAggiuntivi.map((p) => (
                 <option key={p.code} value={p.code}>
                   {p.label}
                 </option>
@@ -1717,7 +1717,7 @@ export default function NuovaChecklistPage() {
           </div>
         </div>
 
-        <h2 style={{ marginTop: 22 }}>Voci / Prodotti</h2>
+        <h2 style={{ marginTop: 22 }}>Accessori / Ricambi</h2>
         <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 10 }}>
           Accessori/Extra (no TEC, no SAAS)
         </div>

@@ -149,6 +149,7 @@ export default function CronoprogrammaPage() {
   const [stateError, setStateError] = useState<string | null>(null);
   const [savingFattoKey, setSavingFattoKey] = useState<string | null>(null);
   const [savingCommentKey, setSavingCommentKey] = useState<string | null>(null);
+  const [noteHistoryKey, setNoteHistoryKey] = useState<string | null>(null);
 
   async function loadRowState(timelineRows: TimelineRow[]) {
     if (!timelineRows.length) {
@@ -398,6 +399,7 @@ export default function CronoprogrammaPage() {
       const rifDate = r.data_tassativa || r.data_prevista;
       const key = getRowKey(r.kind, r.row_ref_id);
       const fatto = Boolean(metaByKey[key]?.fatto ?? r.fatto);
+      if (fatto) return false;
       if (clienteFilter !== "TUTTI" && r.cliente !== clienteFilter) return false;
       if (kindFilter !== "TUTTI" && r.kind !== kindFilter) return false;
       if (needle) {
@@ -434,6 +436,14 @@ export default function CronoprogrammaPage() {
     setSortBy(field);
     setSortDir("asc");
   }
+
+  const rowByKey = useMemo(() => {
+    const map: Record<string, TimelineRow> = {};
+    for (const r of rows) {
+      map[getRowKey(r.kind, r.row_ref_id)] = r;
+    }
+    return map;
+  }, [rows]);
 
   return (
     <div style={{ maxWidth: 1250, margin: "28px auto", padding: 16 }}>
@@ -618,7 +628,7 @@ export default function CronoprogrammaPage() {
           <div>Progetto</div>
           <div>Dettaglio</div>
           <div>Ticket/Pf</div>
-          <div>Stato</div>
+          <div>Fatto</div>
           <div>Note</div>
         </div>
         {loading ? (
@@ -662,23 +672,15 @@ export default function CronoprogrammaPage() {
                 <div>{r.descrizione}</div>
                 <div>{r.ticket_no || r.proforma || "—"}</div>
                 <div>
-                  <button
-                    type="button"
-                    onClick={() => setFatto(r, !fatto)}
-                    disabled={savingFattoKey === key || stateLoading}
-                    style={{
-                      padding: "6px 10px",
-                      borderRadius: 999,
-                      border: fatto ? "1px solid #16a34a" : "1px solid #d1d5db",
-                      background: fatto ? "#dcfce7" : "white",
-                      color: fatto ? "#166534" : "#374151",
-                      fontWeight: 700,
-                      cursor: "pointer",
-                      opacity: savingFattoKey === key ? 0.7 : 1,
-                    }}
-                  >
-                    {fatto ? "FATTO" : "DA FINIRE"}
-                  </button>
+                  <label style={{ display: "inline-flex", alignItems: "center", gap: 8, fontWeight: 700 }}>
+                    <input
+                      type="checkbox"
+                      checked={fatto}
+                      onChange={(e) => setFatto(r, e.target.checked)}
+                      disabled={savingFattoKey === key || stateLoading}
+                    />
+                    Fatto
+                  </label>
                   {meta?.updated_at && (
                     <div style={{ marginTop: 6, fontSize: 11, opacity: 0.75 }}>
                       {meta.updated_by_nome || "Operatore"} ·{" "}
@@ -713,29 +715,44 @@ export default function CronoprogrammaPage() {
                     >
                       Salva
                     </button>
+                    <button
+                      type="button"
+                      onClick={() => setNoteHistoryKey(key)}
+                      style={{
+                        padding: "6px 10px",
+                        borderRadius: 8,
+                        border: "1px solid #d1d5db",
+                        background: "white",
+                        cursor: "pointer",
+                        fontWeight: 700,
+                      }}
+                      title="Storico note"
+                    >
+                      +
+                    </button>
                   </div>
-                  <div style={{ marginTop: 6, display: "grid", gap: 6 }}>
-                    {comments.slice(0, 3).map((c) => (
+                  <div style={{ marginTop: 6, fontSize: 12, opacity: 0.9 }}>
+                    {comments[0] ? (
                       <div
-                        key={c.id}
                         style={{
-                          fontSize: 12,
                           background: "#f9fafb",
                           border: "1px solid #eef2f7",
                           borderRadius: 8,
                           padding: "6px 8px",
                         }}
                       >
-                        <div style={{ whiteSpace: "pre-wrap" }}>{c.commento}</div>
+                        <div style={{ whiteSpace: "pre-wrap" }}>{comments[0].commento}</div>
                         <div style={{ opacity: 0.7, marginTop: 4 }}>
-                          {(c.created_by_nome || "Operatore") +
+                          {(comments[0].created_by_nome || "Operatore") +
                             " · " +
-                            (c.created_at
-                              ? new Date(c.created_at).toLocaleString("it-IT")
+                            (comments[0].created_at
+                              ? new Date(comments[0].created_at).toLocaleString("it-IT")
                               : "—")}
                         </div>
                       </div>
-                    ))}
+                    ) : (
+                      <span style={{ opacity: 0.7 }}>Nessuna nota</span>
+                    )}
                   </div>
                 </div>
               </div>
@@ -743,6 +760,67 @@ export default function CronoprogrammaPage() {
           })
         )}
       </div>
+      {noteHistoryKey && (
+        <div
+          onClick={() => setNoteHistoryKey(null)}
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.28)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 1200,
+            padding: 16,
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: "min(760px, 96vw)",
+              maxHeight: "80vh",
+              overflow: "auto",
+              background: "white",
+              borderRadius: 12,
+              border: "1px solid #e5e7eb",
+              padding: 14,
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+              <div style={{ fontWeight: 800 }}>Storico note</div>
+              <button
+                type="button"
+                onClick={() => setNoteHistoryKey(null)}
+                style={{ border: "1px solid #ddd", background: "white", borderRadius: 8, padding: "6px 10px", cursor: "pointer" }}
+              >
+                Chiudi
+              </button>
+            </div>
+            <div style={{ fontSize: 12, opacity: 0.75, marginBottom: 10 }}>
+              {rowByKey[noteHistoryKey]?.progetto || "Riga"}
+            </div>
+            <div style={{ display: "grid", gap: 8 }}>
+              {(commentsByKey[noteHistoryKey] || []).length === 0 ? (
+                <div style={{ opacity: 0.7 }}>Nessuna nota presente</div>
+              ) : (
+                (commentsByKey[noteHistoryKey] || []).map((c) => (
+                  <div
+                    key={c.id}
+                    style={{ border: "1px solid #eef2f7", borderRadius: 8, padding: "8px 10px", background: "#f9fafb" }}
+                  >
+                    <div style={{ whiteSpace: "pre-wrap" }}>{c.commento}</div>
+                    <div style={{ marginTop: 4, fontSize: 12, opacity: 0.7 }}>
+                      {(c.created_by_nome || "Operatore") +
+                        " · " +
+                        (c.created_at ? new Date(c.created_at).toLocaleString("it-IT") : "—")}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -673,6 +673,18 @@ type PianoUltraRow = {
   interventi_inclusi: number | null;
 };
 
+function inferUltraInterventiInclusiFromCode(codeRaw?: string | null) {
+  const code = String(codeRaw || "")
+    .trim()
+    .toUpperCase();
+  if (!code) return null;
+  if (code.includes("ILL")) return null;
+  const m = /^SAAS-UL(\d+)$/.exec(code);
+  if (!m) return null;
+  const n = Number(m[1]);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
 export default function ClientePage({ params }: { params: any }) {
   if (!isSupabaseConfigured) {
     return <ConfigMancante />;
@@ -1190,13 +1202,25 @@ export default function ClientePage({ params }: { params: any }) {
       await fetchSaasContratti(clienteKey);
 
       const { data: pianiData, error: pianiErr } = await supabase
-        .from("saas_piani")
-        .select("codice, nome, interventi_inclusi")
+        .from("catalog_items")
+        .select("codice, descrizione")
+        .eq("attivo", true)
         .ilike("codice", "SAAS-UL%")
         .order("codice", { ascending: true });
 
       if (!pianiErr) {
-        setUltraPiani((pianiData || []) as PianoUltraRow[]);
+        const mapped = ((pianiData || []) as any[])
+          .map((r) => {
+            const codice = String(r?.codice || "").trim().toUpperCase();
+            if (!codice) return null;
+            return {
+              codice,
+              nome: String(r?.descrizione || "").trim() || null,
+              interventi_inclusi: inferUltraInterventiInclusiFromCode(codice),
+            } as PianoUltraRow;
+          })
+          .filter(Boolean) as PianoUltraRow[];
+        setUltraPiani(mapped);
       }
 
       const { data: opsData } = await supabase

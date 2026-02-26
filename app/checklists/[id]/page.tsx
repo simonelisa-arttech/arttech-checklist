@@ -188,15 +188,37 @@ type ContrattoRow = {
 
 type ProjectIntervento = {
   id: string;
+  cliente?: string | null;
+  checklist_id?: string | null;
   data: string | null;
   data_tassativa?: string | null;
   ticket_no?: string | null;
   descrizione: string | null;
+  incluso?: boolean | null;
+  note?: string | null;
+  note_tecniche?: string | null;
   proforma: string | null;
   codice_magazzino?: string | null;
   tipo?: string | null;
   stato_intervento: string | null;
+  esito_fatturazione?: string | null;
   fatturazione_stato?: string | null;
+  numero_fattura?: string | null;
+  fatturato_il?: string | null;
+  created_at?: string | null;
+};
+
+type ProjectInterventoForm = {
+  data: string;
+  data_tassativa: string;
+  descrizione: string;
+  ticket_no: string;
+  incluso: boolean;
+  proforma: string;
+  codice_magazzino: string;
+  fatturazione_stato: string;
+  stato_intervento: string;
+  note: string;
 };
 
 type FormData = {
@@ -651,6 +673,23 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
   const [contrattoUltraNome, setContrattoUltraNome] = useState<string | null>(null);
   const [interventiInclusiUsati, setInterventiInclusiUsati] = useState<number>(0);
   const [projectInterventi, setProjectInterventi] = useState<ProjectIntervento[]>([]);
+  const [projectInterventiError, setProjectInterventiError] = useState<string | null>(null);
+  const [projectInterventiNotice, setProjectInterventiNotice] = useState<string | null>(null);
+  const [projectInterventiExpandedId, setProjectInterventiExpandedId] = useState<string | null>(null);
+  const [projectInterventoEditId, setProjectInterventoEditId] = useState<string | null>(null);
+  const [projectInterventoEditForm, setProjectInterventoEditForm] = useState<ProjectInterventoForm | null>(null);
+  const [newProjectIntervento, setNewProjectIntervento] = useState<ProjectInterventoForm>({
+    data: "",
+    data_tassativa: "",
+    descrizione: "",
+    ticket_no: "",
+    incluso: true,
+    proforma: "",
+    codice_magazzino: "",
+    fatturazione_stato: "DA_FATTURARE",
+    stato_intervento: "APERTO",
+    note: "",
+  });
 
   function showToast(message: string, variant: "success" | "error" = "success", duration = 2500) {
     if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
@@ -836,6 +875,155 @@ function buildFormData(c: Checklist): FormData {
       data_installazione_reale: toDateInput(c.data_installazione_reale),
       garanzia_scadenza: toDateInput(c.garanzia_scadenza),
     };
+  }
+
+  function buildProjectInterventoForm(it: ProjectIntervento): ProjectInterventoForm {
+    return {
+      data: toDateInput(it.data),
+      data_tassativa: toDateInput(it.data_tassativa),
+      descrizione: String(it.descrizione || ""),
+      ticket_no: String(it.ticket_no || ""),
+      incluso: Boolean(it.incluso),
+      proforma: String(it.proforma || ""),
+      codice_magazzino: String(it.codice_magazzino || ""),
+      fatturazione_stato: String(it.fatturazione_stato || "DA_FATTURARE"),
+      stato_intervento: String(it.stato_intervento || "APERTO"),
+      note: String(it.note || ""),
+    };
+  }
+
+  async function loadProjectInterventi(checklistId: string) {
+    let res: any = await supabase
+      .from("saas_interventi")
+      .select(
+        "id, cliente, checklist_id, data, data_tassativa, ticket_no, descrizione, incluso, proforma, codice_magazzino, fatturazione_stato, stato_intervento, esito_fatturazione, numero_fattura, fatturato_il, note, note_tecniche, created_at"
+      )
+      .eq("checklist_id", checklistId)
+      .order("data", { ascending: false });
+
+    if (res.error && String(res.error.message || "").toLowerCase().includes("data_tassativa")) {
+      res = await supabase
+        .from("saas_interventi")
+        .select(
+          "id, cliente, checklist_id, data, ticket_no, descrizione, incluso, proforma, codice_magazzino, fatturazione_stato, stato_intervento, esito_fatturazione, numero_fattura, fatturato_il, note, note_tecniche, created_at"
+        )
+        .eq("checklist_id", checklistId)
+        .order("data", { ascending: false });
+      if (!res.error) {
+        res.data = ((res.data || []) as any[]).map((r) => ({ ...r, data_tassativa: null }));
+      }
+    }
+    if (res.error && String(res.error.message || "").toLowerCase().includes("ticket_no")) {
+      res = await supabase
+        .from("saas_interventi")
+        .select(
+          "id, cliente, checklist_id, data, data_tassativa, descrizione, incluso, proforma, codice_magazzino, fatturazione_stato, stato_intervento, esito_fatturazione, numero_fattura, fatturato_il, note, note_tecniche, created_at"
+        )
+        .eq("checklist_id", checklistId)
+        .order("data", { ascending: false });
+      if (!res.error) {
+        res.data = ((res.data || []) as any[]).map((r) => ({ ...r, ticket_no: null }));
+      }
+    }
+    if (res.error) throw new Error(res.error.message || "Errore caricamento interventi progetto");
+    return (res.data || []) as ProjectIntervento[];
+  }
+
+  async function addProjectIntervento() {
+    if (!id || !checklist) return;
+    const descrizione = newProjectIntervento.descrizione.trim();
+    if (!descrizione) {
+      setProjectInterventiError("Inserisci descrizione intervento.");
+      return;
+    }
+    setProjectInterventiError(null);
+    const payload = {
+      cliente: checklist.cliente,
+      checklist_id: id,
+      data: newProjectIntervento.data || new Date().toISOString().slice(0, 10),
+      data_tassativa: newProjectIntervento.data_tassativa || null,
+      ticket_no: newProjectIntervento.ticket_no.trim() || null,
+      descrizione,
+      tipo: descrizione,
+      incluso: Boolean(newProjectIntervento.incluso),
+      proforma: newProjectIntervento.proforma.trim() || null,
+      codice_magazzino: newProjectIntervento.codice_magazzino.trim() || null,
+      fatturazione_stato: newProjectIntervento.fatturazione_stato || "DA_FATTURARE",
+      stato_intervento: newProjectIntervento.stato_intervento || "APERTO",
+      note: newProjectIntervento.note.trim() || null,
+    };
+    const { error: insErr } = await supabase.from("saas_interventi").insert(payload);
+    if (insErr) {
+      setProjectInterventiError(insErr.message);
+      return;
+    }
+    const list = await loadProjectInterventi(id);
+    setProjectInterventi(list);
+    setProjectInterventiNotice("Intervento aggiunto.");
+    setNewProjectIntervento({
+      data: "",
+      data_tassativa: "",
+      descrizione: "",
+      ticket_no: "",
+      incluso: true,
+      proforma: checklist.proforma || "",
+      codice_magazzino: checklist.magazzino_importazione || "",
+      fatturazione_stato: "DA_FATTURARE",
+      stato_intervento: "APERTO",
+      note: "",
+    });
+  }
+
+  function startEditProjectIntervento(it: ProjectIntervento) {
+    setProjectInterventoEditId(it.id);
+    setProjectInterventoEditForm(buildProjectInterventoForm(it));
+  }
+
+  async function saveProjectIntervento() {
+    if (!projectInterventoEditId || !projectInterventoEditForm) return;
+    setProjectInterventiError(null);
+    const payload = {
+      data: projectInterventoEditForm.data || null,
+      data_tassativa: projectInterventoEditForm.data_tassativa || null,
+      ticket_no: projectInterventoEditForm.ticket_no.trim() || null,
+      descrizione: projectInterventoEditForm.descrizione.trim() || null,
+      tipo: projectInterventoEditForm.descrizione.trim() || null,
+      incluso: Boolean(projectInterventoEditForm.incluso),
+      proforma: projectInterventoEditForm.proforma.trim() || null,
+      codice_magazzino: projectInterventoEditForm.codice_magazzino.trim() || null,
+      fatturazione_stato: projectInterventoEditForm.fatturazione_stato || "DA_FATTURARE",
+      stato_intervento: projectInterventoEditForm.stato_intervento || "APERTO",
+      note: projectInterventoEditForm.note.trim() || null,
+    };
+    const { error: updErr } = await supabase
+      .from("saas_interventi")
+      .update(payload)
+      .eq("id", projectInterventoEditId);
+    if (updErr) {
+      setProjectInterventiError(updErr.message);
+      return;
+    }
+    if (!id) return;
+    const list = await loadProjectInterventi(id);
+    setProjectInterventi(list);
+    setProjectInterventoEditId(null);
+    setProjectInterventoEditForm(null);
+    setProjectInterventiNotice("Intervento aggiornato.");
+  }
+
+  async function deleteProjectIntervento(idToDelete: string) {
+    if (!idToDelete) return;
+    const ok = typeof window === "undefined" ? true : window.confirm("Eliminare questo intervento?");
+    if (!ok) return;
+    const { error: delErr } = await supabase.from("saas_interventi").delete().eq("id", idToDelete);
+    if (delErr) {
+      setProjectInterventiError(delErr.message);
+      return;
+    }
+    if (!id) return;
+    const list = await loadProjectInterventi(id);
+    setProjectInterventi(list);
+    setProjectInterventiNotice("Intervento eliminato.");
   }
 
   async function load(id: string) {
@@ -1054,50 +1242,20 @@ function buildFormData(c: Checklist): FormData {
     }
 
     let interventiData: ProjectIntervento[] = [];
-    {
-      let res: any = await supabase
-        .from("saas_interventi")
-        .select(
-          "id, data, data_tassativa, ticket_no, descrizione, tipo, proforma, codice_magazzino, stato_intervento, fatturazione_stato"
-        )
-        .eq("checklist_id", id)
-        .order("data", { ascending: false });
-      if (res.error && String(res.error.message || "").toLowerCase().includes("data_tassativa")) {
-        res = await supabase
-          .from("saas_interventi")
-          .select(
-            "id, data, ticket_no, descrizione, tipo, proforma, codice_magazzino, stato_intervento, fatturazione_stato"
-          )
-          .eq("checklist_id", id)
-          .order("data", { ascending: false });
-        interventiData =
-          ((res.data || []) as any[]).map((r) => ({ ...r, data_tassativa: null })) || [];
-      } else if (res.error && String(res.error.message || "").toLowerCase().includes("ticket_no")) {
-        res = await supabase
-          .from("saas_interventi")
-          .select("id, data, data_tassativa, descrizione, tipo, proforma, codice_magazzino, stato_intervento, fatturazione_stato")
-          .eq("checklist_id", id)
-          .order("data", { ascending: false });
-        interventiData =
-          ((res.data || []) as any[]).map((r) => ({ ...r, ticket_no: null })) || [];
-      } else {
-        interventiData = (res.data || []) as ProjectIntervento[];
-      }
-      if (res.error) {
-        const msg = String(res.error.message || "").toLowerCase();
-        const missingColumn =
-          msg.includes("data_tassativa") || msg.includes("ticket_no");
-        if (!missingColumn) {
-          setError("Errore caricamento interventi progetto: " + res.error.message);
-          setLoading(false);
-          return;
-        }
-      }
+    try {
+      interventiData = await loadProjectInterventi(id);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      setError("Errore caricamento interventi progetto: " + msg);
+      setLoading(false);
+      return;
     }
 
     setContrattoUltra(activeContratto);
     setContrattoUltraNome(ultraNome);
     setProjectInterventi(interventiData);
+    setProjectInterventiError(null);
+    setProjectInterventiNotice(null);
     setChecklist(headChecklist);
     setRows(mappedRows);
     setOriginalRowIds((items || []).map((r) => r.id));
@@ -1128,6 +1286,18 @@ function buildFormData(c: Checklist): FormData {
     const nextForm = buildFormData(headChecklist);
     setFormData(nextForm);
     setOriginalData(nextForm);
+    setNewProjectIntervento({
+      data: "",
+      data_tassativa: "",
+      descrizione: "",
+      ticket_no: "",
+      incluso: true,
+      proforma: headChecklist.proforma || "",
+      codice_magazzino: headChecklist.magazzino_importazione || "",
+      fatturazione_stato: "DA_FATTURARE",
+      stato_intervento: "APERTO",
+      note: "",
+    });
     setLoading(false);
   }
 
@@ -1241,6 +1411,20 @@ function buildFormData(c: Checklist): FormData {
     return !(code.startsWith("TEC") || code.startsWith("SAAS"));
   });
   const deviceOptions = deviceCatalogItems;
+  const saasPianoOptions = catalogItems
+    .filter((item) => String(item.codice || "").toUpperCase().startsWith("SAAS-"))
+    .map((item) => ({
+      code: String(item.codice || "").trim(),
+      label:
+        `${String(item.codice || "").trim()} — ${String(item.descrizione || "—").trim() || "—"}`,
+    }));
+  const saasServiziAggiuntivi = catalogItems
+    .filter((item) => String(item.codice || "").toUpperCase().startsWith("SAAS-EVT"))
+    .map((item) => ({
+      code: String(item.codice || "").trim(),
+      label:
+        `${String(item.codice || "").trim()} — ${String(item.descrizione || "—").trim() || "—"}`,
+    }));
   const serialiControllo = assetSerials.filter((s) => s.tipo === "CONTROLLO");
   const serialiModuli = assetSerials.filter((s) => s.tipo === "MODULO_LED");
   const m2Persisted = (() => {
@@ -3486,6 +3670,147 @@ function buildFormData(c: Checklist): FormData {
           }}
         >
           <div style={{ fontWeight: 800, marginBottom: 8 }}>Interventi del progetto</div>
+          <div style={{ border: "1px solid #f1f5f9", borderRadius: 10, padding: 10, marginBottom: 10 }}>
+            <div style={{ fontWeight: 700, marginBottom: 8 }}>Aggiungi intervento</div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(140px,1fr))", gap: 8 }}>
+              <label>
+                Data
+                <input
+                  type="date"
+                  value={newProjectIntervento.data}
+                  onChange={(e) =>
+                    setNewProjectIntervento((p) => ({ ...p, data: e.target.value }))
+                  }
+                  style={{ width: "100%", padding: 8 }}
+                />
+              </label>
+              <label>
+                Data tassativa
+                <input
+                  type="date"
+                  value={newProjectIntervento.data_tassativa}
+                  onChange={(e) =>
+                    setNewProjectIntervento((p) => ({ ...p, data_tassativa: e.target.value }))
+                  }
+                  style={{ width: "100%", padding: 8 }}
+                />
+              </label>
+              <label>
+                Ticket n°
+                <input
+                  value={newProjectIntervento.ticket_no}
+                  onChange={(e) =>
+                    setNewProjectIntervento((p) => ({ ...p, ticket_no: e.target.value }))
+                  }
+                  style={{ width: "100%", padding: 8 }}
+                  placeholder="es. 1234"
+                />
+              </label>
+              <label>
+                Incluso / Extra
+                <select
+                  value={newProjectIntervento.incluso ? "INCLUSO" : "EXTRA"}
+                  onChange={(e) =>
+                    setNewProjectIntervento((p) => ({ ...p, incluso: e.target.value === "INCLUSO" }))
+                  }
+                  style={{ width: "100%", padding: 8 }}
+                >
+                  <option value="INCLUSO">INCLUSO</option>
+                  <option value="EXTRA">EXTRA</option>
+                </select>
+              </label>
+              <label style={{ gridColumn: "span 2" }}>
+                Descrizione
+                <input
+                  value={newProjectIntervento.descrizione}
+                  onChange={(e) =>
+                    setNewProjectIntervento((p) => ({ ...p, descrizione: e.target.value }))
+                  }
+                  style={{ width: "100%", padding: 8 }}
+                />
+              </label>
+              <label>
+                Proforma
+                <input
+                  value={newProjectIntervento.proforma}
+                  onChange={(e) =>
+                    setNewProjectIntervento((p) => ({ ...p, proforma: e.target.value }))
+                  }
+                  style={{ width: "100%", padding: 8 }}
+                />
+              </label>
+              <label>
+                Cod. magazzino
+                <input
+                  value={newProjectIntervento.codice_magazzino}
+                  onChange={(e) =>
+                    setNewProjectIntervento((p) => ({ ...p, codice_magazzino: e.target.value }))
+                  }
+                  style={{ width: "100%", padding: 8 }}
+                />
+              </label>
+              <label>
+                Fatturazione
+                <select
+                  value={newProjectIntervento.fatturazione_stato}
+                  onChange={(e) =>
+                    setNewProjectIntervento((p) => ({ ...p, fatturazione_stato: e.target.value }))
+                  }
+                  style={{ width: "100%", padding: 8 }}
+                >
+                  <option value="DA_FATTURARE">DA_FATTURARE</option>
+                  <option value="NON_FATTURARE">NON_FATTURARE</option>
+                  <option value="FATTURATO">FATTURATO</option>
+                </select>
+              </label>
+              <label>
+                Stato
+                <select
+                  value={newProjectIntervento.stato_intervento}
+                  onChange={(e) =>
+                    setNewProjectIntervento((p) => ({ ...p, stato_intervento: e.target.value }))
+                  }
+                  style={{ width: "100%", padding: 8 }}
+                >
+                  <option value="APERTO">APERTO</option>
+                  <option value="CHIUSO">CHIUSO</option>
+                </select>
+              </label>
+              <label style={{ gridColumn: "span 3" }}>
+                Note
+                <input
+                  value={newProjectIntervento.note}
+                  onChange={(e) =>
+                    setNewProjectIntervento((p) => ({ ...p, note: e.target.value }))
+                  }
+                  style={{ width: "100%", padding: 8 }}
+                />
+              </label>
+              <div style={{ display: "flex", alignItems: "end" }}>
+                <button
+                  type="button"
+                  onClick={addProjectIntervento}
+                  style={{
+                    width: "100%",
+                    padding: "8px 10px",
+                    borderRadius: 8,
+                    border: "1px solid #111",
+                    background: "#111",
+                    color: "white",
+                    cursor: "pointer",
+                  }}
+                >
+                  Aggiungi intervento
+                </button>
+              </div>
+            </div>
+            {projectInterventiError && (
+              <div style={{ color: "crimson", marginTop: 8, fontSize: 12 }}>{projectInterventiError}</div>
+            )}
+            {projectInterventiNotice && (
+              <div style={{ color: "#166534", marginTop: 8, fontSize: 12 }}>{projectInterventiNotice}</div>
+            )}
+          </div>
           {projectInterventi.length === 0 ? (
             <div style={{ opacity: 0.7 }}>Nessun intervento registrato</div>
           ) : (
@@ -3493,7 +3818,7 @@ function buildFormData(c: Checklist): FormData {
               <div
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "100px 100px 110px 1fr 110px 110px 120px",
+                  gridTemplateColumns: "90px 90px 95px 1fr 90px 100px 105px 190px",
                   gap: 8,
                   padding: "8px 10px",
                   fontWeight: 700,
@@ -3508,34 +3833,227 @@ function buildFormData(c: Checklist): FormData {
                 <div>Descrizione</div>
                 <div>Tipo</div>
                 <div>Stato</div>
-                <div>Fatturazione</div>
+                <div>Fatturaz.</div>
+                <div>Azioni</div>
               </div>
-              {projectInterventi.map((it) => (
-                <div
-                  key={it.id}
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "100px 100px 110px 1fr 110px 110px 120px",
-                    gap: 8,
-                    padding: "8px 10px",
-                    borderBottom: "1px solid #f3f4f6",
-                    alignItems: "start",
-                    fontSize: 12,
-                  }}
-                >
-                  <div>{it.data ? new Date(it.data).toLocaleDateString("it-IT") : "—"}</div>
-                  <div>
-                    {it.data_tassativa
-                      ? new Date(it.data_tassativa).toLocaleDateString("it-IT")
-                      : "—"}
+              {projectInterventi.map((it) => {
+                const expanded = projectInterventiExpandedId === it.id;
+                const editing = projectInterventoEditId === it.id && projectInterventoEditForm;
+                return (
+                  <div key={it.id} style={{ borderBottom: "1px solid #f3f4f6" }}>
+                    <div
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "90px 90px 95px 1fr 90px 100px 105px 190px",
+                        gap: 8,
+                        padding: "8px 10px",
+                        alignItems: "center",
+                        fontSize: 12,
+                      }}
+                    >
+                      <div>{it.data ? new Date(it.data).toLocaleDateString("it-IT") : "—"}</div>
+                      <div>{it.data_tassativa ? new Date(it.data_tassativa).toLocaleDateString("it-IT") : "—"}</div>
+                      <div>{it.ticket_no || it.proforma || "—"}</div>
+                      <div>{it.descrizione || "—"}</div>
+                      <div>{it.incluso ? "INCLUSO" : "EXTRA"}</div>
+                      <div>{String(it.stato_intervento || "—").toUpperCase()}</div>
+                      <div>{String(it.fatturazione_stato || "—").toUpperCase()}</div>
+                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setProjectInterventiExpandedId((prev) => (prev === it.id ? null : it.id))
+                          }
+                          style={{ padding: "6px 8px", borderRadius: 8, border: "1px solid #ddd", background: "white", cursor: "pointer" }}
+                        >
+                          Dettagli
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => startEditProjectIntervento(it)}
+                          style={{ padding: "6px 8px", borderRadius: 8, border: "1px solid #111", background: "white", cursor: "pointer" }}
+                        >
+                          Modifica
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => deleteProjectIntervento(it.id)}
+                          style={{ padding: "6px 8px", borderRadius: 8, border: "1px solid #dc2626", color: "#dc2626", background: "white", cursor: "pointer" }}
+                        >
+                          Elimina
+                        </button>
+                      </div>
+                    </div>
+                    {(expanded || editing) && (
+                      <div style={{ background: "#fafafa", padding: 10, borderTop: "1px solid #eef2f7" }}>
+                        {editing ? (
+                          <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(130px,1fr))", gap: 8 }}>
+                            <label>
+                              Data
+                              <input
+                                type="date"
+                                value={projectInterventoEditForm.data}
+                                onChange={(e) =>
+                                  setProjectInterventoEditForm((p) =>
+                                    p ? { ...p, data: e.target.value } : p
+                                  )
+                                }
+                                style={{ width: "100%", padding: 8 }}
+                              />
+                            </label>
+                            <label>
+                              Tassativa
+                              <input
+                                type="date"
+                                value={projectInterventoEditForm.data_tassativa}
+                                onChange={(e) =>
+                                  setProjectInterventoEditForm((p) =>
+                                    p ? { ...p, data_tassativa: e.target.value } : p
+                                  )
+                                }
+                                style={{ width: "100%", padding: 8 }}
+                              />
+                            </label>
+                            <label>
+                              Ticket
+                              <input
+                                value={projectInterventoEditForm.ticket_no}
+                                onChange={(e) =>
+                                  setProjectInterventoEditForm((p) =>
+                                    p ? { ...p, ticket_no: e.target.value } : p
+                                  )
+                                }
+                                style={{ width: "100%", padding: 8 }}
+                              />
+                            </label>
+                            <label>
+                              Incluso/Extra
+                              <select
+                                value={projectInterventoEditForm.incluso ? "INCLUSO" : "EXTRA"}
+                                onChange={(e) =>
+                                  setProjectInterventoEditForm((p) =>
+                                    p ? { ...p, incluso: e.target.value === "INCLUSO" } : p
+                                  )
+                                }
+                                style={{ width: "100%", padding: 8 }}
+                              >
+                                <option value="INCLUSO">INCLUSO</option>
+                                <option value="EXTRA">EXTRA</option>
+                              </select>
+                            </label>
+                            <label style={{ gridColumn: "span 2" }}>
+                              Descrizione
+                              <input
+                                value={projectInterventoEditForm.descrizione}
+                                onChange={(e) =>
+                                  setProjectInterventoEditForm((p) =>
+                                    p ? { ...p, descrizione: e.target.value } : p
+                                  )
+                                }
+                                style={{ width: "100%", padding: 8 }}
+                              />
+                            </label>
+                            <label>
+                              Proforma
+                              <input
+                                value={projectInterventoEditForm.proforma}
+                                onChange={(e) =>
+                                  setProjectInterventoEditForm((p) =>
+                                    p ? { ...p, proforma: e.target.value } : p
+                                  )
+                                }
+                                style={{ width: "100%", padding: 8 }}
+                              />
+                            </label>
+                            <label>
+                              Cod. magazzino
+                              <input
+                                value={projectInterventoEditForm.codice_magazzino}
+                                onChange={(e) =>
+                                  setProjectInterventoEditForm((p) =>
+                                    p ? { ...p, codice_magazzino: e.target.value } : p
+                                  )
+                                }
+                                style={{ width: "100%", padding: 8 }}
+                              />
+                            </label>
+                            <label>
+                              Fatturazione
+                              <select
+                                value={projectInterventoEditForm.fatturazione_stato}
+                                onChange={(e) =>
+                                  setProjectInterventoEditForm((p) =>
+                                    p ? { ...p, fatturazione_stato: e.target.value } : p
+                                  )
+                                }
+                                style={{ width: "100%", padding: 8 }}
+                              >
+                                <option value="DA_FATTURARE">DA_FATTURARE</option>
+                                <option value="NON_FATTURARE">NON_FATTURARE</option>
+                                <option value="FATTURATO">FATTURATO</option>
+                              </select>
+                            </label>
+                            <label>
+                              Stato
+                              <select
+                                value={projectInterventoEditForm.stato_intervento}
+                                onChange={(e) =>
+                                  setProjectInterventoEditForm((p) =>
+                                    p ? { ...p, stato_intervento: e.target.value } : p
+                                  )
+                                }
+                                style={{ width: "100%", padding: 8 }}
+                              >
+                                <option value="APERTO">APERTO</option>
+                                <option value="CHIUSO">CHIUSO</option>
+                              </select>
+                            </label>
+                            <label style={{ gridColumn: "span 3" }}>
+                              Note
+                              <input
+                                value={projectInterventoEditForm.note}
+                                onChange={(e) =>
+                                  setProjectInterventoEditForm((p) =>
+                                    p ? { ...p, note: e.target.value } : p
+                                  )
+                                }
+                                style={{ width: "100%", padding: 8 }}
+                              />
+                            </label>
+                            <div style={{ display: "flex", alignItems: "end", gap: 8 }}>
+                              <button
+                                type="button"
+                                onClick={saveProjectIntervento}
+                                style={{ padding: "8px 10px", borderRadius: 8, border: "1px solid #111", background: "#111", color: "white", cursor: "pointer" }}
+                              >
+                                Salva
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setProjectInterventoEditId(null);
+                                  setProjectInterventoEditForm(null);
+                                }}
+                                style={{ padding: "8px 10px", borderRadius: 8, border: "1px solid #ddd", background: "white", cursor: "pointer" }}
+                              >
+                                Annulla
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div style={{ fontSize: 12, display: "grid", gap: 6 }}>
+                            <div><strong>Descrizione:</strong> {it.descrizione || "—"}</div>
+                            <div><strong>Ticket:</strong> {it.ticket_no || "—"}</div>
+                            <div><strong>Proforma:</strong> {it.proforma || "—"} · <strong>Cod.mag:</strong> {it.codice_magazzino || "—"}</div>
+                            <div><strong>Stato:</strong> {String(it.stato_intervento || "—").toUpperCase()} · <strong>Fatturazione:</strong> {String(it.fatturazione_stato || "—").toUpperCase()}</div>
+                            <div><strong>Note:</strong> {it.note || "—"}</div>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
-                  <div>{it.ticket_no || it.proforma || "—"}</div>
-                  <div>{it.descrizione || "—"}</div>
-                  <div>{String(it.tipo || "INTERVENTO").toUpperCase()}</div>
-                  <div>{String(it.stato_intervento || "—").toUpperCase()}</div>
-                  <div>{String(it.fatturazione_stato || "—").toUpperCase()}</div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
@@ -3557,30 +4075,11 @@ function buildFormData(c: Checklist): FormData {
                     style={{ width: "100%", padding: 10 }}
                   >
                     <option value="">—</option>
-                    <option value="SAAS-PL">SAAS-PL — CARE PLUS</option>
-                    <option value="SAAS-PR">SAAS-PR — CARE PREMIUM</option>
-                    <option value="SAAS-UL">SAAS-UL — CARE ULTRA</option>
-                    <option value="SAAS-UL-ILL">SAAS-UL-ILL — CARE ULTRA (illimitato)</option>
-                    <option value="SAAS-PR4">SAAS-PR4 — CARE PREMIUM (H4)</option>
-                    <option value="SAAS-PR8">SAAS-PR8 — CARE PREMIUM (H8)</option>
-                    <option value="SAAS-PR12">SAAS-PR12 — CARE PREMIUM (H12)</option>
-                    <option value="SAAS-PR24">SAAS-PR24 — CARE PREMIUM (H24)</option>
-                    <option value="SAAS-PR36">SAAS-PR36 — CARE PREMIUM (H36)</option>
-                    <option value="SAAS-UL4">SAAS-UL4 — CARE ULTRA (H4)</option>
-                    <option value="SAAS-UL8">SAAS-UL8 — CARE ULTRA (H8)</option>
-                    <option value="SAAS-UL12">SAAS-UL12 — CARE ULTRA (H12)</option>
-                    <option value="SAAS-UL24">SAAS-UL24 — CARE ULTRA (H24)</option>
-                    <option value="SAAS-UL36">SAAS-UL36 — CARE ULTRA (H36)</option>
-                    <option value="SAAS-EVTR">SAAS-EVTR — ART TECH EVENT</option>
-                    <option value="SAAS-MON">SAAS-MON — MONITORAGGIO REMOTO & ALERT</option>
-                    <option value="SAAS-TCK">SAAS-TCK — TICKETING / HELP DESK</option>
-                    <option value="SAAS-SIM">SAAS-SIM — CONNETTIVITÀ SIM DATI</option>
-                    <option value="SAAS-CMS">SAAS-CMS — LICENZA CMS / SOFTWARE TERZI</option>
-                    <option value="SAAS-BKP">SAAS-BKP — BACKUP / RIPRISTINO</option>
-                    <option value="SAAS-RPT">SAAS-RPT — REPORTISTICA</option>
-                    <option value="SAAS-SLA">SAAS-SLA — SLA RIPRISTINO</option>
-                    <option value="SAAS-EXT">SAAS-EXT — ESTENSIONE GARANZIA</option>
-                    <option value="SAAS-CYB">SAAS-CYB — CYBER / HARDENING</option>
+                    {saasPianoOptions.map((p) => (
+                      <option key={p.code} value={p.code}>
+                        {p.label}
+                      </option>
+                    ))}
                   </select>
                   <input
                     type="date"
@@ -3627,9 +4126,11 @@ function buildFormData(c: Checklist): FormData {
                   style={{ width: "100%", padding: 10 }}
                 >
                   <option value="">— nessuno —</option>
-                  <option value="SAAS-EVTR">SAAS-EVTR — ART TECH EVENT</option>
-                  <option value="SAAS-EVTF">SAAS-EVTF — ART TECH EVENT (remoto)</option>
-                  <option value="SAAS-EVTO">SAAS-EVTO — ART TECH EVENT (onsite)</option>
+                  {saasServiziAggiuntivi.map((p) => (
+                    <option key={p.code} value={p.code}>
+                      {p.label}
+                    </option>
+                  ))}
                 </select>
               ) : (
                 <div>
