@@ -561,6 +561,17 @@ export default function NuovaChecklistPage() {
           (msg.includes("impianto_quantita") && msg.includes("column"))
         );
       };
+      const isOperatoreFkError = (err: any) => {
+        const msg = `${err?.message || ""}`.toLowerCase();
+        const details = `${err?.details || ""}`.toLowerCase();
+        const code = `${err?.code || ""}`.toLowerCase();
+        return (
+          code === "23503" &&
+          (msg.includes("created_by_operatore") ||
+            msg.includes("updated_by_operatore") ||
+            details.includes("operatori"))
+        );
+      };
 
       const tryInsert = async (payload: Partial<typeof payloadChecklist>) => {
         return supabase
@@ -578,6 +589,10 @@ export default function NuovaChecklistPage() {
       }
       if (errCreate && isImpiantoQuantitaMissing(errCreate)) {
         const { impianto_quantita, ...legacyPayload } = payloadChecklist;
+        ({ data: created, error: errCreate } = await tryInsert(legacyPayload));
+      }
+      if (errCreate && isOperatoreFkError(errCreate)) {
+        const { created_by_operatore, updated_by_operatore, ...legacyPayload } = payloadChecklist;
         ({ data: created, error: errCreate } = await tryInsert(legacyPayload));
       }
 

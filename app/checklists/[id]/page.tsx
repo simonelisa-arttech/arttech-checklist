@@ -2054,6 +2054,17 @@ function buildFormData(c: Checklist): FormData {
         (msg.includes("impianto_quantita") && msg.includes("column"))
       );
     };
+    const isOperatoreFkError = (err: any) => {
+      const msg = `${err?.message || ""}`.toLowerCase();
+      const details = `${err?.details || ""}`.toLowerCase();
+      const code = `${err?.code || ""}`.toLowerCase();
+      return (
+        code === "23503" &&
+        (msg.includes("created_by_operatore") ||
+          msg.includes("updated_by_operatore") ||
+          details.includes("operatori"))
+      );
+    };
 
     const tryUpdate = async (payloadUpdate: Partial<typeof payload>) => {
       return supabase.from("checklists").update(payloadUpdate).eq("id", id);
@@ -2067,6 +2078,10 @@ function buildFormData(c: Checklist): FormData {
     }
     if (errUpdate && isImpiantoQuantitaMissing(errUpdate)) {
       const { impianto_quantita, ...legacyPayload } = payload;
+      ({ error: errUpdate } = await tryUpdate(legacyPayload));
+    }
+    if (errUpdate && isOperatoreFkError(errUpdate)) {
+      const { updated_by_operatore, ...legacyPayload } = payload;
       ({ error: errUpdate } = await tryUpdate(legacyPayload));
     }
 
