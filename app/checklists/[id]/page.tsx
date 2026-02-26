@@ -1720,10 +1720,15 @@ function buildFormData(c: Checklist): FormData {
     if (!id) return;
     const ok = window.confirm("Eliminare questa licenza?");
     if (!ok) return;
-    const { error: delErr } = await supabase.from("licenses").delete().eq("id", licenzaId);
-    if (delErr) {
-      const msg =
-        logSupabaseError("delete license", delErr) || "Errore eliminazione licenza";
+    const res = await fetch("/api/licenses/action", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ action: "DELETE_LICENSE", licenseId: licenzaId }),
+    });
+    const json = await res.json().catch(() => ({} as any));
+    if (!res.ok) {
+      const msg = String(json?.error || "Errore eliminazione licenza");
       alert(msg);
       setItemsError(msg);
       return;

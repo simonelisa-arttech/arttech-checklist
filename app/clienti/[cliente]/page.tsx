@@ -3520,8 +3520,14 @@ export default function ClientePage({ params }: { params: any }) {
     setEditScadenzaErr(null);
     try {
       if (editScadenzaForm.tipo === "LICENZA") {
-        const { error } = await supabase.from("licenses").delete().eq("id", editScadenzaItem.id);
-        if (error) throw new Error(error.message);
+        const res = await fetch("/api/licenses/action", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ action: "DELETE_LICENSE", licenseId: editScadenzaItem.id }),
+        });
+        const json = await res.json().catch(() => ({} as any));
+        if (!res.ok) throw new Error(String(json?.error || "Errore eliminazione licenza"));
         setLicenze((prev) => prev.filter((x) => x.id !== editScadenzaItem.id));
       } else if (editScadenzaForm.tipo === "TAGLIANDO") {
         const { error } = await supabase.from("tagliandi").delete().eq("id", editScadenzaItem.id);

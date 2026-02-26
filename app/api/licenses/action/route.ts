@@ -4,7 +4,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
 type ActionBody = {
-  action: "SET_STATUS" | "SEND_ALERT";
+  action: "SET_STATUS" | "SEND_ALERT" | "DELETE_LICENSE";
   licenseId: string;
   status?: string;
   alertTo?: string | null;
@@ -139,6 +139,14 @@ export async function POST(request: Request) {
       patch.status = body.status.toUpperCase();
     }
     const { error } = await supabase.from("licenses").update(patch).eq("id", body.licenseId);
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+    return NextResponse.json({ ok: true });
+  }
+
+  if (body.action === "DELETE_LICENSE") {
+    const { error } = await supabase.from("licenses").delete().eq("id", body.licenseId);
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
