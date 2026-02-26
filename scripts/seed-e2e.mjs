@@ -65,7 +65,7 @@ async function run() {
       {
         id: '00000000-0000-0000-0000-00000000e501',
         checklist_id: CHECKLIST_DUPLICATE,
-        sezione: 'E2E',
+        sezione: 1,
         ordine: 1,
         titolo: 'TASK_E2E_DUPLICATE',
         stato: 'OK',
