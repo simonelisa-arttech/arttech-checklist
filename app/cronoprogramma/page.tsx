@@ -140,6 +140,8 @@ export default function CronoprogrammaPage() {
   const [clienteFilter, setClienteFilter] = useState("TUTTI");
   const [kindFilter, setKindFilter] = useState<"TUTTI" | "INSTALLAZIONE" | "INTERVENTO">("TUTTI");
   const [q, setQ] = useState("");
+  const [sortBy, setSortBy] = useState<"data_prevista" | "data_tassativa">("data_tassativa");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [metaByKey, setMetaByKey] = useState<Record<string, CronoMeta>>({});
   const [commentsByKey, setCommentsByKey] = useState<Record<string, CronoComment[]>>({});
   const [noteDraftByKey, setNoteDraftByKey] = useState<Record<string, string>>({});
@@ -351,10 +353,10 @@ export default function CronoprogrammaPage() {
       }
 
       for (const i of (interventi || []) as InterventoRow[]) {
-        const date = toIsoDay(i.data);
+        const date = toIsoDay(i.data_tassativa) || toIsoDay(i.data);
         if (!date) continue;
         const c = i.checklist_id ? checklistById.get(i.checklist_id) : null;
-        const prevista = toIsoDay(i.data) || date;
+        const prevista = toIsoDay(i.data) || toIsoDay(i.data_tassativa) || date;
         const tassativa = toIsoDay(i.data_tassativa) || toIsoDay(i.data) || date;
         timeline.push({
           kind: "INTERVENTO",
@@ -396,18 +398,42 @@ export default function CronoprogrammaPage() {
       const rifDate = r.data_tassativa || r.data_prevista;
       const key = getRowKey(r.kind, r.row_ref_id);
       const fatto = Boolean(metaByKey[key]?.fatto ?? r.fatto);
+      if (clienteFilter !== "TUTTI" && r.cliente !== clienteFilter) return false;
+      if (kindFilter !== "TUTTI" && r.kind !== kindFilter) return false;
+      if (needle) {
+        const matchesSearch = `${r.cliente} ${r.progetto} ${r.ticket_no || ""} ${r.descrizione} ${r.stato}`
+          .toLowerCase()
+          .includes(needle);
+        if (!matchesSearch) return false;
+      }
       const isAlwaysVisible = !fatto && rifDate > alwaysVisibleThreshold;
       if (isAlwaysVisible) return true;
       if (fromDate && rifDate < fromDate) return false;
       if (toDate && rifDate > toDate) return false;
-      if (clienteFilter !== "TUTTI" && r.cliente !== clienteFilter) return false;
-      if (kindFilter !== "TUTTI" && r.kind !== kindFilter) return false;
-      if (!needle) return true;
-      return `${r.cliente} ${r.progetto} ${r.ticket_no || ""} ${r.descrizione} ${r.stato}`
-        .toLowerCase()
-        .includes(needle);
+      return true;
     });
   }, [rows, fromDate, toDate, clienteFilter, kindFilter, q, metaByKey]);
+
+  const filteredSorted = useMemo(() => {
+    const sorted = [...filtered];
+    const field = sortBy;
+    sorted.sort((a, b) => {
+      const av = field === "data_prevista" ? a.data_prevista : a.data_tassativa;
+      const bv = field === "data_prevista" ? b.data_prevista : b.data_tassativa;
+      const cmp = String(av || "").localeCompare(String(bv || ""));
+      return sortDir === "asc" ? cmp : -cmp;
+    });
+    return sorted;
+  }, [filtered, sortBy, sortDir]);
+
+  function toggleSort(field: "data_prevista" | "data_tassativa") {
+    if (sortBy === field) {
+      setSortDir((prev) => (prev === "asc" ? "desc" : "asc"));
+      return;
+    }
+    setSortBy(field);
+    setSortDir("asc");
+  }
 
   return (
     <div style={{ maxWidth: 1250, margin: "28px auto", padding: 16 }}>
@@ -536,13 +562,13 @@ export default function CronoprogrammaPage() {
           marginBottom: 8,
         }}
       >
-        <div style={{ fontSize: 13, opacity: 0.8 }}>Risultati: {filtered.length}</div>
+        <div style={{ fontSize: 13, opacity: 0.8 }}>Risultati: {filteredSorted.length}</div>
         <button
           type="button"
           onClick={() =>
             downloadCsv(
               `cronoprogramma_${new Date().toISOString().slice(0, 10)}.csv`,
-              filtered,
+              filteredSorted,
               metaByKey,
               commentsByKey
             )
@@ -571,8 +597,22 @@ export default function CronoprogrammaPage() {
             borderBottom: "1px solid #eee",
           }}
         >
-          <div>Data prevista</div>
-          <div>Data tassativa</div>
+          <button
+            type="button"
+            onClick={() => toggleSort("data_prevista")}
+            style={{ border: "none", background: "transparent", padding: 0, textAlign: "left", cursor: "pointer", fontWeight: 700 }}
+            title="Ordina per data prevista"
+          >
+            Data prevista {sortBy === "data_prevista" ? (sortDir === "asc" ? "↑" : "↓") : ""}
+          </button>
+          <button
+            type="button"
+            onClick={() => toggleSort("data_tassativa")}
+            style={{ border: "none", background: "transparent", padding: 0, textAlign: "left", cursor: "pointer", fontWeight: 700 }}
+            title="Ordina per data tassativa"
+          >
+            Data tassativa {sortBy === "data_tassativa" ? (sortDir === "asc" ? "↑" : "↓") : ""}
+          </button>
           <div>Evento</div>
           <div>Cliente</div>
           <div>Progetto</div>
@@ -583,10 +623,10 @@ export default function CronoprogrammaPage() {
         </div>
         {loading ? (
           <div style={{ padding: 12, opacity: 0.7 }}>Caricamento...</div>
-        ) : filtered.length === 0 ? (
+        ) : filteredSorted.length === 0 ? (
           <div style={{ padding: 12, opacity: 0.7 }}>Nessun risultato</div>
         ) : (
-          filtered.map((r) => {
+          filteredSorted.map((r) => {
             const key = getRowKey(r.kind, r.row_ref_id);
             const meta = metaByKey[key];
             const fatto = Boolean(meta?.fatto ?? r.fatto);

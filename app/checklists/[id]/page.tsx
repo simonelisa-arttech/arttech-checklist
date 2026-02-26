@@ -186,6 +186,19 @@ type ContrattoRow = {
   created_at: string | null;
 };
 
+type ProjectIntervento = {
+  id: string;
+  data: string | null;
+  data_tassativa?: string | null;
+  ticket_no?: string | null;
+  descrizione: string | null;
+  proforma: string | null;
+  codice_magazzino?: string | null;
+  tipo?: string | null;
+  stato_intervento: string | null;
+  fatturazione_stato?: string | null;
+};
+
 type FormData = {
   cliente: string;
   cliente_id: string;
@@ -233,6 +246,17 @@ type NotificationRule = {
   day_of_week: number | null;
   send_on_create: boolean;
   only_future: boolean;
+};
+
+type AlertTemplate = {
+  id: string;
+  codice: string | null;
+  titolo: string | null;
+  tipo: string | null;
+  trigger: string | null;
+  subject_template: string | null;
+  body_template: string | null;
+  attivo: boolean;
 };
 
 function toDateInput(value?: string | null) {
@@ -598,6 +622,8 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
   const [alertTask, setAlertTask] = useState<ChecklistTask | null>(null);
   const [alertDestinatarioId, setAlertDestinatarioId] = useState("");
   const [alertMessaggio, setAlertMessaggio] = useState("");
+  const [alertTemplates, setAlertTemplates] = useState<AlertTemplate[]>([]);
+  const [alertSelectedPresetId, setAlertSelectedPresetId] = useState("");
   const [alertSendEmail, setAlertSendEmail] = useState(true);
   const [alertManualMode, setAlertManualMode] = useState(false);
   const [alertManualEmail, setAlertManualEmail] = useState("");
@@ -624,6 +650,7 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
   const [contrattoUltra, setContrattoUltra] = useState<ContrattoRow | null>(null);
   const [contrattoUltraNome, setContrattoUltraNome] = useState<string | null>(null);
   const [interventiInclusiUsati, setInterventiInclusiUsati] = useState<number>(0);
+  const [projectInterventi, setProjectInterventi] = useState<ProjectIntervento[]>([]);
 
   function showToast(message: string, variant: "success" | "error" = "success", duration = 2500) {
     if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
@@ -638,6 +665,10 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
 
   function isValidEmail(email: string) {
     return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
+  }
+
+  function applyTemplate(input: string, ctx: Record<string, string>) {
+    return input.replace(/\{(\w+)\}/g, (_, key) => ctx[key] ?? "");
   }
 
   function normalizeSerial(input: string) {
@@ -1022,8 +1053,51 @@ function buildFormData(c: Checklist): FormData {
       }
     }
 
+    let interventiData: ProjectIntervento[] = [];
+    {
+      let res: any = await supabase
+        .from("saas_interventi")
+        .select(
+          "id, data, data_tassativa, ticket_no, descrizione, tipo, proforma, codice_magazzino, stato_intervento, fatturazione_stato"
+        )
+        .eq("checklist_id", id)
+        .order("data", { ascending: false });
+      if (res.error && String(res.error.message || "").toLowerCase().includes("data_tassativa")) {
+        res = await supabase
+          .from("saas_interventi")
+          .select(
+            "id, data, ticket_no, descrizione, tipo, proforma, codice_magazzino, stato_intervento, fatturazione_stato"
+          )
+          .eq("checklist_id", id)
+          .order("data", { ascending: false });
+        interventiData =
+          ((res.data || []) as any[]).map((r) => ({ ...r, data_tassativa: null })) || [];
+      } else if (res.error && String(res.error.message || "").toLowerCase().includes("ticket_no")) {
+        res = await supabase
+          .from("saas_interventi")
+          .select("id, data, data_tassativa, descrizione, tipo, proforma, codice_magazzino, stato_intervento, fatturazione_stato")
+          .eq("checklist_id", id)
+          .order("data", { ascending: false });
+        interventiData =
+          ((res.data || []) as any[]).map((r) => ({ ...r, ticket_no: null })) || [];
+      } else {
+        interventiData = (res.data || []) as ProjectIntervento[];
+      }
+      if (res.error) {
+        const msg = String(res.error.message || "").toLowerCase();
+        const missingColumn =
+          msg.includes("data_tassativa") || msg.includes("ticket_no");
+        if (!missingColumn) {
+          setError("Errore caricamento interventi progetto: " + res.error.message);
+          setLoading(false);
+          return;
+        }
+      }
+    }
+
     setContrattoUltra(activeContratto);
     setContrattoUltraNome(ultraNome);
+    setProjectInterventi(interventiData);
     setChecklist(headChecklist);
     setRows(mappedRows);
     setOriginalRowIds((items || []).map((r) => r.id));
@@ -1114,6 +1188,29 @@ function buildFormData(c: Checklist): FormData {
       });
       setOperatoriMap(map);
       setAlertOperatori(list);
+
+      const tplRes = await fetch("/api/alert-templates", {
+        method: "GET",
+        credentials: "include",
+      });
+      if (tplRes.ok) {
+        const tplJson = await tplRes.json().catch(() => ({}));
+        const rows = Array.isArray(tplJson?.data) ? tplJson.data : [];
+        setAlertTemplates(
+          rows
+            .filter((t: any) => t?.attivo === true)
+            .map((t: any) => ({
+              id: String(t.id || ""),
+              codice: t.codice ?? null,
+              titolo: t.titolo ?? null,
+              tipo: t.tipo ?? null,
+              trigger: t.trigger ?? null,
+              subject_template: t.subject_template ?? null,
+              body_template: t.body_template ?? null,
+              attivo: t.attivo === true,
+            }))
+        );
+      }
     })();
   }, []);
 
@@ -1354,6 +1451,7 @@ function buildFormData(c: Checklist): FormData {
     setAlertManualMode(false);
     setAlertManualEmail("");
     setAlertManualName("");
+    setAlertSelectedPresetId("");
   }
 
   function parseRecipientsInput(input: string) {
@@ -3378,6 +3476,70 @@ function buildFormData(c: Checklist): FormData {
           </div>
         </div>
       )}
+      <div style={{ marginTop: 12 }}>
+        <div
+          style={{
+            border: "1px solid #eee",
+            borderRadius: 12,
+            padding: 12,
+            background: "white",
+          }}
+        >
+          <div style={{ fontWeight: 800, marginBottom: 8 }}>Interventi del progetto</div>
+          {projectInterventi.length === 0 ? (
+            <div style={{ opacity: 0.7 }}>Nessun intervento registrato</div>
+          ) : (
+            <div style={{ border: "1px solid #f1f5f9", borderRadius: 10, overflow: "hidden" }}>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "100px 100px 110px 1fr 110px 110px 120px",
+                  gap: 8,
+                  padding: "8px 10px",
+                  fontWeight: 700,
+                  background: "#fafafa",
+                  borderBottom: "1px solid #eee",
+                  fontSize: 12,
+                }}
+              >
+                <div>Data</div>
+                <div>Tassativa</div>
+                <div>Ticket/Pf</div>
+                <div>Descrizione</div>
+                <div>Tipo</div>
+                <div>Stato</div>
+                <div>Fatturazione</div>
+              </div>
+              {projectInterventi.map((it) => (
+                <div
+                  key={it.id}
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "100px 100px 110px 1fr 110px 110px 120px",
+                    gap: 8,
+                    padding: "8px 10px",
+                    borderBottom: "1px solid #f3f4f6",
+                    alignItems: "start",
+                    fontSize: 12,
+                  }}
+                >
+                  <div>{it.data ? new Date(it.data).toLocaleDateString("it-IT") : "—"}</div>
+                  <div>
+                    {it.data_tassativa
+                      ? new Date(it.data_tassativa).toLocaleDateString("it-IT")
+                      : "—"}
+                  </div>
+                  <div>{it.ticket_no || it.proforma || "—"}</div>
+                  <div>{it.descrizione || "—"}</div>
+                  <div>{String(it.tipo || "INTERVENTO").toUpperCase()}</div>
+                  <div>{String(it.stato_intervento || "—").toUpperCase()}</div>
+                  <div>{String(it.fatturazione_stato || "—").toUpperCase()}</div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
       <div style={{ marginTop: 22 }}>
         <h2 style={{ marginTop: 0 }}>SERVIZI</h2>
 
@@ -4855,6 +5017,60 @@ function buildFormData(c: Checklist): FormData {
                 {alertFormError}
               </div>
             )}
+            {(() => {
+              const presets = alertTemplates.filter((t) => {
+                const tipo = String(t.tipo || "").toUpperCase();
+                const trigger = String(t.trigger || "").toUpperCase();
+                const isGeneric = tipo === "GENERICO" || tipo === "";
+                const isManual =
+                  trigger === "MANUALE" ||
+                  trigger === "TASK_STATUS_CHANGE" ||
+                  trigger === "";
+                return isGeneric && isManual;
+              });
+              if (presets.length === 0) return null;
+
+              const destinatarioLabel = alertManualMode
+                ? alertManualName.trim() || alertManualEmail.trim()
+                : alertOperatori.find((o) => o.id === alertDestinatarioId)?.nome ||
+                  alertOperatori.find((o) => o.id === alertDestinatarioId)?.email ||
+                  "";
+
+              return (
+                <label style={{ display: "block", marginBottom: 10 }}>
+                  Preset messaggio<br />
+                  <select
+                    value={alertSelectedPresetId}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      setAlertSelectedPresetId(value);
+                      const tpl = presets.find((t) => String(t.id) === value);
+                      if (!tpl) return;
+                      const ctx = {
+                        cliente: checklist?.cliente || "",
+                        checklist: checklist?.nome_checklist || "",
+                        task: alertTask.titolo || "",
+                        stato: String(alertTask.stato || "").toUpperCase(),
+                        nome_destinatario: destinatarioLabel || "",
+                      };
+                      const body = applyTemplate(String(tpl.body_template || ""), ctx).trim();
+                      if (body) setAlertMessaggio(body);
+                    }}
+                    style={{ width: "100%", padding: 8 }}
+                  >
+                    <option value="">— Seleziona preset —</option>
+                    {presets.map((t) => (
+                      <option key={t.id} value={t.id}>
+                        {t.titolo || t.codice || t.id}
+                      </option>
+                    ))}
+                  </select>
+                  <div style={{ fontSize: 11, opacity: 0.65, marginTop: 4 }}>
+                    Seleziona un preset per precompilare il messaggio
+                  </div>
+                </label>
+              );
+            })()}
             <label style={{ display: "block", marginBottom: 12 }}>
               Messaggio (opzionale)<br />
               <textarea
@@ -4875,7 +5091,10 @@ function buildFormData(c: Checklist): FormData {
             <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
               <button
                 type="button"
-                onClick={() => setAlertTask(null)}
+                onClick={() => {
+                  setAlertTask(null);
+                  setAlertSelectedPresetId("");
+                }}
                 style={{
                   padding: "8px 12px",
                   borderRadius: 8,

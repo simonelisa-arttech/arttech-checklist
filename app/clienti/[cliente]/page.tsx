@@ -1064,6 +1064,22 @@ export default function ClientePage({ params }: { params: any }) {
     return msg.length > 80 ? `${msg.slice(0, 77)}...` : msg;
   }
 
+  function isTagliandoStatoCheckViolation(err: any) {
+    const code = String(err?.code || "");
+    const msg = String(err?.message || "").toLowerCase();
+    return (
+      code === "23514" &&
+      (msg.includes("tagliandi_stato_check") || (msg.includes("tagliandi") && msg.includes("check constraint")))
+    );
+  }
+
+  function normalizeTagliandoStatoForDb(statoRaw: string) {
+    const stato = String(statoRaw || "").trim().toUpperCase();
+    if (stato === "FATTURATO") return "FATTURATO";
+    if (stato === "SCADUTO" || stato === "NON_RINNOVATO") return "SCADUTO";
+    return "ATTIVA";
+  }
+
   useEffect(() => {
     return () => {
       if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
@@ -2294,6 +2310,32 @@ export default function ClientePage({ params }: { params: any }) {
     return map;
   }, [checklists]);
 
+  function getInterventoDefaultsFromChecklist(checklistId: string) {
+    const found = checklistById.get(String(checklistId || "").trim());
+    return {
+      proforma: String(found?.proforma || "").trim(),
+      codiceMagazzino: String(found?.magazzino_importazione || "").trim(),
+    };
+  }
+
+  useEffect(() => {
+    if (!newIntervento.checklistId) return;
+    const defaults = getInterventoDefaultsFromChecklist(newIntervento.checklistId);
+    setNewIntervento((prev) => {
+      if (
+        prev.proforma === defaults.proforma &&
+        prev.codiceMagazzino === defaults.codiceMagazzino
+      ) {
+        return prev;
+      }
+      return {
+        ...prev,
+        proforma: defaults.proforma,
+        codiceMagazzino: defaults.codiceMagazzino,
+      };
+    });
+  }, [newIntervento.checklistId, checklistById]);
+
   const nextLicenzaScadenza = useMemo(() => {
     return getNextLicenzaScadenza(licenze);
   }, [licenze]);
@@ -2363,7 +2405,15 @@ export default function ClientePage({ params }: { params: any }) {
 
     const out = new Map<string, number | null>();
     for (const [checklistId, entry] of byChecklist.entries()) {
-      out.set(checklistId, entry.unlimited ? null : entry.total);
+      if (entry.unlimited) {
+        out.set(checklistId, null);
+        continue;
+      }
+      // "0" means no project-specific ULTRA cap configured:
+      // let caller fallback to cliente-wide inclusi logic.
+      if (entry.total > 0) {
+        out.set(checklistId, entry.total);
+      }
     }
     return out;
   }, [checklists, rinnovi, ultraPiani]);
@@ -3024,7 +3074,15 @@ export default function ClientePage({ params }: { params: any }) {
         stato,
         note: (newTagliando.note || "").trim() || "Tagliando periodico",
       };
-      const { error } = await supabase.from("tagliandi").insert(payload);
+      let { error } = await supabase.from("tagliandi").insert(payload);
+      if (error && isTagliandoStatoCheckViolation(error)) {
+        const retryPayload = {
+          ...payload,
+          stato: normalizeTagliandoStatoForDb(payload.stato),
+        };
+        const retry = await supabase.from("tagliandi").insert(retryPayload);
+        error = retry.error;
+      }
       if (error) {
         setRinnoviError("Errore inserimento tagliando: " + error.message);
         return;
@@ -4007,7 +4065,15 @@ export default function ClientePage({ params }: { params: any }) {
   }
 
   async function updateTagliando(id: string, payload: Record<string, any>) {
-    const { error } = await supabase.from("tagliandi").update(payload).eq("id", id);
+    let { error } = await supabase.from("tagliandi").update(payload).eq("id", id);
+    if (error && isTagliandoStatoCheckViolation(error) && typeof payload?.stato === "string") {
+      const retryPayload = {
+        ...payload,
+        stato: normalizeTagliandoStatoForDb(payload.stato),
+      };
+      const retry = await supabase.from("tagliandi").update(retryPayload).eq("id", id);
+      error = retry.error;
+    }
     if (error) {
       setRinnoviError("Errore aggiornamento tagliando: " + error.message);
       return false;
@@ -6372,12 +6438,12 @@ ${rinnovi30ggBreakdown.debugSample
                 value={newIntervento.checklistId}
                 onChange={(e) => {
                   const checklistId = e.target.value;
-                  const found = checklistById.get(checklistId);
+                  const defaults = getInterventoDefaultsFromChecklist(checklistId);
                   setNewIntervento({
                     ...newIntervento,
                     checklistId,
-                    proforma: found?.proforma ?? newIntervento.proforma,
-                    codiceMagazzino: found?.magazzino_importazione ?? newIntervento.codiceMagazzino,
+                    proforma: defaults.proforma,
+                    codiceMagazzino: defaults.codiceMagazzino,
                   });
                 }}
                 style={{ width: "100%", padding: 8 }}
