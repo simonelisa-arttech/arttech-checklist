@@ -4,6 +4,12 @@ import { Suspense, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 
+function parseHashParams(hashValue: string) {
+  const raw = String(hashValue || "").replace(/^#/, "").trim();
+  if (!raw) return new URLSearchParams();
+  return new URLSearchParams(raw);
+}
+
 function AuthCallbackContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -21,6 +27,21 @@ function AuthCallbackContent() {
     [searchParams]
   );
   const buildStamp = "AUTH BUILD PROD DOMAIN";
+  const [hashDebug, setHashDebug] = useState<{
+    token_hash: string | null;
+    type: string | null;
+    code: string | null;
+    access_token: string | null;
+    refresh_token: string | null;
+    error_description: string | null;
+  }>({
+    token_hash: null,
+    type: null,
+    code: null,
+    access_token: null,
+    refresh_token: null,
+    error_description: null,
+  });
   const queryDebug = useMemo(
     () => ({
       token_hash: searchParams.get("token_hash"),
@@ -38,18 +59,39 @@ function AuthCallbackContent() {
       setError(null);
       setLoading(true);
 
-      if (!tokenHash && !code) {
+      const hashParams = parseHashParams(
+        typeof window !== "undefined" ? window.location.hash : ""
+      );
+      const tokenHashFinal = tokenHash || hashParams.get("token_hash");
+      const typeFinal = type || hashParams.get("type");
+      const codeFinal = code || hashParams.get("code");
+      const accessToken = hashParams.get("access_token");
+      const refreshToken = hashParams.get("refresh_token");
+      const errorDescription = hashParams.get("error_description");
+
+      if (active) {
+        setHashDebug({
+          token_hash: tokenHashFinal,
+          type: typeFinal,
+          code: codeFinal,
+          access_token: accessToken,
+          refresh_token: refreshToken,
+          error_description: errorDescription,
+        });
+      }
+
+      if (errorDescription) {
         if (active) {
-          setError("Callback non valido: mancano token_hash e code.");
+          setError(errorDescription);
           setLoading(false);
         }
         return;
       }
 
-      if (type === "recovery" && tokenHash) {
-        const { error } = await supabase.auth.verifyOtp({
-          type: "recovery",
-          token_hash: tokenHash,
+      if (accessToken && refreshToken) {
+        const { error } = await supabase.auth.setSession({
+          access_token: accessToken,
+          refresh_token: refreshToken,
         });
         if (error) {
           if (active) {
@@ -62,8 +104,24 @@ function AuthCallbackContent() {
         return;
       }
 
-      if (tokenHash) {
-        if (type && type !== "recovery") {
+      if (typeFinal === "recovery" && tokenHashFinal) {
+        const { error } = await supabase.auth.verifyOtp({
+          type: "recovery",
+          token_hash: tokenHashFinal,
+        });
+        if (error) {
+          if (active) {
+            setError(error.message);
+            setLoading(false);
+          }
+          return;
+        }
+        router.replace("/reset-password");
+        return;
+      }
+
+      if (tokenHashFinal) {
+        if (typeFinal && typeFinal !== "recovery") {
           if (active) {
             setError("Tipo callback non supportato.");
             setLoading(false);
@@ -73,7 +131,7 @@ function AuthCallbackContent() {
         // Fallback: se type non arriva ma c'e token_hash, prova comunque recovery.
         const { error } = await supabase.auth.verifyOtp({
           type: "recovery",
-          token_hash: tokenHash,
+          token_hash: tokenHashFinal,
         });
         if (error) {
           if (active) {
@@ -86,8 +144,8 @@ function AuthCallbackContent() {
         return;
       }
 
-      if (code) {
-        const { error } = await supabase.auth.exchangeCodeForSession(code);
+      if (codeFinal) {
+        const { error } = await supabase.auth.exchangeCodeForSession(codeFinal);
         if (error) {
           if (active) {
             setError(error.message);
@@ -96,6 +154,12 @@ function AuthCallbackContent() {
           return;
         }
         router.replace(redirect);
+        return;
+      }
+
+      if (active) {
+        setError("Callback non valido: mancano token_hash, code e session hash.");
+        setLoading(false);
       }
     };
 
@@ -129,7 +193,14 @@ function AuthCallbackContent() {
           wordBreak: "break-all",
         }}
       >
-        {JSON.stringify(queryDebug, null, 2)}
+        {JSON.stringify(
+          {
+            query: queryDebug,
+            hash: hashDebug,
+          },
+          null,
+          2
+        )}
       </pre>
     </div>
   );

@@ -52,9 +52,11 @@ export default function LoginForm({ redirectTo }: LoginFormProps) {
       setError("Inserisci prima l'email.");
       return;
     }
-    const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), {
-      redirectTo: "https://atsystem.arttechworld.com/auth/callback",
-    });
+    const base =
+      process.env.NEXT_PUBLIC_SITE_URL?.trim() ||
+      (typeof window !== "undefined" ? window.location.origin : "https://atsystem.arttechworld.com");
+    const redirectTo = `${base.replace(/\/+$/, "")}/auth/callback`;
+    const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), { redirectTo });
     if (error) {
       setError(error.message);
       return;
