@@ -55,6 +55,7 @@ export default function OperatoriPage() {
   const [credenzialiMsg, setCredenzialiMsg] = useState<string | null>(null);
   const [credenzialiErr, setCredenzialiErr] = useState<string | null>(null);
   const [resettingOperatoreId, setResettingOperatoreId] = useState<string | null>(null);
+  const [realigning, setRealigning] = useState(false);
 
   function normalizeAlertTasks(input: any) {
     if (!input) {
@@ -325,6 +326,28 @@ export default function OperatoriPage() {
     }
   }
 
+  async function realignOperatoriNow() {
+    setError(null);
+    setCredenzialiErr(null);
+    setCredenzialiMsg(null);
+    setRealigning(true);
+    try {
+      const res = await fetch("/api/admin/realign-operatori", { method: "POST" });
+      const data = await res.json().catch(() => ({} as any));
+      if (!res.ok) {
+        setError(data?.error || "Errore riallineamento operatori");
+        return;
+      }
+      const issues = Array.isArray(data?.update_errors) ? data.update_errors.length : 0;
+      setCredenzialiMsg(
+        `Riallineamento completato: aggiornati ${data?.updated ?? 0}, già allineati ${data?.already_aligned ?? 0}, senza utente auth ${data?.missing_auth_user ?? 0}${issues ? `, errori ${issues}` : ""}.`
+      );
+      await loadOperatori();
+    } finally {
+      setRealigning(false);
+    }
+  }
+
   async function deleteRow(row: OperatoreRow) {
     if (!row.id) {
       setRows((prev) => prev.filter((r) => r !== row));
@@ -455,6 +478,23 @@ export default function OperatoriPage() {
               }}
             >
               {credenzialiSaving ? "Invio..." : "Crea + Invia invito"}
+            </button>
+          </div>
+          <div style={{ marginTop: 8, display: "flex", justifyContent: "flex-end" }}>
+            <button
+              type="button"
+              onClick={realignOperatoriNow}
+              disabled={realigning}
+              style={{
+                padding: "8px 12px",
+                borderRadius: 10,
+                border: "1px solid #ddd",
+                background: "white",
+                cursor: "pointer",
+                opacity: realigning ? 0.7 : 1,
+              }}
+            >
+              {realigning ? "Riallineamento..." : "Riallinea operatori ora"}
             </button>
           </div>
           {credenzialiErr && (
