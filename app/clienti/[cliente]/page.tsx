@@ -741,15 +741,6 @@ export default function ClientePage({ params }: { params: any }) {
     note: "",
   });
   const [tagliandoSaving, setTagliandoSaving] = useState(false);
-  const [newServizioScadenza, setNewServizioScadenza] = useState({
-    checklist_id: "",
-    tipo: "SAAS_ULTRA",
-    riferimento: "",
-    scadenza: "",
-    stato: "DA_AVVISARE",
-    note: "",
-  });
-  const [servizioSaving, setServizioSaving] = useState(false);
   const [applyUltraToAllProjects, setApplyUltraToAllProjects] = useState(false);
   const [applyUltraToSelectedProjects, setApplyUltraToSelectedProjects] = useState(false);
   const [selectedUltraProjectIds, setSelectedUltraProjectIds] = useState<string[]>([]);
@@ -843,13 +834,6 @@ export default function ClientePage({ params }: { params: any }) {
   >(new Map());
   const [alertStatsMap, setAlertStatsMap] = useState<Map<string, AlertStats>>(new Map());
 
-  useEffect(() => {
-    if (newServizioScadenza.tipo !== "SAAS_ULTRA") {
-      setApplyUltraToAllProjects(false);
-      setApplyUltraToSelectedProjects(false);
-      setSelectedUltraProjectIds([]);
-    }
-  }, [newServizioScadenza.tipo]);
   const [toast, setToast] = useState<{ message: string; variant: "success" | "error" } | null>(
     null
   );
@@ -1745,7 +1729,11 @@ export default function ClientePage({ params }: { params: any }) {
   }, [checklists]);
 
   const rinnoviAll = useMemo<ScadenzaItem[]>(() => {
-    const rinnoviMapped = rinnovi.map((r) => ({
+    const rinnoviMapped = rinnovi
+      // LICENZA is managed from `licenses` table in this page.
+      // Keeping both sources causes "ghost/original row comes back" effects.
+      .filter((r) => String(r.item_tipo || "").toUpperCase() !== "LICENZA")
+      .map((r) => ({
       id: r.id,
       source: "rinnovi" as const,
       item_tipo: r.item_tipo,
@@ -1789,7 +1777,7 @@ export default function ClientePage({ params }: { params: any }) {
       descrizione: l.note ?? null,
       checklist_id: l.checklist_id ?? null,
       scadenza: l.scadenza ?? null,
-      stato: l.status ?? (l.scadenza ? "DA_AVVISARE" : null),
+      stato: l.status ?? l.stato ?? (l.scadenza ? "DA_AVVISARE" : null),
       modalita: null,
     }));
     const saasMapped = saasPerImpiantoRows.map((c) => ({
@@ -2380,6 +2368,21 @@ export default function ClientePage({ params }: { params: any }) {
     return out;
   }, [checklists, rinnovi, ultraPiani]);
 
+  const ultraPianoOptions = useMemo(() => {
+    return [
+      ...ultraPiani,
+      ...(ultraPiani.some((p) => p.codice === "SAAS-UL8")
+        ? []
+        : [
+            {
+              codice: "SAAS-UL8",
+              nome: "CARE ULTRA (H8)",
+              interventi_inclusi: null,
+            },
+          ]),
+    ];
+  }, [ultraPiani]);
+
   useEffect(() => {
     let alive = true;
     (async () => {
@@ -2530,38 +2533,83 @@ export default function ClientePage({ params }: { params: any }) {
         cliente: clienteKey,
         item_tipo: "SAAS",
         subtipo: "ULTRA",
+        riferimento: savedContratto.piano_codice ?? "ULTRA",
         scadenza: savedContratto.scadenza ?? null,
         stato: "ATTIVA",
         descrizione: "ULTRA",
       };
 
-      const { data: existing, error: findErr } = await supabase
-        .from("rinnovi_servizi")
-        .select("id")
-        .eq("item_tipo", "SAAS")
-        .eq("subtipo", "ULTRA")
-        .eq("cliente", clienteKey)
-        .maybeSingle();
+      const scopeAll = applyUltraToAllProjects;
+      const scopeSelected = !scopeAll && applyUltraToSelectedProjects;
+      const scopedChecklistIds = scopeAll
+        ? checklists.map((c) => c.id)
+        : scopeSelected
+        ? selectedUltraProjectIds
+        : [];
 
-      if (findErr) {
-        console.error("Errore lookup rinnovo SAAS", findErr);
-      } else if (existing?.id) {
-        const { error: updErr } = await supabase
+      if (scopeSelected && scopedChecklistIds.length === 0) {
+        setContrattoError("Seleziona almeno un progetto per applicare SAAS ULTRA.");
+        return;
+      }
+
+      if (scopedChecklistIds.length > 0) {
+        const { error: delGlobalErr } = await supabase
           .from("rinnovi_servizi")
-          .update(rinnovoPayload)
-          .eq("id", existing.id);
-        if (updErr) console.error("Errore update rinnovo SAAS", updErr);
+          .delete()
+          .eq("cliente", clienteKey)
+          .eq("item_tipo", "SAAS")
+          .eq("subtipo", "ULTRA")
+          .is("checklist_id", null);
+        if (delGlobalErr) console.error("Errore delete ultra globale", delGlobalErr);
+
+        const scopedRows = scopedChecklistIds
+          .filter(Boolean)
+          .map((checklistId) => {
+            const checklist = checklistById.get(checklistId);
+            return {
+              ...rinnovoPayload,
+              checklist_id: checklistId,
+              proforma: checklist?.proforma ?? null,
+              cod_magazzino: checklist?.magazzino_importazione ?? null,
+            };
+          });
+        const { error: insScopedErr } = await supabase
+          .from("rinnovi_servizi")
+          .insert(scopedRows);
+        if (insScopedErr) console.error("Errore insert ultra per progetto", insScopedErr);
       } else {
-        const { error: insErr } = await supabase
+        const { data: existing, error: findErr } = await supabase
           .from("rinnovi_servizi")
-          .insert(rinnovoPayload);
-        if (insErr) console.error("Errore insert rinnovo SAAS", insErr);
+          .select("id")
+          .eq("item_tipo", "SAAS")
+          .eq("subtipo", "ULTRA")
+          .eq("cliente", clienteKey)
+          .is("checklist_id", null)
+          .maybeSingle();
+
+        if (findErr) {
+          console.error("Errore lookup rinnovo SAAS", findErr);
+        } else if (existing?.id) {
+          const { error: updErr } = await supabase
+            .from("rinnovi_servizi")
+            .update(rinnovoPayload)
+            .eq("id", existing.id);
+          if (updErr) console.error("Errore update rinnovo SAAS", updErr);
+        } else {
+          const { error: insErr } = await supabase
+            .from("rinnovi_servizi")
+            .insert(rinnovoPayload);
+          if (insErr) console.error("Errore insert rinnovo SAAS", insErr);
+        }
       }
     }
 
     await fetchSaasContratti(clienteKey);
     setContrattoError(null);
-    showToast("✅ Contratto salvato", "success");
+    setApplyUltraToAllProjects(false);
+    setApplyUltraToSelectedProjects(false);
+    setSelectedUltraProjectIds([]);
+    showToast("✅ ULTRA salvata", "success");
   }
 
   async function addIntervento() {
@@ -2974,108 +3022,6 @@ export default function ClientePage({ params }: { params: any }) {
     }
   }
 
-  async function addServizioScadenza() {
-    const clienteKey = (cliente || "").trim();
-    if (!clienteKey) {
-      setRinnoviError("Cliente non valido per inserire il servizio.");
-      return;
-    }
-    const tipo = "SAAS_ULTRA";
-    const applyAllForUltra = tipo === "SAAS_ULTRA" && applyUltraToAllProjects;
-    const applySelectedForUltra =
-      tipo === "SAAS_ULTRA" && !applyAllForUltra && applyUltraToSelectedProjects;
-    if (!applyAllForUltra && !applySelectedForUltra && !newServizioScadenza.checklist_id) {
-      setRinnoviError("Seleziona il progetto da associare al servizio.");
-      return;
-    }
-    if (!newServizioScadenza.scadenza) {
-      setRinnoviError("Inserisci la scadenza del servizio.");
-      return;
-    }
-    const checklistIds = applyAllForUltra
-      ? checklists.map((c) => c.id)
-      : applySelectedForUltra
-      ? selectedUltraProjectIds
-      : [newServizioScadenza.checklist_id];
-    if (checklistIds.length === 0) {
-      setRinnoviError("Nessun progetto disponibile per aggregare SAAS ULTRA.");
-      return;
-    }
-
-    const tipoMapped = mapRinnovoTipo(tipo);
-    const riferimento = (newServizioScadenza.riferimento || "").trim();
-    const targetRiferimento =
-      riferimento || (tipo === "SAAS_ULTRA" ? "ULTRA progetto" : "SAAS progetto");
-    const targetStato = String(newServizioScadenza.stato || "DA_AVVISARE").toUpperCase();
-
-    const payload = checklistIds
-      .filter(Boolean)
-      .filter((checklistId) => {
-        // Skip exact duplicates if same item already exists for this project and service code.
-        return !rinnovi.some((r) => {
-          const sameChecklist = String(r.checklist_id || "") === String(checklistId || "");
-          const sameTipo = String(r.item_tipo || "").toUpperCase() === tipoMapped.item_tipo;
-          const sameSubtipo = String(r.subtipo || "").toUpperCase() === String(tipoMapped.subtipo || "").toUpperCase();
-          const sameRif = String(r.riferimento || "").trim().toUpperCase() === targetRiferimento.toUpperCase();
-          return sameChecklist && sameTipo && sameSubtipo && sameRif;
-        });
-      })
-      .map((checklistId) => {
-        const checklist = checklistById.get(checklistId);
-        return {
-          cliente: clienteKey,
-          checklist_id: checklistId,
-          item_tipo: tipoMapped.item_tipo,
-          subtipo: tipoMapped.subtipo,
-          riferimento: targetRiferimento,
-          descrizione: (newServizioScadenza.note || "").trim() || null,
-          scadenza: newServizioScadenza.scadenza,
-          stato: targetStato,
-          proforma: checklist?.proforma ?? null,
-          cod_magazzino: checklist?.magazzino_importazione ?? null,
-        };
-      });
-    if (payload.length === 0) {
-      setRinnoviError("Servizio già presente sui progetti selezionati.");
-      return;
-    }
-
-    setServizioSaving(true);
-    setRinnoviError(null);
-    try {
-      const { data, error } = await supabase
-        .from("rinnovi_servizi")
-        .insert(payload)
-        .select("*");
-      if (error) {
-        setRinnoviError("Errore inserimento servizio: " + error.message);
-        return;
-      }
-      if (data && Array.isArray(data) && data.length > 0) {
-        setRinnovi((prev) => [...prev, ...(data as RinnovoServizioRow[])]);
-      }
-      setNewServizioScadenza({
-        checklist_id: "",
-        tipo: "SAAS_ULTRA",
-        riferimento: "",
-        scadenza: "",
-        stato: "DA_AVVISARE",
-        note: "",
-      });
-      setApplyUltraToAllProjects(false);
-      setApplyUltraToSelectedProjects(false);
-      setSelectedUltraProjectIds([]);
-      setRinnoviNotice(
-        payload.length > 1
-          ? `Servizio aggiunto a ${payload.length} progetti.`
-          : "Servizio aggiunto al progetto."
-      );
-      await fetchRinnovi(clienteKey);
-    } finally {
-      setServizioSaving(false);
-    }
-  }
-
   function getRinnovoReference(r: RinnovoServizioRow) {
     return r.riferimento || r.descrizione || r.checklist_id?.slice(0, 8) || "—";
   }
@@ -3263,8 +3209,16 @@ export default function ClientePage({ params }: { params: any }) {
   ];
 
   function openEditScadenza(r: ScadenzaItem) {
-    if (r.source === "saas" || r.source === "garanzie") {
-      showToast("Modifica SAAS/Garanzia disponibile nella pagina Progetto (Checklist).", "error");
+    const itemTipo = String(r.item_tipo || "").toUpperCase();
+    const isGaranzia = r.source === "garanzie" || itemTipo === "GARANZIA";
+    const isSaas =
+      r.source === "saas" ||
+      itemTipo === "SAAS" ||
+      itemTipo === "SAAS_ULTRA" ||
+      itemTipo === "ULTRA";
+
+    if (isSaas && !isGaranzia) {
+      showToast("Modifica SAAS disponibile nella pagina Progetto (Checklist).", "error");
       return;
     }
     setEditScadenzaErr(null);
@@ -3313,6 +3267,15 @@ export default function ClientePage({ params }: { params: any }) {
         stato: "",
         note: "",
         saas_piano: c?.piano_codice ?? r.riferimento ?? "",
+      };
+    } else if (isGaranzia) {
+      const c = r.checklist_id ? checklistById.get(r.checklist_id) : null;
+      form = {
+        ...form,
+        tipo: "GARANZIA",
+        scadenza: c?.garanzia_scadenza ?? r.scadenza ?? "",
+        stato: "",
+        note: "",
       };
     } else {
       const rr = rinnovi.find((x) => x.id === r.id);
@@ -4935,7 +4898,7 @@ ${rinnovi30ggBreakdown.debugSample
           <div
             style={{
               display: "grid",
-              gridTemplateColumns: "1fr 1fr 1fr 1fr",
+              gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
               gap: 10,
               marginTop: 8,
             }}
@@ -4954,18 +4917,7 @@ ${rinnovi30ggBreakdown.debugSample
                 style={{ width: "100%", padding: 8 }}
               >
                 <option value="">—</option>
-                {[
-                  ...ultraPiani,
-                  ...(ultraPiani.some((p) => p.codice === "SAAS-UL8")
-                    ? []
-                    : [
-                        {
-                          codice: "SAAS-UL8",
-                          nome: "CARE ULTRA (H8)",
-                          interventi_inclusi: null,
-                        },
-                      ]),
-                ].map((p) => (
+                {ultraPianoOptions.map((p) => (
                   <option key={p.codice} value={p.codice}>
                     {p.codice} — {p.nome ?? "—"}
                   </option>
@@ -5014,6 +4966,79 @@ ${rinnovi30ggBreakdown.debugSample
             </label>
           </div>
 
+          <div style={{ marginTop: 8, display: "grid", gap: 6 }}>
+            <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
+              <input
+                type="checkbox"
+                checked={applyUltraToSelectedProjects}
+                onChange={(e) => {
+                  const checked = e.target.checked;
+                  setApplyUltraToSelectedProjects(checked);
+                  if (checked) setApplyUltraToAllProjects(false);
+                  if (!checked) setSelectedUltraProjectIds([]);
+                }}
+              />
+              Applica ULTRA a progetti selezionati del cliente
+            </label>
+            <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
+              <input
+                type="checkbox"
+                checked={applyUltraToAllProjects}
+                onChange={(e) => {
+                  const checked = e.target.checked;
+                  setApplyUltraToAllProjects(checked);
+                  if (checked) {
+                    setApplyUltraToSelectedProjects(false);
+                    setSelectedUltraProjectIds([]);
+                  }
+                }}
+              />
+              Applica ULTRA a tutti i progetti del cliente
+            </label>
+          </div>
+
+          {applyUltraToSelectedProjects && (
+            <div
+              style={{
+                marginTop: 8,
+                border: "1px solid #e5e7eb",
+                borderRadius: 8,
+                padding: 8,
+                maxHeight: 120,
+                overflowY: "auto",
+                background: "white",
+              }}
+            >
+              {checklists.map((c) => {
+                const checked = selectedUltraProjectIds.includes(c.id);
+                return (
+                  <label
+                    key={c.id}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 6,
+                      fontSize: 12,
+                      marginBottom: 4,
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={(e) => {
+                        setSelectedUltraProjectIds((prev) => {
+                          if (e.target.checked) return Array.from(new Set([...prev, c.id]));
+                          return prev.filter((id) => id !== c.id);
+                        });
+                      }}
+                    />
+                    {c.nome_checklist || c.id}
+                  </label>
+                );
+              })}
+            </div>
+          )}
+
           <div style={{ marginTop: 10 }}>
             <button
               type="button"
@@ -5027,7 +5052,7 @@ ${rinnovi30ggBreakdown.debugSample
                 cursor: "pointer",
               }}
             >
-              {contratto?.id ? "Aggiorna contratto" : "Salva contratto"}
+              Aggiungi
             </button>
           </div>
         </div>
@@ -5536,242 +5561,6 @@ ${rinnovi30ggBreakdown.debugSample
               }}
             >
               {tagliandoSaving ? "Salvataggio..." : "Aggiungi"}
-            </button>
-          </div>
-        </div>
-
-        <div
-          style={{
-            marginTop: 10,
-            border: "1px solid #eee",
-            borderRadius: 10,
-            padding: 10,
-            background: "#fcfcfc",
-          }}
-        >
-          <div style={{ fontWeight: 700, marginBottom: 8 }}>
-            Aggiungi SAAS ULTRA associata al progetto
-          </div>
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns:
-                "minmax(220px,1.4fr) 140px minmax(180px,1fr) 140px 160px minmax(180px,1fr) auto",
-              gap: 8,
-              alignItems: "end",
-            }}
-          >
-            <div>
-              <div style={{ fontSize: 12, marginBottom: 4 }}>Progetto</div>
-              <select
-                value={newServizioScadenza.checklist_id}
-                onChange={(e) =>
-                  setNewServizioScadenza((prev) => ({ ...prev, checklist_id: e.target.value }))
-                }
-                disabled={
-                  newServizioScadenza.tipo === "SAAS_ULTRA" &&
-                  (applyUltraToAllProjects || applyUltraToSelectedProjects)
-                }
-                style={{
-                  width: "100%",
-                  border: "1px solid #ddd",
-                  borderRadius: 8,
-                  padding: "8px 10px",
-                  background:
-                    newServizioScadenza.tipo === "SAAS_ULTRA" &&
-                    (applyUltraToAllProjects || applyUltraToSelectedProjects)
-                      ? "#f9fafb"
-                      : "white",
-                }}
-              >
-                <option value="">— seleziona progetto —</option>
-                {checklists.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.nome_checklist || c.id}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <div style={{ fontSize: 12, marginBottom: 4 }}>Tipo</div>
-              <input
-                value="SAAS_ULTRA"
-                readOnly
-                style={{
-                  width: "100%",
-                  border: "1px solid #ddd",
-                  borderRadius: 8,
-                  padding: "8px 10px",
-                  background: "#f9fafb",
-                }}
-              />
-            </div>
-            <div>
-              <div style={{ fontSize: 12, marginBottom: 4 }}>Piano / Codice</div>
-              <input
-                value={newServizioScadenza.riferimento}
-                onChange={(e) =>
-                  setNewServizioScadenza((prev) => ({ ...prev, riferimento: e.target.value }))
-                }
-                placeholder="es. SAAS-PL / SAAS-UL4"
-                style={{
-                  width: "100%",
-                  border: "1px solid #ddd",
-                  borderRadius: 8,
-                  padding: "8px 10px",
-                  background: "white",
-                }}
-              />
-              {newServizioScadenza.tipo === "SAAS_ULTRA" && (
-                <div style={{ marginTop: 6, display: "grid", gap: 6 }}>
-                  <label
-                    style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={applyUltraToSelectedProjects}
-                      onChange={(e) => {
-                        const checked = e.target.checked;
-                        setApplyUltraToSelectedProjects(checked);
-                        if (checked) setApplyUltraToAllProjects(false);
-                        if (!checked) setSelectedUltraProjectIds([]);
-                      }}
-                    />
-                    Applica a progetti selezionati
-                  </label>
-                  <label
-                    style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={applyUltraToAllProjects}
-                      onChange={(e) => {
-                        const checked = e.target.checked;
-                        setApplyUltraToAllProjects(checked);
-                        if (checked) {
-                          setApplyUltraToSelectedProjects(false);
-                          setSelectedUltraProjectIds([]);
-                        }
-                      }}
-                    />
-                    Applica a tutti i progetti del cliente
-                  </label>
-                  {applyUltraToSelectedProjects && (
-                    <div
-                      style={{
-                        border: "1px solid #e5e7eb",
-                        borderRadius: 8,
-                        padding: 8,
-                        maxHeight: 120,
-                        overflowY: "auto",
-                        background: "white",
-                      }}
-                    >
-                      {checklists.map((c) => {
-                        const checked = selectedUltraProjectIds.includes(c.id);
-                        return (
-                          <label
-                            key={c.id}
-                            style={{
-                              display: "flex",
-                              alignItems: "center",
-                              gap: 6,
-                              fontSize: 12,
-                              marginBottom: 4,
-                            }}
-                          >
-                            <input
-                              type="checkbox"
-                              checked={checked}
-                              onChange={(e) => {
-                                setSelectedUltraProjectIds((prev) => {
-                                  if (e.target.checked) return Array.from(new Set([...prev, c.id]));
-                                  return prev.filter((id) => id !== c.id);
-                                });
-                              }}
-                            />
-                            {c.nome_checklist || c.id}
-                          </label>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-            <div>
-              <div style={{ fontSize: 12, marginBottom: 4 }}>Scadenza</div>
-              <input
-                type="date"
-                value={newServizioScadenza.scadenza}
-                onChange={(e) =>
-                  setNewServizioScadenza((prev) => ({ ...prev, scadenza: e.target.value }))
-                }
-                style={{
-                  width: "100%",
-                  border: "1px solid #ddd",
-                  borderRadius: 8,
-                  padding: "8px 10px",
-                  background: "white",
-                }}
-              />
-            </div>
-            <div>
-              <div style={{ fontSize: 12, marginBottom: 4 }}>Stato</div>
-              <select
-                value={newServizioScadenza.stato}
-                onChange={(e) =>
-                  setNewServizioScadenza((prev) => ({ ...prev, stato: e.target.value }))
-                }
-                style={{
-                  width: "100%",
-                  border: "1px solid #ddd",
-                  borderRadius: 8,
-                  padding: "8px 10px",
-                  background: "white",
-                }}
-              >
-                {RINNOVO_STATI.map((s) => (
-                  <option key={s} value={s}>
-                    {s}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <div style={{ fontSize: 12, marginBottom: 4 }}>Note</div>
-              <input
-                value={newServizioScadenza.note}
-                onChange={(e) =>
-                  setNewServizioScadenza((prev) => ({ ...prev, note: e.target.value }))
-                }
-                placeholder="Opzionale"
-                style={{
-                  width: "100%",
-                  border: "1px solid #ddd",
-                  borderRadius: 8,
-                  padding: "8px 10px",
-                  background: "white",
-                }}
-              />
-            </div>
-            <button
-              type="button"
-              onClick={addServizioScadenza}
-              disabled={servizioSaving}
-              style={{
-                padding: "8px 12px",
-                borderRadius: 8,
-                border: "1px solid #111",
-                background: "#111",
-                color: "white",
-                fontWeight: 700,
-                cursor: servizioSaving ? "not-allowed" : "pointer",
-                opacity: servizioSaving ? 0.7 : 1,
-                whiteSpace: "nowrap",
-              }}
-            >
-              {servizioSaving ? "Salvataggio..." : "Aggiungi"}
             </button>
           </div>
         </div>
