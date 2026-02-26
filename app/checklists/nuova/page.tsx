@@ -989,6 +989,17 @@ export default function NuovaChecklistPage() {
         }
       }
 
+      try {
+        await fetch("/api/notifications/on-checklist-create", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ checklist_id: checklistId }),
+        });
+      } catch (err) {
+        console.error("Errore invio notification_rules su creazione checklist", err);
+      }
+
       router.push(`/checklists/${checklistId}`);
     } catch (err: any) {
       const info = logSupabaseError(err);

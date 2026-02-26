@@ -116,9 +116,9 @@ async function listRulesForTask(
   taskTemplateId: string | null
 ) {
   const selectWithChecklist =
-    "id, enabled, mode, checklist_id, task_template_id, task_title, target, recipients, frequency, send_time, timezone, day_of_week, stop_statuses, only_future, created_at, updated_at";
+    "id, enabled, mode, checklist_id, task_template_id, task_title, target, recipients, frequency, send_time, timezone, day_of_week, only_future, send_on_create, created_at, updated_at";
   const selectFallback =
-    "id, enabled, mode, task_template_id, task_title, target, recipients, frequency, send_time, timezone, stop_statuses, only_future, created_at, updated_at";
+    "id, enabled, mode, task_template_id, task_title, target, recipients, frequency, send_time, timezone, only_future, send_on_create, created_at, updated_at";
 
   let q = adminClient
     .from("notification_rules")
@@ -129,6 +129,20 @@ async function listRulesForTask(
   if (taskTemplateId) q = q.eq("task_template_id", taskTemplateId);
 
   let { data, error } = await q;
+  if (error && isMissingColumn(error, "send_on_create")) {
+    let qS = adminClient
+      .from("notification_rules")
+      .select(
+        "id, enabled, mode, checklist_id, task_template_id, task_title, target, recipients, frequency, send_time, timezone, day_of_week, only_future, created_at, updated_at"
+      )
+      .eq("task_title", taskTitle)
+      .eq("target", target)
+      .order("created_at", { ascending: false });
+    if (taskTemplateId) qS = qS.eq("task_template_id", taskTemplateId);
+    const res = await qS;
+    data = (res.data || []).map((r: any) => ({ ...r, send_on_create: false }));
+    error = res.error;
+  }
   if (error && isMissingColumn(error, "day_of_week")) {
     let q2 = adminClient
       .from("notification_rules")
@@ -138,7 +152,7 @@ async function listRulesForTask(
       .order("created_at", { ascending: false });
     if (taskTemplateId) q2 = q2.eq("task_template_id", taskTemplateId);
     const res = await q2;
-    data = (res.data || []).map((r: any) => ({ ...r, day_of_week: null, checklist_id: null }));
+    data = (res.data || []).map((r: any) => ({ ...r, day_of_week: null, checklist_id: null, send_on_create: false }));
     error = res.error;
   }
   if (error && isMissingColumn(error, "checklist_id")) {
@@ -155,9 +169,9 @@ async function listRulesForTask(
   }
   if (error && isMissingColumn(error, "task_template_id")) {
     const selectNoTemplate =
-      "id, enabled, mode, checklist_id, task_title, target, recipients, frequency, send_time, timezone, stop_statuses, only_future, created_at, updated_at";
+      "id, enabled, mode, checklist_id, task_title, target, recipients, frequency, send_time, timezone, only_future, send_on_create, created_at, updated_at";
     const selectNoTemplateNoChecklist =
-      "id, enabled, mode, task_title, target, recipients, frequency, send_time, timezone, stop_statuses, only_future, created_at, updated_at";
+      "id, enabled, mode, task_title, target, recipients, frequency, send_time, timezone, only_future, send_on_create, created_at, updated_at";
     const res = await adminClient
       .from("notification_rules")
       .select(selectNoTemplate)
@@ -178,6 +192,7 @@ async function listRulesForTask(
         task_template_id: null,
         checklist_id: null,
         day_of_week: null,
+        send_on_create: false,
       }));
       error = res2.error;
     }
@@ -234,7 +249,7 @@ export async function GET(request: Request) {
     send_time: "07:30",
     timezone: "Europe/Rome",
     day_of_week: null,
-    stop_statuses: ["OK", "NON_NECESSARIO"],
+    send_on_create: false,
     only_future: true,
     created_at: null,
     updated_at: null,
@@ -290,10 +305,7 @@ export async function POST(request: Request) {
     send_time: String(body?.send_time || "07:30").trim(),
     timezone: String(body?.timezone || "Europe/Rome").trim() || "Europe/Rome",
     day_of_week: dayOfWeek,
-    stop_statuses:
-      Array.isArray(body?.stop_statuses) && body.stop_statuses.length > 0
-        ? body.stop_statuses.map((x: any) => String(x || "").trim().toUpperCase()).filter(Boolean)
-        : ["OK", "NON_NECESSARIO"],
+    send_on_create: body?.send_on_create === true,
     only_future: parseOnlyFuture(body?.only_future),
   };
 
@@ -323,7 +335,7 @@ export async function POST(request: Request) {
   if (existingErr) return NextResponse.json({ error: existingErr.message }, { status: 500 });
 
   const selectSaved =
-    "id, enabled, mode, checklist_id, task_template_id, task_title, target, recipients, frequency, send_time, timezone, day_of_week, stop_statuses, only_future, created_at, updated_at";
+    "id, enabled, mode, checklist_id, task_template_id, task_title, target, recipients, frequency, send_time, timezone, day_of_week, only_future, send_on_create, created_at, updated_at";
 
   if (existing?.id) {
     const { data, error } = await auth.adminClient
@@ -332,6 +344,20 @@ export async function POST(request: Request) {
       .eq("id", existing.id)
       .select(selectSaved)
       .single();
+    if (error && isMissingColumn(error, "send_on_create")) {
+      const compatPayload = { ...payload } as any;
+      delete compatPayload.send_on_create;
+      const res = await auth.adminClient
+        .from("notification_rules")
+        .update(compatPayload)
+        .eq("id", existing.id)
+        .select(
+          "id, enabled, mode, checklist_id, task_template_id, task_title, target, recipients, frequency, send_time, timezone, day_of_week, only_future, created_at, updated_at"
+        )
+        .single();
+      if (res.error) return NextResponse.json({ error: res.error.message }, { status: 500 });
+      return NextResponse.json({ ok: true, data: { ...(res.data as any), send_on_create: false } });
+    }
     if (error && isMissingColumn(error, "checklist_id")) {
       const compatPayload = { ...payload } as any;
       delete compatPayload.checklist_id;
@@ -341,7 +367,7 @@ export async function POST(request: Request) {
         .update(compatPayload)
         .eq("id", existing.id)
         .select(
-          "id, enabled, mode, task_template_id, task_title, target, recipients, frequency, send_time, timezone, stop_statuses, only_future, created_at, updated_at"
+          "id, enabled, mode, task_template_id, task_title, target, recipients, frequency, send_time, timezone, only_future, send_on_create, created_at, updated_at"
         )
         .single();
       if (res.error) return NextResponse.json({ error: res.error.message }, { status: 500 });
@@ -355,7 +381,7 @@ export async function POST(request: Request) {
         .update(compatPayload)
         .eq("id", existing.id)
         .select(
-          "id, enabled, mode, checklist_id, task_template_id, task_title, target, recipients, frequency, send_time, timezone, stop_statuses, only_future, created_at, updated_at"
+          "id, enabled, mode, checklist_id, task_template_id, task_title, target, recipients, frequency, send_time, timezone, only_future, send_on_create, created_at, updated_at"
         )
         .single();
       if (res.error) return NextResponse.json({ error: res.error.message }, { status: 500 });
@@ -370,7 +396,7 @@ export async function POST(request: Request) {
         .update(compatPayload)
         .eq("id", existing.id)
         .select(
-          "id, enabled, mode, checklist_id, task_title, target, recipients, frequency, send_time, timezone, stop_statuses, only_future, created_at, updated_at"
+          "id, enabled, mode, checklist_id, task_title, target, recipients, frequency, send_time, timezone, only_future, send_on_create, created_at, updated_at"
         )
         .single();
       if (res.error && isMissingColumn(res.error, "checklist_id")) {
@@ -379,7 +405,7 @@ export async function POST(request: Request) {
           .update(compatPayload)
           .eq("id", existing.id)
           .select(
-            "id, enabled, mode, task_title, target, recipients, frequency, send_time, timezone, stop_statuses, only_future, created_at, updated_at"
+            "id, enabled, mode, task_title, target, recipients, frequency, send_time, timezone, only_future, send_on_create, created_at, updated_at"
           )
           .single();
         if (res2.error) return NextResponse.json({ error: res2.error.message }, { status: 500 });
@@ -403,6 +429,19 @@ export async function POST(request: Request) {
     .insert(payload)
     .select(selectSaved)
     .single();
+  if (error && isMissingColumn(error, "send_on_create")) {
+    const compatPayload = { ...payload } as any;
+    delete compatPayload.send_on_create;
+    const res = await auth.adminClient
+      .from("notification_rules")
+      .insert(compatPayload)
+      .select(
+        "id, enabled, mode, checklist_id, task_template_id, task_title, target, recipients, frequency, send_time, timezone, day_of_week, only_future, created_at, updated_at"
+      )
+      .single();
+    if (res.error) return NextResponse.json({ error: res.error.message }, { status: 500 });
+    return NextResponse.json({ ok: true, data: { ...(res.data as any), send_on_create: false } });
+  }
   if (error && isMissingColumn(error, "checklist_id")) {
     if (checklistId) {
       return NextResponse.json(
@@ -417,7 +456,7 @@ export async function POST(request: Request) {
       .from("notification_rules")
       .insert(compatPayload)
       .select(
-        "id, enabled, mode, task_template_id, task_title, target, recipients, frequency, send_time, timezone, stop_statuses, only_future, created_at, updated_at"
+        "id, enabled, mode, task_template_id, task_title, target, recipients, frequency, send_time, timezone, only_future, send_on_create, created_at, updated_at"
       )
       .single();
     if (res.error) return NextResponse.json({ error: res.error.message }, { status: 500 });
@@ -430,7 +469,7 @@ export async function POST(request: Request) {
       .from("notification_rules")
       .insert(compatPayload)
       .select(
-        "id, enabled, mode, checklist_id, task_template_id, task_title, target, recipients, frequency, send_time, timezone, stop_statuses, only_future, created_at, updated_at"
+        "id, enabled, mode, checklist_id, task_template_id, task_title, target, recipients, frequency, send_time, timezone, only_future, send_on_create, created_at, updated_at"
       )
       .single();
     if (res.error) return NextResponse.json({ error: res.error.message }, { status: 500 });
@@ -444,7 +483,7 @@ export async function POST(request: Request) {
       .from("notification_rules")
       .insert(compatPayload)
       .select(
-        "id, enabled, mode, checklist_id, task_title, target, recipients, frequency, send_time, timezone, stop_statuses, only_future, created_at, updated_at"
+        "id, enabled, mode, checklist_id, task_title, target, recipients, frequency, send_time, timezone, only_future, send_on_create, created_at, updated_at"
       )
       .single();
     if (res.error && isMissingColumn(res.error, "checklist_id")) {
@@ -458,7 +497,7 @@ export async function POST(request: Request) {
         .from("notification_rules")
         .insert(compatPayload)
         .select(
-          "id, enabled, mode, task_title, target, recipients, frequency, send_time, timezone, stop_statuses, only_future, created_at, updated_at"
+          "id, enabled, mode, task_title, target, recipients, frequency, send_time, timezone, only_future, send_on_create, created_at, updated_at"
         )
         .single();
       if (res2.error) return NextResponse.json({ error: res2.error.message }, { status: 500 });

@@ -231,7 +231,7 @@ type NotificationRule = {
   send_time: string;
   timezone: string;
   day_of_week: number | null;
-  stop_statuses: string[];
+  send_on_create: boolean;
   only_future: boolean;
 };
 
@@ -1378,10 +1378,7 @@ function buildFormData(c: Checklist): FormData {
               row.day_of_week === null || row.day_of_week === undefined
                 ? null
                 : Number(row.day_of_week),
-            stop_statuses:
-              Array.isArray(row.stop_statuses) && row.stop_statuses.length > 0
-                ? row.stop_statuses.map((x: any) => String(x || "").trim().toUpperCase())
-                : ["OK", "NON_NECESSARIO"],
+            send_on_create: row.send_on_create === true,
             only_future: row.only_future !== false,
           }
         : {
@@ -1397,7 +1394,7 @@ function buildFormData(c: Checklist): FormData {
             send_time: "07:30",
             timezone: "Europe/Rome",
             day_of_week: null,
-            stop_statuses: ["OK", "NON_NECESSARIO"],
+            send_on_create: false,
             only_future: true,
           };
       setRuleDraft(nextDraft);
@@ -1486,10 +1483,7 @@ function buildFormData(c: Checklist): FormData {
             saved.day_of_week === null || saved.day_of_week === undefined
               ? null
               : Number(saved.day_of_week),
-          stop_statuses:
-            Array.isArray(saved.stop_statuses) && saved.stop_statuses.length > 0
-              ? saved.stop_statuses.map((x: any) => String(x || "").trim().toUpperCase())
-              : ["OK", "NON_NECESSARIO"],
+          send_on_create: saved.send_on_create === true,
           only_future: saved.only_future !== false,
         };
         setRuleDraft(nextRule);
@@ -4935,26 +4929,6 @@ function buildFormData(c: Checklist): FormData {
                     style={{ width: "100%", padding: 8 }}
                   />
                 </label>
-                <label style={{ display: "block", marginTop: 10 }}>
-                  Stop statuses (comma separated)<br />
-                  <input
-                    value={ruleDraft.stop_statuses.join(",")}
-                    onChange={(e) =>
-                      setRuleDraft((prev) =>
-                        prev
-                          ? {
-                              ...prev,
-                              stop_statuses: e.target.value
-                                .split(",")
-                                .map((s) => s.trim().toUpperCase())
-                                .filter(Boolean),
-                            }
-                          : prev
-                      )
-                    }
-                    style={{ width: "100%", padding: 8 }}
-                  />
-                </label>
 
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginTop: 10 }}>
                   <label>
@@ -5005,6 +4979,20 @@ function buildFormData(c: Checklist): FormData {
                     />
                   </label>
                 </div>
+                {ruleDraft.mode === "AUTOMATICA" && (
+                  <label style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 10 }}>
+                    <input
+                      type="checkbox"
+                      checked={ruleDraft.send_on_create}
+                      onChange={(e) =>
+                        setRuleDraft((prev) =>
+                          prev ? { ...prev, send_on_create: e.target.checked } : prev
+                        )
+                      }
+                    />
+                    Invia anche alla creazione della checklist
+                  </label>
+                )}
 
                 {ruleDraft.frequency === "WEEKLY" && (
                   <label style={{ display: "block", marginTop: 10 }}>

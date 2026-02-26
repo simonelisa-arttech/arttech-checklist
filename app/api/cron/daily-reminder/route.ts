@@ -32,7 +32,6 @@ type RuleRow = {
   recipients: any;
   send_time: string | null;
   timezone: string | null;
-  stop_statuses: string[] | null;
   only_future: boolean | null;
   last_sent_on: string | null;
 };
@@ -159,13 +158,7 @@ function buildPayloadHash(sentOn: string, checklistId: string, target: string, r
     .digest("hex");
 }
 
-function normalizeStatusSet(stopStatuses: string[] | null | undefined) {
-  const source =
-    Array.isArray(stopStatuses) && stopStatuses.length > 0
-      ? stopStatuses
-      : ["OK", "NON_NECESSARIO"];
-  return new Set(source.map((s) => String(s || "").trim().toUpperCase()));
-}
+const CLOSED_STATUS_SET = new Set(["OK", "NON_NECESSARIO"]);
 
 function buildEmailBody(
   rule: RuleRow,
@@ -243,17 +236,17 @@ export async function GET(req: Request) {
   const baseUrl = getBaseUrl(req);
 
   const selectWithDay =
-    "id, enabled, mode, frequency, day_of_week, checklist_id, task_title, target, recipients, send_time, timezone, stop_statuses, only_future, last_sent_on";
+    "id, enabled, mode, frequency, day_of_week, checklist_id, task_title, target, recipients, send_time, timezone, only_future, last_sent_on";
   const selectFallback =
-    "id, enabled, mode, frequency, checklist_id, task_title, target, recipients, send_time, timezone, stop_statuses, only_future, last_sent_on";
+    "id, enabled, mode, frequency, checklist_id, task_title, target, recipients, send_time, timezone, only_future, last_sent_on";
   const selectFallbackNoTemplate =
-    "id, enabled, mode, frequency, checklist_id, task_title, target, recipients, send_time, timezone, stop_statuses, only_future, last_sent_on";
+    "id, enabled, mode, frequency, checklist_id, task_title, target, recipients, send_time, timezone, only_future, last_sent_on";
   const selectWithDayNoLastSent =
-    "id, enabled, mode, frequency, day_of_week, checklist_id, task_title, target, recipients, send_time, timezone, stop_statuses, only_future";
+    "id, enabled, mode, frequency, day_of_week, checklist_id, task_title, target, recipients, send_time, timezone, only_future";
   const selectFallbackNoLastSent =
-    "id, enabled, mode, frequency, checklist_id, task_title, target, recipients, send_time, timezone, stop_statuses, only_future";
+    "id, enabled, mode, frequency, checklist_id, task_title, target, recipients, send_time, timezone, only_future";
   const selectFallbackNoTemplateNoLastSent =
-    "id, enabled, mode, frequency, checklist_id, task_title, target, recipients, send_time, timezone, stop_statuses, only_future";
+    "id, enabled, mode, frequency, checklist_id, task_title, target, recipients, send_time, timezone, only_future";
 
   let { data: rulesRaw, error: rulesErr } = await supabase
     .from("notification_rules")
@@ -305,7 +298,7 @@ export async function GET(req: Request) {
     const fallbackNoChecklistRes = await supabase
       .from("notification_rules")
       .select(
-        "id, enabled, mode, frequency, task_title, target, recipients, send_time, timezone, stop_statuses, only_future, last_sent_on"
+        "id, enabled, mode, frequency, task_title, target, recipients, send_time, timezone, only_future, last_sent_on"
       )
       .eq("enabled", true)
       .eq("mode", "AUTOMATICA");
@@ -519,10 +512,9 @@ export async function GET(req: Request) {
     }
     ruleDbg.tasks_found = (taskRaw || []).length;
 
-    const stopSet = normalizeStatusSet(rule.stop_statuses);
     const openTasks = ((taskRaw || []) as TaskRow[]).filter((t) => {
       const stato = String(t.stato || "").trim().toUpperCase();
-      return !stopSet.has(stato);
+      return !CLOSED_STATUS_SET.has(stato);
     });
     ruleDbg.open_tasks = openTasks.length;
     if (openTasks.length === 0) {
