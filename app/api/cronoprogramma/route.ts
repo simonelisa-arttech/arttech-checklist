@@ -246,6 +246,19 @@ export async function POST(request: Request) {
     });
   }
 
+  if (action === "delete_comment") {
+    const commentId = String(body?.comment_id || "").trim();
+    if (!commentId) {
+      return NextResponse.json({ error: "comment_id mancante" }, { status: 400 });
+    }
+
+    const { error } = await supabaseAdmin.from("cronoprogramma_comments").delete().eq("id", commentId);
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+
+    return NextResponse.json({ ok: true, comment_id: commentId });
+  }
+
   return NextResponse.json({ error: "Unsupported action" }, { status: 400 });
 }
-

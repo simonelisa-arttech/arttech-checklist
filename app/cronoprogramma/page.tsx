@@ -139,6 +139,7 @@ export default function CronoprogrammaPage() {
   const [toDate, setToDate] = useState("");
   const [clienteFilter, setClienteFilter] = useState("TUTTI");
   const [kindFilter, setKindFilter] = useState<"TUTTI" | "INSTALLAZIONE" | "INTERVENTO">("TUTTI");
+  const [showFatto, setShowFatto] = useState(false);
   const [q, setQ] = useState("");
   const [sortBy, setSortBy] = useState<"data_prevista" | "data_tassativa">("data_tassativa");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
@@ -149,6 +150,7 @@ export default function CronoprogrammaPage() {
   const [stateError, setStateError] = useState<string | null>(null);
   const [savingFattoKey, setSavingFattoKey] = useState<string | null>(null);
   const [savingCommentKey, setSavingCommentKey] = useState<string | null>(null);
+  const [deletingCommentId, setDeletingCommentId] = useState<string | null>(null);
   const [noteHistoryKey, setNoteHistoryKey] = useState<string | null>(null);
 
   async function loadRowState(timelineRows: TimelineRow[]) {
@@ -256,6 +258,35 @@ export default function CronoprogrammaPage() {
       }));
     } finally {
       setSavingCommentKey(null);
+    }
+  }
+
+  async function deleteComment(row: TimelineRow, commentId: string) {
+    const safeId = String(commentId || "").trim();
+    if (!safeId) return;
+    setDeletingCommentId(safeId);
+    setStateError(null);
+    try {
+      const res = await fetch("/api/cronoprogramma", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "delete_comment",
+          comment_id: safeId,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setStateError(data?.error || "Errore eliminazione commento");
+        return;
+      }
+      const key = getRowKey(row.kind, row.row_ref_id);
+      setCommentsByKey((prev) => ({
+        ...prev,
+        [key]: (prev[key] || []).filter((c) => c.id !== safeId),
+      }));
+    } finally {
+      setDeletingCommentId(null);
     }
   }
 
@@ -399,7 +430,7 @@ export default function CronoprogrammaPage() {
       const rifDate = r.data_tassativa || r.data_prevista;
       const key = getRowKey(r.kind, r.row_ref_id);
       const fatto = Boolean(metaByKey[key]?.fatto ?? r.fatto);
-      if (fatto) return false;
+      if (fatto && !showFatto) return false;
       if (clienteFilter !== "TUTTI" && r.cliente !== clienteFilter) return false;
       if (kindFilter !== "TUTTI" && r.kind !== kindFilter) return false;
       if (needle) {
@@ -414,7 +445,7 @@ export default function CronoprogrammaPage() {
       if (toDate && rifDate > toDate) return false;
       return true;
     });
-  }, [rows, fromDate, toDate, clienteFilter, kindFilter, q, metaByKey]);
+  }, [rows, fromDate, toDate, clienteFilter, kindFilter, q, metaByKey, showFatto]);
 
   const filteredSorted = useMemo(() => {
     const sorted = [...filtered];
@@ -563,6 +594,14 @@ export default function CronoprogrammaPage() {
           />
         </label>
       </div>
+      <label style={{ display: "inline-flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+        <input
+          type="checkbox"
+          checked={showFatto}
+          onChange={(e) => setShowFatto(e.target.checked)}
+        />
+        Mostra righe fatte (per poter togliere il flag)
+      </label>
 
       <div
         style={{
@@ -803,19 +842,40 @@ export default function CronoprogrammaPage() {
               {(commentsByKey[noteHistoryKey] || []).length === 0 ? (
                 <div style={{ opacity: 0.7 }}>Nessuna nota presente</div>
               ) : (
-                (commentsByKey[noteHistoryKey] || []).map((c) => (
-                  <div
-                    key={c.id}
-                    style={{ border: "1px solid #eef2f7", borderRadius: 8, padding: "8px 10px", background: "#f9fafb" }}
-                  >
-                    <div style={{ whiteSpace: "pre-wrap" }}>{c.commento}</div>
-                    <div style={{ marginTop: 4, fontSize: 12, opacity: 0.7 }}>
-                      {(c.created_by_nome || "Operatore") +
-                        " · " +
-                        (c.created_at ? new Date(c.created_at).toLocaleString("it-IT") : "—")}
+                (commentsByKey[noteHistoryKey] || []).map((c) => {
+                  const row = rowByKey[noteHistoryKey];
+                  return (
+                    <div
+                      key={c.id}
+                      style={{ border: "1px solid #eef2f7", borderRadius: 8, padding: "8px 10px", background: "#f9fafb" }}
+                    >
+                      <div style={{ whiteSpace: "pre-wrap" }}>{c.commento}</div>
+                      <div style={{ marginTop: 4, fontSize: 12, opacity: 0.7 }}>
+                        {(c.created_by_nome || "Operatore") +
+                          " · " +
+                          (c.created_at ? new Date(c.created_at).toLocaleString("it-IT") : "—")}
+                      </div>
+                      <div style={{ marginTop: 6 }}>
+                        <button
+                          type="button"
+                          onClick={() => row && deleteComment(row, c.id)}
+                          disabled={deletingCommentId === c.id || !row}
+                          style={{
+                            border: "1px solid #ef4444",
+                            background: "white",
+                            color: "#b91c1c",
+                            borderRadius: 8,
+                            padding: "4px 8px",
+                            cursor: row ? "pointer" : "not-allowed",
+                            opacity: deletingCommentId === c.id ? 0.7 : 1,
+                          }}
+                        >
+                          Elimina
+                        </button>
+                      </div>
                     </div>
-                  </div>
-                ))
+                  );
+                })
               )}
             </div>
           </div>

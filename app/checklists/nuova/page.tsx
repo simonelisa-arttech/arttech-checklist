@@ -282,7 +282,10 @@ export default function NuovaChecklistPage() {
   const deviceOptions = useMemo(() => deviceCatalogItems, [deviceCatalogItems]);
   const saasPianoOptions = useMemo(() => {
     return catalogItems
-      .filter((item) => String(item.codice || "").toUpperCase().startsWith("SAAS-"))
+      .filter((item) => {
+        const code = String(item.codice || "").toUpperCase();
+        return code.startsWith("SAAS-PL") || code.startsWith("SAAS-PR");
+      })
       .map((item) => ({
         code: String(item.codice || "").trim(),
         label: `${String(item.codice || "").trim()} — ${String(item.descrizione || "—").trim() || "—"}`,
@@ -290,7 +293,15 @@ export default function NuovaChecklistPage() {
   }, [catalogItems]);
   const saasServiziAggiuntivi = useMemo(() => {
     return catalogItems
-      .filter((item) => String(item.codice || "").toUpperCase().startsWith("SAAS-EVT"))
+      .filter((item) => {
+        const code = String(item.codice || "").toUpperCase();
+        return (
+          code.startsWith("SAAS-") &&
+          !code.startsWith("SAAS-PL") &&
+          !code.startsWith("SAAS-PR") &&
+          !code.startsWith("SAAS-UL")
+        );
+      })
       .map((item) => ({
         code: String(item.codice || "").trim(),
         label: `${String(item.codice || "").trim()} — ${String(item.descrizione || "—").trim() || "—"}`,

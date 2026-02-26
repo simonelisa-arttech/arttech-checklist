@@ -1412,14 +1412,25 @@ function buildFormData(c: Checklist): FormData {
   });
   const deviceOptions = deviceCatalogItems;
   const saasPianoOptions = catalogItems
-    .filter((item) => String(item.codice || "").toUpperCase().startsWith("SAAS-"))
+    .filter((item) => {
+      const code = String(item.codice || "").toUpperCase();
+      return code.startsWith("SAAS-PL") || code.startsWith("SAAS-PR");
+    })
     .map((item) => ({
       code: String(item.codice || "").trim(),
       label:
         `${String(item.codice || "").trim()} — ${String(item.descrizione || "—").trim() || "—"}`,
     }));
   const saasServiziAggiuntivi = catalogItems
-    .filter((item) => String(item.codice || "").toUpperCase().startsWith("SAAS-EVT"))
+    .filter((item) => {
+      const code = String(item.codice || "").toUpperCase();
+      return (
+        code.startsWith("SAAS-") &&
+        !code.startsWith("SAAS-PL") &&
+        !code.startsWith("SAAS-PR") &&
+        !code.startsWith("SAAS-UL")
+      );
+    })
     .map((item) => ({
       code: String(item.codice || "").trim(),
       label:
