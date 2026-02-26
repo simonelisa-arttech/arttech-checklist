@@ -52,13 +52,14 @@ export default function LoginForm({ redirectTo }: LoginFormProps) {
       setError("Inserisci prima l'email.");
       return;
     }
-    const base =
-      process.env.NEXT_PUBLIC_SITE_URL?.trim() ||
-      (typeof window !== "undefined" ? window.location.origin : "https://atsystem.arttechworld.com");
-    const redirectTo = `${base.replace(/\/+$/, "")}/auth/callback`;
-    const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), { redirectTo });
-    if (error) {
-      setError(error.message);
+    const res = await fetch("/api/auth/password-recovery", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email: email.trim() }),
+    });
+    const data = await res.json().catch(() => ({} as any));
+    if (!res.ok) {
+      setError(String(data?.error || "Errore invio recovery"));
       return;
     }
     setRecoveryMsg("Email di recupero inviata. Controlla la posta.");

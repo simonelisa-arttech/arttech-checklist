@@ -2,7 +2,13 @@ import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { isAdminRole } from "@/lib/adminRoles";
 
-const PUBLIC_PATHS = ["/login", "/auth/callback", "/reset-password", "/auth/login"];
+const PUBLIC_PATHS = [
+  "/login",
+  "/auth/callback",
+  "/reset-password",
+  "/auth/login",
+  "/api/auth/password-recovery",
+];
 const ASSET_PREFIXES = ["/_next", "/images"];
 const ASSET_FILE_RE =
   /\.(?:png|jpg|jpeg|gif|svg|webp|ico|css|js|map|txt|xml|woff|woff2|ttf|eot)$/i;
