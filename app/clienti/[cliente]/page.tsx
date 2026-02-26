@@ -2562,6 +2562,16 @@ export default function ClientePage({ params }: { params: any }) {
           .is("checklist_id", null);
         if (delGlobalErr) console.error("Errore delete ultra globale", delGlobalErr);
 
+        // Evita duplicati: massimo una SAAS_ULTRA per progetto.
+        const { error: delScopedErr } = await supabase
+          .from("rinnovi_servizi")
+          .delete()
+          .eq("cliente", clienteKey)
+          .eq("item_tipo", "SAAS")
+          .eq("subtipo", "ULTRA")
+          .in("checklist_id", scopedChecklistIds);
+        if (delScopedErr) console.error("Errore delete ultra scoped", delScopedErr);
+
         const scopedRows = scopedChecklistIds
           .filter(Boolean)
           .map((checklistId) => {
@@ -2578,6 +2588,16 @@ export default function ClientePage({ params }: { params: any }) {
           .insert(scopedRows);
         if (insScopedErr) console.error("Errore insert ultra per progetto", insScopedErr);
       } else {
+        // Modalità globale: pulisce eventuali associazioni ULTRA per-progetto.
+        const { error: delAllScopedErr } = await supabase
+          .from("rinnovi_servizi")
+          .delete()
+          .eq("cliente", clienteKey)
+          .eq("item_tipo", "SAAS")
+          .eq("subtipo", "ULTRA")
+          .not("checklist_id", "is", null);
+        if (delAllScopedErr) console.error("Errore delete ultra scoped all", delAllScopedErr);
+
         const { data: existing, error: findErr } = await supabase
           .from("rinnovi_servizi")
           .select("id")
@@ -3211,13 +3231,9 @@ export default function ClientePage({ params }: { params: any }) {
   function openEditScadenza(r: ScadenzaItem) {
     const itemTipo = String(r.item_tipo || "").toUpperCase();
     const isGaranzia = r.source === "garanzie" || itemTipo === "GARANZIA";
-    const isSaas =
-      r.source === "saas" ||
-      itemTipo === "SAAS" ||
-      itemTipo === "SAAS_ULTRA" ||
-      itemTipo === "ULTRA";
+    const isSaasBase = r.source === "saas" || itemTipo === "SAAS";
 
-    if (isSaas && !isGaranzia) {
+    if (isSaasBase && !isGaranzia) {
       showToast("Modifica SAAS disponibile nella pagina Progetto (Checklist).", "error");
       return;
     }
@@ -5393,8 +5409,126 @@ ${rinnovi30ggBreakdown.debugSample
       )}
 
       <div style={{ marginTop: 18 }}>
+        <div
+          style={{
+            marginBottom: 10,
+            border: "1px solid #eee",
+            borderRadius: 10,
+            padding: 10,
+            background: "#fcfcfc",
+          }}
+        >
+          <div style={{ fontWeight: 700, marginBottom: 8 }}>Aggiungi tagliando periodico</div>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "minmax(220px,1.4fr) 140px 180px minmax(220px,1fr) auto",
+              gap: 8,
+              alignItems: "end",
+            }}
+          >
+            <div>
+              <div style={{ fontSize: 12, marginBottom: 4 }}>Progetto</div>
+              <select
+                value={newTagliando.checklist_id}
+                onChange={(e) =>
+                  setNewTagliando((prev) => ({ ...prev, checklist_id: e.target.value }))
+                }
+                style={{
+                  width: "100%",
+                  border: "1px solid #ddd",
+                  borderRadius: 8,
+                  padding: "8px 10px",
+                  background: "white",
+                }}
+              >
+                <option value="">— seleziona progetto —</option>
+                {checklists.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.nome_checklist || c.id}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <div style={{ fontSize: 12, marginBottom: 4 }}>Scadenza</div>
+              <input
+                type="date"
+                value={newTagliando.scadenza}
+                onChange={(e) =>
+                  setNewTagliando((prev) => ({ ...prev, scadenza: e.target.value }))
+                }
+                style={{
+                  width: "100%",
+                  border: "1px solid #ddd",
+                  borderRadius: 8,
+                  padding: "8px 10px",
+                  background: "white",
+                }}
+              />
+            </div>
+            <div>
+              <div style={{ fontSize: 12, marginBottom: 4 }}>Fatturazione</div>
+              <select
+                value={newTagliando.fatturazione}
+                onChange={(e) =>
+                  setNewTagliando((prev) => ({ ...prev, fatturazione: e.target.value }))
+                }
+                style={{
+                  width: "100%",
+                  border: "1px solid #ddd",
+                  borderRadius: 8,
+                  padding: "8px 10px",
+                  background: "white",
+                }}
+              >
+                <option value="INCLUSO">INCLUSO</option>
+                <option value="DA_FATTURARE">DA_FATTURARE</option>
+                <option value="FATTURATO">FATTURATO</option>
+              </select>
+            </div>
+            <div>
+              <div style={{ fontSize: 12, marginBottom: 4 }}>Note</div>
+              <input
+                value={newTagliando.note}
+                onChange={(e) =>
+                  setNewTagliando((prev) => ({ ...prev, note: e.target.value }))
+                }
+                placeholder="Tagliando annuale / periodico"
+                style={{
+                  width: "100%",
+                  border: "1px solid #ddd",
+                  borderRadius: 8,
+                  padding: "8px 10px",
+                  background: "white",
+                }}
+              />
+            </div>
+            <button
+              type="button"
+              onClick={addTagliandoPeriodico}
+              disabled={tagliandoSaving}
+              style={{
+                padding: "8px 12px",
+                borderRadius: 8,
+                border: "1px solid #111",
+                background: "#111",
+                color: "white",
+                fontWeight: 700,
+                cursor: tagliandoSaving ? "not-allowed" : "pointer",
+                opacity: tagliandoSaving ? 0.7 : 1,
+                whiteSpace: "nowrap",
+              }}
+            >
+              {tagliandoSaving ? "Salvataggio..." : "Aggiungi"}
+            </button>
+          </div>
+        </div>
+
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <h2 style={{ margin: 0 }}>Scadenze &amp; Rinnovi</h2>
+          <h2 style={{ margin: 0, fontSize: 30, fontWeight: 900, letterSpacing: 0.2 }}>
+            Scadenze &amp; Rinnovi
+          </h2>
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
             <Link
               href={`/avvisi?cliente=${encodeURIComponent(cliente || "")}`}
@@ -5457,6 +5591,7 @@ ${rinnovi30ggBreakdown.debugSample
 
         <div
           style={{
+            display: "none",
             marginTop: 10,
             border: "1px solid #eee",
             borderRadius: 10,
