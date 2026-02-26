@@ -335,16 +335,17 @@ export default function OperatoriPage() {
     const res = await fetch(`/api/operatori?id=${encodeURIComponent(row.id)}`, {
       method: "DELETE",
     });
+    const data = await res.json().catch(() => ({} as any));
     if (!res.ok) {
       let msg = "Errore eliminazione operatore";
-      try {
-        const data = await res.json();
-        msg = data?.error || msg;
-      } catch {
-        // ignore
-      }
+      msg = data?.error || msg;
       setError(msg);
       return;
+    }
+    if (data?.mode === "deactivated") {
+      setCredenzialiMsg(
+        data?.message || "Operatore disattivato (referenziato da checklist, non eliminabile)."
+      );
     }
     await loadOperatori();
   }

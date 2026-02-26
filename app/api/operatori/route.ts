@@ -162,8 +162,28 @@ export async function DELETE(request: Request) {
   }
 
   const { error } = await supabase.from("operatori").delete().eq("id", id);
-  if (error) {
+  if (!error) {
+    return NextResponse.json({ ok: true, mode: "deleted" });
+  }
+
+  const isFkViolation =
+    String((error as any)?.code || "") === "23503" ||
+    String(error.message || "").toLowerCase().includes("violates foreign key");
+  if (!isFkViolation) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
-  return NextResponse.json({ ok: true });
+
+  const { error: deactivateErr } = await supabase
+    .from("operatori")
+    .update({ attivo: false })
+    .eq("id", id);
+  if (deactivateErr) {
+    return NextResponse.json({ error: deactivateErr.message }, { status: 500 });
+  }
+
+  return NextResponse.json({
+    ok: true,
+    mode: "deactivated",
+    message: "Operatore referenziato da checklist: disattivato invece di eliminato.",
+  });
 }
