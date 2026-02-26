@@ -730,6 +730,7 @@ export default function ClientePage({ params }: { params: any }) {
   const [rinnoviAlertDestMode, setRinnoviAlertDestMode] = useState<"operatore" | "email">(
     "operatore"
   );
+  const [rinnoviAlertToCliente, setRinnoviAlertToCliente] = useState(false);
   const [rinnoviAlertManualEmail, setRinnoviAlertManualEmail] = useState("");
   const [rinnoviAlertManualName, setRinnoviAlertManualName] = useState("");
   const [rinnoviAlertSending, setRinnoviAlertSending] = useState(false);
@@ -744,6 +745,7 @@ export default function ClientePage({ params }: { params: any }) {
   const [editScadenzaSaving, setEditScadenzaSaving] = useState(false);
   const [editScadenzaErr, setEditScadenzaErr] = useState<string | null>(null);
   const [alertTemplates, setAlertTemplates] = useState<AlertMessageTemplate[]>([]);
+  const [clienteAnagraficaEmail, setClienteAnagraficaEmail] = useState<string | null>(null);
   const [selectedPresetId, setSelectedPresetId] = useState<string>("");
   const [tagliandi, setTagliandi] = useState<TagliandoRow[]>([]);
   const [newTagliando, setNewTagliando] = useState({
@@ -1126,10 +1128,21 @@ export default function ClientePage({ params }: { params: any }) {
       if (!alive) return;
 
       setCliente(decoded);
+      setClienteAnagraficaEmail(null);
       setLoading(true);
       setError(null);
 
       const clienteKey = decoded.trim();
+      if (clienteKey) {
+        const { data: anagData } = await supabase
+          .from("clienti_anagrafica")
+          .select("email")
+          .ilike("denominazione", clienteKey)
+          .limit(1)
+          .maybeSingle();
+        const mail = String((anagData as any)?.email || "").trim();
+        setClienteAnagraficaEmail(mail && mail.includes("@") ? mail : null);
+      }
       const { data: cls, error: clsErr } = await supabase
         .from("checklists")
         .select(
@@ -2999,13 +3012,13 @@ export default function ClientePage({ params }: { params: any }) {
 
   function getAlertRecipients() {
     return alertOperatori.filter(
-      (o) => o.attivo !== false && o.alert_enabled && String(o.email || "").includes("@")
+      (o) => o.attivo !== false && String(o.email || "").includes("@")
     );
   }
 
   function getFatturaAlertRecipients() {
     return alertOperatori.filter(
-      (o) => o.attivo !== false && o.alert_enabled && String(o.email || "").includes("@")
+      (o) => o.attivo !== false && String(o.email || "").includes("@")
     );
   }
 
@@ -3013,11 +3026,13 @@ export default function ClientePage({ params }: { params: any }) {
     const target = alertOperatori.find(
       (o) =>
         o.attivo !== false &&
-        o.alert_enabled &&
+        String(o.email || "").includes("@") &&
         String(o.ruolo || "").toUpperCase() === role
     );
     if (target) return target.id;
-    const fallback = alertOperatori.find((o) => o.attivo !== false && o.alert_enabled);
+    const fallback = alertOperatori.find(
+      (o) => o.attivo !== false && String(o.email || "").includes("@")
+    );
     return fallback?.id ?? "";
   }
 
@@ -3705,6 +3720,7 @@ export default function ClientePage({ params }: { params: any }) {
       stage === "stage1" ? getDefaultOperatoreIdByRole("SUPERVISORE") : getDefaultOperatoreIdByRole("AMMINISTRAZIONE")
     );
     setRinnoviAlertDestMode("operatore");
+    setRinnoviAlertToCliente(false);
     setRinnoviAlertManualEmail("");
     setRinnoviAlertManualName("");
     setRinnoviAlertMsg(
@@ -3749,18 +3765,23 @@ export default function ClientePage({ params }: { params: any }) {
       setRinnoviAlertSending(false);
       return;
     }
-    if (rinnoviAlertDestMode === "operatore" && !rinnoviAlertToOperatoreId) {
-      setRinnoviAlertErr("Seleziona un destinatario.");
+    if (rinnoviAlertDestMode === "operatore" && !rinnoviAlertToOperatoreId && !rinnoviAlertToCliente) {
+      setRinnoviAlertErr("Seleziona almeno un destinatario (operatore e/o cliente).");
       setRinnoviAlertSending(false);
       return;
     }
-    if (rinnoviAlertDestMode === "email") {
+    if (rinnoviAlertDestMode === "email" && !rinnoviAlertToCliente) {
       const mail = rinnoviAlertManualEmail.trim();
       if (!mail.includes("@")) {
         setRinnoviAlertErr("Inserisci un'email valida.");
         setRinnoviAlertSending(false);
         return;
       }
+    }
+    if (rinnoviAlertToCliente && !String(clienteAnagraficaEmail || "").includes("@")) {
+      setRinnoviAlertErr("Nessuna email valida trovata nell'anagrafica cliente.");
+      setRinnoviAlertSending(false);
+      return;
     }
     const list =
       rinnoviAlertItems.length > 0
@@ -3796,20 +3817,43 @@ export default function ClientePage({ params }: { params: any }) {
         : hasLicenze && !hasRinnovi && !hasTagliandi
         ? "licenza_stage2"
         : "rinnovo_stage2";
-    const op =
-      rinnoviAlertDestMode === "operatore"
-        ? alertOperatori.find((o) => o.id === rinnoviAlertToOperatoreId)
-        : null;
-    const toEmail =
-      rinnoviAlertDestMode === "email"
-        ? rinnoviAlertManualEmail.trim()
-        : op?.email ?? "";
-    const toNome =
-      rinnoviAlertDestMode === "email"
-        ? rinnoviAlertManualName.trim() || null
-        : op?.nome ?? null;
-    if (rinnoviAlertSendEmail && !toEmail.includes("@")) {
-      setRinnoviAlertErr("Destinatario senza email valida.");
+    const recipients: Array<{ toEmail: string; toNome: string | null; toOperatoreId: string | null }> = [];
+    if (rinnoviAlertDestMode === "operatore" && rinnoviAlertToOperatoreId) {
+      const op = alertOperatori.find((o) => o.id === rinnoviAlertToOperatoreId) || null;
+      const email = String(op?.email || "").trim();
+      if (!email.includes("@")) {
+        setRinnoviAlertErr("Operatore selezionato senza email valida.");
+        setRinnoviAlertSending(false);
+        return;
+      }
+      recipients.push({
+        toEmail: email,
+        toNome: op?.nome ?? null,
+        toOperatoreId: rinnoviAlertToOperatoreId,
+      });
+    }
+    if (rinnoviAlertDestMode === "email" && rinnoviAlertManualEmail.trim()) {
+      recipients.push({
+        toEmail: rinnoviAlertManualEmail.trim(),
+        toNome: rinnoviAlertManualName.trim() || null,
+        toOperatoreId: null,
+      });
+    }
+    if (rinnoviAlertToCliente && clienteAnagraficaEmail) {
+      recipients.push({
+        toEmail: clienteAnagraficaEmail,
+        toNome: "Cliente",
+        toOperatoreId: null,
+      });
+    }
+    const dedupMap = new Map<string, { toEmail: string; toNome: string | null; toOperatoreId: string | null }>();
+    for (const r of recipients) {
+      const key = `${String(r.toOperatoreId || "")}::${String(r.toEmail || "").toLowerCase()}`;
+      dedupMap.set(key, r);
+    }
+    const finalRecipients = Array.from(dedupMap.values()).filter((r) => r.toEmail.includes("@"));
+    if (finalRecipients.length === 0) {
+      setRinnoviAlertErr("Nessun destinatario valido selezionato.");
       setRinnoviAlertSending(false);
       return;
     }
@@ -3833,31 +3877,33 @@ export default function ClientePage({ params }: { params: any }) {
         canale,
         subject,
         message,
-        to_email: toEmail || null,
+        recipients: finalRecipients.map((r) => ({ to_email: r.toEmail, to_operatore_id: r.toOperatoreId })),
       });
       if (tagliandoOnly && tagliandoItems.length > 0) {
         const updatedIds: string[] = [];
-        for (let i = 0; i < tagliandoItems.length; i += 1) {
-          const t = tagliandoItems[i];
-          const res: any = await sendAlert({
-            canale,
-            subject,
-            message,
-            text: rinnoviAlertMsg,
-            html,
-            to_email: toEmail || null,
-            to_nome: toNome,
-            to_operatore_id: rinnoviAlertDestMode === "operatore" ? rinnoviAlertToOperatoreId : null,
-            from_operatore_id: opId,
-            checklist_id: checklistId,
-            tagliando_id: t.tagliando_id ?? t.id ?? null,
-            tipo: String(t.item_tipo || "TAGLIANDO").toUpperCase(),
-            riferimento: t.riferimento ?? null,
-            stato: t.stato ?? null,
-            trigger: "MANUALE",
-            send_email: i === 0 ? rinnoviAlertSendEmail : false,
-          });
-          if (res?.updated?.id) updatedIds.push(res.updated.id);
+        for (const recipient of finalRecipients) {
+          for (let i = 0; i < tagliandoItems.length; i += 1) {
+            const t = tagliandoItems[i];
+            const res: any = await sendAlert({
+              canale,
+              subject,
+              message,
+              text: rinnoviAlertMsg,
+              html,
+              to_email: recipient.toEmail || null,
+              to_nome: recipient.toNome,
+              to_operatore_id: recipient.toOperatoreId,
+              from_operatore_id: opId,
+              checklist_id: checklistId,
+              tagliando_id: t.tagliando_id ?? t.id ?? null,
+              tipo: String(t.item_tipo || "TAGLIANDO").toUpperCase(),
+              riferimento: t.riferimento ?? null,
+              stato: t.stato ?? null,
+              trigger: "MANUALE",
+              send_email: i === 0 ? rinnoviAlertSendEmail : false,
+            });
+            if (res?.updated?.id) updatedIds.push(res.updated.id);
+          }
         }
         if (updatedIds.length > 0) {
           setTagliandi((prev) =>
@@ -3874,23 +3920,25 @@ export default function ClientePage({ params }: { params: any }) {
           );
         }
       } else {
-        await sendAlert({
-          canale,
-          subject,
-          message,
-          text: rinnoviAlertMsg,
-          html,
-          to_email: toEmail || null,
-          to_nome: toNome,
-          to_operatore_id: rinnoviAlertDestMode === "operatore" ? rinnoviAlertToOperatoreId : null,
-          from_operatore_id: opId,
-          checklist_id: checklistId,
-          tipo: currentTipo,
-          riferimento: singleItem?.riferimento ?? null,
-          stato: singleItem?.stato ?? null,
-          trigger: "MANUALE",
-          send_email: rinnoviAlertSendEmail,
-        });
+        for (const recipient of finalRecipients) {
+          await sendAlert({
+            canale,
+            subject,
+            message,
+            text: rinnoviAlertMsg,
+            html,
+            to_email: recipient.toEmail || null,
+            to_nome: recipient.toNome,
+            to_operatore_id: recipient.toOperatoreId,
+            from_operatore_id: opId,
+            checklist_id: checklistId,
+            tipo: currentTipo,
+            riferimento: singleItem?.riferimento ?? null,
+            stato: singleItem?.stato ?? null,
+            trigger: "MANUALE",
+            send_email: rinnoviAlertSendEmail,
+          });
+        }
       }
     } catch (err) {
       console.error("Errore invio alert rinnovi", err);
@@ -3977,10 +4025,7 @@ export default function ClientePage({ params }: { params: any }) {
                 action: "SEND_ALERT",
                 licenseId: id,
                 status: "AVVISATO",
-                alertTo:
-                  rinnoviAlertDestMode === "operatore"
-                    ? rinnoviAlertToOperatoreId
-                    : rinnoviAlertManualEmail.trim(),
+                alertTo: finalRecipients[0]?.toOperatoreId ?? finalRecipients[0]?.toEmail ?? null,
                 alertNote: rinnoviAlertMsg,
                 updatedByOperatoreId: opId,
               }),
@@ -4006,10 +4051,7 @@ export default function ClientePage({ params }: { params: any }) {
               body: JSON.stringify({
                 action: "SEND_ALERT",
                 licenseId: id,
-                alertTo:
-                  rinnoviAlertDestMode === "operatore"
-                    ? rinnoviAlertToOperatoreId
-                    : rinnoviAlertManualEmail.trim(),
+                alertTo: finalRecipients[0]?.toOperatoreId ?? finalRecipients[0]?.toEmail ?? null,
                 alertNote: rinnoviAlertMsg,
                 updatedByOperatoreId: opId,
               }),
@@ -4018,7 +4060,10 @@ export default function ClientePage({ params }: { params: any }) {
         );
       }
     }
-    const recipientLabel = getRinnoviRecipientLabel();
+    const recipientLabel =
+      finalRecipients.length > 0
+        ? `Destinatari: ${finalRecipients.map((r) => r.toNome || r.toEmail).join(", ")}`
+        : getRinnoviRecipientLabel();
     const esitoLabel = rinnoviAlertSendEmail ? "✅ Email inviata" : "✅ Avviso registrato";
     showToast(esitoLabel, "success");
     setRinnoviNotice(`${esitoLabel} — ${recipientLabel}`);
@@ -7458,6 +7503,11 @@ ${rinnovi30ggBreakdown.debugSample
             </div>
 
             <div style={{ marginTop: 10 }}>
+              <div style={{ marginBottom: 10, fontSize: 12 }}>
+                <Link href="/impostazioni/operatori" style={{ color: "#2563eb", textDecoration: "underline" }}>
+                  ⚙ Regole invio automatico
+                </Link>
+              </div>
               <label style={{ display: "block", marginBottom: 10 }}>
                 Destinatario<br />
                 <select
@@ -7477,7 +7527,7 @@ ${rinnovi30ggBreakdown.debugSample
               </label>
               {getAlertRecipients().length === 0 && (
                 <div style={{ marginTop: -6, marginBottom: 10, fontSize: 12, color: "#b91c1c" }}>
-                  Nessun destinatario con Alert ON + email valida
+                  Nessun operatore attivo con email valida
                 </div>
               )}
               <label style={{ display: "block", marginBottom: 10 }}>
@@ -7915,6 +7965,11 @@ ${rinnovi30ggBreakdown.debugSample
             </div>
 
             <div style={{ marginTop: 10 }}>
+              <div style={{ marginBottom: 10, fontSize: 12 }}>
+                <Link href="/impostazioni/operatori" style={{ color: "#2563eb", textDecoration: "underline" }}>
+                  ⚙ Regole invio automatico
+                </Link>
+              </div>
               <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 6 }}>Destinatario</div>
               <div style={{ display: "flex", gap: 12, fontSize: 13, marginBottom: 8 }}>
                 <label>
@@ -8078,6 +8133,11 @@ ${rinnovi30ggBreakdown.debugSample
             </div>
 
             <div style={{ marginTop: 10 }}>
+              <div style={{ marginBottom: 10, fontSize: 12 }}>
+                <Link href="/impostazioni/operatori" style={{ color: "#2563eb", textDecoration: "underline" }}>
+                  ⚙ Regole invio automatico
+                </Link>
+              </div>
               <label style={{ display: "block", marginBottom: 10 }}>
                 Destinatario<br />
                 <select
@@ -8097,7 +8157,7 @@ ${rinnovi30ggBreakdown.debugSample
               </label>
               {getFatturaAlertRecipients().length === 0 && (
                 <div style={{ marginTop: -6, marginBottom: 10, fontSize: 12, color: "#b91c1c" }}>
-                  Nessun destinatario con Alert ON + email valida
+                  Nessun operatore attivo con email valida
                 </div>
               )}
               <label style={{ display: "block", marginBottom: 10 }}>
@@ -8260,6 +8320,11 @@ ${rinnovi30ggBreakdown.debugSample
             </div>
 
             <div style={{ marginTop: 10 }}>
+              <div style={{ marginBottom: 10, fontSize: 12 }}>
+                <Link href="/impostazioni/operatori" style={{ color: "#2563eb", textDecoration: "underline" }}>
+                  ⚙ Regole invio automatico
+                </Link>
+              </div>
               {(() => {
                 const hasTagliandi = rinnoviAlertItems.some((r) => r.source === "tagliandi");
                 const hasLicenze = rinnoviAlertItems.some((r) => r.source === "licenze");
@@ -8323,7 +8388,20 @@ ${rinnovi30ggBreakdown.debugSample
                   />
                   Email manuale
                 </label>
+                <label style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                  <input
+                    type="checkbox"
+                    checked={rinnoviAlertToCliente}
+                    onChange={(e) => setRinnoviAlertToCliente(e.target.checked)}
+                  />
+                  Cliente
+                </label>
               </div>
+              {rinnoviAlertToCliente && (
+                <div style={{ marginTop: -4, marginBottom: 10, fontSize: 12, opacity: 0.8 }}>
+                  Cliente {clienteAnagraficaEmail ? "selezionato" : "senza email in anagrafica"}
+                </div>
+              )}
               <label style={{ display: "block", marginBottom: 10 }}>
                 Destinatario<br />
                 {rinnoviAlertDestMode === "operatore" ? (
@@ -8334,7 +8412,7 @@ ${rinnovi30ggBreakdown.debugSample
                   >
                     <option value="">—</option>
                     {alertOperatori
-                      .filter((o) => o.attivo !== false && o.alert_enabled)
+                      .filter((o) => o.attivo !== false && String(o.email || "").includes("@"))
                       .map((op) => (
                         <option key={op.id} value={op.id}>
                           {op.nome ?? "—"}
@@ -8405,9 +8483,10 @@ ${rinnovi30ggBreakdown.debugSample
                 onClick={sendRinnoviAlert}
                 disabled={
                   rinnoviAlertSending ||
-                  (rinnoviAlertDestMode === "operatore"
+                  ((rinnoviAlertDestMode === "operatore"
                     ? !rinnoviAlertToOperatoreId
-                    : !rinnoviAlertManualEmail.trim())
+                    : !rinnoviAlertManualEmail.trim()) &&
+                    !rinnoviAlertToCliente)
                 }
                 style={{
                   padding: "8px 12px",
@@ -8417,9 +8496,10 @@ ${rinnovi30ggBreakdown.debugSample
                   color: "white",
                   opacity:
                     rinnoviAlertSending ||
-                    (rinnoviAlertDestMode === "operatore"
+                    ((rinnoviAlertDestMode === "operatore"
                       ? !rinnoviAlertToOperatoreId
-                      : !rinnoviAlertManualEmail.trim())
+                      : !rinnoviAlertManualEmail.trim()) &&
+                      !rinnoviAlertToCliente)
                       ? 0.6
                       : 1,
                 }}

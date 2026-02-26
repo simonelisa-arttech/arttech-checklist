@@ -650,6 +650,8 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
   const [alertManualMode, setAlertManualMode] = useState(false);
   const [alertManualEmail, setAlertManualEmail] = useState("");
   const [alertManualName, setAlertManualName] = useState("");
+  const [alertToCliente, setAlertToCliente] = useState(false);
+  const [checklistClienteEmail, setChecklistClienteEmail] = useState<string | null>(null);
   const [alertFormError, setAlertFormError] = useState<string | null>(null);
   const [alertNotice, setAlertNotice] = useState<string | null>(null);
   const [ruleTask, setRuleTask] = useState<ChecklistTask | null>(null);
@@ -1198,6 +1200,17 @@ function buildFormData(c: Checklist): FormData {
     });
 
     const clienteKey = String(headChecklist.cliente ?? "").trim();
+    setChecklistClienteEmail(null);
+    if (clienteKey) {
+      const { data: clienteRow } = await supabase
+        .from("clienti_anagrafica")
+        .select("email")
+        .ilike("denominazione", clienteKey)
+        .limit(1)
+        .maybeSingle();
+      const mail = String((clienteRow as any)?.email || "").trim();
+      setChecklistClienteEmail(mail && mail.includes("@") ? mail : null);
+    }
 
     let activeContratto: ContrattoRow | null = null;
     let ultraNome: string | null = null;
@@ -1481,7 +1494,16 @@ function buildFormData(c: Checklist): FormData {
       const roleTarget = normalizeRuleTargetValue(o.ruolo);
       return roleTarget === taskTarget;
     });
-    return fallback;
+    if (fallback.length > 0) return fallback;
+
+    return alertOperatori.filter((o) => {
+      if (!o.attivo) return false;
+      const hasEmail = String(o.email || "").includes("@");
+      if (!hasEmail) return false;
+      if (taskTarget === "GENERICA") return true;
+      const roleTarget = normalizeRuleTargetValue(o.ruolo);
+      return roleTarget === taskTarget;
+    });
   }
 
   async function handleSendAlert() {
@@ -1489,17 +1511,23 @@ function buildFormData(c: Checklist): FormData {
     setAlertFormError(null);
     const manualEmail = alertManualEmail.trim();
     if (alertManualMode) {
-      if (!isValidEmail(manualEmail)) {
+      if (!isValidEmail(manualEmail) && !alertToCliente) {
         setAlertFormError("Inserisci un'email valida.");
         return;
       }
-    } else if (!alertDestinatarioId) {
-      setAlertFormError("Seleziona un destinatario.");
+    } else if (!alertDestinatarioId && !alertToCliente) {
+      setAlertFormError("Seleziona almeno un destinatario (operatore e/o cliente).");
       return;
     }
-    const destinatario = alertOperatori.find((o) => o.id === alertDestinatarioId);
-    if (!alertManualMode && alertSendEmail && !destinatario?.email) {
+    const destinatario = !alertManualMode
+      ? alertOperatori.find((o) => o.id === alertDestinatarioId)
+      : null;
+    if (!alertManualMode && alertSendEmail && alertDestinatarioId && !destinatario?.email) {
       setAlertFormError("Il destinatario non ha un'email configurata.");
+      return;
+    }
+    if (alertToCliente && !String(checklistClienteEmail || "").includes("@")) {
+      setAlertFormError("Cliente senza email valida in anagrafica.");
       return;
     }
     const opId =
@@ -1577,21 +1605,56 @@ function buildFormData(c: Checklist): FormData {
       </div>
     `;
 
-    try {
-      await sendAlert({
-        canale: "manual_task",
-        subject,
-        text: dettagli,
-        html,
-        to_email: alertManualMode ? manualEmail : destinatario?.email ?? null,
-        to_nome: alertManualMode ? (alertManualName.trim() || null) : destinatario?.nome ?? null,
-        to_operatore_id: alertManualMode ? null : alertDestinatarioId,
-        from_operatore_id: opId,
-        checklist_id: checklist.id,
-        task_id: alertTask.id,
-        task_template_id: taskTemplateId,
-        send_email: alertSendEmail,
+    const recipients: Array<{ toEmail: string; toNome: string | null; toOperatoreId: string | null }> = [];
+    if (alertManualMode) {
+      if (isValidEmail(manualEmail)) {
+        recipients.push({
+          toEmail: manualEmail,
+          toNome: alertManualName.trim() || null,
+          toOperatoreId: null,
+        });
+      }
+    } else if (destinatario?.email) {
+      recipients.push({
+        toEmail: destinatario.email,
+        toNome: destinatario.nome ?? null,
+        toOperatoreId: alertDestinatarioId || null,
       });
+    }
+    if (alertToCliente && checklistClienteEmail) {
+      recipients.push({
+        toEmail: checklistClienteEmail,
+        toNome: "Cliente",
+        toOperatoreId: null,
+      });
+    }
+    const dedup = new Map<string, { toEmail: string; toNome: string | null; toOperatoreId: string | null }>();
+    for (const r of recipients) {
+      dedup.set(`${String(r.toOperatoreId || "")}::${r.toEmail.toLowerCase()}`, r);
+    }
+    const finalRecipients = Array.from(dedup.values()).filter((r) => isValidEmail(r.toEmail));
+    if (finalRecipients.length === 0) {
+      setAlertFormError("Nessun destinatario valido selezionato.");
+      return;
+    }
+
+    try {
+      for (const recipient of finalRecipients) {
+        await sendAlert({
+          canale: "manual_task",
+          subject,
+          text: dettagli,
+          html,
+          to_email: recipient.toEmail,
+          to_nome: recipient.toNome,
+          to_operatore_id: recipient.toOperatoreId,
+          from_operatore_id: opId,
+          checklist_id: checklist.id,
+          task_id: alertTask.id,
+          task_template_id: taskTemplateId,
+          send_email: alertSendEmail,
+        });
+      }
     } catch (err) {
       console.error("Errore invio alert task", err);
       showToast(`❌ Invio fallito: ${briefError(err)}`, "error");
@@ -1634,7 +1697,7 @@ function buildFormData(c: Checklist): FormData {
     setLastAlertByTask((prev) => {
       const next = new Map(prev);
       next.set(alertTask.id, {
-        toOperatoreId: alertDestinatarioId,
+        toOperatoreId: finalRecipients[0]?.toOperatoreId ?? alertDestinatarioId ?? "",
         createdAt: new Date().toISOString(),
       });
       return next;
@@ -1644,6 +1707,7 @@ function buildFormData(c: Checklist): FormData {
     setAlertMessaggio("");
     setAlertSendEmail(true);
     setAlertManualMode(false);
+    setAlertToCliente(false);
     setAlertManualEmail("");
     setAlertManualName("");
     setAlertSelectedPresetId("");
@@ -5474,6 +5538,25 @@ function buildFormData(c: Checklist): FormData {
             <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 10 }}>
               Task: {alertTask.titolo}
             </div>
+            <div style={{ marginBottom: 10, fontSize: 12 }}>
+              <button
+                type="button"
+                onClick={() => {
+                  const t = alertTask;
+                  setAlertTask(null);
+                  setRuleTask(t);
+                }}
+                style={{
+                  border: "1px solid #d1d5db",
+                  background: "white",
+                  borderRadius: 8,
+                  padding: "4px 8px",
+                  cursor: "pointer",
+                }}
+              >
+                ⚙ Regole invio automatico
+              </button>
+            </div>
             <label style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 10 }}>
               <input
                 type="checkbox"
@@ -5486,6 +5569,19 @@ function buildFormData(c: Checklist): FormData {
               />
               Email manuale
             </label>
+            <label style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 10 }}>
+              <input
+                type="checkbox"
+                checked={alertToCliente}
+                onChange={(e) => setAlertToCliente(e.target.checked)}
+              />
+              Cliente
+            </label>
+            {alertToCliente && (
+              <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 10 }}>
+                Cliente {checklistClienteEmail ? "selezionato" : "senza email valida in anagrafica"}
+              </div>
+            )}
             <label style={{ display: "block", marginBottom: 10 }}>
               Destinatario<br />
               {alertManualMode ? (
@@ -5543,10 +5639,12 @@ function buildFormData(c: Checklist): FormData {
               if (presets.length === 0) return null;
 
               const destinatarioLabel = alertManualMode
-                ? alertManualName.trim() || alertManualEmail.trim()
+                ? [alertManualName.trim() || alertManualEmail.trim(), alertToCliente ? "Cliente" : ""]
+                    .filter(Boolean)
+                    .join(" + ")
                 : alertOperatori.find((o) => o.id === alertDestinatarioId)?.nome ||
                   alertOperatori.find((o) => o.id === alertDestinatarioId)?.email ||
-                  "";
+                  (alertToCliente ? "Cliente" : "");
 
               return (
                 <label style={{ display: "block", marginBottom: 10 }}>
@@ -5621,8 +5719,8 @@ function buildFormData(c: Checklist): FormData {
                 onClick={handleSendAlert}
                 disabled={
                   alertManualMode
-                    ? !isValidEmail(alertManualEmail)
-                    : !alertDestinatarioId
+                    ? !isValidEmail(alertManualEmail) && !alertToCliente
+                    : !alertDestinatarioId && !alertToCliente
                 }
                 style={{
                   padding: "8px 12px",
@@ -5632,10 +5730,10 @@ function buildFormData(c: Checklist): FormData {
                   color: "white",
                   opacity:
                     alertManualMode
-                      ? isValidEmail(alertManualEmail)
+                      ? isValidEmail(alertManualEmail) || alertToCliente
                         ? 1
                         : 0.5
-                      : alertDestinatarioId
+                      : alertDestinatarioId || alertToCliente
                       ? 1
                       : 0.5,
                 }}
