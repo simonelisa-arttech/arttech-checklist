@@ -52,6 +52,7 @@ export async function GET(request: Request) {
     .from("operatori")
     .select("id, user_id")
     .eq("user_id", user.id)
+    .limit(1)
     .maybeSingle();
   if (byUserErr) {
     return NextResponse.json({ error: byUserErr.message }, { status: 500 });
