@@ -4327,40 +4327,48 @@ function buildFormData(c: Checklist): FormData {
           {licenze.length === 0 ? (
             <div style={{ opacity: 0.7 }}>Nessuna licenza collegata</div>
           ) : (
-            <div style={{ border: "1px solid #eee", borderRadius: 12, overflow: "hidden" }}>
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "1.4fr 0.8fr 0.8fr 0.9fr 2fr 2fr 160px",
-                  gap: 0,
-                  padding: "10px 12px",
-                  fontWeight: 700,
-                  borderBottom: "1px solid #eee",
-                  background: "#fafafa",
-                }}
-              >
-                <div>Tipo / Piano</div>
-                <div>Scadenza</div>
-                <div>Stato</div>
-                <div>Intestata</div>
-                <div>Note</div>
-                <div>Riferimento</div>
-                <div>Azioni</div>
-              </div>
-
-              {licenze.map((l) => (
+            <div
+              style={{
+                border: "1px solid #eee",
+                borderRadius: 12,
+                overflowX: "auto",
+                overflowY: "hidden",
+              }}
+            >
+              <div style={{ minWidth: 1180 }}>
                 <div
-                  key={l.id}
                   style={{
                     display: "grid",
-                    gridTemplateColumns: "1.4fr 0.8fr 0.8fr 0.9fr 2fr 2fr 160px",
-                    gap: 0,
+                    gridTemplateColumns: "180px 130px 120px 130px 240px 260px 220px",
+                    gap: 10,
                     padding: "10px 12px",
-                    borderBottom: "1px solid #f5f5f5",
-                    alignItems: "center",
-                    fontSize: 13,
+                    fontWeight: 700,
+                    borderBottom: "1px solid #eee",
+                    background: "#fafafa",
                   }}
                 >
+                  <div>Tipo / Piano</div>
+                  <div>Scadenza</div>
+                  <div>Stato</div>
+                  <div>Intestata</div>
+                  <div>Note</div>
+                  <div>Riferimento</div>
+                  <div>Azioni</div>
+                </div>
+
+                {licenze.map((l) => (
+                  <div
+                    key={l.id}
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "180px 130px 120px 130px 240px 260px 220px",
+                      gap: 10,
+                      padding: "10px 12px",
+                      borderBottom: "1px solid #f5f5f5",
+                      alignItems: "start",
+                      fontSize: 13,
+                    }}
+                  >
                   <div>
                     {editMode && editingLicenzaId === l.id ? (
                       <select
@@ -4522,7 +4530,7 @@ function buildFormData(c: Checklist): FormData {
                         .join(" · ") || "—"
                     )}
                   </div>
-                  <div style={{ display: "flex", gap: 8 }}>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                     {editMode ? (
                       editingLicenzaId === l.id ? (
                         <>
@@ -4590,8 +4598,9 @@ function buildFormData(c: Checklist): FormData {
                       <span style={{ opacity: 0.6 }}>—</span>
                     )}
                   </div>
-                </div>
-              ))}
+                  </div>
+                ))}
+              </div>
             </div>
           )}
 

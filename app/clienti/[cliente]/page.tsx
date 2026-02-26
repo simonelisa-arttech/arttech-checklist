@@ -1236,26 +1236,37 @@ export default function ClientePage({ params }: { params: any }) {
         setUltraPiani(mapped);
       }
 
-      const { data: opsData } = await supabase
-        .from("operatori")
-        .select("id, user_id, nome, ruolo, email, attivo, alert_enabled, alert_tasks")
-        .order("ruolo", { ascending: true })
-        .order("nome", { ascending: true });
-      if (opsData) {
-        const mapped = (opsData || []).map((o: any) => ({
-          id: o.id,
-          user_id: o.user_id ?? null,
-          nome: o.nome ?? null,
-          ruolo: o.ruolo ?? null,
-          email: o.email ?? null,
-          attivo: o.attivo ?? null,
-          alert_enabled: o.alert_enabled ?? null,
-          alert_tasks: normalizeAlertTasks(o.alert_tasks),
-        }));
-        setAlertOperatori(mapped as OperatoreRow[]);
-        if (mapped.length <= 1) {
-          console.log("ALERT OPERATORI", mapped.length, mapped);
+      let opsData: any[] = [];
+      try {
+        const res = await fetch("/api/operatori", { credentials: "include" });
+        const json = await res.json().catch(() => ({} as any));
+        if (res.ok && Array.isArray(json?.data)) {
+          opsData = json.data;
         }
+      } catch {
+        // fallback below
+      }
+      if (!Array.isArray(opsData) || opsData.length === 0) {
+        const fallback = await supabase
+          .from("operatori")
+          .select("id, user_id, nome, ruolo, email, attivo, alert_enabled, alert_tasks")
+          .order("ruolo", { ascending: true })
+          .order("nome", { ascending: true });
+        opsData = (fallback.data || []) as any[];
+      }
+      const mapped = (opsData || []).map((o: any) => ({
+        id: o.id,
+        user_id: o.user_id ?? null,
+        nome: o.nome ?? null,
+        ruolo: o.ruolo ?? null,
+        email: o.email ?? null,
+        attivo: o.attivo ?? null,
+        alert_enabled: o.alert_enabled ?? null,
+        alert_tasks: normalizeAlertTasks(o.alert_tasks),
+      }));
+      setAlertOperatori(mapped as OperatoreRow[]);
+      if (mapped.length <= 1) {
+        console.log("ALERT OPERATORI", mapped.length, mapped);
       }
 
       setLoading(false);
@@ -3328,12 +3339,6 @@ export default function ClientePage({ params }: { params: any }) {
   function openEditScadenza(r: ScadenzaItem) {
     const itemTipo = String(r.item_tipo || "").toUpperCase();
     const isGaranzia = r.source === "garanzie" || itemTipo === "GARANZIA";
-    const isSaasBase = r.source === "saas" || itemTipo === "SAAS";
-
-    if (isSaasBase && !isGaranzia) {
-      showToast("Modifica SAAS disponibile nella pagina Progetto (Checklist).", "error");
-      return;
-    }
     setEditScadenzaErr(null);
     let form: EditScadenzaForm = {
       tipo: "RINNOVO",
