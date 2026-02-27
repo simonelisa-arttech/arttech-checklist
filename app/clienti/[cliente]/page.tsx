@@ -1127,7 +1127,8 @@ export default function ClientePage({ params }: { params: any }) {
       const decoded = decodeURIComponent(raw);
       if (!alive) return;
 
-      setCliente(decoded);
+      let displayCliente = decoded.trim();
+      setCliente(displayCliente);
       setClienteAnagraficaEmail(null);
       setLoading(true);
       setError(null);
@@ -1136,17 +1137,22 @@ export default function ClientePage({ params }: { params: any }) {
       if (clienteKey) {
         const { data: anagData } = await supabase
           .from("clienti_anagrafica")
-          .select("email")
-          .ilike("denominazione", clienteKey)
+          .select("denominazione, email")
+          .ilike("denominazione", `%${clienteKey}%`)
           .limit(1)
           .maybeSingle();
+        const fullName = String((anagData as any)?.denominazione || "").trim();
+        if (fullName) {
+          displayCliente = fullName;
+          setCliente(fullName);
+        }
         const mail = String((anagData as any)?.email || "").trim();
         setClienteAnagraficaEmail(mail && mail.includes("@") ? mail : null);
       }
       const { data: cls, error: clsErr } = await supabase
         .from("checklists")
         .select(
-          "id, cliente, nome_checklist, proforma, magazzino_importazione, dimensioni, numero_facce, passo, tipo_impianto, data_prevista, data_tassativa, data_installazione_reale, stato_progetto, saas_piano, saas_tipo, saas_scadenza, saas_note, ultra_interventi_illimitati, ultra_interventi_inclusi, garanzia_scadenza, created_at"
+          "id, cliente, cliente_id, nome_checklist, proforma, magazzino_importazione, dimensioni, numero_facce, passo, tipo_impianto, data_prevista, data_tassativa, data_installazione_reale, stato_progetto, saas_piano, saas_tipo, saas_scadenza, saas_note, ultra_interventi_illimitati, ultra_interventi_inclusi, garanzia_scadenza, created_at"
         )
         .ilike("cliente", `%${clienteKey}%`)
         .order("created_at", { ascending: false });
@@ -1158,6 +1164,19 @@ export default function ClientePage({ params }: { params: any }) {
       }
 
       const list = (cls || []) as ChecklistRow[];
+      const firstClienteId = String((list[0] as any)?.cliente_id || "").trim();
+      if (firstClienteId) {
+        const { data: clienteById } = await supabase
+          .from("clienti_anagrafica")
+          .select("denominazione")
+          .eq("id", firstClienteId)
+          .maybeSingle();
+        const fullById = String((clienteById as any)?.denominazione || "").trim();
+        if (fullById) {
+          displayCliente = fullById;
+          setCliente(fullById);
+        }
+      }
       setChecklists(list);
       const checklistIds = list.map((c) => c.id).filter(Boolean);
       if (checklistIds.length > 0) {
