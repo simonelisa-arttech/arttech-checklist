@@ -3986,7 +3986,7 @@ function buildFormData(c: Checklist): FormData {
               <div
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "90px 1.1fr 110px 120px 120px 90px minmax(390px, 1fr)",
+                  gridTemplateColumns: "72px 1fr 96px 108px 96px 72px 312px",
                   padding: "10px 12px",
                   fontWeight: 800,
                   background: "#fafafa",
@@ -4045,7 +4045,7 @@ function buildFormData(c: Checklist): FormData {
                   key={r.key}
                   style={{
                     display: "grid",
-                    gridTemplateColumns: "90px 1.1fr 110px 120px 120px 90px minmax(390px, 1fr)",
+                    gridTemplateColumns: "72px 1fr 96px 108px 96px 72px 312px",
                     padding: "10px 12px",
                     borderBottom: "1px solid #f3f4f6",
                     alignItems: "center",
@@ -4071,8 +4071,8 @@ function buildFormData(c: Checklist): FormData {
                   <div
                     style={{
                       display: "grid",
-                      gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
-                      justifyContent: "stretch",
+                      gridTemplateColumns: "repeat(3, 100px)",
+                      justifyContent: "center",
                       alignContent: "center",
                       gap: 6,
                       width: "100%",
@@ -4096,7 +4096,7 @@ function buildFormData(c: Checklist): FormData {
                       }}
                       style={{
                         padding: "4px 8px",
-                        width: "100%",
+                        width: 100,
                         minHeight: 32,
                         borderRadius: 6,
                         border: label === "Modifica" || label === "Invia avviso" || label === "DA_FATTURARE" ? "1px solid #111" : "1px solid #ddd",
@@ -4106,7 +4106,9 @@ function buildFormData(c: Checklist): FormData {
                         opacity: checklist?.cliente ? 1 : 0.5,
                         fontWeight: label === "Modifica" || label === "Invia avviso" || label === "DA_FATTURARE" ? 700 : 500,
                         textAlign: "center",
-                        whiteSpace: "nowrap",
+                        whiteSpace: "normal",
+                        overflowWrap: "anywhere",
+                        lineHeight: 1.1,
                       }}
                       title="Gestisci stato completo in Scheda cliente"
                     >

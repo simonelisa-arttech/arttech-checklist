@@ -5908,7 +5908,7 @@ ${rinnovi30ggBreakdown.debugSample
             <div
             style={{
               display: "grid",
-              gridTemplateColumns: "90px 1.1fr 110px 120px 120px 90px 330px",
+              gridTemplateColumns: "72px 1fr 96px 108px 96px 72px 312px",
               padding: "10px 12px",
               fontWeight: 800,
               background: "#fafafa",
@@ -5973,7 +5973,7 @@ ${rinnovi30ggBreakdown.debugSample
                 data-source={String(r.source || "")}
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "90px 1.1fr 110px 120px 120px 90px 330px",
+                  gridTemplateColumns: "72px 1fr 96px 108px 96px 72px 312px",
                   padding: "10px 12px",
                   borderBottom: "1px solid #f3f4f6",
                   alignItems: "center",
@@ -6047,7 +6047,7 @@ ${rinnovi30ggBreakdown.debugSample
                   data-testid="workflow-actions-btn"
                   style={{
                     display: "grid",
-                    gridTemplateColumns: "repeat(3, 110px)",
+                    gridTemplateColumns: "repeat(3, 100px)",
                     justifyContent: "center",
                     alignContent: "center",
                     gap: 6,
@@ -6073,7 +6073,7 @@ ${rinnovi30ggBreakdown.debugSample
                         }
                         style={{
                           padding: "4px 8px",
-                          width: 110,
+                          width: 100,
                           minHeight: 32,
                           borderRadius: 6,
                           border: "1px solid #111",
@@ -6083,6 +6083,9 @@ ${rinnovi30ggBreakdown.debugSample
                           fontWeight: 700,
                           opacity: canStage1 ? 1 : 0.5,
                           textAlign: "center",
+                          whiteSpace: "normal",
+                          overflowWrap: "anywhere",
+                          lineHeight: 1.1,
                         }}
                       >
                         {stato === "AVVISATO" ? "Invia nuovo avviso" : "Invia avviso"}
@@ -6112,7 +6115,7 @@ ${rinnovi30ggBreakdown.debugSample
                           }
                           style={{
                             padding: "4px 8px",
-                            width: 110,
+                            width: 100,
                             minHeight: 32,
                             borderRadius: 6,
                             border: "1px solid #111",
@@ -6122,6 +6125,9 @@ ${rinnovi30ggBreakdown.debugSample
                             fontWeight: 700,
                             opacity: canStage2 ? 1 : 0.5,
                             textAlign: "center",
+                            whiteSpace: "normal",
+                            overflowWrap: "anywhere",
+                            lineHeight: 1.1,
                           }}
                         >
                           DA_FATTURARE
@@ -6146,7 +6152,7 @@ ${rinnovi30ggBreakdown.debugSample
                           }
                           style={{
                             padding: "4px 8px",
-                            width: 110,
+                            width: 100,
                             minHeight: 32,
                             borderRadius: 6,
                             border: "1px solid #ddd",
@@ -6155,6 +6161,9 @@ ${rinnovi30ggBreakdown.debugSample
                             fontSize: 12,
                             opacity: canFatturato ? 1 : 0.5,
                             textAlign: "center",
+                            whiteSpace: "normal",
+                            overflowWrap: "anywhere",
+                            lineHeight: 1.1,
                           }}
                         >
                           FATTURATO
@@ -6187,7 +6196,7 @@ ${rinnovi30ggBreakdown.debugSample
                           }
                           style={{
                             padding: "4px 8px",
-                            width: 110,
+                            width: 100,
                             minHeight: 32,
                             borderRadius: 6,
                             border: "1px solid #ddd",
@@ -6196,6 +6205,9 @@ ${rinnovi30ggBreakdown.debugSample
                             fontSize: 12,
                             opacity: canConfirm ? 1 : 0.5,
                             textAlign: "center",
+                            whiteSpace: "normal",
+                            overflowWrap: "anywhere",
+                            lineHeight: 1.1,
                           }}
                         >
                           Confermato
@@ -6220,7 +6232,7 @@ ${rinnovi30ggBreakdown.debugSample
                           }
                           style={{
                             padding: "4px 8px",
-                            width: 110,
+                            width: 100,
                             minHeight: 32,
                             borderRadius: 6,
                             border: "1px solid #ddd",
@@ -6229,6 +6241,9 @@ ${rinnovi30ggBreakdown.debugSample
                             fontSize: 12,
                             opacity: canNonRinnovato ? 1 : 0.5,
                             textAlign: "center",
+                            whiteSpace: "normal",
+                            overflowWrap: "anywhere",
+                            lineHeight: 1.1,
                           }}
                         >
                           NON_RINNOVATO
@@ -6240,7 +6255,7 @@ ${rinnovi30ggBreakdown.debugSample
                         onClick={() => openEditScadenza(r)}
                         style={{
                           padding: "4px 8px",
-                          width: 110,
+                          width: 100,
                           minHeight: 32,
                           borderRadius: 6,
                           border: "1px solid #111",
@@ -6249,6 +6264,9 @@ ${rinnovi30ggBreakdown.debugSample
                           fontSize: 12,
                           fontWeight: 700,
                           textAlign: "center",
+                          whiteSpace: "normal",
+                          overflowWrap: "anywhere",
+                          lineHeight: 1.1,
                         }}
                       >
                         Modifica
