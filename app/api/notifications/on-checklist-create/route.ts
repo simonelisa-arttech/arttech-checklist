@@ -155,6 +155,17 @@ async function authAdminClient(request: Request) {
   return { adminClient };
 }
 
+function getBaseUrl(req: Request) {
+  const env =
+    process.env.APP_URL ||
+    process.env.NEXT_PUBLIC_SITE_URL ||
+    process.env.NEXT_PUBLIC_APP_URL;
+  if (env) return env.replace(/\/+$/, "");
+  const host = req.headers.get("x-forwarded-host") || req.headers.get("host");
+  const proto = req.headers.get("x-forwarded-proto") || "https";
+  return host ? `${proto}://${host}` : "https://atsystem.arttechworld.com";
+}
+
 export async function POST(request: Request) {
   const auth = await authAdminClient(request);
   if ("error" in auth) return auth.error;
@@ -208,11 +219,7 @@ export async function POST(request: Request) {
   }
 
   const CLOSED = new Set(["OK", "NON_NECESSARIO"]);
-  const baseUrl =
-    (process.env.NEXT_PUBLIC_SITE_URL || process.env.NEXT_PUBLIC_APP_URL || "https://atsystem.arttechworld.com").replace(
-      /\/+$/,
-      ""
-    );
+  const baseUrl = getBaseUrl(request);
 
   const byTarget = new Map<
     string,

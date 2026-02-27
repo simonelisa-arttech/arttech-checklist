@@ -97,11 +97,13 @@ function escapeHtml(value: string) {
 
 function getBaseUrl(req: Request) {
   const env =
+    process.env.APP_URL ||
     process.env.NEXT_PUBLIC_SITE_URL ||
-    process.env.NEXT_PUBLIC_APP_URL ||
-    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "") ||
-    "https://atsystem.arttechworld.com";
-  return env.replace(/\/+$/, "");
+    process.env.NEXT_PUBLIC_APP_URL;
+  if (env) return env.replace(/\/+$/, "");
+  const host = req.headers.get("x-forwarded-host") || req.headers.get("host");
+  const proto = req.headers.get("x-forwarded-proto") || "https";
+  return host ? `${proto}://${host}` : "https://atsystem.arttechworld.com";
 }
 
 function normalizeStatusSet(stopStatuses: string[] | null | undefined) {

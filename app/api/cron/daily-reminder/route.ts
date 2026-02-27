@@ -46,13 +46,13 @@ type OperatoreRow = {
 
 function getBaseUrl(req: Request) {
   const env =
+    process.env.APP_URL ||
     process.env.NEXT_PUBLIC_SITE_URL ||
-    process.env.NEXT_PUBLIC_APP_URL ||
-    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "");
+    process.env.NEXT_PUBLIC_APP_URL;
   if (env) return env.replace(/\/+$/, "");
-  const host = req.headers.get("host");
+  const host = req.headers.get("x-forwarded-host") || req.headers.get("host");
   const proto = req.headers.get("x-forwarded-proto") || "https";
-  return host ? `${proto}://${host}` : "";
+  return host ? `${proto}://${host}` : "https://atsystem.arttechworld.com";
 }
 
 function getRomeDateString(date = new Date()) {
@@ -662,6 +662,6 @@ export async function GET(req: Request) {
     emails_attempted: emailsAttempted,
     emails_sent: emailsSent,
     skipped_already_sent: skippedAlreadySent,
-    ...(debugMode ? { rules_debug: rulesDebug } : {}),
+    ...(debugMode ? { rules_debug: rulesDebug, base_url_used: baseUrl } : {}),
   });
 }

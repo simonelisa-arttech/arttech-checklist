@@ -29,12 +29,13 @@ type OperatoreRow = {
 
 function getBaseUrl(req: Request) {
   const env =
+    process.env.APP_URL ||
     process.env.NEXT_PUBLIC_SITE_URL ||
-    (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : "");
-  if (env) return env;
-  const host = req.headers.get("host");
+    process.env.NEXT_PUBLIC_APP_URL;
+  if (env) return env.replace(/\/+$/, "");
+  const host = req.headers.get("x-forwarded-host") || req.headers.get("host");
   const proto = req.headers.get("x-forwarded-proto") || "https";
-  return host ? `${proto}://${host}` : "";
+  return host ? `${proto}://${host}` : "https://atsystem.arttechworld.com";
 }
 
 export async function GET(req: Request) {
