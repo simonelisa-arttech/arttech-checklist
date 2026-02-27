@@ -4062,18 +4062,17 @@ function buildFormData(c: Checklist): FormData {
             ) : null}
           </div>
 
-          <div style={{ border: "1px solid #f1f5f9", borderRadius: 10, overflowX: "auto", background: "white" }}>
-            <div style={{ minWidth: 1240 }}>
+          <div style={{ border: "1px solid #f1f5f9", borderRadius: 10, overflowX: "hidden", background: "white" }}>
               <div
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "68px 1fr 96px 108px 96px 78px 324px",
+                  gridTemplateColumns: "72px minmax(170px,1.3fr) 112px 120px 118px 96px 354px",
                   padding: "10px 12px",
                   fontWeight: 800,
                   background: "#fafafa",
                   borderBottom: "1px solid #eee",
                   fontSize: 12,
-                  columnGap: 12,
+                  columnGap: 10,
                 }}
               >
                 <div style={{ textAlign: "center" }}>Tipo</div>
@@ -4138,12 +4137,12 @@ function buildFormData(c: Checklist): FormData {
                   key={r.key}
                   style={{
                     display: "grid",
-                    gridTemplateColumns: "68px 1fr 96px 108px 96px 78px 324px",
+                    gridTemplateColumns: "72px minmax(170px,1.3fr) 112px 120px 118px 96px 354px",
                     padding: "10px 12px",
                     borderBottom: "1px solid #f3f4f6",
                     alignItems: "center",
                     fontSize: 12,
-                    columnGap: 12,
+                    columnGap: 10,
                   }}
                 >
                 <div style={{ textAlign: "center" }}>{String(r.tipo || "").toUpperCase()}</div>
@@ -4164,11 +4163,12 @@ function buildFormData(c: Checklist): FormData {
                   <div
                     style={{
                       display: "grid",
-                      gridTemplateColumns: "repeat(3, 104px)",
+                      gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
                       justifyContent: "center",
                       alignContent: "center",
                       gap: 6,
                       width: "100%",
+                      maxWidth: 354,
                     }}
                   >
                   {[
@@ -4192,19 +4192,20 @@ function buildFormData(c: Checklist): FormData {
                         }
                       }}
                       style={{
-                        padding: "4px 8px",
-                        width: 104,
-                        minHeight: 32,
+                        padding: "0 6px",
+                        width: "100%",
+                        height: 38,
                         borderRadius: 6,
                         border: label === "Modifica" || label === "Invia avviso" || label === "DA_FATTURARE" ? "1px solid #111" : "1px solid #ddd",
                         background: label === "FATTURATO" ? "#f9fafb" : "white",
                         cursor: checklist?.cliente ? "pointer" : "not-allowed",
-                        fontSize: 10.5,
+                        fontSize: 10,
                         opacity: checklist?.cliente ? 1 : 0.5,
                         fontWeight: label === "Modifica" || label === "Invia avviso" || label === "DA_FATTURARE" ? 700 : 500,
                         textAlign: "center",
-                        whiteSpace: "nowrap",
-                        lineHeight: 1,
+                        whiteSpace: "normal",
+                        lineHeight: 1.1,
+                        overflowWrap: "anywhere",
                       }}
                       title={label === "Modifica" ? "Modifica qui in pagina progetto" : "Gestisci stato completo in Scheda cliente"}
                     >
@@ -4214,7 +4215,6 @@ function buildFormData(c: Checklist): FormData {
                   </div>
                 </div>
             ))}
-            </div>
           </div>
         </div>
       </div>

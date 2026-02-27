@@ -5906,17 +5906,17 @@ ${rinnovi30ggBreakdown.debugSample
             }}
           >
             <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "72px 1fr 96px 108px 96px 72px 312px",
-              padding: "10px 12px",
-              fontWeight: 800,
-              background: "#fafafa",
-              borderBottom: "1px solid #eee",
-              fontSize: 12,
-              columnGap: 12,
-            }}
-          >
+              style={{
+                display: "grid",
+                gridTemplateColumns: "72px minmax(170px,1.3fr) 112px 120px 118px 96px 354px",
+                padding: "10px 12px",
+                fontWeight: 800,
+                background: "#fafafa",
+                borderBottom: "1px solid #eee",
+                fontSize: 12,
+                columnGap: 10,
+              }}
+            >
             <div style={{ textAlign: "center" }}>Tipo</div>
             <div style={{ textAlign: "center" }}>Riferimento</div>
             <div style={{ textAlign: "center" }}>Scadenza</div>
@@ -5973,12 +5973,12 @@ ${rinnovi30ggBreakdown.debugSample
                 data-source={String(r.source || "")}
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "72px 1fr 96px 108px 96px 72px 312px",
+                  gridTemplateColumns: "72px minmax(170px,1.3fr) 112px 120px 118px 96px 354px",
                   padding: "10px 12px",
                   borderBottom: "1px solid #f3f4f6",
                   alignItems: "center",
                   fontSize: 12,
-                  columnGap: 12,
+                  columnGap: 10,
                 }}
               >
                 <div style={{ textAlign: "center" }}>
@@ -6047,11 +6047,12 @@ ${rinnovi30ggBreakdown.debugSample
                   data-testid="workflow-actions-btn"
                   style={{
                     display: "grid",
-                    gridTemplateColumns: "repeat(3, 100px)",
+                    gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
                     justifyContent: "center",
                     alignContent: "center",
                     gap: 6,
                     width: "100%",
+                    maxWidth: 354,
                   }}
                 >
                     {actions.avviso && (
@@ -6072,20 +6073,20 @@ ${rinnovi30ggBreakdown.debugSample
                             : "Disponibile solo per stato DA_AVVISARE o AVVISATO"
                         }
                         style={{
-                          padding: "4px 8px",
-                          width: 100,
-                          minHeight: 32,
+                          padding: "0 6px",
+                          width: "100%",
+                          height: 38,
                           borderRadius: 6,
                           border: "1px solid #111",
                           background: "white",
                           cursor: canStage1 ? "pointer" : "not-allowed",
-                          fontSize: 12,
+                          fontSize: 10,
                           fontWeight: 700,
                           opacity: canStage1 ? 1 : 0.5,
                           textAlign: "center",
                           whiteSpace: "normal",
-                          overflowWrap: "anywhere",
                           lineHeight: 1.1,
+                          overflowWrap: "anywhere",
                         }}
                       >
                         {stato === "AVVISATO" ? "Invia nuovo avviso" : "Invia avviso"}
@@ -6114,20 +6115,20 @@ ${rinnovi30ggBreakdown.debugSample
                               : "Non disponibile per lo stato corrente"
                           }
                           style={{
-                            padding: "4px 8px",
-                            width: 100,
-                            minHeight: 32,
+                            padding: "0 6px",
+                            width: "100%",
+                            height: 38,
                             borderRadius: 6,
                             border: "1px solid #111",
                             background: "white",
                             cursor: canStage2 ? "pointer" : "not-allowed",
-                            fontSize: 12,
+                            fontSize: 10,
                             fontWeight: 700,
                             opacity: canStage2 ? 1 : 0.5,
                             textAlign: "center",
                             whiteSpace: "normal",
-                            overflowWrap: "anywhere",
                             lineHeight: 1.1,
+                            overflowWrap: "anywhere",
                           }}
                         >
                           DA_FATTURARE
@@ -6151,19 +6152,19 @@ ${rinnovi30ggBreakdown.debugSample
                               : "Disponibile solo per stato DA_FATTURARE"
                           }
                           style={{
-                            padding: "4px 8px",
-                            width: 100,
-                            minHeight: 32,
+                            padding: "0 6px",
+                            width: "100%",
+                            height: 38,
                             borderRadius: 6,
                             border: "1px solid #ddd",
                             background: "#f9fafb",
                             cursor: canFatturato ? "pointer" : "not-allowed",
-                            fontSize: 12,
+                            fontSize: 10,
                             opacity: canFatturato ? 1 : 0.5,
                             textAlign: "center",
                             whiteSpace: "normal",
-                            overflowWrap: "anywhere",
                             lineHeight: 1.1,
+                            overflowWrap: "anywhere",
                           }}
                         >
                           FATTURATO
@@ -6195,19 +6196,19 @@ ${rinnovi30ggBreakdown.debugSample
                               : "Stato già CONFERMATO o oltre"
                           }
                           style={{
-                            padding: "4px 8px",
-                            width: 100,
-                            minHeight: 32,
+                            padding: "0 6px",
+                            width: "100%",
+                            height: 38,
                             borderRadius: 6,
                             border: "1px solid #ddd",
                             background: "#f9fafb",
                             cursor: canConfirm ? "pointer" : "not-allowed",
-                            fontSize: 12,
+                            fontSize: 10,
                             opacity: canConfirm ? 1 : 0.5,
                             textAlign: "center",
                             whiteSpace: "normal",
-                            overflowWrap: "anywhere",
                             lineHeight: 1.1,
+                            overflowWrap: "anywhere",
                           }}
                         >
                           Confermato
@@ -6231,19 +6232,19 @@ ${rinnovi30ggBreakdown.debugSample
                               : "Non disponibile se già FATTURATO/NON_RINNOVATO"
                           }
                           style={{
-                            padding: "4px 8px",
-                            width: 100,
-                            minHeight: 32,
+                            padding: "0 6px",
+                            width: "100%",
+                            height: 38,
                             borderRadius: 6,
                             border: "1px solid #ddd",
                             background: "#f9fafb",
                             cursor: canNonRinnovato ? "pointer" : "not-allowed",
-                            fontSize: 12,
+                            fontSize: 10,
                             opacity: canNonRinnovato ? 1 : 0.5,
                             textAlign: "center",
                             whiteSpace: "normal",
-                            overflowWrap: "anywhere",
                             lineHeight: 1.1,
+                            overflowWrap: "anywhere",
                           }}
                         >
                           NON_RINNOVATO
@@ -6254,19 +6255,19 @@ ${rinnovi30ggBreakdown.debugSample
                         data-testid="edit-expiry-btn"
                         onClick={() => openEditScadenza(r)}
                         style={{
-                          padding: "4px 8px",
-                          width: 100,
-                          minHeight: 32,
+                          padding: "0 6px",
+                          width: "100%",
+                          height: 38,
                           borderRadius: 6,
                           border: "1px solid #111",
                           background: "white",
                           cursor: "pointer",
-                          fontSize: 12,
+                          fontSize: 10,
                           fontWeight: 700,
                           textAlign: "center",
                           whiteSpace: "normal",
-                          overflowWrap: "anywhere",
                           lineHeight: 1.1,
+                          overflowWrap: "anywhere",
                         }}
                       >
                         Modifica
