@@ -1419,6 +1419,18 @@ function buildFormData(c: Checklist): FormData {
     }
 
     const headChecklist = head as Checklist;
+    // Preferisci sempre la denominazione completa dell'anagrafica cliente per la UI progetto.
+    if (headChecklist.cliente_id) {
+      const { data: anagraficaCliente } = await supabase
+        .from("clienti_anagrafica")
+        .select("denominazione")
+        .eq("id", headChecklist.cliente_id)
+        .maybeSingle();
+      const fullName = String((anagraficaCliente as any)?.denominazione || "").trim();
+      if (fullName) {
+        headChecklist.cliente = fullName;
+      }
+    }
     const mappedRows: ChecklistItemRow[] = (items || []).map((r) => {
       const code = normalizeCustomCode(r.codice ?? "");
       const isCustom = isCustomCode(code);
