@@ -51,6 +51,8 @@ type Checklist = {
   updated_at: string | null;
   created_by_operatore: string | null;
   updated_by_operatore: string | null;
+  created_by?: string | null;
+  updated_by?: string | null;
   created_by_name?: string | null;
   updated_by_name?: string | null;
 };
@@ -455,6 +457,77 @@ function renderBadge(label: string) {
   );
 }
 
+function renderRinnovoStatoBadge(label?: string | null) {
+  const upper = String(label || "—").toUpperCase();
+  let bg = "#e5e7eb";
+  let color = "#374151";
+  if (upper === "DA_AVVISARE") {
+    bg = "#fef3c7";
+    color = "#92400e";
+  } else if (upper === "AVVISATO") {
+    bg = "#dbeafe";
+    color = "#1d4ed8";
+  } else if (upper === "CONFERMATO") {
+    bg = "#dcfce7";
+    color = "#166534";
+  } else if (upper === "DA_FATTURARE") {
+    bg = "#fee2e2";
+    color = "#991b1b";
+  } else if (upper === "FATTURATO") {
+    bg = "#dcfce7";
+    color = "#166534";
+  } else if (upper === "NON_RINNOVATO" || upper === "SCADUTO") {
+    bg = "#f3f4f6";
+    color = "#6b7280";
+  }
+  return (
+    <span
+      style={{
+        display: "inline-block",
+        padding: "2px 8px",
+        borderRadius: 999,
+        fontSize: 12,
+        fontWeight: 700,
+        background: bg,
+        color,
+        whiteSpace: "nowrap",
+      }}
+    >
+      {upper}
+    </span>
+  );
+}
+
+function renderModalitaBadge(value?: string | null) {
+  const raw = String(value || "").toUpperCase().trim();
+  if (!raw) return "—";
+  let bg = "#e5e7eb";
+  let color = "#374151";
+  if (raw === "INCLUSO") {
+    bg = "#dcfce7";
+    color = "#166534";
+  } else if (raw === "EXTRA") {
+    bg = "#fee2e2";
+    color = "#991b1b";
+  }
+  return (
+    <span
+      style={{
+        display: "inline-block",
+        padding: "2px 8px",
+        borderRadius: 999,
+        fontSize: 12,
+        fontWeight: 700,
+        background: bg,
+        color,
+        whiteSpace: "nowrap",
+      }}
+    >
+      {raw}
+    </span>
+  );
+}
+
 function getNextLicenzaScadenza(licenze: Array<{ scadenza?: string | null }>) {
   const dates = licenze
     .map((l) => l.scadenza)
@@ -686,6 +759,12 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
   const [contrattoUltraNome, setContrattoUltraNome] = useState<string | null>(null);
   const [interventiInclusiUsati, setInterventiInclusiUsati] = useState<number>(0);
   const [projectInterventi, setProjectInterventi] = useState<ProjectIntervento[]>([]);
+  const [projectTagliando, setProjectTagliando] = useState<{
+    scadenza: string;
+    fatturazione: string;
+    note: string;
+  }>({ scadenza: "", fatturazione: "INCLUSO", note: "" });
+  const [projectTagliandoSaving, setProjectTagliandoSaving] = useState(false);
   const [projectInterventiError, setProjectInterventiError] = useState<string | null>(null);
   const [projectInterventiNotice, setProjectInterventiNotice] = useState<string | null>(null);
   const [projectInterventiExpandedId, setProjectInterventiExpandedId] = useState<string | null>(null);
@@ -965,8 +1044,13 @@ function buildFormData(c: Checklist): FormData {
       stato_intervento: newProjectIntervento.stato_intervento || "APERTO",
       note: newProjectIntervento.note.trim() || null,
     };
-    const { error: insErr } = await supabase.from("saas_interventi").insert(payload);
-    if (insErr) {
+    let insRes = await supabase.from("saas_interventi").insert(payload);
+    if (insRes.error && String(insRes.error.message || "").toLowerCase().includes("data_tassativa")) {
+      const { data_tassativa: _skip, ...payloadNoTassativa } = payload;
+      insRes = await supabase.from("saas_interventi").insert(payloadNoTassativa);
+    }
+    if (insRes.error) {
+      const insErr = insRes.error;
       setProjectInterventiError(insErr.message);
       return;
     }
@@ -1008,11 +1092,19 @@ function buildFormData(c: Checklist): FormData {
       stato_intervento: projectInterventoEditForm.stato_intervento || "APERTO",
       note: projectInterventoEditForm.note.trim() || null,
     };
-    const { error: updErr } = await supabase
+    let updRes = await supabase
       .from("saas_interventi")
       .update(payload)
       .eq("id", projectInterventoEditId);
-    if (updErr) {
+    if (updRes.error && String(updRes.error.message || "").toLowerCase().includes("data_tassativa")) {
+      const { data_tassativa: _skip, ...payloadNoTassativa } = payload;
+      updRes = await supabase
+        .from("saas_interventi")
+        .update(payloadNoTassativa)
+        .eq("id", projectInterventoEditId);
+    }
+    if (updRes.error) {
+      const updErr = updRes.error;
       setProjectInterventiError(updErr.message);
       return;
     }
@@ -1022,6 +1114,45 @@ function buildFormData(c: Checklist): FormData {
     setProjectInterventoEditId(null);
     setProjectInterventoEditForm(null);
     setProjectInterventiNotice("Intervento aggiornato.");
+  }
+
+  async function addProjectTagliandoPeriodico() {
+    if (!id) return;
+    if (!projectTagliando.scadenza) {
+      setProjectInterventiError("Inserisci la scadenza del tagliando.");
+      return;
+    }
+    setProjectInterventiError(null);
+    setProjectTagliandoSaving(true);
+    const modalita =
+      String(projectTagliando.fatturazione || "").toUpperCase() === "INCLUSO" ? "INCLUSO" : "EXTRA";
+    const payload = {
+      checklist_id: id,
+      scadenza: projectTagliando.scadenza,
+      stato: "ATTIVA",
+      modalita,
+      note: projectTagliando.note.trim() || "Tagliando periodico",
+    };
+    const { error } = await supabase.from("tagliandi").insert(payload);
+    if (error) {
+      setProjectInterventiError(error.message);
+      setProjectTagliandoSaving(false);
+      return;
+    }
+    const { data: tagliandiData, error: loadErr } = await supabase
+      .from("tagliandi")
+      .select("id, checklist_id, scadenza, stato, modalita, note, created_at")
+      .eq("checklist_id", id)
+      .order("scadenza", { ascending: true });
+    if (loadErr) {
+      setProjectInterventiError(loadErr.message);
+      setProjectTagliandoSaving(false);
+      return;
+    }
+    setProjectTagliandi((tagliandiData || []) as Tagliando[]);
+    setProjectTagliando({ scadenza: "", fatturazione: "INCLUSO", note: "" });
+    setProjectInterventiNotice("Tagliando periodico aggiunto.");
+    setProjectTagliandoSaving(false);
   }
 
   async function deleteProjectIntervento(idToDelete: string) {
@@ -3053,8 +3184,10 @@ function buildFormData(c: Checklist): FormData {
               view={
                 checklist.created_by_name ??
                 (checklist.created_by_operatore
-                  ? operatoriMap.get(checklist.created_by_operatore) ?? "—"
-                  : "—")
+                  ? operatoriMap.get(checklist.created_by_operatore) ??
+                    checklist.created_by ??
+                    "—"
+                  : checklist.created_by ?? "—")
               }
               isEdit={false}
             />
@@ -3063,8 +3196,10 @@ function buildFormData(c: Checklist): FormData {
               view={
                 checklist.updated_by_name ??
                 (checklist.updated_by_operatore
-                  ? operatoriMap.get(checklist.updated_by_operatore) ?? "—"
-                  : "—")
+                  ? operatoriMap.get(checklist.updated_by_operatore) ??
+                    checklist.updated_by ??
+                    "—"
+                  : checklist.updated_by ?? "—")
               }
               isEdit={false}
             />
@@ -3768,8 +3903,74 @@ function buildFormData(c: Checklist): FormData {
             background: "white",
           }}
         >
+          <div style={{ fontWeight: 700, marginBottom: 8 }}>Aggiungi tagliando periodico</div>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "140px 180px 1fr auto",
+              gap: 8,
+              alignItems: "end",
+              marginBottom: 14,
+            }}
+          >
+            <div>
+              <div style={{ fontSize: 12, marginBottom: 4 }}>Scadenza</div>
+              <input
+                type="date"
+                value={projectTagliando.scadenza}
+                onChange={(e) =>
+                  setProjectTagliando((prev) => ({ ...prev, scadenza: e.target.value }))
+                }
+                style={{ width: "100%", border: "1px solid #ddd", borderRadius: 8, padding: "8px 10px" }}
+              />
+            </div>
+            <div>
+              <div style={{ fontSize: 12, marginBottom: 4 }}>Fatturazione</div>
+              <select
+                value={projectTagliando.fatturazione}
+                onChange={(e) =>
+                  setProjectTagliando((prev) => ({ ...prev, fatturazione: e.target.value }))
+                }
+                style={{ width: "100%", border: "1px solid #ddd", borderRadius: 8, padding: "8px 10px" }}
+              >
+                <option value="INCLUSO">INCLUSO</option>
+                <option value="DA_FATTURARE">DA_FATTURARE</option>
+                <option value="FATTURATO">FATTURATO</option>
+              </select>
+            </div>
+            <div>
+              <div style={{ fontSize: 12, marginBottom: 4 }}>Note</div>
+              <input
+                value={projectTagliando.note}
+                onChange={(e) =>
+                  setProjectTagliando((prev) => ({ ...prev, note: e.target.value }))
+                }
+                placeholder="Tagliando annuale / periodico"
+                style={{ width: "100%", border: "1px solid #ddd", borderRadius: 8, padding: "8px 10px" }}
+              />
+            </div>
+            <button
+              type="button"
+              onClick={addProjectTagliandoPeriodico}
+              disabled={projectTagliandoSaving}
+              style={{
+                padding: "8px 12px",
+                borderRadius: 8,
+                border: "1px solid #111",
+                background: "#111",
+                color: "white",
+                fontWeight: 700,
+                cursor: projectTagliandoSaving ? "not-allowed" : "pointer",
+                opacity: projectTagliandoSaving ? 0.7 : 1,
+                whiteSpace: "nowrap",
+              }}
+            >
+              {projectTagliandoSaving ? "Salvataggio..." : "Aggiungi"}
+            </button>
+          </div>
+
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
-            <div style={{ fontWeight: 800 }}>Scadenze &amp; Rinnovi (progetto)</div>
+            <div style={{ fontWeight: 800, fontSize: 28, lineHeight: 1.1 }}>Scadenze &amp; Rinnovi</div>
             {checklist?.cliente ? (
               <Link
                 href={`/clienti/${encodeURIComponent(checklist.cliente)}`}
@@ -3779,49 +3980,48 @@ function buildFormData(c: Checklist): FormData {
               </Link>
             ) : null}
           </div>
-          <div style={{ border: "1px solid #f1f5f9", borderRadius: 10, overflow: "hidden" }}>
+
+          <div style={{ border: "1px solid #f1f5f9", borderRadius: 10, overflow: "hidden", background: "white" }}>
             <div
               style={{
                 display: "grid",
-                gridTemplateColumns: "120px 1.3fr 130px 130px 130px",
-                gap: 8,
+                gridTemplateColumns: "90px 1.1fr 110px 120px 120px 90px 330px",
                 padding: "10px 12px",
-                fontWeight: 700,
+                fontWeight: 800,
                 background: "#fafafa",
                 borderBottom: "1px solid #eee",
                 fontSize: 12,
+                columnGap: 12,
               }}
             >
-              <div>Tipo</div>
-              <div>Riferimento</div>
-              <div>Scadenza</div>
-              <div>Stato</div>
-              <div>Modalità</div>
+              <div style={{ textAlign: "center" }}>Tipo</div>
+              <div style={{ textAlign: "center" }}>Riferimento</div>
+              <div style={{ textAlign: "center" }}>Scadenza</div>
+              <div style={{ textAlign: "center" }}>Stato</div>
+              <div style={{ textAlign: "center" }}>Ultimo invio</div>
+              <div style={{ textAlign: "center" }}>Modalità</div>
+              <div style={{ textAlign: "center" }}>Azioni</div>
             </div>
             {[
               ...(checklist?.saas_piano
-                ? [
-                    {
-                      key: "SAAS",
-                      tipo: "SAAS",
-                      riferimento: checklist.saas_piano || "—",
-                      scadenza: checklist.saas_scadenza || null,
-                      stato: checklist.saas_stato || "DA_AVVISARE",
-                      modalita: "—",
-                    },
-                  ]
+                ? [{
+                    key: "SAAS",
+                    tipo: "SAAS",
+                    riferimento: checklist.saas_piano || "—",
+                    scadenza: checklist.saas_scadenza || null,
+                    stato: checklist.saas_stato || "DA_AVVISARE",
+                    modalita: "—",
+                  }]
                 : []),
               ...(checklist?.garanzia_scadenza
-                ? [
-                    {
-                      key: "GARANZIA",
-                      tipo: "GARANZIA",
-                      riferimento: "Garanzia impianto",
-                      scadenza: checklist.garanzia_scadenza || null,
-                      stato: "DA_AVVISARE",
-                      modalita: "—",
-                    },
-                  ]
+                ? [{
+                    key: "GARANZIA",
+                    tipo: "GARANZIA",
+                    riferimento: "Garanzia impianto",
+                    scadenza: checklist.garanzia_scadenza || null,
+                    stato: "DA_AVVISARE",
+                    modalita: "—",
+                  }]
                 : []),
               ...licenze.map((l) => ({
                 key: `LIC-${l.id}`,
@@ -3844,19 +4044,75 @@ function buildFormData(c: Checklist): FormData {
                 key={r.key}
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "120px 1.3fr 130px 130px 130px",
-                  gap: 8,
+                  gridTemplateColumns: "90px 1.1fr 110px 120px 120px 90px 330px",
                   padding: "10px 12px",
                   borderBottom: "1px solid #f3f4f6",
-                  fontSize: 12,
                   alignItems: "center",
+                  fontSize: 12,
+                  columnGap: 12,
                 }}
               >
-                <div>{r.tipo}</div>
-                <div>{r.riferimento}</div>
-                <div>{r.scadenza ? new Date(r.scadenza).toLocaleDateString() : "—"}</div>
-                <div>{renderBadge(String(r.stato || "—").toUpperCase())}</div>
-                <div>{r.modalita}</div>
+                <div style={{ textAlign: "center" }}>{String(r.tipo || "").toUpperCase()}</div>
+                <div style={{ textAlign: "center" }}>{r.riferimento}</div>
+                <div style={{ textAlign: "center", display: "grid", gap: 6, justifyItems: "center" }}>
+                  <div>{r.scadenza ? new Date(r.scadenza).toLocaleDateString("it-IT") : "—"}</div>
+                  {renderBadge(getExpiryStatus(r.scadenza))}
+                </div>
+                <div style={{ textAlign: "center" }}>
+                  {r.tipo === "TAGLIANDO"
+                    ? renderBadge(String(r.stato || "ATTIVA").toUpperCase() === "OK" ? "ATTIVA" : String(r.stato || "ATTIVA"))
+                    : renderRinnovoStatoBadge(r.stato)}
+                </div>
+                <div style={{ textAlign: "center" }}>—</div>
+                <div style={{ textAlign: "center" }}>
+                  {r.tipo === "TAGLIANDO" ? renderModalitaBadge(r.modalita) : "—"}
+                </div>
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(3, 110px)",
+                    justifyContent: "center",
+                    alignContent: "center",
+                    gap: 6,
+                    width: "100%",
+                  }}
+                >
+                  {[
+                    "Invia avviso",
+                    "DA_FATTURARE",
+                    "FATTURATO",
+                    "Confermato",
+                    "NON_RINNOVATO",
+                    "Modifica",
+                  ].map((label) => (
+                    <button
+                      key={`${r.key}-${label}`}
+                      type="button"
+                      onClick={() => {
+                        if (checklist?.cliente) {
+                          router.push(`/clienti/${encodeURIComponent(checklist.cliente)}`);
+                        }
+                      }}
+                      style={{
+                        padding: "4px 8px",
+                        width: 110,
+                        minHeight: 32,
+                        borderRadius: 6,
+                        border: label === "Modifica" || label === "Invia avviso" || label === "DA_FATTURARE" ? "1px solid #111" : "1px solid #ddd",
+                        background: label === "FATTURATO" ? "#f9fafb" : "white",
+                        cursor: checklist?.cliente ? "pointer" : "not-allowed",
+                        fontSize: 12,
+                        opacity: checklist?.cliente ? 1 : 0.5,
+                        fontWeight: label === "Modifica" || label === "Invia avviso" || label === "DA_FATTURARE" ? 700 : 500,
+                        textAlign: "center",
+                        whiteSpace: "nowrap",
+                      }}
+                      title="Gestisci stato completo in Scheda cliente"
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
               </div>
             ))}
           </div>

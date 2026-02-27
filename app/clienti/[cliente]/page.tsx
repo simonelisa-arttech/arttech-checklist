@@ -6074,6 +6074,7 @@ ${rinnovi30ggBreakdown.debugSample
                         style={{
                           padding: "4px 8px",
                           width: 110,
+                          minHeight: 32,
                           borderRadius: 6,
                           border: "1px solid #111",
                           background: "white",
@@ -6112,6 +6113,7 @@ ${rinnovi30ggBreakdown.debugSample
                           style={{
                             padding: "4px 8px",
                             width: 110,
+                            minHeight: 32,
                             borderRadius: 6,
                             border: "1px solid #111",
                             background: "white",
@@ -6143,13 +6145,14 @@ ${rinnovi30ggBreakdown.debugSample
                               : "Disponibile solo per stato DA_FATTURARE"
                           }
                           style={{
-                            padding: "3px 6px",
+                            padding: "4px 8px",
                             width: 110,
+                            minHeight: 32,
                             borderRadius: 6,
                             border: "1px solid #ddd",
                             background: "#f9fafb",
                             cursor: canFatturato ? "pointer" : "not-allowed",
-                            fontSize: 11,
+                            fontSize: 12,
                             opacity: canFatturato ? 1 : 0.5,
                             textAlign: "center",
                           }}
@@ -6183,8 +6186,9 @@ ${rinnovi30ggBreakdown.debugSample
                               : "Stato già CONFERMATO o oltre"
                           }
                           style={{
-                            padding: "4px 6px",
+                            padding: "4px 8px",
                             width: 110,
+                            minHeight: 32,
                             borderRadius: 6,
                             border: "1px solid #ddd",
                             background: "#f9fafb",
@@ -6215,8 +6219,9 @@ ${rinnovi30ggBreakdown.debugSample
                               : "Non disponibile se già FATTURATO/NON_RINNOVATO"
                           }
                           style={{
-                            padding: "4px 6px",
+                            padding: "4px 8px",
                             width: 110,
+                            minHeight: 32,
                             borderRadius: 6,
                             border: "1px solid #ddd",
                             background: "#f9fafb",
@@ -6234,13 +6239,14 @@ ${rinnovi30ggBreakdown.debugSample
                         data-testid="edit-expiry-btn"
                         onClick={() => openEditScadenza(r)}
                         style={{
-                          padding: "3px 6px",
+                          padding: "4px 8px",
                           width: 110,
+                          minHeight: 32,
                           borderRadius: 6,
                           border: "1px solid #111",
                           background: "white",
                           cursor: "pointer",
-                          fontSize: 11,
+                          fontSize: 12,
                           fontWeight: 700,
                           textAlign: "center",
                         }}
