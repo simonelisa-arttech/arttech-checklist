@@ -3985,7 +3985,7 @@ function buildFormData(c: Checklist): FormData {
             <div
               style={{
                 display: "grid",
-                gridTemplateColumns: "90px 1.1fr 110px 120px 120px 90px 330px",
+                gridTemplateColumns: "90px 1.1fr 110px 120px 120px 90px 390px",
                 padding: "10px 12px",
                 fontWeight: 800,
                 background: "#fafafa",
@@ -4044,7 +4044,7 @@ function buildFormData(c: Checklist): FormData {
                 key={r.key}
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "90px 1.1fr 110px 120px 120px 90px 330px",
+                  gridTemplateColumns: "90px 1.1fr 110px 120px 120px 90px 390px",
                   padding: "10px 12px",
                   borderBottom: "1px solid #f3f4f6",
                   alignItems: "center",
@@ -4070,7 +4070,7 @@ function buildFormData(c: Checklist): FormData {
                 <div
                   style={{
                     display: "grid",
-                    gridTemplateColumns: "repeat(3, 110px)",
+                    gridTemplateColumns: "repeat(3, 130px)",
                     justifyContent: "center",
                     alignContent: "center",
                     gap: 6,
@@ -4095,7 +4095,7 @@ function buildFormData(c: Checklist): FormData {
                       }}
                       style={{
                         padding: "4px 8px",
-                        width: 110,
+                        width: 130,
                         minHeight: 32,
                         borderRadius: 6,
                         border: label === "Modifica" || label === "Invia avviso" || label === "DA_FATTURARE" ? "1px solid #111" : "1px solid #ddd",
