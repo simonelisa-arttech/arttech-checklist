@@ -3981,27 +3981,28 @@ function buildFormData(c: Checklist): FormData {
             ) : null}
           </div>
 
-          <div style={{ border: "1px solid #f1f5f9", borderRadius: 10, overflow: "hidden", background: "white" }}>
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "90px 1.1fr 110px 120px 120px 90px 390px",
-                padding: "10px 12px",
-                fontWeight: 800,
-                background: "#fafafa",
-                borderBottom: "1px solid #eee",
-                fontSize: 12,
-                columnGap: 12,
-              }}
-            >
-              <div style={{ textAlign: "center" }}>Tipo</div>
-              <div style={{ textAlign: "center" }}>Riferimento</div>
-              <div style={{ textAlign: "center" }}>Scadenza</div>
-              <div style={{ textAlign: "center" }}>Stato</div>
-              <div style={{ textAlign: "center" }}>Ultimo invio</div>
-              <div style={{ textAlign: "center" }}>Modalità</div>
-              <div style={{ textAlign: "center" }}>Azioni</div>
-            </div>
+          <div style={{ border: "1px solid #f1f5f9", borderRadius: 10, overflowX: "auto", background: "white" }}>
+            <div style={{ minWidth: 1240 }}>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "90px 1.1fr 110px 120px 120px 90px minmax(390px, 1fr)",
+                  padding: "10px 12px",
+                  fontWeight: 800,
+                  background: "#fafafa",
+                  borderBottom: "1px solid #eee",
+                  fontSize: 12,
+                  columnGap: 12,
+                }}
+              >
+                <div style={{ textAlign: "center" }}>Tipo</div>
+                <div style={{ textAlign: "center" }}>Riferimento</div>
+                <div style={{ textAlign: "center" }}>Scadenza</div>
+                <div style={{ textAlign: "center" }}>Stato</div>
+                <div style={{ textAlign: "center" }}>Ultimo invio</div>
+                <div style={{ textAlign: "center" }}>Modalità</div>
+                <div style={{ textAlign: "center" }}>Azioni</div>
+              </div>
             {[
               ...(checklist?.saas_piano
                 ? [{
@@ -4040,18 +4041,18 @@ function buildFormData(c: Checklist): FormData {
                 modalita: t.modalita || "—",
               })),
             ].map((r) => (
-              <div
-                key={r.key}
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "90px 1.1fr 110px 120px 120px 90px 390px",
-                  padding: "10px 12px",
-                  borderBottom: "1px solid #f3f4f6",
-                  alignItems: "center",
-                  fontSize: 12,
-                  columnGap: 12,
-                }}
-              >
+                <div
+                  key={r.key}
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "90px 1.1fr 110px 120px 120px 90px minmax(390px, 1fr)",
+                    padding: "10px 12px",
+                    borderBottom: "1px solid #f3f4f6",
+                    alignItems: "center",
+                    fontSize: 12,
+                    columnGap: 12,
+                  }}
+                >
                 <div style={{ textAlign: "center" }}>{String(r.tipo || "").toUpperCase()}</div>
                 <div style={{ textAlign: "center" }}>{r.riferimento}</div>
                 <div style={{ textAlign: "center", display: "grid", gap: 6, justifyItems: "center" }}>
@@ -4067,16 +4068,16 @@ function buildFormData(c: Checklist): FormData {
                 <div style={{ textAlign: "center" }}>
                   {r.tipo === "TAGLIANDO" ? renderModalitaBadge(r.modalita) : "—"}
                 </div>
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "repeat(3, 130px)",
-                    justifyContent: "center",
-                    alignContent: "center",
-                    gap: 6,
-                    width: "100%",
-                  }}
-                >
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+                      justifyContent: "stretch",
+                      alignContent: "center",
+                      gap: 6,
+                      width: "100%",
+                    }}
+                  >
                   {[
                     "Invia avviso",
                     "DA_FATTURARE",
@@ -4095,7 +4096,7 @@ function buildFormData(c: Checklist): FormData {
                       }}
                       style={{
                         padding: "4px 8px",
-                        width: 130,
+                        width: "100%",
                         minHeight: 32,
                         borderRadius: 6,
                         border: label === "Modifica" || label === "Invia avviso" || label === "DA_FATTURARE" ? "1px solid #111" : "1px solid #ddd",
@@ -4112,9 +4113,10 @@ function buildFormData(c: Checklist): FormData {
                       {label}
                     </button>
                   ))}
+                  </div>
                 </div>
-              </div>
             ))}
+            </div>
           </div>
         </div>
       </div>
