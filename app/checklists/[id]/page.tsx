@@ -282,6 +282,18 @@ type NotificationRule = {
   only_future: boolean;
 };
 
+type ProjectRenewalRow = {
+  key: string;
+  source: "saas" | "garanzia" | "licenza" | "tagliando";
+  recordId: string | null;
+  tipo: string;
+  riferimento: string;
+  scadenza: string | null;
+  stato: string | null;
+  modalita: string | null;
+  note: string | null;
+};
+
 type AlertTemplate = {
   id: string;
   codice: string | null;
@@ -765,6 +777,14 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
     note: string;
   }>({ scadenza: "", fatturazione: "INCLUSO", note: "" });
   const [projectTagliandoSaving, setProjectTagliandoSaving] = useState(false);
+  const [projectRenewalEdit, setProjectRenewalEdit] = useState<{
+    row: ProjectRenewalRow;
+    scadenza: string;
+    stato: string;
+    modalita: string;
+    note: string;
+  } | null>(null);
+  const [projectRenewalEditSaving, setProjectRenewalEditSaving] = useState(false);
   const [projectInterventiError, setProjectInterventiError] = useState<string | null>(null);
   const [projectInterventiNotice, setProjectInterventiNotice] = useState<string | null>(null);
   const [projectInterventiExpandedId, setProjectInterventiExpandedId] = useState<string | null>(null);
@@ -1153,6 +1173,67 @@ function buildFormData(c: Checklist): FormData {
     setProjectTagliando({ scadenza: "", fatturazione: "INCLUSO", note: "" });
     setProjectInterventiNotice("Tagliando periodico aggiunto.");
     setProjectTagliandoSaving(false);
+  }
+
+  function openProjectRenewalEdit(row: ProjectRenewalRow) {
+    setProjectRenewalEdit({
+      row,
+      scadenza: toDateInput(row.scadenza),
+      stato: String(row.stato || "").trim(),
+      modalita: String(row.modalita || "").trim(),
+      note: String(row.note || "").trim(),
+    });
+  }
+
+  async function saveProjectRenewalEdit() {
+    if (!projectRenewalEdit || !id) return;
+    setProjectInterventiError(null);
+    setProjectRenewalEditSaving(true);
+
+    const row = projectRenewalEdit.row;
+    const scadenza = projectRenewalEdit.scadenza || null;
+    const stato = projectRenewalEdit.stato || null;
+    const modalita = projectRenewalEdit.modalita || null;
+    const note = projectRenewalEdit.note.trim() || null;
+
+    let err: any = null;
+
+    if (row.source === "saas") {
+      const res = await supabase
+        .from("checklists")
+        .update({ saas_scadenza: scadenza, saas_stato: stato })
+        .eq("id", id);
+      err = res.error;
+    } else if (row.source === "garanzia") {
+      const res = await supabase
+        .from("checklists")
+        .update({ garanzia_scadenza: scadenza })
+        .eq("id", id);
+      err = res.error;
+    } else if (row.source === "licenza" && row.recordId) {
+      const res = await supabase
+        .from("licenze")
+        .update({ scadenza, stato, note })
+        .eq("id", row.recordId);
+      err = res.error;
+    } else if (row.source === "tagliando" && row.recordId) {
+      const res = await supabase
+        .from("tagliandi")
+        .update({ scadenza, stato, modalita, note })
+        .eq("id", row.recordId);
+      err = res.error;
+    }
+
+    if (err) {
+      setProjectInterventiError(err.message || "Errore salvataggio voce.");
+      setProjectRenewalEditSaving(false);
+      return;
+    }
+
+    await load(id);
+    setProjectRenewalEdit(null);
+    setProjectRenewalEditSaving(false);
+    setProjectInterventiNotice("Voce scadenza/rinnovo aggiornata.");
   }
 
   async function deleteProjectIntervento(idToDelete: string) {
@@ -3986,7 +4067,7 @@ function buildFormData(c: Checklist): FormData {
               <div
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "72px 1fr 96px 108px 96px 72px 312px",
+                  gridTemplateColumns: "68px 1fr 96px 108px 96px 78px 324px",
                   padding: "10px 12px",
                   fontWeight: 800,
                   background: "#fafafa",
@@ -4007,45 +4088,57 @@ function buildFormData(c: Checklist): FormData {
               ...(checklist?.saas_piano
                 ? [{
                     key: "SAAS",
+                    source: "saas" as const,
+                    recordId: checklist.id,
                     tipo: "SAAS",
                     riferimento: checklist.saas_piano || "—",
                     scadenza: checklist.saas_scadenza || null,
                     stato: checklist.saas_stato || "DA_AVVISARE",
                     modalita: "—",
+                    note: checklist.saas_note || null,
                   }]
                 : []),
               ...(checklist?.garanzia_scadenza
                 ? [{
                     key: "GARANZIA",
+                    source: "garanzia" as const,
+                    recordId: checklist.id,
                     tipo: "GARANZIA",
                     riferimento: "Garanzia impianto",
                     scadenza: checklist.garanzia_scadenza || null,
                     stato: "DA_AVVISARE",
                     modalita: "—",
+                    note: null,
                   }]
                 : []),
               ...licenze.map((l) => ({
                 key: `LIC-${l.id}`,
+                source: "licenza" as const,
+                recordId: l.id,
                 tipo: "LICENZA",
                 riferimento: l.tipo || "—",
                 scadenza: l.scadenza || null,
                 stato: l.stato || "ATTIVA",
                 modalita: "—",
+                note: l.note || null,
               })),
               ...projectTagliandi.map((t) => ({
                 key: `TAG-${t.id}`,
+                source: "tagliando" as const,
+                recordId: t.id,
                 tipo: "TAGLIANDO",
                 riferimento: t.note || "Tagliando periodico",
                 scadenza: t.scadenza || null,
                 stato: t.stato || "ATTIVA",
                 modalita: t.modalita || "—",
+                note: t.note || null,
               })),
-            ].map((r) => (
+            ].map((r: ProjectRenewalRow) => (
                 <div
                   key={r.key}
                   style={{
                     display: "grid",
-                    gridTemplateColumns: "72px 1fr 96px 108px 96px 72px 312px",
+                    gridTemplateColumns: "68px 1fr 96px 108px 96px 78px 324px",
                     padding: "10px 12px",
                     borderBottom: "1px solid #f3f4f6",
                     alignItems: "center",
@@ -4071,7 +4164,7 @@ function buildFormData(c: Checklist): FormData {
                   <div
                     style={{
                       display: "grid",
-                      gridTemplateColumns: "repeat(3, 100px)",
+                      gridTemplateColumns: "repeat(3, 104px)",
                       justifyContent: "center",
                       alignContent: "center",
                       gap: 6,
@@ -4090,27 +4183,30 @@ function buildFormData(c: Checklist): FormData {
                       key={`${r.key}-${label}`}
                       type="button"
                       onClick={() => {
+                        if (label === "Modifica") {
+                          openProjectRenewalEdit(r);
+                          return;
+                        }
                         if (checklist?.cliente) {
                           router.push(`/clienti/${encodeURIComponent(checklist.cliente)}`);
                         }
                       }}
                       style={{
                         padding: "4px 8px",
-                        width: 100,
+                        width: 104,
                         minHeight: 32,
                         borderRadius: 6,
                         border: label === "Modifica" || label === "Invia avviso" || label === "DA_FATTURARE" ? "1px solid #111" : "1px solid #ddd",
                         background: label === "FATTURATO" ? "#f9fafb" : "white",
                         cursor: checklist?.cliente ? "pointer" : "not-allowed",
-                        fontSize: 12,
+                        fontSize: 10.5,
                         opacity: checklist?.cliente ? 1 : 0.5,
                         fontWeight: label === "Modifica" || label === "Invia avviso" || label === "DA_FATTURARE" ? 700 : 500,
                         textAlign: "center",
-                        whiteSpace: "normal",
-                        overflowWrap: "anywhere",
-                        lineHeight: 1.1,
+                        whiteSpace: "nowrap",
+                        lineHeight: 1,
                       }}
-                      title="Gestisci stato completo in Scheda cliente"
+                      title={label === "Modifica" ? "Modifica qui in pagina progetto" : "Gestisci stato completo in Scheda cliente"}
                     >
                       {label}
                     </button>
@@ -4122,6 +4218,113 @@ function buildFormData(c: Checklist): FormData {
           </div>
         </div>
       </div>
+      {projectRenewalEdit && (
+        <div
+          onClick={() => setProjectRenewalEdit(null)}
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.25)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 2100,
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: 520,
+              maxWidth: "92vw",
+              background: "white",
+              border: "1px solid #eee",
+              borderRadius: 12,
+              padding: 14,
+            }}
+          >
+            <div style={{ fontWeight: 800, marginBottom: 10 }}>
+              Modifica {projectRenewalEdit.row.tipo}
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+              <label>
+                Scadenza
+                <input
+                  type="date"
+                  value={projectRenewalEdit.scadenza}
+                  onChange={(e) =>
+                    setProjectRenewalEdit((p) => (p ? { ...p, scadenza: e.target.value } : p))
+                  }
+                  style={{ width: "100%", padding: 8 }}
+                />
+              </label>
+              {projectRenewalEdit.row.source !== "garanzia" && (
+                <label>
+                  Stato
+                  <input
+                    value={projectRenewalEdit.stato}
+                    onChange={(e) =>
+                      setProjectRenewalEdit((p) => (p ? { ...p, stato: e.target.value } : p))
+                    }
+                    style={{ width: "100%", padding: 8 }}
+                  />
+                </label>
+              )}
+              {projectRenewalEdit.row.source === "tagliando" && (
+                <label>
+                  Modalità
+                  <select
+                    value={projectRenewalEdit.modalita || "INCLUSO"}
+                    onChange={(e) =>
+                      setProjectRenewalEdit((p) => (p ? { ...p, modalita: e.target.value } : p))
+                    }
+                    style={{ width: "100%", padding: 8 }}
+                  >
+                    <option value="INCLUSO">INCLUSO</option>
+                    <option value="EXTRA">EXTRA</option>
+                  </select>
+                </label>
+              )}
+              {projectRenewalEdit.row.source !== "garanzia" && (
+                <label style={{ gridColumn: "1 / -1" }}>
+                  Note
+                  <input
+                    value={projectRenewalEdit.note}
+                    onChange={(e) =>
+                      setProjectRenewalEdit((p) => (p ? { ...p, note: e.target.value } : p))
+                    }
+                    style={{ width: "100%", padding: 8 }}
+                  />
+                </label>
+              )}
+            </div>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 12 }}>
+              <button
+                type="button"
+                onClick={() => setProjectRenewalEdit(null)}
+                style={{ padding: "8px 12px", borderRadius: 8, border: "1px solid #ddd", background: "white" }}
+              >
+                Annulla
+              </button>
+              <button
+                type="button"
+                onClick={saveProjectRenewalEdit}
+                disabled={projectRenewalEditSaving}
+                style={{
+                  padding: "8px 12px",
+                  borderRadius: 8,
+                  border: "1px solid #111",
+                  background: "#111",
+                  color: "white",
+                  opacity: projectRenewalEditSaving ? 0.7 : 1,
+                  cursor: projectRenewalEditSaving ? "not-allowed" : "pointer",
+                }}
+              >
+                {projectRenewalEditSaving ? "Salvataggio..." : "Salva"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       <div style={{ marginTop: 12 }}>
         <div
           style={{
