@@ -12,6 +12,7 @@ type ChecklistRow = {
   proforma: string | null;
   data_prevista: string | null;
   data_tassativa: string | null;
+  stato_progetto?: string | null;
   noleggio_vendita: string | null;
   tipo_impianto: string | null;
 };
@@ -304,10 +305,12 @@ export default function CronoprogrammaPage() {
     (async () => {
       setLoading(true);
       setError(null);
+      const CUTOFF_DATE = "2026-01-01";
 
       const { data: checklists, error: cErr } = await supabase
         .from("checklists")
-        .select("id, cliente, nome_checklist, proforma, data_prevista, data_tassativa, noleggio_vendita, tipo_impianto")
+        .select("id, cliente, nome_checklist, proforma, data_prevista, data_tassativa, stato_progetto, noleggio_vendita, tipo_impianto")
+        .eq("stato_progetto", "IN_CORSO")
         .order("created_at", { ascending: false });
 
       if (cErr) {
@@ -324,6 +327,8 @@ export default function CronoprogrammaPage() {
           .select(
             "id, cliente, checklist_id, ticket_no, data, data_tassativa, descrizione, tipo, proforma, stato_intervento, fatturazione_stato"
           )
+          .eq("stato_intervento", "APERTO")
+          .or(`data_tassativa.gte.${CUTOFF_DATE},and(data_tassativa.is.null,data.gte.${CUTOFF_DATE})`)
           .order("data", { ascending: true });
         interventi = res.data as InterventoRow[] | null;
         iErr = res.error;
@@ -334,6 +339,8 @@ export default function CronoprogrammaPage() {
           .select(
             "id, cliente, checklist_id, ticket_no, data, descrizione, tipo, proforma, stato_intervento, fatturazione_stato"
           )
+          .eq("stato_intervento", "APERTO")
+          .gte("data", CUTOFF_DATE)
           .order("data", { ascending: true });
         interventi = (res.data as InterventoRow[] | null)?.map((r) => ({ ...r, data_tassativa: null })) ?? [];
         iErr = res.error;
@@ -342,6 +349,8 @@ export default function CronoprogrammaPage() {
         const res = await supabase
           .from("saas_interventi")
           .select("id, cliente, checklist_id, data, data_tassativa, descrizione, tipo, proforma, stato_intervento, fatturazione_stato")
+          .eq("stato_intervento", "APERTO")
+          .or(`data_tassativa.gte.${CUTOFF_DATE},and(data_tassativa.is.null,data.gte.${CUTOFF_DATE})`)
           .order("data", { ascending: true });
         interventi =
           (res.data as InterventoRow[] | null)?.map((r) => ({ ...r, ticket_no: null, data_tassativa: r.data_tassativa ?? null })) ??
@@ -363,8 +372,9 @@ export default function CronoprogrammaPage() {
       const timeline: TimelineRow[] = [];
 
       for (const c of (checklists || []) as ChecklistRow[]) {
+        if (String(c.stato_progetto || "").toUpperCase() !== "IN_CORSO") continue;
         const date = toIsoDay(c.data_tassativa) || toIsoDay(c.data_prevista);
-        if (!date) continue;
+        if (!date || date < CUTOFF_DATE) continue;
         timeline.push({
           kind: "INSTALLAZIONE",
           id: `install:${c.id}`,
@@ -385,8 +395,11 @@ export default function CronoprogrammaPage() {
       }
 
       for (const i of (interventi || []) as InterventoRow[]) {
+        const statoIntervento = String(i.stato_intervento || i.fatturazione_stato || "APERTO").toUpperCase();
+        if (statoIntervento !== "APERTO") continue;
         const date = toIsoDay(i.data_tassativa) || toIsoDay(i.data);
-        if (!date) continue;
+        if (!date || date < CUTOFF_DATE) continue;
+        if (i.checklist_id && !checklistById.has(i.checklist_id)) continue;
         const c = i.checklist_id ? checklistById.get(i.checklist_id) : null;
         const prevista = toIsoDay(i.data) || toIsoDay(i.data_tassativa) || date;
         const tassativa = toIsoDay(i.data_tassativa) || toIsoDay(i.data) || date;
@@ -403,7 +416,7 @@ export default function CronoprogrammaPage() {
           progetto: String(c?.nome_checklist || i.checklist_id || "—"),
           tipologia: String(i.tipo || inferInterventoTipologia(i.descrizione)).toUpperCase(),
           descrizione: String(i.descrizione || "Intervento"),
-          stato: String(i.stato_intervento || i.fatturazione_stato || "APERTO").toUpperCase(),
+          stato: statoIntervento,
           fatto: false,
         });
       }
@@ -439,6 +452,9 @@ export default function CronoprogrammaPage() {
           .includes(needle);
         if (!matchesSearch) return false;
       }
+      // Se chiedo esplicitamente di vedere i "Fatto", li mostro sempre
+      // (indipendentemente dal range date) per permettere il reset del flag.
+      if (fatto && showFatto) return true;
       const isAlwaysVisible = !fatto && rifDate > alwaysVisibleThreshold;
       if (isAlwaysVisible) return true;
       if (fromDate && rifDate < fromDate) return false;
