@@ -698,7 +698,7 @@ export default function CronoprogrammaPage() {
           style={{
             display: "grid",
             gridTemplateColumns: "110px 110px 110px 1fr 1fr 1fr 120px 130px 120px 1.6fr",
-            gap: 10,
+            gap: 12,
             padding: "10px 12px",
             fontWeight: 700,
             background: "#fafafa",
@@ -747,7 +747,7 @@ export default function CronoprogrammaPage() {
                 style={{
                   display: "grid",
                   gridTemplateColumns: "110px 110px 110px 1fr 1fr 1fr 120px 130px 120px 1.6fr",
-                  gap: 10,
+                  gap: 12,
                   padding: "10px 12px",
                   borderBottom: "1px solid #f3f4f6",
                   alignItems: "start",
