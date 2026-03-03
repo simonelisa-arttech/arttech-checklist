@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
 type RowRef = { row_kind: "INSTALLAZIONE" | "INTERVENTO"; row_ref_id: string };
+const CUTOFF = "2026-01-01";
 
 function getAccessTokenFromCookieHeader(cookieHeader: string | null) {
   if (!cookieHeader) return "";
@@ -17,6 +18,15 @@ function getAccessTokenFromCookieHeader(cookieHeader: string | null) {
 
 function rowKey(rowKind: string, rowRefId: string) {
   return `${rowKind}:${rowRefId}`;
+}
+
+function toIsoDay(value?: string | null) {
+  return value ? String(value).slice(0, 10) : "";
+}
+
+function isOnOrAfterCutoff(value?: string | null) {
+  const day = toIsoDay(value);
+  return !!day && day >= CUTOFF;
 }
 
 async function getAuthContext(request: Request) {
@@ -102,12 +112,77 @@ export async function POST(request: Request) {
 
   if (action === "load") {
     const inputRows = Array.isArray(body?.rows) ? (body.rows as RowRef[]) : [];
-    const normalizedRows = inputRows
+    let normalizedRows = inputRows
       .map((r) => ({
         row_kind: String(r?.row_kind || "").toUpperCase(),
         row_ref_id: String(r?.row_ref_id || "").trim(),
       }))
       .filter((r) => (r.row_kind === "INSTALLAZIONE" || r.row_kind === "INTERVENTO") && r.row_ref_id);
+
+    if (normalizedRows.length === 0) {
+      return NextResponse.json({ ok: true, meta: {}, comments: {} });
+    }
+
+    const installazioneIds = Array.from(
+      new Set(normalizedRows.filter((r) => r.row_kind === "INSTALLAZIONE").map((r) => r.row_ref_id))
+    );
+    const interventoIds = Array.from(
+      new Set(normalizedRows.filter((r) => r.row_kind === "INTERVENTO").map((r) => r.row_ref_id))
+    );
+
+    const allowedInstallazioni = new Set<string>();
+    if (installazioneIds.length > 0) {
+      const { data: checklistRows, error: checklistErr } = await supabaseAdmin
+        .from("checklists")
+        .select("id, stato_progetto")
+        .in("id", installazioneIds as any);
+      if (checklistErr) {
+        return NextResponse.json({ error: checklistErr.message }, { status: 500 });
+      }
+      for (const row of checklistRows || []) {
+        if (String((row as any).stato_progetto || "").toUpperCase() === "IN_CORSO") {
+          allowedInstallazioni.add(String((row as any).id));
+        }
+      }
+    }
+
+    const allowedInterventi = new Set<string>();
+    if (interventoIds.length > 0) {
+      let interventiRows: any[] | null = null;
+      let interventiErr: any = null;
+      {
+        const res = await supabaseAdmin
+          .from("saas_interventi")
+          .select("id, stato_intervento, data, data_tassativa")
+          .in("id", interventoIds as any);
+        interventiRows = res.data as any[] | null;
+        interventiErr = res.error;
+      }
+      if (interventiErr && String(interventiErr.message || "").toLowerCase().includes("data_tassativa")) {
+        const res = await supabaseAdmin
+          .from("saas_interventi")
+          .select("id, stato_intervento, data")
+          .in("id", interventoIds as any);
+        interventiRows = (res.data as any[] | null)?.map((r) => ({ ...r, data_tassativa: null })) ?? [];
+        interventiErr = res.error;
+      }
+      if (interventiErr) {
+        return NextResponse.json({ error: interventiErr.message }, { status: 500 });
+      }
+      for (const row of interventiRows || []) {
+        const stato = String((row as any).stato_intervento || "").toUpperCase();
+        const dataEvento = toIsoDay((row as any).data_tassativa) || toIsoDay((row as any).data);
+        if (stato === "APERTO" && isOnOrAfterCutoff(dataEvento)) {
+          allowedInterventi.add(String((row as any).id));
+        }
+      }
+    }
+
+    normalizedRows = normalizedRows.filter((r) => {
+      if (r.row_kind === "INSTALLAZIONE") return allowedInstallazioni.has(r.row_ref_id);
+      if (r.row_kind === "INTERVENTO") return allowedInterventi.has(r.row_ref_id);
+      return false;
+    });
 
     if (normalizedRows.length === 0) {
       return NextResponse.json({ ok: true, meta: {}, comments: {} });
