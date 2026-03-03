@@ -365,8 +365,12 @@ export default function CronoprogrammaPage() {
       }
 
       const checklistById = new Map<string, ChecklistRow>();
+      const inCorsoChecklistIds = new Set<string>();
       for (const c of (checklists || []) as ChecklistRow[]) {
         checklistById.set(c.id, c);
+        if (String(c.stato_progetto || "").toUpperCase() === "IN_CORSO") {
+          inCorsoChecklistIds.add(c.id);
+        }
       }
 
       const timeline: TimelineRow[] = [];
@@ -399,7 +403,7 @@ export default function CronoprogrammaPage() {
         if (statoIntervento !== "APERTO") continue;
         const date = toIsoDay(i.data_tassativa) || toIsoDay(i.data);
         if (!date || date < CUTOFF_DATE) continue;
-        if (i.checklist_id && !checklistById.has(i.checklist_id)) continue;
+        if (i.checklist_id && !inCorsoChecklistIds.has(i.checklist_id)) continue;
         const c = i.checklist_id ? checklistById.get(i.checklist_id) : null;
         const prevista = toIsoDay(i.data) || toIsoDay(i.data_tassativa) || date;
         const tassativa = toIsoDay(i.data_tassativa) || toIsoDay(i.data) || date;
