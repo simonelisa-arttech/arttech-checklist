@@ -192,11 +192,26 @@ export async function POST(request: Request) {
     const rowKinds = Array.from(new Set(normalizedRows.map((r) => r.row_kind)));
     const wanted = new Set(normalizedRows.map((r) => rowKey(r.row_kind, r.row_ref_id)));
 
-    const { data: metaRows, error: metaErr } = await supabaseAdmin
-      .from("cronoprogramma_meta")
-      .select("row_kind, row_ref_id, fatto, updated_at, updated_by_operatore, operatore:updated_by_operatore(nome)")
-      .in("row_ref_id", rowIds)
-      .in("row_kind", rowKinds as any);
+    let metaRows: any[] | null = null;
+    let metaErr: any = null;
+    {
+      const res = await supabaseAdmin
+        .from("cronoprogramma_meta")
+        .select("row_kind, row_ref_id, fatto, hidden, updated_at, updated_by_operatore, operatore:updated_by_operatore(nome)")
+        .in("row_ref_id", rowIds)
+        .in("row_kind", rowKinds as any);
+      metaRows = res.data as any[] | null;
+      metaErr = res.error;
+    }
+    if (metaErr && String(metaErr.message || "").toLowerCase().includes("hidden")) {
+      const res = await supabaseAdmin
+        .from("cronoprogramma_meta")
+        .select("row_kind, row_ref_id, fatto, updated_at, updated_by_operatore, operatore:updated_by_operatore(nome)")
+        .in("row_ref_id", rowIds)
+        .in("row_kind", rowKinds as any);
+      metaRows = (res.data as any[] | null)?.map((r) => ({ ...r, hidden: false })) ?? [];
+      metaErr = res.error;
+    }
 
     if (metaErr && !String(metaErr.message || "").toLowerCase().includes("cronoprogramma_meta")) {
       return NextResponse.json({ error: metaErr.message }, { status: 500 });
@@ -219,6 +234,7 @@ export async function POST(request: Request) {
       if (!wanted.has(key)) continue;
       metaByKey[key] = {
         fatto: Boolean((row as any).fatto),
+        hidden: Boolean((row as any).hidden),
         updated_at: (row as any).updated_at || null,
         updated_by_operatore: (row as any).updated_by_operatore || null,
         updated_by_nome: (row as any).operatore?.nome || null,
@@ -265,7 +281,7 @@ export async function POST(request: Request) {
     const { data, error } = await supabaseAdmin
       .from("cronoprogramma_meta")
       .upsert(payload, { onConflict: "row_kind,row_ref_id" })
-      .select("row_kind, row_ref_id, fatto, updated_at, updated_by_operatore, operatore:updated_by_operatore(nome)")
+      .select("row_kind, row_ref_id, fatto, hidden, updated_at, updated_by_operatore, operatore:updated_by_operatore(nome)")
       .maybeSingle();
 
     if (error) {
@@ -276,6 +292,45 @@ export async function POST(request: Request) {
       ok: true,
       meta: {
         fatto: Boolean((data as any)?.fatto),
+        hidden: Boolean((data as any)?.hidden),
+        updated_at: (data as any)?.updated_at || null,
+        updated_by_operatore: (data as any)?.updated_by_operatore || null,
+        updated_by_nome: (data as any)?.operatore?.nome || null,
+      },
+    });
+  }
+
+  if (action === "set_hidden") {
+    const rowKind = String(body?.row_kind || "").trim().toUpperCase();
+    const rowRefId = String(body?.row_ref_id || "").trim();
+    const hidden = Boolean(body?.hidden);
+    if (!(rowKind === "INSTALLAZIONE" || rowKind === "INTERVENTO") || !rowRefId) {
+      return NextResponse.json({ error: "row_kind/row_ref_id non validi" }, { status: 400 });
+    }
+
+    const payload = {
+      row_kind: rowKind,
+      row_ref_id: rowRefId,
+      hidden,
+      updated_at: new Date().toISOString(),
+      updated_by_operatore: operatore.id,
+    };
+
+    const { data, error } = await supabaseAdmin
+      .from("cronoprogramma_meta")
+      .upsert(payload, { onConflict: "row_kind,row_ref_id" })
+      .select("row_kind, row_ref_id, fatto, hidden, updated_at, updated_by_operatore, operatore:updated_by_operatore(nome)")
+      .maybeSingle();
+
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+
+    return NextResponse.json({
+      ok: true,
+      meta: {
+        fatto: Boolean((data as any)?.fatto),
+        hidden: Boolean((data as any)?.hidden),
         updated_at: (data as any)?.updated_at || null,
         updated_by_operatore: (data as any)?.updated_by_operatore || null,
         updated_by_nome: (data as any)?.operatore?.nome || null,

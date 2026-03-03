@@ -50,6 +50,7 @@ type TimelineRow = {
 
 type CronoMeta = {
   fatto: boolean;
+  hidden: boolean;
   updated_at: string | null;
   updated_by_operatore: string | null;
   updated_by_nome: string | null;
@@ -141,6 +142,7 @@ export default function CronoprogrammaPage() {
   const [clienteFilter, setClienteFilter] = useState("TUTTI");
   const [kindFilter, setKindFilter] = useState<"TUTTI" | "INSTALLAZIONE" | "INTERVENTO">("TUTTI");
   const [showFatto, setShowFatto] = useState(false);
+  const [showHidden, setShowHidden] = useState(false);
   const [q, setQ] = useState("");
   const [sortBy, setSortBy] = useState<"data_prevista" | "data_tassativa">("data_tassativa");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
@@ -150,6 +152,7 @@ export default function CronoprogrammaPage() {
   const [stateLoading, setStateLoading] = useState(false);
   const [stateError, setStateError] = useState<string | null>(null);
   const [savingFattoKey, setSavingFattoKey] = useState<string | null>(null);
+  const [savingHiddenKey, setSavingHiddenKey] = useState<string | null>(null);
   const [savingCommentKey, setSavingCommentKey] = useState<string | null>(null);
   const [deletingCommentId, setDeletingCommentId] = useState<string | null>(null);
   const [noteHistoryKey, setNoteHistoryKey] = useState<string | null>(null);
@@ -227,6 +230,32 @@ export default function CronoprogrammaPage() {
       );
     } finally {
       setSavingFattoKey(null);
+    }
+  }
+
+  async function setHidden(row: TimelineRow, hidden: boolean) {
+    const key = getRowKey(row.kind, row.row_ref_id);
+    setSavingHiddenKey(key);
+    setStateError(null);
+    try {
+      const res = await fetch("/api/cronoprogramma", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "set_hidden",
+          row_kind: row.kind,
+          row_ref_id: row.row_ref_id,
+          hidden,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setStateError(data?.error || "Errore salvataggio stato nascosta");
+        return;
+      }
+      setMetaByKey((prev) => ({ ...prev, [key]: data?.meta }));
+    } finally {
+      setSavingHiddenKey(null);
     }
   }
 
@@ -447,6 +476,8 @@ export default function CronoprogrammaPage() {
       const rifDate = r.data_tassativa || r.data_prevista;
       const key = getRowKey(r.kind, r.row_ref_id);
       const fatto = Boolean(metaByKey[key]?.fatto ?? r.fatto);
+      const hidden = Boolean(metaByKey[key]?.hidden);
+      if (hidden && !showHidden) return false;
       if (fatto && !showFatto) return false;
       if (clienteFilter !== "TUTTI" && r.cliente !== clienteFilter) return false;
       if (kindFilter !== "TUTTI" && r.kind !== kindFilter) return false;
@@ -465,7 +496,7 @@ export default function CronoprogrammaPage() {
       if (toDate && rifDate > toDate) return false;
       return true;
     });
-  }, [rows, fromDate, toDate, clienteFilter, kindFilter, q, metaByKey, showFatto]);
+  }, [rows, fromDate, toDate, clienteFilter, kindFilter, q, metaByKey, showFatto, showHidden]);
 
   const filteredSorted = useMemo(() => {
     const sorted = [...filtered];
@@ -622,6 +653,14 @@ export default function CronoprogrammaPage() {
         />
         Mostra righe fatte (per poter togliere il flag)
       </label>
+      <label style={{ display: "inline-flex", alignItems: "center", gap: 8, marginBottom: 12, marginLeft: 16 }}>
+        <input
+          type="checkbox"
+          checked={showHidden}
+          onChange={(e) => setShowHidden(e.target.checked)}
+        />
+        Mostra righe nascoste
+      </label>
 
       <div
         style={{
@@ -658,7 +697,7 @@ export default function CronoprogrammaPage() {
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "110px 110px 110px 1fr 1fr 1fr 120px 130px 1.6fr",
+            gridTemplateColumns: "110px 110px 110px 1fr 1fr 1fr 120px 130px 120px 1.6fr",
             gap: 10,
             padding: "10px 12px",
             fontWeight: 700,
@@ -682,12 +721,13 @@ export default function CronoprogrammaPage() {
           >
             Data tassativa {sortBy === "data_tassativa" ? (sortDir === "asc" ? "↑" : "↓") : ""}
           </button>
-          <div>Evento</div>
-          <div>Cliente</div>
+          <div style={{ paddingRight: 18 }}>Evento</div>
+          <div style={{ paddingLeft: 6 }}>Cliente</div>
           <div>Progetto</div>
           <div>Dettaglio</div>
           <div>Ticket/Pf</div>
           <div>Fatto</div>
+          <div>Nascosta</div>
           <div>Note</div>
         </div>
         {loading ? (
@@ -699,23 +739,26 @@ export default function CronoprogrammaPage() {
             const key = getRowKey(r.kind, r.row_ref_id);
             const meta = metaByKey[key];
             const fatto = Boolean(meta?.fatto ?? r.fatto);
+            const hidden = Boolean(meta?.hidden);
             const comments = commentsByKey[key] || [];
             return (
               <div
                 key={r.id}
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "110px 110px 110px 1fr 1fr 1fr 120px 130px 1.6fr",
+                  gridTemplateColumns: "110px 110px 110px 1fr 1fr 1fr 120px 130px 120px 1.6fr",
                   gap: 10,
                   padding: "10px 12px",
                   borderBottom: "1px solid #f3f4f6",
                   alignItems: "start",
+                  opacity: hidden && showHidden ? 0.6 : 1,
+                  fontStyle: hidden && showHidden ? "italic" : "normal",
                 }}
               >
                 <div>{r.data_prevista ? new Date(r.data_prevista).toLocaleDateString("it-IT") : "—"}</div>
                 <div>{r.data_tassativa ? new Date(r.data_tassativa).toLocaleDateString("it-IT") : "—"}</div>
-                <div>{r.kind}</div>
-                <div>{r.cliente}</div>
+                <div style={{ paddingRight: 18 }}>{r.kind}</div>
+                <div style={{ paddingLeft: 6 }}>{r.cliente}</div>
                 <div>
                   {r.checklist_id ? (
                     <Link
@@ -746,6 +789,17 @@ export default function CronoprogrammaPage() {
                       {new Date(meta.updated_at).toLocaleString("it-IT")}
                     </div>
                   )}
+                </div>
+                <div>
+                  <label style={{ display: "inline-flex", alignItems: "center", gap: 8, fontWeight: 700 }}>
+                    <input
+                      type="checkbox"
+                      checked={hidden}
+                      onChange={(e) => setHidden(r, e.target.checked)}
+                      disabled={savingHiddenKey === key || stateLoading}
+                    />
+                    Nascosta
+                  </label>
                 </div>
                 <div>
                   <div style={{ display: "flex", gap: 6 }}>
