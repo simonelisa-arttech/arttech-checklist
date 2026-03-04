@@ -2,6 +2,7 @@ export const runtime = "nodejs";
 
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 
 type RowRef = { row_kind: "INSTALLAZIONE" | "INTERVENTO"; row_ref_id: string };
 const CUTOFF = "2026-01-01";
@@ -32,8 +33,7 @@ function isOnOrAfterCutoff(value?: string | null) {
 async function getAuthContext(request: Request) {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!supabaseUrl || !anonKey || !serviceRoleKey) {
+  if (!supabaseUrl || !anonKey) {
     return { error: NextResponse.json({ error: "Missing Supabase envs" }, { status: 500 }) };
   }
 
@@ -53,9 +53,12 @@ async function getAuthContext(request: Request) {
     return { error: NextResponse.json({ error: "Unauthorized" }, { status: 401 }) };
   }
 
-  const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey, {
-    auth: { persistSession: false, autoRefreshToken: false },
-  });
+  let supabaseAdmin: ReturnType<typeof getSupabaseAdmin>;
+  try {
+    supabaseAdmin = getSupabaseAdmin();
+  } catch (e: any) {
+    return { error: NextResponse.json({ error: e?.message || "Missing SUPABASE_SERVICE_ROLE_KEY" }, { status: 500 }) };
+  }
 
   const { data: operatoreByUser, error: opUserErr } = await supabaseAdmin
     .from("operatori")
@@ -96,6 +99,7 @@ async function getAuthContext(request: Request) {
 }
 
 export async function POST(request: Request) {
+  const debug = new URL(request.url).searchParams.get("debug") === "1";
   const auth = await getAuthContext(request);
   if ("error" in auth) return auth.error;
 
@@ -109,6 +113,123 @@ export async function POST(request: Request) {
   }
 
   const action = String(body?.action || "").trim().toLowerCase();
+
+  if (action === "load_events") {
+    const CUTOFF_DATE = "2026-01-01";
+
+    const { data: checklists, error: cErr } = await supabaseAdmin
+      .from("checklists")
+      .select("id, cliente, nome_checklist, proforma, data_prevista, data_tassativa, stato_progetto, noleggio_vendita, tipo_impianto")
+      .eq("stato_progetto", "IN_CORSO")
+      .order("created_at", { ascending: false });
+    if (cErr) return NextResponse.json({ error: cErr.message }, { status: 500 });
+
+    let interventi: any[] | null = null;
+    let iErr: any = null;
+    {
+      const res = await supabaseAdmin
+        .from("saas_interventi")
+        .select("id, cliente, checklist_id, ticket_no, data, data_tassativa, descrizione, tipo, proforma, stato_intervento, fatturazione_stato")
+        .eq("stato_intervento", "APERTO")
+        .or(`data_tassativa.gte.${CUTOFF_DATE},and(data_tassativa.is.null,data.gte.${CUTOFF_DATE})`)
+        .order("data", { ascending: true });
+      interventi = res.data as any[] | null;
+      iErr = res.error;
+    }
+    if (iErr && String(iErr.message || "").toLowerCase().includes("data_tassativa")) {
+      const res = await supabaseAdmin
+        .from("saas_interventi")
+        .select("id, cliente, checklist_id, ticket_no, data, descrizione, tipo, proforma, stato_intervento, fatturazione_stato")
+        .eq("stato_intervento", "APERTO")
+        .gte("data", CUTOFF_DATE)
+        .order("data", { ascending: true });
+      interventi = (res.data as any[] | null)?.map((r) => ({ ...r, data_tassativa: null })) ?? [];
+      iErr = res.error;
+    }
+    if (iErr && String(iErr.message || "").toLowerCase().includes("ticket_no")) {
+      const res = await supabaseAdmin
+        .from("saas_interventi")
+        .select("id, cliente, checklist_id, data, data_tassativa, descrizione, tipo, proforma, stato_intervento, fatturazione_stato")
+        .eq("stato_intervento", "APERTO")
+        .or(`data_tassativa.gte.${CUTOFF_DATE},and(data_tassativa.is.null,data.gte.${CUTOFF_DATE})`)
+        .order("data", { ascending: true });
+      interventi = (res.data as any[] | null)?.map((r) => ({ ...r, ticket_no: null, data_tassativa: r.data_tassativa ?? null })) ?? [];
+      iErr = res.error;
+    }
+    if (iErr) return NextResponse.json({ error: iErr.message }, { status: 500 });
+
+    const checklistById = new Map<string, any>();
+    const inCorsoChecklistIds = new Set<string>();
+    for (const c of checklists || []) {
+      const id = String((c as any).id || "");
+      if (!id) continue;
+      checklistById.set(id, c as any);
+      if (String((c as any).stato_progetto || "").toUpperCase() === "IN_CORSO") {
+        inCorsoChecklistIds.add(id);
+      }
+    }
+
+    const timeline: any[] = [];
+    const toIsoDay = (value?: string | null) => (value ? String(value).slice(0, 10) : "");
+
+    for (const c of checklists || []) {
+      const cc = c as any;
+      if (String(cc.stato_progetto || "").toUpperCase() !== "IN_CORSO") continue;
+      const date = toIsoDay(cc.data_tassativa) || toIsoDay(cc.data_prevista);
+      if (!date || date < CUTOFF_DATE) continue;
+      timeline.push({
+        kind: "INSTALLAZIONE",
+        id: `install:${cc.id}`,
+        row_ref_id: cc.id,
+        data_prevista: toIsoDay(cc.data_prevista) || date,
+        data_tassativa: toIsoDay(cc.data_tassativa) || date,
+        cliente: String(cc.cliente || "—"),
+        checklist_id: cc.id,
+        progetto: String(cc.nome_checklist || cc.id),
+        proforma: cc.proforma ?? null,
+        tipologia: String(cc.noleggio_vendita || "INSTALLAZIONE").toUpperCase(),
+        descrizione: [cc.tipo_impianto || "", cc.noleggio_vendita || ""].filter(Boolean).join(" · ") || "Installazione pianificata",
+        stato: "PIANIFICATA",
+        fatto: false,
+      });
+    }
+
+    for (const i of interventi || []) {
+      const ii = i as any;
+      const statoIntervento = String(ii.stato_intervento || ii.fatturazione_stato || "APERTO").toUpperCase();
+      if (statoIntervento !== "APERTO") continue;
+      const date = toIsoDay(ii.data_tassativa) || toIsoDay(ii.data);
+      if (!date || date < CUTOFF_DATE) continue;
+      if (ii.checklist_id && !inCorsoChecklistIds.has(String(ii.checklist_id))) continue;
+      const c = ii.checklist_id ? checklistById.get(String(ii.checklist_id)) : null;
+      const prevista = toIsoDay(ii.data) || toIsoDay(ii.data_tassativa) || date;
+      const tassativa = toIsoDay(ii.data_tassativa) || toIsoDay(ii.data) || date;
+      timeline.push({
+        kind: "INTERVENTO",
+        id: `intervento:${ii.id}`,
+        row_ref_id: ii.id,
+        data_prevista: prevista,
+        data_tassativa: tassativa,
+        cliente: String(ii.cliente || c?.cliente || "—"),
+        checklist_id: ii.checklist_id,
+        ticket_no: ii.ticket_no ?? null,
+        proforma: ii.proforma ?? c?.proforma ?? null,
+        progetto: String(c?.nome_checklist || ii.checklist_id || "—"),
+        tipologia: String(ii.tipo || "INTERVENTO").toUpperCase(),
+        descrizione: String(ii.descrizione || "Intervento"),
+        stato: statoIntervento,
+        fatto: false,
+      });
+    }
+
+    timeline.sort((a, b) => (a.data_tassativa || a.data_prevista).localeCompare(b.data_tassativa || b.data_prevista));
+    return NextResponse.json({
+      ok: true,
+      events: timeline,
+      auth_mode: "service_role",
+      ...(debug ? { debug: { auth_mode: "service_role" } } : {}),
+    });
+  }
 
   if (action === "load") {
     const inputRows = Array.isArray(body?.rows) ? (body.rows as RowRef[]) : [];

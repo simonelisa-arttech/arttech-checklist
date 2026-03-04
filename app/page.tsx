@@ -44,7 +44,7 @@ function saasLabelFromCode(code?: string | null) {
 }
 
 type SaasServiceFilter = "EVENTS" | "ULTRA" | "PREMIUM" | "PLUS";
-type ProjectStatusFilter = "IN_CORSO" | "CONSEGNATO" | "SOSPESO" | "CHIUSO";
+type ProjectStatusFilter = "IN_CORSO" | "CONSEGNATO" | "RIENTRATO" | "SOSPESO" | "CHIUSO";
 
 function matchesSingleSaasService(row: Checklist, filter: SaasServiceFilter) {
   const piano = String(row.saas_piano || "")
@@ -74,6 +74,7 @@ function normalizeProjectStatus(value?: string | null): ProjectStatusFilter | nu
     .replace(/\s+/g, "_");
   if (raw === "IN_CORSO") return "IN_CORSO";
   if (raw === "CONSEGNATO") return "CONSEGNATO";
+  if (raw === "RIENTRATO") return "RIENTRATO";
   if (raw === "SOSPESO") return "SOSPESO";
   if (raw === "CHIUSO") return "CHIUSO";
   return null;
@@ -485,6 +486,7 @@ export default function Page() {
   >({
     IN_CORSO: false,
     CONSEGNATO: false,
+    RIENTRATO: false,
     SOSPESO: false,
     CHIUSO: false,
   });
@@ -690,66 +692,35 @@ export default function Page() {
 
   async function load() {
     setLoading(true);
-    const baseSelect = `
-        *,
-        checklist_documents:checklist_documents (
-          id,
-          tipo,
-          filename,
-          uploaded_at
-        )
-      `;
-
-    const joinSelect = `
-        *,
-        clienti_anagrafica:cliente_id(denominazione),
-        checklist_documents:checklist_documents (
-          id,
-          tipo,
-          filename,
-          uploaded_at
-        )
-      `;
-
     let data: any[] | null = null;
+    let sections: any[] | null = null;
+    let licenseSummary: any[] | null = null;
+    let licensesData: any[] | null = null;
+    let serialsData: any[] | null = null;
+    let catalogItemsData: any[] | null = null;
     let error: any = null;
+    let sectionsErr: any = null;
+    let licenseErr: any = null;
+    let licensesErr: any = null;
+    let serialsErr: any = null;
+    let catalogErr: any = null;
 
-    // Try with join first (if schema exists). Fallback to legacy query on error.
-    const joinRes = await supabase
-      .from("checklists")
-      .select(joinSelect)
-      .order("created_at", { ascending: false });
-
-    if (joinRes.error) {
-      console.warn("[dashboard] clienti_anagrafica join failed, fallback", joinRes.error);
-      const legacyRes = await supabase
-        .from("checklists")
-        .select(baseSelect)
-        .order("created_at", { ascending: false });
-      data = legacyRes.data as any[] | null;
-      error = legacyRes.error;
+    const debug = new URLSearchParams(window.location.search).get("debug") === "1";
+    const dashboardRes = await fetch(`/api/dashboard${debug ? "?debug=1" : ""}`);
+    const dashboardData = await dashboardRes.json().catch(() => ({}));
+    if (!dashboardRes.ok) {
+      error = { message: dashboardData?.error || "Errore caricamento dashboard" };
     } else {
-      data = joinRes.data as any[] | null;
-      error = joinRes.error;
+      data = (dashboardData?.data?.checklists as any[]) || [];
+      sections = (dashboardData?.data?.sections as any[]) || [];
+      licenseSummary = (dashboardData?.data?.licenseSummary as any[]) || [];
+      licensesData = (dashboardData?.data?.licenses as any[]) || [];
+      serialsData = (dashboardData?.data?.serials as any[]) || [];
+      catalogItemsData = (dashboardData?.data?.catalogItems as any[]) || [];
+      if (debug) {
+        console.log("[dashboard] auth_mode:", dashboardData?.auth_mode || dashboardData?.debug?.auth_mode);
+      }
     }
-
-    const { data: sections, error: sectionsErr } = await supabase
-      .from("checklist_sections_view")
-      .select("*");
-
-    const { data: licenseSummary, error: licenseErr } = await supabase
-      .from("license_summary_view")
-      .select("*");
-
-    const { data: licensesData, error: licensesErr } = await supabase
-      .from("licenses")
-      .select(
-        "id, checklist_id, tipo, scadenza, note, ref_univoco, telefono, intestatario, gestore, fornitore"
-      );
-
-    const { data: serialsData, error: serialsErr } = await supabase
-      .from("asset_serials")
-      .select("checklist_id, seriale");
 
     const sectionsByChecklistId: Record<string, Partial<Checklist>> = {};
     if (!sectionsErr && sections) {
@@ -842,16 +813,10 @@ export default function Page() {
       console.error("Errore caricamento checklists (dashboard)", error);
     }
 
-    const { data: catalogItems, error: catalogErr } = await supabase
-      .from("catalog_items")
-      .select("id, codice, descrizione, tipo, categoria, attivo")
-      .eq("attivo", true)
-      .order("descrizione", { ascending: true });
-
     if (catalogErr) {
       console.error("Errore caricamento catalogo", catalogErr);
     } else {
-      setCatalogItems((catalogItems || []) as CatalogItem[]);
+      setCatalogItems((catalogItemsData || []) as CatalogItem[]);
     }
 
     const opRes = await fetch("/api/operatori");
@@ -1358,147 +1323,19 @@ export default function Page() {
     const ok = window.confirm("Eliminare questo PROGETTO? Verrà salvato in backup per 30 giorni.");
     if (!ok) return;
 
-    const { data: checklist, error: checklistErr } = await supabase
-      .from("checklists")
-      .select("*")
-      .eq("id", checklistId)
-      .single();
-
-    if (checklistErr || !checklist) {
-      alert("Errore lettura PROGETTO: " + (checklistErr?.message || "PROGETTO non trovato"));
+    const debug = new URLSearchParams(window.location.search).get("debug") === "1";
+    const res = await fetch(`/api/checklists/delete-with-backup${debug ? "?debug=1" : ""}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ checklist_id: checklistId }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      alert("Errore eliminazione PROGETTO: " + (data?.error || "Operazione fallita"));
       return;
     }
-
-    const [itemsRes, tasksRes, licenzeRes, interventiRes] = await Promise.all([
-      supabase.from("checklist_items").select("*").eq("checklist_id", checklistId),
-      supabase.from("checklist_tasks").select("*").eq("checklist_id", checklistId),
-      supabase.from("licenses").select("*").eq("checklist_id", checklistId),
-      supabase.from("saas_interventi").select("*").eq("checklist_id", checklistId),
-    ]);
-
-    if (itemsRes.error || tasksRes.error || licenzeRes.error || interventiRes.error) {
-      alert(
-        "Errore lettura dati collegati: " +
-          (itemsRes.error?.message ||
-            tasksRes.error?.message ||
-            licenzeRes.error?.message ||
-            interventiRes.error?.message ||
-            "")
-      );
-      return;
-    }
-
-    const deletedAt = new Date().toISOString();
-    const backupChecklist = {
-      checklist_id: checklistId,
-      deleted_at: deletedAt,
-      data: checklist,
-    };
-    const { error: backupChecklistErr } = await supabase
-      .from("checklists_backup")
-      .insert(backupChecklist);
-
-    if (backupChecklistErr) {
-      alert("Errore backup PROGETTO: " + backupChecklistErr.message);
-      return;
-    }
-
-    const backupItems = (itemsRes.data || []).map((r: any) => ({
-      checklist_id: checklistId,
-      deleted_at: deletedAt,
-      data: r,
-    }));
-    const backupTasks = (tasksRes.data || []).map((r: any) => ({
-      checklist_id: checklistId,
-      deleted_at: deletedAt,
-      data: r,
-    }));
-    const backupLicenze = (licenzeRes.data || []).map((r: any) => ({
-      checklist_id: checklistId,
-      deleted_at: deletedAt,
-      data: r,
-    }));
-    const backupInterventi = (interventiRes.data || []).map((r: any) => ({
-      checklist_id: checklistId,
-      deleted_at: deletedAt,
-      data: r,
-    }));
-
-    if (backupItems.length > 0) {
-      const { error } = await supabase.from("checklist_items_backup").insert(backupItems);
-      if (error) {
-        alert("Errore backup voci: " + error.message);
-        return;
-      }
-    }
-
-    if (backupTasks.length > 0) {
-      const { error } = await supabase.from("checklist_tasks_backup").insert(backupTasks);
-      if (error) {
-        alert("Errore backup task: " + error.message);
-        return;
-      }
-    }
-
-    if (backupLicenze.length > 0) {
-      const { error } = await supabase.from("licenses_backup").insert(backupLicenze);
-      if (error) {
-        alert("Errore backup licenze: " + error.message);
-        return;
-      }
-    }
-
-    if (backupInterventi.length > 0) {
-      const { error } = await supabase.from("saas_interventi_backup").insert(backupInterventi);
-      if (error) {
-        alert("Errore backup interventi: " + error.message);
-        return;
-      }
-    }
-
-    const { error: delItemsErr } = await supabase
-      .from("checklist_items")
-      .delete()
-      .eq("checklist_id", checklistId);
-    if (delItemsErr) {
-      alert("Errore eliminazione voci: " + delItemsErr.message);
-      return;
-    }
-
-    const { error: delTasksErr } = await supabase
-      .from("checklist_tasks")
-      .delete()
-      .eq("checklist_id", checklistId);
-    if (delTasksErr) {
-      alert("Errore eliminazione task: " + delTasksErr.message);
-      return;
-    }
-
-    const { error: delLicenzeErr } = await supabase
-      .from("licenses")
-      .delete()
-      .eq("checklist_id", checklistId);
-    if (delLicenzeErr) {
-      alert("Errore eliminazione licenze: " + delLicenzeErr.message);
-      return;
-    }
-
-    const { error: delInterventiErr } = await supabase
-      .from("saas_interventi")
-      .delete()
-      .eq("checklist_id", checklistId);
-    if (delInterventiErr) {
-      alert("Errore eliminazione interventi: " + delInterventiErr.message);
-      return;
-    }
-
-    const { error: delChecklistErr } = await supabase
-      .from("checklists")
-      .delete()
-      .eq("id", checklistId);
-    if (delChecklistErr) {
-      alert("Errore eliminazione PROGETTO: " + delChecklistErr.message);
-      return;
+    if (debug) {
+      console.log("[delete-with-backup] auth_mode:", data?.auth_mode || data?.debug?.auth_mode);
     }
 
     await load();
@@ -1768,6 +1605,7 @@ export default function Page() {
                         setProjectStatusFilter({
                           IN_CORSO: checked,
                           CONSEGNATO: checked,
+                          RIENTRATO: checked,
                           SOSPESO: checked,
                           CHIUSO: checked,
                         });
@@ -1797,6 +1635,19 @@ export default function Page() {
                       }
                     />
                     Consegnato
+                  </label>
+                  <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <input
+                      type="checkbox"
+                      checked={projectStatusFilter.RIENTRATO}
+                      onChange={(e) =>
+                        setProjectStatusFilter((prev) => ({
+                          ...prev,
+                          RIENTRATO: e.target.checked,
+                        }))
+                      }
+                    />
+                    Rientrato
                   </label>
                   <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
                     <input

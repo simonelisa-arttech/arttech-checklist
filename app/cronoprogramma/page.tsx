@@ -3,33 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import ConfigMancante from "@/components/ConfigMancante";
-import { isSupabaseConfigured, supabase } from "@/lib/supabaseClient";
-
-type ChecklistRow = {
-  id: string;
-  cliente: string | null;
-  nome_checklist: string | null;
-  proforma: string | null;
-  data_prevista: string | null;
-  data_tassativa: string | null;
-  stato_progetto?: string | null;
-  noleggio_vendita: string | null;
-  tipo_impianto: string | null;
-};
-
-type InterventoRow = {
-  id: string;
-  cliente: string | null;
-  checklist_id: string | null;
-  ticket_no?: string | null;
-  data: string | null;
-  data_tassativa?: string | null;
-  descrizione: string | null;
-  tipo?: string | null;
-  proforma: string | null;
-  stato_intervento: string | null;
-  fatturazione_stato: string | null;
-};
+import { isSupabaseConfigured } from "@/lib/supabaseClient";
 
 type TimelineRow = {
   kind: "INSTALLAZIONE" | "INTERVENTO";
@@ -63,10 +37,6 @@ type CronoComment = {
   created_by_operatore: string | null;
   created_by_nome: string | null;
 };
-
-function toIsoDay(value?: string | null) {
-  return value ? String(value).slice(0, 10) : "";
-}
 
 function inferInterventoTipologia(text?: string | null) {
   const v = String(text || "").toLowerCase();
@@ -334,132 +304,27 @@ export default function CronoprogrammaPage() {
     (async () => {
       setLoading(true);
       setError(null);
-      const CUTOFF_DATE = "2026-01-01";
-
-      const { data: checklists, error: cErr } = await supabase
-        .from("checklists")
-        .select("id, cliente, nome_checklist, proforma, data_prevista, data_tassativa, stato_progetto, noleggio_vendita, tipo_impianto")
-        .eq("stato_progetto", "IN_CORSO")
-        .order("created_at", { ascending: false });
-
-      if (cErr) {
-        setError("Errore caricamento installazioni: " + cErr.message);
-        setLoading(false);
-        return;
-      }
-
-      let interventi: InterventoRow[] | null = null;
-      let iErr: any = null;
-      {
-        const res = await supabase
-          .from("saas_interventi")
-          .select(
-            "id, cliente, checklist_id, ticket_no, data, data_tassativa, descrizione, tipo, proforma, stato_intervento, fatturazione_stato"
-          )
-          .eq("stato_intervento", "APERTO")
-          .or(`data_tassativa.gte.${CUTOFF_DATE},and(data_tassativa.is.null,data.gte.${CUTOFF_DATE})`)
-          .order("data", { ascending: true });
-        interventi = res.data as InterventoRow[] | null;
-        iErr = res.error;
-      }
-      if (iErr && String(iErr.message || "").toLowerCase().includes("data_tassativa")) {
-        const res = await supabase
-          .from("saas_interventi")
-          .select(
-            "id, cliente, checklist_id, ticket_no, data, descrizione, tipo, proforma, stato_intervento, fatturazione_stato"
-          )
-          .eq("stato_intervento", "APERTO")
-          .gte("data", CUTOFF_DATE)
-          .order("data", { ascending: true });
-        interventi = (res.data as InterventoRow[] | null)?.map((r) => ({ ...r, data_tassativa: null })) ?? [];
-        iErr = res.error;
-      }
-      if (iErr && String(iErr.message || "").toLowerCase().includes("ticket_no")) {
-        const res = await supabase
-          .from("saas_interventi")
-          .select("id, cliente, checklist_id, data, data_tassativa, descrizione, tipo, proforma, stato_intervento, fatturazione_stato")
-          .eq("stato_intervento", "APERTO")
-          .or(`data_tassativa.gte.${CUTOFF_DATE},and(data_tassativa.is.null,data.gte.${CUTOFF_DATE})`)
-          .order("data", { ascending: true });
-        interventi =
-          (res.data as InterventoRow[] | null)?.map((r) => ({ ...r, ticket_no: null, data_tassativa: r.data_tassativa ?? null })) ??
-          [];
-        iErr = res.error;
-      }
-
-      if (iErr) {
-        setError("Errore caricamento interventi: " + iErr.message);
-        setLoading(false);
-        return;
-      }
-
-      const checklistById = new Map<string, ChecklistRow>();
-      const inCorsoChecklistIds = new Set<string>();
-      for (const c of (checklists || []) as ChecklistRow[]) {
-        checklistById.set(c.id, c);
-        if (String(c.stato_progetto || "").toUpperCase() === "IN_CORSO") {
-          inCorsoChecklistIds.add(c.id);
+      try {
+        const res = await fetch("/api/cronoprogramma", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "load_events" }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          setError(String(data?.error || "Errore caricamento cronoprogramma"));
+          setRows([]);
+          return;
         }
+        const timeline = ((data?.events as TimelineRow[]) || []).map((r) => ({
+          ...r,
+          tipologia: String(r.tipologia || inferInterventoTipologia(r.descrizione)).toUpperCase(),
+        }));
+        setRows(timeline);
+        await loadRowState(timeline);
+      } finally {
+        setLoading(false);
       }
-
-      const timeline: TimelineRow[] = [];
-
-      for (const c of (checklists || []) as ChecklistRow[]) {
-        if (String(c.stato_progetto || "").toUpperCase() !== "IN_CORSO") continue;
-        const date = toIsoDay(c.data_tassativa) || toIsoDay(c.data_prevista);
-        if (!date || date < CUTOFF_DATE) continue;
-        timeline.push({
-          kind: "INSTALLAZIONE",
-          id: `install:${c.id}`,
-          row_ref_id: c.id,
-          data_prevista: toIsoDay(c.data_prevista) || date,
-          data_tassativa: toIsoDay(c.data_tassativa) || date,
-          cliente: String(c.cliente || "—"),
-          checklist_id: c.id,
-          progetto: String(c.nome_checklist || c.id),
-          proforma: c.proforma ?? null,
-          tipologia: String(c.noleggio_vendita || "INSTALLAZIONE").toUpperCase(),
-          descrizione:
-            [c.tipo_impianto || "", c.noleggio_vendita || ""].filter(Boolean).join(" · ") ||
-            "Installazione pianificata",
-          stato: "PIANIFICATA",
-          fatto: false,
-        });
-      }
-
-      for (const i of (interventi || []) as InterventoRow[]) {
-        const statoIntervento = String(i.stato_intervento || i.fatturazione_stato || "APERTO").toUpperCase();
-        if (statoIntervento !== "APERTO") continue;
-        const date = toIsoDay(i.data_tassativa) || toIsoDay(i.data);
-        if (!date || date < CUTOFF_DATE) continue;
-        if (i.checklist_id && !inCorsoChecklistIds.has(i.checklist_id)) continue;
-        const c = i.checklist_id ? checklistById.get(i.checklist_id) : null;
-        const prevista = toIsoDay(i.data) || toIsoDay(i.data_tassativa) || date;
-        const tassativa = toIsoDay(i.data_tassativa) || toIsoDay(i.data) || date;
-        timeline.push({
-          kind: "INTERVENTO",
-          id: `intervento:${i.id}`,
-          row_ref_id: i.id,
-          data_prevista: prevista,
-          data_tassativa: tassativa,
-          cliente: String(i.cliente || c?.cliente || "—"),
-          checklist_id: i.checklist_id,
-          ticket_no: i.ticket_no ?? null,
-          proforma: i.proforma ?? c?.proforma ?? null,
-          progetto: String(c?.nome_checklist || i.checklist_id || "—"),
-          tipologia: String(i.tipo || inferInterventoTipologia(i.descrizione)).toUpperCase(),
-          descrizione: String(i.descrizione || "Intervento"),
-          stato: statoIntervento,
-          fatto: false,
-        });
-      }
-
-      timeline.sort((a, b) =>
-        (a.data_tassativa || a.data_prevista).localeCompare(b.data_tassativa || b.data_prevista)
-      );
-      setRows(timeline);
-      await loadRowState(timeline);
-      setLoading(false);
     })();
   }, []);
 
