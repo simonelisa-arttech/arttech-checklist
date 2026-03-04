@@ -9,6 +9,7 @@ if (!url || !serviceRoleKey) {
 }
 
 const supabase = createClient(url, serviceRoleKey, { auth: { persistSession: false } });
+console.log('E2E seed auth_mode: service_role');
 
 const CHECKLIST_RENEWALS = '00000000-0000-0000-0000-00000000e201';
 const CHECKLIST_DUPLICATE = '00000000-0000-0000-0000-00000000e202';
