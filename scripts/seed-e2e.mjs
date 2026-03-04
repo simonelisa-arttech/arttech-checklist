@@ -1,14 +1,14 @@
 import { createClient } from '@supabase/supabase-js';
 
-const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-const anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+const url = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
+const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-if (!url || !anon) {
-  console.error('Missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY');
+if (!url || !serviceRoleKey) {
+  console.error('Missing NEXT_PUBLIC_SUPABASE_URL/SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY');
   process.exit(1);
 }
 
-const supabase = createClient(url, anon, { auth: { persistSession: false } });
+const supabase = createClient(url, serviceRoleKey, { auth: { persistSession: false } });
 
 const CHECKLIST_RENEWALS = '00000000-0000-0000-0000-00000000e201';
 const CHECKLIST_DUPLICATE = '00000000-0000-0000-0000-00000000e202';
