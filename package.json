@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "tsc --noEmit",
     "test:e2e": "playwright test",
-    "guard:no-service-role-in-client": "grep -RIn --exclude-dir=node_modules --exclude-dir=.next --exclude-dir=.git \"SUPABASE_SERVICE_ROLE_KEY\" app components middleware.ts | grep -v \"app/api\\|app/.*/route.ts\\|lib/supabaseAdmin.ts\\|lib/adminAuth.ts\" && echo \"service role key used outside server\" && exit 1 || exit 0"
+    "guard:no-service-role-in-client": "grep -RIn --exclude-dir=node_modules --exclude-dir=.next --exclude-dir=.git \"SUPABASE_SERVICE_ROLE_KEY\" app components middleware.ts | grep -v \"app/api\\|app/.*/route.ts\\|lib/supabaseAdmin.ts\\|lib/adminAuth.ts\" && echo \"service role key used outside server\" && exit 1 || exit 0",
+    "guard:no-backup-in-client": "rg -n \"\\.from\\((\\\"|').*_backup(\\\"|')\\)|checklists_backup|_backup\" app --glob '!app/api/**' && echo \"backup table access found in client code\" && exit 1 || exit 0"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.90.1",

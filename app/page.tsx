@@ -706,7 +706,21 @@ export default function Page() {
     let catalogErr: any = null;
 
     const debug = new URLSearchParams(window.location.search).get("debug") === "1";
-    const dashboardRes = await fetch(`/api/dashboard${debug ? "?debug=1" : ""}`);
+    const params = new URLSearchParams();
+    if (debug) params.set("debug", "1");
+    if (q.trim()) params.set("q", q.trim());
+    const activeSaasFilters = (Object.entries(saasServiceFilter) as Array<[SaasServiceFilter, boolean]>)
+      .filter(([, enabled]) => enabled)
+      .map(([key]) => key);
+    if (activeSaasFilters.length > 0) params.set("saas", activeSaasFilters.join(","));
+    const activeProjectStatusFilters = (
+      Object.entries(projectStatusFilter) as Array<[ProjectStatusFilter, boolean]>
+    )
+      .filter(([, enabled]) => enabled)
+      .map(([key]) => key);
+    if (activeProjectStatusFilters.length > 0) params.set("stati", activeProjectStatusFilters.join(","));
+
+    const dashboardRes = await fetch(`/api/dashboard${params.size ? `?${params.toString()}` : ""}`);
     const dashboardData = await dashboardRes.json().catch(() => ({}));
     if (!dashboardRes.ok) {
       error = { message: dashboardData?.error || "Errore caricamento dashboard" };
@@ -719,6 +733,10 @@ export default function Page() {
       catalogItemsData = (dashboardData?.data?.catalogItems as any[]) || [];
       if (debug) {
         console.log("[dashboard] auth_mode:", dashboardData?.auth_mode || dashboardData?.debug?.auth_mode);
+        console.log(
+          "[dashboard] result_count:",
+          dashboardData?.debug?.result_count ?? (dashboardData?.data?.checklists || []).length
+        );
       }
     }
 
@@ -858,7 +876,7 @@ export default function Page() {
 
   useEffect(() => {
     load();
-  }, []);
+  }, [q, saasServiceFilter, projectStatusFilter]);
 
   const closeDupModal = (_reason?: string) => {
     setDupModalOpen(false);
