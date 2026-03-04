@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import ConfigMancante from "@/components/ConfigMancante";
+import AttachmentsPanel from "@/components/AttachmentsPanel";
 import Toast from "@/components/Toast";
 import { calcM2FromDimensioni } from "@/lib/parseDimensioni";
 import { isSupabaseConfigured, supabase } from "@/lib/supabaseClient";
@@ -1149,21 +1150,19 @@ export default function ClientePage({ params }: { params: any }) {
         const mail = String((anagData as any)?.email || "").trim();
         setClienteAnagraficaEmail(mail && mail.includes("@") ? mail : null);
       }
-      const { data: cls, error: clsErr } = await supabase
-        .from("checklists")
-        .select(
-          "id, cliente, cliente_id, nome_checklist, proforma, magazzino_importazione, dimensioni, numero_facce, passo, tipo_impianto, data_prevista, data_tassativa, data_installazione_reale, stato_progetto, saas_piano, saas_tipo, saas_scadenza, saas_note, ultra_interventi_illimitati, ultra_interventi_inclusi, garanzia_scadenza, created_at"
-        )
-        .ilike("cliente", `%${clienteKey}%`)
-        .order("created_at", { ascending: false });
-
-      if (clsErr) {
-        setError("Errore caricamento PROGETTI: " + clsErr.message);
+      const dashboardRes = await fetch(`/api/dashboard?q=${encodeURIComponent(clienteKey)}`);
+      const dashboardJson = await dashboardRes.json().catch(() => ({}));
+      if (!dashboardRes.ok) {
+        setError("Errore caricamento PROGETTI: " + (dashboardJson?.error || "errore API dashboard"));
         setLoading(false);
         return;
       }
 
-      const list = (cls || []) as ChecklistRow[];
+      const list = ((dashboardJson?.data?.checklists || []) as ChecklistRow[]).filter((row) =>
+        String((row as any)?.cliente || "")
+          .toLowerCase()
+          .includes(clienteKey.toLowerCase())
+      );
       const firstClienteId = String((list[0] as any)?.cliente_id || "").trim();
       if (firstClienteId) {
         const { data: clienteById } = await supabase
@@ -1180,34 +1179,30 @@ export default function ClientePage({ params }: { params: any }) {
       setChecklists(list);
       const checklistIds = list.map((c) => c.id).filter(Boolean);
       if (checklistIds.length > 0) {
-        const { data: docsData, error: docsErr } = await supabase
-          .from("checklist_documents")
-          .select("checklist_id, tipo, filename, storage_path, uploaded_at")
-          .in("checklist_id", checklistIds)
-          .order("uploaded_at", { ascending: false });
-        if (!docsErr) {
-          const byChecklist = new Map<string, string>();
-          for (const c of list) {
-            if (c.id) {
-              const p = (c.proforma || "").trim();
-              if (p) byChecklist.set(c.id, p);
-            }
+        const byChecklist = new Map<string, string>();
+        for (const c of list) {
+          if (c.id) {
+            const p = (c.proforma || "").trim();
+            if (p) byChecklist.set(c.id, p);
           }
-          const map = new Map<string, { filename: string; storage_path: string }>();
-          for (const d of (docsData || []) as any[]) {
-            const tipo = String(d.tipo || "").toUpperCase();
+        }
+        const map = new Map<string, { filename: string; storage_path: string }>();
+        for (const c of list as any[]) {
+          const docs = Array.isArray(c?.checklist_documents) ? c.checklist_documents : [];
+          for (const d of docs) {
+            const tipo = String(d?.tipo || "").toUpperCase();
             if (tipo !== "PROFORMA" && tipo !== "FATTURA_PROFORMA") continue;
-            const p = d.checklist_id ? byChecklist.get(d.checklist_id) : null;
+            const p = c?.id ? byChecklist.get(c.id) : null;
             if (!p) continue;
-            if (!map.has(p) && d.storage_path) {
+            if (!map.has(p) && d?.storage_path) {
               map.set(p, {
-                filename: d.filename || "proforma",
+                filename: d?.filename || "proforma",
                 storage_path: d.storage_path,
               });
             }
           }
-          setProformaDocsByProforma(map);
         }
+        setProformaDocsByProforma(map);
       }
       if (checklistIds.length === 0) {
         setLicenze([]);
@@ -7335,102 +7330,115 @@ ${rinnovi30ggBreakdown.debugSample
 
                   <div style={{ marginTop: 12 }}>
                     <div style={{ fontWeight: 700, marginBottom: 6 }}>Allegati</div>
-                    <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-                      <input
-                        type="file"
+                    <div style={{ marginBottom: 12 }}>
+                      <AttachmentsPanel
+                        title="Allegati intervento (upload + link Drive)"
+                        entityType="INTERVENTO"
+                        entityId={i.id}
                         multiple
-                        onChange={(e) =>
-                          setInterventoUploadFiles((prev) => ({
-                            ...prev,
-                            [i.id]: e.target.files ? Array.from(e.target.files) : [],
-                          }))
-                        }
+                        storagePrefix="intervento"
                       />
-                      <button
-                        type="button"
-                        onClick={() => uploadInterventoFiles(i.id)}
-                        style={{
-                          padding: "6px 10px",
-                          borderRadius: 8,
-                          border: "1px solid #111",
-                          background: "#111",
-                          color: "white",
-                          cursor: "pointer",
-                        }}
-                      >
-                        Carica file
-                      </button>
                     </div>
-
-                    {files.length ? (
-                      <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(120px, 1fr))", gap: 10 }}>
-                        {files.map((f) => (
-                          <div
-                            key={f.id}
+                    {false && (
+                      <>
+                        <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+                          <input
+                            type="file"
+                            multiple
+                            onChange={(e) =>
+                              setInterventoUploadFiles((prev) => ({
+                                ...prev,
+                                [i.id]: e.target.files ? Array.from(e.target.files) : [],
+                              }))
+                            }
+                          />
+                          <button
+                            type="button"
+                            onClick={() => uploadInterventoFiles(i.id)}
                             style={{
-                              border: "1px solid #eee",
-                              borderRadius: 10,
-                              padding: 8,
-                              fontSize: 12,
+                              padding: "6px 10px",
+                              borderRadius: 8,
+                              border: "1px solid #111",
+                              background: "#111",
+                              color: "white",
+                              cursor: "pointer",
                             }}
                           >
-                            {isImageFile(f.filename) && interventoFileUrls[f.id] ? (
-                              <img
-                                src={interventoFileUrls[f.id]}
-                                alt={f.filename}
-                                style={{ width: "100%", height: 90, objectFit: "cover", borderRadius: 6 }}
-                              />
-                            ) : (
+                            Carica file
+                          </button>
+                        </div>
+
+                        {files.length ? (
+                          <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(120px, 1fr))", gap: 10 }}>
+                            {files.map((f) => (
                               <div
+                                key={f.id}
                                 style={{
-                                  height: 90,
-                                  display: "flex",
-                                  alignItems: "center",
-                                  justifyContent: "center",
-                                  background: "#f3f4f6",
-                                  borderRadius: 6,
+                                  border: "1px solid #eee",
+                                  borderRadius: 10,
+                                  padding: 8,
+                                  fontSize: 12,
                                 }}
                               >
-                                FILE
+                                {isImageFile(f.filename) && interventoFileUrls[f.id] ? (
+                                  <img
+                                    src={interventoFileUrls[f.id]}
+                                    alt={f.filename}
+                                    style={{ width: "100%", height: 90, objectFit: "cover", borderRadius: 6 }}
+                                  />
+                                ) : (
+                                  <div
+                                    style={{
+                                      height: 90,
+                                      display: "flex",
+                                      alignItems: "center",
+                                      justifyContent: "center",
+                                      background: "#f3f4f6",
+                                      borderRadius: 6,
+                                    }}
+                                  >
+                                    FILE
+                                  </div>
+                                )}
+                                <div style={{ marginTop: 6, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                                  {f.filename}
+                                </div>
+                                <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
+                                  <button
+                                    type="button"
+                                    onClick={() => openInterventoFile(f)}
+                                    style={{
+                                      padding: "4px 8px",
+                                      borderRadius: 6,
+                                      border: "1px solid #ddd",
+                                      background: "white",
+                                    }}
+                                  >
+                                    Apri
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => deleteInterventoFile(f)}
+                                    style={{
+                                      padding: "4px 8px",
+                                      borderRadius: 6,
+                                      border: "1px solid #dc2626",
+                                      background: "white",
+                                      color: "#dc2626",
+                                    }}
+                                  >
+                                    Elimina
+                                  </button>
+                                </div>
                               </div>
-                            )}
-                            <div style={{ marginTop: 6, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                              {f.filename}
-                            </div>
-                            <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
-                              <button
-                                type="button"
-                                onClick={() => openInterventoFile(f)}
-                                style={{
-                                  padding: "4px 8px",
-                                  borderRadius: 6,
-                                  border: "1px solid #ddd",
-                                  background: "white",
-                                }}
-                              >
-                                Apri
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => deleteInterventoFile(f)}
-                                style={{
-                                  padding: "4px 8px",
-                                  borderRadius: 6,
-                                  border: "1px solid #dc2626",
-                                  background: "white",
-                                  color: "#dc2626",
-                                }}
-                              >
-                                Elimina
-                              </button>
-                            </div>
+                            ))}
                           </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <div style={{ marginTop: 6, fontSize: 12, opacity: 0.7 }}>
-                        Nessun allegato
-                      </div>
+                        ) : (
+                          <div style={{ marginTop: 6, fontSize: 12, opacity: 0.7 }}>
+                            Nessun allegato
+                          </div>
+                        )}
+                      </>
                     )}
                   </div>
                 </>

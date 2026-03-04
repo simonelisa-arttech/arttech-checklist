@@ -80,6 +80,7 @@ export async function GET(request: Request) {
         id,
         tipo,
         filename,
+        storage_path,
         uploaded_at
       )
     `;
@@ -91,6 +92,7 @@ export async function GET(request: Request) {
         id,
         tipo,
         filename,
+        storage_path,
         uploaded_at
       )
     `;
