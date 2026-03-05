@@ -6018,6 +6018,7 @@ function buildFormData(c: Checklist): FormData {
                 </div>
 
                 {(() => {
+                  if (!taskFilesTask?.id) return null;
                   const rows = taskDocuments.filter((d) => d.task_id === taskFilesTask.id);
                   if (rows.length === 0) {
                     return <div style={{ opacity: 0.7 }}>Nessun file caricato per questo task</div>;
