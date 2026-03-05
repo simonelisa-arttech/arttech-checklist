@@ -827,6 +827,34 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
     return input.trim().toUpperCase().replace(/\s+/g, " ");
   }
 
+  async function db<T = any>(payload: {
+    table: string;
+    op: "select" | "insert" | "update" | "delete";
+    select?: string;
+    filter?: Record<string, string | number | boolean | null>;
+    order?: Array<{ col: string; asc: boolean }>;
+    limit?: number;
+    payload?: Record<string, any>;
+  }): Promise<{ data: T | null; error: { message: string } | null }> {
+    try {
+      const res = await fetch("/api/db", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        cache: "no-store",
+        body: JSON.stringify(payload),
+      });
+      const json = await res.json().catch(() => ({} as any));
+      if (!res.ok || json?.ok === false) {
+        return { data: null, error: { message: String(json?.error || "DB broker error") } };
+      }
+      return { data: (json?.data ?? null) as T, error: null };
+    } catch (e: any) {
+      return { data: null, error: { message: String(e?.message || "DB broker request failed") } };
+    }
+  }
+
+  // TODO migrate writes: keep direct client writes temporarily to reduce risk of regressions.
+
   async function addSerial(
     tipo: "CONTROLLO" | "MODULO_LED",
     raw: string,
@@ -893,11 +921,12 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
   async function openSerialUsage(tipo: "CONTROLLO" | "MODULO_LED", seriale: string) {
     if (!id) return;
     setSerialUsageOpen({ tipo, seriale });
-    const { data, error: err } = await supabase
-      .from("asset_serials")
-      .select("checklist_id")
-      .eq("tipo", tipo)
-      .eq("seriale", seriale);
+    const { data, error: err } = await db<any[]>({
+      table: "asset_serials",
+      op: "select",
+      select: "checklist_id",
+      filter: { tipo, seriale },
+    });
     if (err) {
       setSerialUsageRows([]);
       return;
@@ -910,10 +939,19 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
       setSerialUsageRows([]);
       return;
     }
-    const { data: checklistsData } = await supabase
-      .from("checklists")
-      .select("id, cliente, nome_checklist")
-      .in("id", others);
+    const rows = await Promise.all(
+      others.map(async (cid) => {
+        const res = await db<any[]>({
+          table: "checklists",
+          op: "select",
+          select: "id, cliente, nome_checklist",
+          filter: { id: cid },
+          limit: 1,
+        });
+        return res.data?.[0] ?? null;
+      })
+    );
+    const checklistsData = rows.filter(Boolean);
     setSerialUsageRows(
       (checklistsData || []).map((r: any) => ({
         checklist_id: r.id,
@@ -1006,34 +1044,37 @@ function buildFormData(c: Checklist): FormData {
   }
 
   async function loadProjectInterventi(checklistId: string) {
-    let res: any = await supabase
-      .from("saas_interventi")
-      .select(
-        "id, cliente, checklist_id, data, data_tassativa, ticket_no, descrizione, incluso, proforma, codice_magazzino, fatturazione_stato, stato_intervento, esito_fatturazione, numero_fattura, fatturato_il, note, note_tecniche, created_at"
-      )
-      .eq("checklist_id", checklistId)
-      .order("data", { ascending: false });
+    let res: any = await db<any[]>({
+      table: "saas_interventi",
+      op: "select",
+      select:
+        "id, cliente, checklist_id, data, data_tassativa, ticket_no, descrizione, incluso, proforma, codice_magazzino, fatturazione_stato, stato_intervento, esito_fatturazione, numero_fattura, fatturato_il, note, note_tecniche, created_at",
+      filter: { checklist_id: checklistId },
+      order: [{ col: "data", asc: false }],
+    });
 
     if (res.error && String(res.error.message || "").toLowerCase().includes("data_tassativa")) {
-      res = await supabase
-        .from("saas_interventi")
-        .select(
-          "id, cliente, checklist_id, data, ticket_no, descrizione, incluso, proforma, codice_magazzino, fatturazione_stato, stato_intervento, esito_fatturazione, numero_fattura, fatturato_il, note, note_tecniche, created_at"
-        )
-        .eq("checklist_id", checklistId)
-        .order("data", { ascending: false });
+      res = await db<any[]>({
+        table: "saas_interventi",
+        op: "select",
+        select:
+          "id, cliente, checklist_id, data, ticket_no, descrizione, incluso, proforma, codice_magazzino, fatturazione_stato, stato_intervento, esito_fatturazione, numero_fattura, fatturato_il, note, note_tecniche, created_at",
+        filter: { checklist_id: checklistId },
+        order: [{ col: "data", asc: false }],
+      });
       if (!res.error) {
         res.data = ((res.data || []) as any[]).map((r) => ({ ...r, data_tassativa: null }));
       }
     }
     if (res.error && String(res.error.message || "").toLowerCase().includes("ticket_no")) {
-      res = await supabase
-        .from("saas_interventi")
-        .select(
-          "id, cliente, checklist_id, data, data_tassativa, descrizione, incluso, proforma, codice_magazzino, fatturazione_stato, stato_intervento, esito_fatturazione, numero_fattura, fatturato_il, note, note_tecniche, created_at"
-        )
-        .eq("checklist_id", checklistId)
-        .order("data", { ascending: false });
+      res = await db<any[]>({
+        table: "saas_interventi",
+        op: "select",
+        select:
+          "id, cliente, checklist_id, data, data_tassativa, descrizione, incluso, proforma, codice_magazzino, fatturazione_stato, stato_intervento, esito_fatturazione, numero_fattura, fatturato_il, note, note_tecniche, created_at",
+        filter: { checklist_id: checklistId },
+        order: [{ col: "data", asc: false }],
+      });
       if (!res.error) {
         res.data = ((res.data || []) as any[]).map((r) => ({ ...r, ticket_no: null }));
       }
@@ -1160,11 +1201,13 @@ function buildFormData(c: Checklist): FormData {
       setProjectTagliandoSaving(false);
       return;
     }
-    const { data: tagliandiData, error: loadErr } = await supabase
-      .from("tagliandi")
-      .select("id, checklist_id, scadenza, stato, modalita, note, created_at")
-      .eq("checklist_id", id)
-      .order("scadenza", { ascending: true });
+    const { data: tagliandiData, error: loadErr } = await db<any[]>({
+      table: "tagliandi",
+      op: "select",
+      select: "id, checklist_id, scadenza, stato, modalita, note, created_at",
+      filter: { checklist_id: id },
+      order: [{ col: "scadenza", asc: true }],
+    });
     if (loadErr) {
       setProjectInterventiError(loadErr.message);
       setProjectTagliandoSaving(false);
@@ -1269,11 +1312,13 @@ function buildFormData(c: Checklist): FormData {
       return;
     }
 
-    const { data: items, error: err2 } = await supabase
-      .from("checklist_items")
-      .select("*")
-      .eq("checklist_id", id)
-      .order("created_at", { ascending: true });
+    const { data: items, error: err2 } = await db<any[]>({
+      table: "checklist_items",
+      op: "select",
+      select: "*",
+      filter: { checklist_id: id },
+      order: [{ col: "created_at", asc: true }],
+    });
 
     if (err2) {
       setError("Errore caricamento righe: " + err2.message);
@@ -1333,11 +1378,13 @@ function buildFormData(c: Checklist): FormData {
 
     let taskDocsData: any[] = [];
     {
-      const { data, error } = await supabase
-        .from("checklist_task_documents")
-        .select("id, checklist_id, task_id, filename, storage_path, uploaded_at, uploaded_by_operatore")
-        .eq("checklist_id", id)
-        .order("uploaded_at", { ascending: false });
+      const { data, error } = await db<any[]>({
+        table: "checklist_task_documents",
+        op: "select",
+        select: "id, checklist_id, task_id, filename, storage_path, uploaded_at, uploaded_by_operatore",
+        filter: { checklist_id: id },
+        order: [{ col: "uploaded_at", asc: false }],
+      });
       if (error) {
         const msg = String(error.message || "").toLowerCase();
         const missingTable =
@@ -1382,17 +1429,17 @@ function buildFormData(c: Checklist): FormData {
     }
 
     if (!catalogLoaded) {
-      const { data: catalogData, error: catalogErr } = await supabase
-        .from("catalog_items")
-        .select("id, codice, descrizione, tipo, categoria, attivo")
-        .eq("attivo", true)
-        .order("descrizione", { ascending: true });
-      const { data: deviceData, error: deviceErr } = await supabase
-        .from("catalog_items")
-        .select("id, codice, descrizione, tipo, categoria, attivo")
-        .eq("attivo", true)
-        .ilike("codice", "EL-%")
-        .order("descrizione", { ascending: true });
+      const { data: catalogData, error: catalogErr } = await db<any[]>({
+        table: "catalog_items",
+        op: "select",
+        select: "id, codice, descrizione, tipo, categoria, attivo",
+        filter: { attivo: true },
+        order: [{ col: "descrizione", asc: true }],
+      });
+      const deviceData = ((catalogData || []) as any[]).filter((d) =>
+        String(d?.codice || "").toUpperCase().startsWith("EL-")
+      );
+      const deviceErr = null;
 
       if (catalogErr) {
         console.error("Errore caricamento catalogo", catalogErr);
@@ -1410,12 +1457,14 @@ function buildFormData(c: Checklist): FormData {
     const headChecklist = head as Checklist;
     // Preferisci sempre la denominazione completa dell'anagrafica cliente per la UI progetto.
     if (headChecklist.cliente_id) {
-      const { data: anagraficaCliente } = await supabase
-        .from("clienti_anagrafica")
-        .select("denominazione")
-        .eq("id", headChecklist.cliente_id)
-        .maybeSingle();
-      const fullName = String((anagraficaCliente as any)?.denominazione || "").trim();
+      const { data: anagraficaRows } = await db<any[]>({
+        table: "clienti_anagrafica",
+        op: "select",
+        select: "denominazione",
+        filter: { id: headChecklist.cliente_id },
+        limit: 1,
+      });
+      const fullName = String((anagraficaRows?.[0] as any)?.denominazione || "").trim();
       if (fullName) {
         headChecklist.cliente = fullName;
       }
@@ -1438,12 +1487,15 @@ function buildFormData(c: Checklist): FormData {
     const clienteKey = String(headChecklist.cliente ?? "").trim();
     setChecklistClienteEmail(null);
     if (clienteKey) {
-      const { data: clienteRow } = await supabase
-        .from("clienti_anagrafica")
-        .select("email")
-        .ilike("denominazione", clienteKey)
-        .limit(1)
-        .maybeSingle();
+      const { data: clienteRows } = await db<any[]>({
+        table: "clienti_anagrafica",
+        op: "select",
+        select: "email, denominazione",
+        limit: 500,
+      });
+      const clienteRow = (clienteRows || []).find(
+        (r: any) => String(r?.denominazione || "").toLowerCase() === clienteKey.toLowerCase()
+      );
       const mail = String((clienteRow as any)?.email || "").trim();
       setChecklistClienteEmail(mail && mail.includes("@") ? mail : null);
     }
@@ -1451,11 +1503,16 @@ function buildFormData(c: Checklist): FormData {
     let activeContratto: ContrattoRow | null = null;
     let ultraNome: string | null = null;
     if (clienteKey) {
-      const { data: contrattiData, error: contrattiErr } = await supabase
-        .from("saas_contratti")
-        .select("id, cliente, piano_codice, scadenza, interventi_annui, illimitati, created_at")
-        .ilike("cliente", `%${clienteKey}%`)
-        .order("created_at", { ascending: false });
+      const { data: contrattiDataRaw, error: contrattiErr } = await db<any[]>({
+        table: "saas_contratti",
+        op: "select",
+        select: "id, cliente, piano_codice, scadenza, interventi_annui, illimitati, created_at",
+        order: [{ col: "created_at", asc: false }],
+        limit: 1000,
+      });
+      const contrattiData = (contrattiDataRaw || []).filter((r: any) =>
+        String(r?.cliente || "").toLowerCase().includes(clienteKey.toLowerCase())
+      );
 
       if (!contrattiErr) {
         const today = new Date();
@@ -1470,21 +1527,25 @@ function buildFormData(c: Checklist): FormData {
       }
 
       if (activeContratto?.piano_codice) {
-        const { data: pianoRow } = await supabase
-          .from("saas_piani")
-          .select("codice, nome")
-          .eq("codice", activeContratto.piano_codice)
-          .maybeSingle();
-        ultraNome = (pianoRow as any)?.nome ?? null;
+        const { data: pianoRows } = await db<any[]>({
+          table: "saas_piani",
+          op: "select",
+          select: "codice, nome",
+          filter: { codice: activeContratto.piano_codice },
+          limit: 1,
+        });
+        ultraNome = (pianoRows?.[0] as any)?.nome ?? null;
       }
 
       if (activeContratto?.id) {
-        const { count } = await supabase
-          .from("saas_interventi")
-          .select("id", { count: "exact", head: true })
-          .eq("contratto_id", activeContratto.id)
-          .eq("incluso", true);
-        setInterventiInclusiUsati(count ?? 0);
+        const { data: includedRows } = await db<any[]>({
+          table: "saas_interventi",
+          op: "select",
+          select: "id, contratto_id, incluso",
+          filter: { contratto_id: activeContratto.id, incluso: true } as any,
+          limit: 1000,
+        });
+        setInterventiInclusiUsati((includedRows || []).length);
       } else {
         setInterventiInclusiUsati(0);
       }
@@ -1515,11 +1576,14 @@ function buildFormData(c: Checklist): FormData {
     setTaskDocuments(taskDocsData as ChecklistTaskDocument[]);
     setAssetSerials((serialsData || []) as AssetSerial[]);
 
-    const { data: alertData, error: alertErr } = await supabase
-      .from("checklist_alert_log")
-      .select("task_id, to_operatore_id, created_at")
-      .eq("checklist_id", id)
-      .order("created_at", { ascending: false });
+    const { data: alertData, error: alertErr } = await db<any[]>({
+      table: "checklist_alert_log",
+      op: "select",
+      select: "task_id, to_operatore_id, created_at, checklist_id",
+      filter: { checklist_id: id },
+      order: [{ col: "created_at", asc: false }],
+      limit: 1000,
+    });
     if (!alertErr) {
       const map = new Map<string, { toOperatoreId: string; createdAt: string }>();
       (alertData || []).forEach((r: any) => {
@@ -1583,9 +1647,12 @@ function buildFormData(c: Checklist): FormData {
 
   useEffect(() => {
     (async () => {
-      const { data, error: opErr } = await supabase
-        .from("operatori")
-        .select("id, nome, email, attivo, alert_enabled, alert_tasks, cliente, ruolo");
+      const { data, error: opErr } = await db<any[]>({
+        table: "operatori",
+        op: "select",
+        select: "id, nome, email, attivo, alert_enabled, alert_tasks, cliente, ruolo",
+        limit: 1000,
+      });
       if (opErr) {
         console.error("Errore caricamento operatori", opErr);
         return;
@@ -1790,13 +1857,14 @@ function buildFormData(c: Checklist): FormData {
           .trim();
       }
 
-      const { data: tpl } = await supabase
-        .from("checklist_task_templates")
-        .select("id")
-        .eq("sezione", sezioneNorm)
-        .eq("titolo", alertTask.titolo)
-        .limit(1)
-        .maybeSingle();
+      const { data: tplRows } = await db<any[]>({
+        table: "checklist_task_templates",
+        op: "select",
+        select: "id, sezione, titolo",
+        filter: { sezione: sezioneNorm, titolo: alertTask.titolo } as any,
+        limit: 1,
+      });
+      const tpl = tplRows?.[0] ?? null;
 
       if (tpl?.id) {
         taskTemplateId = tpl.id;
@@ -2911,10 +2979,13 @@ function buildFormData(c: Checklist): FormData {
       return;
     }
 
-    const { data: docsData, error: docsErr } = await supabase
-      .from("checklist_documents")
-      .select("id, storage_path")
-      .eq("checklist_id", id);
+    const { data: docsData, error: docsErr } = await db<any[]>({
+      table: "checklist_documents",
+      op: "select",
+      select: "id, storage_path",
+      filter: { checklist_id: id },
+      limit: 1000,
+    });
     if (docsErr) {
       const msg =
         logSupabaseError("load checklist_documents", docsErr) ||
@@ -2926,10 +2997,13 @@ function buildFormData(c: Checklist): FormData {
 
     let taskDocsData: any[] = [];
     {
-      const { data, error } = await supabase
-        .from("checklist_task_documents")
-        .select("id, storage_path")
-        .eq("checklist_id", id);
+      const { data, error } = await db<any[]>({
+        table: "checklist_task_documents",
+        op: "select",
+        select: "id, storage_path",
+        filter: { checklist_id: id },
+        limit: 1000,
+      });
       if (!error) {
         taskDocsData = data || [];
       } else {

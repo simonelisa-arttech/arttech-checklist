@@ -69,15 +69,45 @@ const TABLE_RULES: Record<
     filterCols: ["id", "user_id", "attivo", "ruolo", "cliente_id"],
     orderCols: ["created_at", "updated_at", "nome"],
   },
-  clienti_anagrafica: {
-    ops: ["select", "insert", "update", "delete"],
-    filterCols: ["id", "attivo", "codice_interno"],
-    orderCols: ["created_at", "updated_at", "denominazione"],
-  },
   attachments: {
     ops: ["select", "insert", "update", "delete"],
     filterCols: ["id", "entity_id", "entity_type", "created_by"],
     orderCols: ["created_at", "updated_at"],
+  },
+  saas_interventi: {
+    ops: ["select"],
+    filterCols: ["id", "checklist_id", "cliente_id", "cliente", "stato_intervento", "contratto_id", "incluso"],
+    orderCols: ["created_at", "updated_at", "data", "data_tassativa"],
+  },
+  checklist_task_documents: {
+    ops: ["select"],
+    filterCols: ["id", "checklist_id", "task_id", "uploaded_by_operatore"],
+    orderCols: ["created_at", "uploaded_at"],
+  },
+  clienti_anagrafica: {
+    ops: ["select", "insert", "update", "delete"],
+    filterCols: ["id", "attivo", "codice_interno", "denominazione"],
+    orderCols: ["created_at", "updated_at", "denominazione"],
+  },
+  saas_contratti: {
+    ops: ["select"],
+    filterCols: ["id", "cliente"],
+    orderCols: ["created_at", "updated_at", "scadenza"],
+  },
+  saas_piani: {
+    ops: ["select"],
+    filterCols: ["id", "codice"],
+    orderCols: ["created_at", "updated_at", "codice", "nome"],
+  },
+  checklist_alert_log: {
+    ops: ["select"],
+    filterCols: ["id", "checklist_id", "tipo", "riferimento", "trigger", "to_operatore_id"],
+    orderCols: ["created_at"],
+  },
+  checklist_task_templates: {
+    ops: ["select"],
+    filterCols: ["id", "target", "attivo", "sezione", "titolo"],
+    orderCols: ["created_at", "ordine", "titolo", "sezione"],
   },
 };
 
@@ -170,7 +200,7 @@ export async function POST(request: Request) {
 
   if (op === "select") {
     const select = String(body.select || "*").trim();
-    if (select !== "*" && !/^[a-zA-Z0-9_,\s]+$/.test(select)) {
+    if (select !== "*" && !/^[a-zA-Z0-9_,\s:\(\)\.\*]+$/.test(select)) {
       return invalid("Invalid select clause");
     }
     let q: any = supabaseAdmin.from(table).select(select);
