@@ -363,6 +363,7 @@ export default function Page() {
   const router = useRouter();
   const [items, setItems] = useState<Checklist[]>([]);
   const [loading, setLoading] = useState(true);
+  const [dashboardLoadError, setDashboardLoadError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [catalogItems, setCatalogItems] = useState<CatalogItem[]>([]);
   const [currentOperatoreId, setCurrentOperatoreId] = useState<string>("");
@@ -477,7 +478,9 @@ export default function Page() {
   // dashboard: ricerca + ordinamento
   const [q, setQ] = useState("");
   const [debouncedQ, setDebouncedQ] = useState("");
+  const lastDebouncedQRef = useRef("");
   const loadAbortRef = useRef<AbortController | null>(null);
+  const loadSpinnerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const loadRequestSeqRef = useRef(0);
   const [saasServiceFilter, setSaasServiceFilter] = useState<Record<SaasServiceFilter, boolean>>({
     EVENTS: false,
@@ -583,7 +586,7 @@ export default function Page() {
   }
 
   const displayRows = useMemo(() => {
-    const rawNeedle = q.trim().toLowerCase();
+    const rawNeedle = debouncedQ.trim().toLowerCase();
     const tokenMatch = rawNeedle.match(/\bproforma:(si|no)\b/);
     const proformaFilter =
       tokenMatch?.[1] === "si" ? true : tokenMatch?.[1] === "no" ? false : null;
@@ -677,7 +680,7 @@ export default function Page() {
     });
 
     return sorted;
-  }, [items, q, saasServiceFilter, projectStatusFilter, sortKey, sortDir, serialsByChecklistId]);
+  }, [items, debouncedQ, saasServiceFilter, projectStatusFilter, sortKey, sortDir, serialsByChecklistId]);
 
   const clientiOptions = useMemo(() => {
     const set = new Set<string>();
@@ -700,8 +703,11 @@ export default function Page() {
     const controller = new AbortController();
     loadAbortRef.current = controller;
     const isLatest = () => requestSeq === loadRequestSeqRef.current;
-
-    setLoading(true);
+    if (loadSpinnerTimerRef.current) clearTimeout(loadSpinnerTimerRef.current);
+    setLoading(false);
+    loadSpinnerTimerRef.current = setTimeout(() => {
+      if (isLatest()) setLoading(true);
+    }, 350);
     let data: any[] | null = null;
     let sections: any[] | null = null;
     let licenseSummary: any[] | null = null;
@@ -715,29 +721,33 @@ export default function Page() {
     let serialsErr: any = null;
     let catalogErr: any = null;
 
-    const debug = new URLSearchParams(window.location.search).get("debug") === "1";
-    const params = new URLSearchParams();
-    if (debug) params.set("debug", "1");
-    if (debouncedQ.trim()) params.set("q", debouncedQ.trim());
-    const activeSaasFilters = (Object.entries(saasServiceFilter) as Array<[SaasServiceFilter, boolean]>)
-      .filter(([, enabled]) => enabled)
-      .map(([key]) => key);
-    if (activeSaasFilters.length > 0) params.set("saas", activeSaasFilters.join(","));
-    const activeProjectStatusFilters = (
-      Object.entries(projectStatusFilter) as Array<[ProjectStatusFilter, boolean]>
-    )
-      .filter(([, enabled]) => enabled)
-      .map(([key]) => key);
-    if (activeProjectStatusFilters.length > 0) params.set("stati", activeProjectStatusFilters.join(","));
-
     try {
+      const debug = new URLSearchParams(window.location.search).get("debug") === "1";
+      const params = new URLSearchParams();
+      if (debug) params.set("debug", "1");
+      if (debouncedQ) params.set("q", debouncedQ);
+      const activeSaasFilters = (Object.entries(saasServiceFilter) as Array<[SaasServiceFilter, boolean]>)
+        .filter(([, enabled]) => enabled)
+        .map(([key]) => key);
+      if (activeSaasFilters.length > 0) params.set("saas", activeSaasFilters.join(","));
+      const activeProjectStatusFilters = (
+        Object.entries(projectStatusFilter) as Array<[ProjectStatusFilter, boolean]>
+      )
+        .filter(([, enabled]) => enabled)
+        .map(([key]) => key);
+      if (activeProjectStatusFilters.length > 0) params.set("stati", activeProjectStatusFilters.join(","));
+
       const dashboardRes = await fetch(`/api/dashboard${params.size ? `?${params.toString()}` : ""}`, {
         signal: controller.signal,
       });
       const dashboardData = await dashboardRes.json().catch(() => ({}));
       if (!dashboardRes.ok) {
         error = { message: dashboardData?.error || "Errore caricamento dashboard" };
+        if (isLatest()) {
+          setDashboardLoadError(String(error?.message || "Errore caricamento dashboard"));
+        }
       } else {
+        if (isLatest()) setDashboardLoadError(null);
         data = (dashboardData?.data?.checklists as any[]) || [];
         sections = (dashboardData?.data?.sections as any[]) || [];
         licenseSummary = (dashboardData?.data?.licenseSummary as any[]) || [];
@@ -755,6 +765,9 @@ export default function Page() {
     } catch (e: any) {
       if (e?.name === "AbortError") return;
       error = { message: e?.message || "Errore caricamento dashboard" };
+      if (isLatest()) {
+        setDashboardLoadError(String(error?.message || "Errore caricamento dashboard"));
+      }
     }
     if (!isLatest()) return;
 
@@ -864,7 +877,9 @@ export default function Page() {
     } catch (e: any) {
       if (e?.name === "AbortError" || controller.signal.aborted) return;
       console.error("Errore caricamento operatori", e);
-      if (isLatest()) setLoading(false);
+      if (isLatest()) {
+        setDashboardLoadError("Errore caricamento operatori");
+      }
       return;
     }
     if (opRes.ok) {
@@ -891,7 +906,9 @@ export default function Page() {
     } catch (e: any) {
       if (e?.name === "AbortError" || controller.signal.aborted) return;
       console.error("Errore caricamento operatore corrente", e);
-      if (isLatest()) setLoading(false);
+      if (isLatest()) {
+        setDashboardLoadError("Errore caricamento operatore corrente");
+      }
       return;
     }
     const meData = await meRes.json().catch(() => ({}));
@@ -911,11 +928,22 @@ export default function Page() {
     }
 
     if (!isLatest()) return;
-    setLoading(false);
+  } finally {
+    if (loadSpinnerTimerRef.current) {
+      clearTimeout(loadSpinnerTimerRef.current);
+      loadSpinnerTimerRef.current = null;
+    }
+    if (isLatest()) setLoading(false);
   }
+}
 
   useEffect(() => {
-    const t = setTimeout(() => setDebouncedQ(q), 350);
+    const t = setTimeout(() => {
+      const normalized = q.trim();
+      if (normalized === lastDebouncedQRef.current) return;
+      lastDebouncedQRef.current = normalized;
+      setDebouncedQ(normalized);
+    }, 350);
     return () => clearTimeout(t);
   }, [q]);
 
@@ -1525,6 +1553,11 @@ export default function Page() {
 
       {!showForm && (
         <div style={{ marginTop: 20, paddingBottom: 20 }}>
+          {dashboardLoadError && (
+            <div style={{ marginBottom: 10, fontSize: 13, color: "#b91c1c" }}>
+              {dashboardLoadError}
+            </div>
+          )}
           {loading ? (
             <div>Caricamento…</div>
           ) : items.length === 0 ? (
