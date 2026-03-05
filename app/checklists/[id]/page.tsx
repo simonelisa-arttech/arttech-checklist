@@ -543,6 +543,26 @@ function renderModalitaBadge(value?: string | null) {
   );
 }
 
+const LICENZA_STATI = [
+  "DA_AVVISARE",
+  "AVVISATO",
+  "CONFERMATO",
+  "DA_FATTURARE",
+  "FATTURATO",
+  "NON_RINNOVATO",
+  "ANNULLATO",
+];
+const TAGLIANDO_STATI = [
+  "DA_AVVISARE",
+  "AVVISATO",
+  "CONFERMATO",
+  "DA_FATTURARE",
+  "FATTURATO",
+  "NON_RINNOVATO",
+  "SCADUTO",
+];
+const TAGLIANDO_MODALITA = ["INCLUSO", "EXTRA", "AUTORIZZATO_CLIENTE"];
+
 function getNextLicenzaScadenza(licenze: Array<{ scadenza?: string | null }>) {
   const dates = licenze
     .map((l) => l.scadenza)
@@ -4270,34 +4290,49 @@ function buildFormData(c: Checklist): FormData {
       </div>
       {projectRenewalEdit && (
         <div
-          onClick={() => setProjectRenewalEdit(null)}
           style={{
             position: "fixed",
             inset: 0,
-            background: "rgba(0,0,0,0.25)",
+            background: "rgba(0,0,0,0.35)",
             display: "flex",
             alignItems: "center",
             justifyContent: "center",
-            zIndex: 2100,
+            padding: 16,
+            zIndex: 50,
           }}
+          onClick={() => setProjectRenewalEdit(null)}
         >
           <div
             onClick={(e) => e.stopPropagation()}
             style={{
-              width: 520,
-              maxWidth: "92vw",
+              width: "100%",
+              maxWidth: 640,
               background: "white",
-              border: "1px solid #eee",
               borderRadius: 12,
-              padding: 14,
+              padding: 16,
+              boxShadow: "0 10px 30px rgba(0,0,0,0.15)",
             }}
           >
-            <div style={{ fontWeight: 800, marginBottom: 10 }}>
-              Modifica {projectRenewalEdit.row.tipo}
+            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+              <div style={{ fontWeight: 800, fontSize: 18 }}>Modifica {projectRenewalEdit.row.tipo}</div>
+              <button
+                type="button"
+                onClick={() => setProjectRenewalEdit(null)}
+                style={{
+                  marginLeft: "auto",
+                  padding: "6px 10px",
+                  borderRadius: 8,
+                  border: "1px solid #ddd",
+                  background: "white",
+                }}
+              >
+                Chiudi
+              </button>
             </div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+
+            <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
               <label>
-                Scadenza
+                Scadenza<br />
                 <input
                   type="date"
                   value={projectRenewalEdit.scadenza}
@@ -4307,9 +4342,100 @@ function buildFormData(c: Checklist): FormData {
                   style={{ width: "100%", padding: 8 }}
                 />
               </label>
-              {projectRenewalEdit.row.source !== "garanzia" && (
+
+              {projectRenewalEdit.row.source === "saas" && (
                 <label>
-                  Stato
+                  Piano<br />
+                  <input
+                    value={checklist?.saas_piano || "—"}
+                    readOnly
+                    style={{ width: "100%", padding: 8, background: "#f9fafb" }}
+                  />
+                </label>
+              )}
+
+              {projectRenewalEdit.row.source === "licenza" && (
+                <>
+                  <label>
+                    Stato<br />
+                    <select
+                      value={projectRenewalEdit.stato}
+                      onChange={(e) =>
+                        setProjectRenewalEdit((p) => (p ? { ...p, stato: e.target.value } : p))
+                      }
+                      style={{ width: "100%", padding: 8 }}
+                    >
+                      {LICENZA_STATI.map((s) => (
+                        <option key={s} value={s}>
+                          {s}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label>
+                    Note<br />
+                    <input
+                      value={projectRenewalEdit.note}
+                      onChange={(e) =>
+                        setProjectRenewalEdit((p) => (p ? { ...p, note: e.target.value } : p))
+                      }
+                      style={{ width: "100%", padding: 8 }}
+                    />
+                  </label>
+                </>
+              )}
+
+              {projectRenewalEdit.row.source === "tagliando" && (
+                <>
+                  <label>
+                    Stato<br />
+                    <select
+                      value={projectRenewalEdit.stato}
+                      onChange={(e) =>
+                        setProjectRenewalEdit((p) => (p ? { ...p, stato: e.target.value } : p))
+                      }
+                      style={{ width: "100%", padding: 8 }}
+                    >
+                      {TAGLIANDO_STATI.map((s) => (
+                        <option key={s} value={s}>
+                          {s}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label>
+                    Modalità<br />
+                    <select
+                      value={projectRenewalEdit.modalita || ""}
+                      onChange={(e) =>
+                        setProjectRenewalEdit((p) => (p ? { ...p, modalita: e.target.value } : p))
+                      }
+                      style={{ width: "100%", padding: 8 }}
+                    >
+                      <option value="">—</option>
+                      {TAGLIANDO_MODALITA.map((s) => (
+                        <option key={s} value={s}>
+                          {s}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                  <label>
+                    Note<br />
+                    <input
+                      value={projectRenewalEdit.note}
+                      onChange={(e) =>
+                        setProjectRenewalEdit((p) => (p ? { ...p, note: e.target.value } : p))
+                      }
+                      style={{ width: "100%", padding: 8 }}
+                    />
+                  </label>
+                </>
+              )}
+
+              {projectRenewalEdit.row.source === "saas" && (
+                <label>
+                  Stato<br />
                   <input
                     value={projectRenewalEdit.stato}
                     onChange={(e) =>
@@ -4319,24 +4445,10 @@ function buildFormData(c: Checklist): FormData {
                   />
                 </label>
               )}
-              {projectRenewalEdit.row.source === "tagliando" && (
+
+              {projectRenewalEdit.row.source === "saas" && (
                 <label>
-                  Modalità
-                  <select
-                    value={projectRenewalEdit.modalita || "INCLUSO"}
-                    onChange={(e) =>
-                      setProjectRenewalEdit((p) => (p ? { ...p, modalita: e.target.value } : p))
-                    }
-                    style={{ width: "100%", padding: 8 }}
-                  >
-                    <option value="INCLUSO">INCLUSO</option>
-                    <option value="EXTRA">EXTRA</option>
-                  </select>
-                </label>
-              )}
-              {projectRenewalEdit.row.source !== "garanzia" && (
-                <label style={{ gridColumn: "1 / -1" }}>
-                  Note
+                  Note<br />
                   <input
                     value={projectRenewalEdit.note}
                     onChange={(e) =>
@@ -4346,12 +4458,26 @@ function buildFormData(c: Checklist): FormData {
                   />
                 </label>
               )}
+
+              {projectRenewalEdit.row.source === "garanzia" && (
+                <div style={{ fontSize: 12, opacity: 0.7 }}>Modifica solo la data di scadenza.</div>
+              )}
             </div>
-            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, marginTop: 12 }}>
+
+            {projectInterventiError && (
+              <div style={{ marginTop: 10, fontSize: 12, color: "#b91c1c" }}>{projectInterventiError}</div>
+            )}
+
+            <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 12 }}>
               <button
                 type="button"
                 onClick={() => setProjectRenewalEdit(null)}
-                style={{ padding: "8px 12px", borderRadius: 8, border: "1px solid #ddd", background: "white" }}
+                style={{
+                  padding: "8px 12px",
+                  borderRadius: 8,
+                  border: "1px solid #ddd",
+                  background: "white",
+                }}
               >
                 Annulla
               </button>
@@ -4365,8 +4491,7 @@ function buildFormData(c: Checklist): FormData {
                   border: "1px solid #111",
                   background: "#111",
                   color: "white",
-                  opacity: projectRenewalEditSaving ? 0.7 : 1,
-                  cursor: projectRenewalEditSaving ? "not-allowed" : "pointer",
+                  opacity: projectRenewalEditSaving ? 0.6 : 1,
                 }}
               >
                 {projectRenewalEditSaving ? "Salvataggio..." : "Salva"}
