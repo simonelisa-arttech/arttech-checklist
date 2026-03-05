@@ -261,7 +261,7 @@ export default function AlertFatturePage() {
       })
       .in(
         "id",
-        due.map((i) => i.id)
+        due.map((i: { id: string | number }) => i.id)
       );
 
     if (updErr) {
