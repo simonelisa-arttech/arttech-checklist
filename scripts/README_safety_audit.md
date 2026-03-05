@@ -5,13 +5,18 @@
 \i scripts/20260304_safety_audit.sql
 ```
 
-2. Se audit mostra `has_authenticated_select_policy = false` o `grant_select_authenticated = false`
+2. Se ricevi errore runtime `permission denied for schema public`, applicare prima:
+```sql
+\i scripts/20260305_fix_runtime_schema_and_table_grants.sql
+```
+
+3. Se audit mostra `has_authenticated_select_policy = false` o `grant_select_authenticated = false`
 su tabelle runtime (`checklists`, `clienti_anagrafica`, `saas_interventi`, `operatori`), applicare:
 ```sql
 \i scripts/20260304_dashboard_rls_min_select.sql
 ```
 
-3. Rieseguire audit e verificare:
+4. Rieseguire audit e verificare:
 - `rls_enabled = true`
 - `has_authenticated_select_policy = true` sulle tabelle runtime
 - `has_anon_or_public_policy = false` salvo scelta esplicita
