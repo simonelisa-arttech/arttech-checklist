@@ -849,6 +849,9 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
   const [projectRenewalEditSaving, setProjectRenewalEditSaving] = useState(false);
   const [projectInterventiError, setProjectInterventiError] = useState<string | null>(null);
   const [projectInterventiNotice, setProjectInterventiNotice] = useState<string | null>(null);
+  const [rinnoviFilterDaAvvisare, setRinnoviFilterDaAvvisare] = useState(false);
+  const [rinnoviFilterScaduti, setRinnoviFilterScaduti] = useState(false);
+  const [rinnoviFilterDaFatturare, setRinnoviFilterDaFatturare] = useState(false);
   const [projectInterventiExpandedId, setProjectInterventiExpandedId] = useState<string | null>(null);
   const [projectInterventoEditId, setProjectInterventoEditId] = useState<string | null>(null);
   const [projectInterventoEditForm, setProjectInterventoEditForm] = useState<ProjectInterventoForm | null>(null);
@@ -1370,6 +1373,49 @@ function buildFormData(c: Checklist): FormData {
     setProjectRenewalEdit(null);
     setProjectRenewalEditSaving(false);
     setProjectInterventiNotice("Voce scadenza/rinnovo aggiornata.");
+  }
+
+  async function deleteProjectRenewalFromEdit() {
+    if (!projectRenewalEdit || !id) return;
+    const ok = typeof window === "undefined" ? true : window.confirm("Eliminare questa voce da Scadenze & Rinnovi?");
+    if (!ok) return;
+
+    const row = projectRenewalEdit.row;
+    setProjectInterventiError(null);
+    setProjectRenewalEditSaving(true);
+
+    let err: any = null;
+    if ((row.source === "licenza" || row.source === "licenze") && row.recordId) {
+      const res = await dbFrom("licenze").delete().eq("id", row.recordId);
+      err = res.error;
+    } else if ((row.source === "tagliando" || row.source === "tagliandi") && row.recordId) {
+      const res = await dbFrom("tagliandi").delete().eq("id", row.recordId);
+      err = res.error;
+    } else if (row.source === "rinnovi" && row.recordId) {
+      const res = await dbFrom("rinnovi_servizi").delete().eq("id", row.recordId);
+      err = res.error;
+    } else if (row.source === "saas" || row.source === "garanzia") {
+      setProjectInterventiError(
+        "Questa voce va gestita dal progetto (campi SAAS/Garanzia), non come eliminazione riga."
+      );
+      setProjectRenewalEditSaving(false);
+      return;
+    } else {
+      setProjectInterventiError("Riga non eliminabile.");
+      setProjectRenewalEditSaving(false);
+      return;
+    }
+
+    if (err) {
+      setProjectInterventiError(err.message || "Errore eliminazione voce.");
+      setProjectRenewalEditSaving(false);
+      return;
+    }
+
+    await load(id);
+    setProjectRenewalEdit(null);
+    setProjectRenewalEditSaving(false);
+    setProjectInterventiNotice("Voce eliminata.");
   }
 
   function getProjectWorkflowStato(row: ProjectRenewalRow) {
@@ -3360,6 +3406,112 @@ function buildFormData(c: Checklist): FormData {
     ? `Documento PROFORMA: ${proformaDocs[0].filename}`
     : "Documento PROFORMA presente";
 
+  const projectRenewalsAll = [
+    ...(checklist?.saas_piano && checklist?.id === id
+      ? [
+          {
+            id: "SAAS",
+            key: "SAAS",
+            source: "saas" as const,
+            recordId: checklist.id,
+            item_tipo: "SAAS",
+            tipo: "SAAS",
+            riferimento: checklist.saas_piano || "—",
+            scadenza: checklist.saas_scadenza || null,
+            stato: checklist.saas_stato || "DA_AVVISARE",
+            modalita: "—",
+            note: checklist.saas_note || null,
+            checklist_id: checklist.id,
+          },
+        ]
+      : []),
+    ...(checklist?.garanzia_scadenza && checklist?.id === id
+      ? [
+          {
+            id: "GARANZIA",
+            key: "GARANZIA",
+            source: "garanzie" as const,
+            recordId: checklist.id,
+            item_tipo: "GARANZIA",
+            tipo: "GARANZIA",
+            riferimento: "Garanzia impianto",
+            scadenza: checklist.garanzia_scadenza || null,
+            stato: "DA_AVVISARE",
+            modalita: "—",
+            note: null,
+            checklist_id: checklist.id,
+          },
+        ]
+      : []),
+    ...licenze
+      .filter((l) => String(l.checklist_id || "") === String(id || ""))
+      .map((l) => ({
+        id: l.id,
+        key: `LIC-${l.id}`,
+        source: "licenze" as const,
+        recordId: l.id,
+        item_tipo: "LICENZA",
+        tipo: "LICENZA",
+        riferimento: l.tipo || "—",
+        scadenza: l.scadenza || null,
+        stato: l.stato || "ATTIVA",
+        modalita: "—",
+        note: l.note || null,
+        checklist_id: id || "",
+      })),
+    ...projectTagliandi
+      .filter((t) => String(t.checklist_id || "") === String(id || ""))
+      .map((t) => ({
+        id: t.id,
+        key: `TAG-${t.id}`,
+        source: "tagliandi" as const,
+        recordId: t.id,
+        item_tipo: "TAGLIANDO",
+        tipo: "TAGLIANDO",
+        riferimento: t.note || "Tagliando periodico",
+        scadenza: t.scadenza || null,
+        stato: t.stato || "ATTIVA",
+        modalita: t.modalita || "—",
+        note: t.note || null,
+        checklist_id: id || "",
+      })),
+    ...projectRinnovi
+      .filter((r) => String(r.checklist_id || "") === String(id || ""))
+      .map((r) => ({
+        id: r.id,
+        key: `RIN-${r.id}`,
+        source: "rinnovi" as const,
+        recordId: r.id,
+        item_tipo: String(r.item_tipo || "RINNOVO").toUpperCase(),
+        tipo: String(r.item_tipo || "RINNOVO").toUpperCase(),
+        riferimento: r.riferimento || r.descrizione || "Rinnovo",
+        scadenza: r.scadenza || null,
+        stato: r.stato || "DA_AVVISARE",
+        modalita: "—",
+        note: r.note || null,
+        checklist_id: id || "",
+      })),
+  ].filter((row) => String((row as any).checklist_id || "") === String(id || ""));
+
+  let filteredProjectRenewals = projectRenewalsAll;
+  if (rinnoviFilterDaAvvisare) {
+    filteredProjectRenewals = filteredProjectRenewals.filter(
+      (r) => getProjectWorkflowStato(r as ProjectRenewalRow) === "DA_AVVISARE"
+    );
+  }
+  if (rinnoviFilterDaFatturare) {
+    filteredProjectRenewals = filteredProjectRenewals.filter(
+      (r) => getProjectWorkflowStato(r as ProjectRenewalRow) === "DA_FATTURARE"
+    );
+  }
+  if (rinnoviFilterScaduti) {
+    filteredProjectRenewals = filteredProjectRenewals.filter((r) => {
+      const dt = parseLocalDay((r as any).scadenza);
+      if (!dt) return false;
+      return dt < startOfToday();
+    });
+  }
+
   return (
     <div style={{ maxWidth: 1100, margin: "40px auto", padding: 16 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
@@ -4312,12 +4464,28 @@ function buildFormData(c: Checklist): FormData {
           <div
             style={{
               display: "grid",
-              gridTemplateColumns: "140px 180px 1fr auto",
+              gridTemplateColumns: "minmax(220px,1.4fr) 140px 180px minmax(220px,1fr) auto",
               gap: 8,
               alignItems: "end",
               marginBottom: 14,
             }}
           >
+            <div>
+              <div style={{ fontSize: 12, marginBottom: 4 }}>Progetto</div>
+              <select
+                value={id || ""}
+                disabled
+                style={{
+                  width: "100%",
+                  border: "1px solid #ddd",
+                  borderRadius: 8,
+                  padding: "8px 10px",
+                  background: "#f9fafb",
+                }}
+              >
+                <option value={id || ""}>{checklist?.nome_checklist || id || "—"}</option>
+              </select>
+            </div>
             <div>
               <div style={{ fontSize: 12, marginBottom: 4 }}>Scadenza</div>
               <input
@@ -4374,106 +4542,77 @@ function buildFormData(c: Checklist): FormData {
             </button>
           </div>
 
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
-            <div style={{ fontWeight: 800, fontSize: 28, lineHeight: 1.1 }}>Scadenze &amp; Rinnovi</div>
-            {checklist?.cliente ? (
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <h2 style={{ margin: 0, fontSize: 30, fontWeight: 900, letterSpacing: 0.2 }}>
+              Scadenze &amp; Rinnovi
+            </h2>
+            <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
               <Link
-                href={`/clienti/${encodeURIComponent(checklist.cliente)}`}
-                style={{ fontSize: 12, color: "#2563eb", textDecoration: "underline" }}
+                href={`/avvisi?cliente=${encodeURIComponent(checklist?.cliente || "")}`}
+                style={{
+                  padding: "6px 10px",
+                  borderRadius: 8,
+                  border: "1px solid #111",
+                  background: "white",
+                  cursor: "pointer",
+                  whiteSpace: "nowrap",
+                  textDecoration: "none",
+                  color: "inherit",
+                }}
               >
-                Apri gestione completa in scheda cliente
+                Storico avvisi cliente
               </Link>
-            ) : null}
+              <button
+                type="button"
+                onClick={() => {
+                  if (checklist?.cliente) {
+                    router.push(`/clienti/${encodeURIComponent(checklist.cliente)}`);
+                  }
+                }}
+                style={{
+                  padding: "6px 10px",
+                  borderRadius: 8,
+                  border: "1px solid #111",
+                  background: "white",
+                  cursor: "pointer",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                Invia avviso rapido
+              </button>
+            </div>
+          </div>
+
+          <div style={{ marginTop: 8, display: "flex", gap: 12, flexWrap: "wrap", fontSize: 12 }}>
+            <label style={{ display: "flex", gap: 6, alignItems: "center" }}>
+              <input
+                type="checkbox"
+                checked={rinnoviFilterDaAvvisare}
+                onChange={(e) => setRinnoviFilterDaAvvisare(e.target.checked)}
+              />
+              Solo da avvisare
+            </label>
+            <label style={{ display: "flex", gap: 6, alignItems: "center" }}>
+              <input
+                type="checkbox"
+                checked={rinnoviFilterScaduti}
+                onChange={(e) => setRinnoviFilterScaduti(e.target.checked)}
+              />
+              Solo scaduti
+            </label>
+            <label style={{ display: "flex", gap: 6, alignItems: "center" }}>
+              <input
+                type="checkbox"
+                checked={rinnoviFilterDaFatturare}
+                onChange={(e) => setRinnoviFilterDaFatturare(e.target.checked)}
+              />
+              Solo da fatturare
+            </label>
           </div>
 
           <RenewalsBlock
             cliente={checklist?.cliente || ""}
-            rows={[
-              ...(checklist?.saas_piano && checklist?.id === id
-                ? [
-                    {
-                      id: "SAAS",
-                      key: "SAAS",
-                      source: "saas" as const,
-                      recordId: checklist.id,
-                      item_tipo: "SAAS",
-                      tipo: "SAAS",
-                      riferimento: checklist.saas_piano || "—",
-                      scadenza: checklist.saas_scadenza || null,
-                      stato: checklist.saas_stato || "DA_AVVISARE",
-                      modalita: "—",
-                      note: checklist.saas_note || null,
-                      checklist_id: checklist.id,
-                    },
-                  ]
-                : []),
-              ...(checklist?.garanzia_scadenza && checklist?.id === id
-                ? [
-                    {
-                      id: "GARANZIA",
-                      key: "GARANZIA",
-                      source: "garanzie" as const,
-                      recordId: checklist.id,
-                      item_tipo: "GARANZIA",
-                      tipo: "GARANZIA",
-                      riferimento: "Garanzia impianto",
-                      scadenza: checklist.garanzia_scadenza || null,
-                      stato: "DA_AVVISARE",
-                      modalita: "—",
-                      note: null,
-                      checklist_id: checklist.id,
-                    },
-                  ]
-                : []),
-              ...licenze
-                .filter((l) => String(l.checklist_id || "") === String(id || ""))
-                .map((l) => ({
-                id: l.id,
-                key: `LIC-${l.id}`,
-                source: "licenze" as const,
-                recordId: l.id,
-                item_tipo: "LICENZA",
-                tipo: "LICENZA",
-                riferimento: l.tipo || "—",
-                scadenza: l.scadenza || null,
-                stato: l.stato || "ATTIVA",
-                modalita: "—",
-                note: l.note || null,
-                checklist_id: id || "",
-              })),
-              ...projectTagliandi
-                .filter((t) => String(t.checklist_id || "") === String(id || ""))
-                .map((t) => ({
-                id: t.id,
-                key: `TAG-${t.id}`,
-                source: "tagliandi" as const,
-                recordId: t.id,
-                item_tipo: "TAGLIANDO",
-                tipo: "TAGLIANDO",
-                riferimento: t.note || "Tagliando periodico",
-                scadenza: t.scadenza || null,
-                stato: t.stato || "ATTIVA",
-                modalita: t.modalita || "—",
-                note: t.note || null,
-                checklist_id: id || "",
-              })),
-              ...projectRinnovi
-                .filter((r) => String(r.checklist_id || "") === String(id || ""))
-                .map((r) => ({
-                  id: r.id,
-                  key: `RIN-${r.id}`,
-                  source: "rinnovi" as const,
-                  recordId: r.id,
-                  item_tipo: String(r.item_tipo || "RINNOVO").toUpperCase(),
-                  tipo: String(r.item_tipo || "RINNOVO").toUpperCase(),
-                  riferimento: r.riferimento || r.descrizione || "Rinnovo",
-                  scadenza: r.scadenza || null,
-                  stato: r.stato || "DA_AVVISARE",
-                  modalita: "—",
-                  note: r.note || null,
-                  checklist_id: id || "",
-                })),
-            ].filter((row) => String((row as any).checklist_id || "") === String(id || ""))}
+            rows={filteredProjectRenewals}
             checklistById={new Map(checklist ? [[checklist.id, checklist]] : [])}
             rinnoviError={projectInterventiError}
             rinnoviNotice={projectInterventiNotice}
@@ -4551,6 +4690,7 @@ function buildFormData(c: Checklist): FormData {
               )
             }
             saveEdit={saveProjectRenewalEdit}
+            deleteEdit={deleteProjectRenewalFromEdit}
             editSaving={projectRenewalEditSaving}
             editError={projectInterventiError}
             licenzaStati={LICENZA_STATI}
