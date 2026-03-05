@@ -736,9 +736,12 @@ export default function NuovaChecklistPage() {
           const templateByTitle = new Map<string, string | null>();
 
           if (templateIds.length > 0) {
+            const templateIdsSafe = (templateIds as Array<string | number>).filter(
+              (x): x is string | number => x !== null && x !== undefined
+            );
             const { data: templatesById, error: templatesByIdErr } = await dbFrom("checklist_task_templates")
               .select("id, target")
-              .in("id", templateIds);
+              .in("id", templateIdsSafe);
             if (templatesByIdErr && !String(templatesByIdErr.message || "").toLowerCase().includes("target")) {
               logSupabaseError(templatesByIdErr);
               throw templatesByIdErr;
