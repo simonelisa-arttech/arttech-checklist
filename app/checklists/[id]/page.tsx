@@ -839,6 +839,12 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
     stato: string;
     modalita: string;
     note: string;
+    descrizione?: string;
+    saas_piano?: string;
+    licenza_class?: "LICENZA" | "GARANZIA";
+    licenza_tipo?: string;
+    fornitore?: string;
+    intestato_a?: string;
   } | null>(null);
   const [projectRenewalEditSaving, setProjectRenewalEditSaving] = useState(false);
   const [projectInterventiError, setProjectInterventiError] = useState<string | null>(null);
@@ -1294,12 +1300,22 @@ function buildFormData(c: Checklist): FormData {
   }
 
   function openProjectRenewalEdit(row: ProjectRenewalRow) {
+    const tipoUpper = String(row.tipo || row.item_tipo || "").toUpperCase();
     setProjectRenewalEdit({
       row,
       scadenza: toDateInput(row.scadenza),
       stato: String(row.stato || "").trim(),
       modalita: String(row.modalita || "").trim(),
       note: String(row.note || "").trim(),
+      descrizione: String((row as any).descrizione || "").trim(),
+      saas_piano:
+        tipoUpper === "SAAS" || tipoUpper === "SAAS_ULTRA"
+          ? String(row.riferimento || "").trim()
+          : "",
+      licenza_class: "LICENZA",
+      licenza_tipo: tipoUpper === "LICENZA" ? String(row.riferimento || "").trim() : "",
+      fornitore: String((row as any).fornitore || "").trim(),
+      intestato_a: String((row as any).intestato_a || "").trim(),
     });
   }
 
@@ -1313,6 +1329,7 @@ function buildFormData(c: Checklist): FormData {
     const stato = projectRenewalEdit.stato || null;
     const modalita = projectRenewalEdit.modalita || null;
     const note = projectRenewalEdit.note.trim() || null;
+    const descrizione = String(projectRenewalEdit.descrizione || "").trim() || null;
 
     let err: any = null;
 
@@ -1338,7 +1355,7 @@ function buildFormData(c: Checklist): FormData {
       err = res.error;
     } else if (row.source === "rinnovi" && row.recordId) {
       const res = await dbFrom("rinnovi_servizi")
-        .update({ scadenza, stato, note })
+        .update({ scadenza, stato, note, descrizione })
         .eq("id", row.recordId);
       err = res.error;
     }
@@ -4490,6 +4507,12 @@ function buildFormData(c: Checklist): FormData {
                     stato: projectRenewalEdit.stato,
                     modalita: projectRenewalEdit.modalita,
                     note: projectRenewalEdit.note,
+                    descrizione: projectRenewalEdit.descrizione || "",
+                    saas_piano: projectRenewalEdit.saas_piano || "",
+                    licenza_class: projectRenewalEdit.licenza_class || "LICENZA",
+                    licenza_tipo: projectRenewalEdit.licenza_tipo || "",
+                    fornitore: projectRenewalEdit.fornitore || "",
+                    intestato_a: projectRenewalEdit.intestato_a || "",
                   }
                 : null
             }
@@ -4501,10 +4524,28 @@ function buildFormData(c: Checklist): FormData {
                 prev
                   ? {
                       ...prev,
-                      scadenza: typeof next?.scadenza === "string" ? next.scadenza : prev.scadenza,
-                      stato: typeof next?.stato === "string" ? next.stato : prev.stato,
-                      modalita: typeof next?.modalita === "string" ? next.modalita : prev.modalita,
-                      note: typeof next?.note === "string" ? next.note : prev.note,
+                      ...(typeof next?.scadenza === "string" ? { scadenza: next.scadenza } : {}),
+                      ...(typeof next?.stato === "string" ? { stato: next.stato } : {}),
+                      ...(typeof next?.modalita === "string" ? { modalita: next.modalita } : {}),
+                      ...(typeof next?.note === "string" ? { note: next.note } : {}),
+                      ...(typeof next?.descrizione === "string"
+                        ? { descrizione: next.descrizione }
+                        : {}),
+                      ...(typeof next?.saas_piano === "string"
+                        ? { saas_piano: next.saas_piano }
+                        : {}),
+                      ...(typeof next?.licenza_class === "string"
+                        ? {
+                            licenza_class: next.licenza_class === "GARANZIA" ? "GARANZIA" : "LICENZA",
+                          }
+                        : {}),
+                      ...(typeof next?.licenza_tipo === "string"
+                        ? { licenza_tipo: next.licenza_tipo }
+                        : {}),
+                      ...(typeof next?.fornitore === "string" ? { fornitore: next.fornitore } : {}),
+                      ...(typeof next?.intestato_a === "string"
+                        ? { intestato_a: next.intestato_a }
+                        : {}),
                     }
                   : prev
               )

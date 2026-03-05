@@ -425,8 +425,63 @@ export default function RenewalsBlock({
                 />
               </label>
 
+              {editForm.tipo === "SAAS" && (
+                <label>
+                  Piano<br />
+                  <input
+                    value={editForm.saas_piano || "—"}
+                    readOnly
+                    style={{ width: "100%", padding: 8, background: "#f9fafb" }}
+                  />
+                </label>
+              )}
+              {editForm.tipo === "SAAS_ULTRA" && (
+                <label>
+                  Piano ULTRA<br />
+                  <input
+                    value={editForm.saas_piano || "—"}
+                    readOnly
+                    style={{ width: "100%", padding: 8, background: "#f9fafb" }}
+                  />
+                </label>
+              )}
+
               {editForm.tipo === "LICENZA" && (
                 <>
+                  <label>
+                    Classe voce<br />
+                    <select
+                      value={editForm.licenza_class || "LICENZA"}
+                      onChange={(e) =>
+                        setEditForm({
+                          ...editForm,
+                          licenza_class: (e.target.value as "LICENZA" | "GARANZIA") || "LICENZA",
+                        })
+                      }
+                      style={{ width: "100%", padding: 8 }}
+                    >
+                      <option value="LICENZA">LICENZA</option>
+                      <option value="GARANZIA">GARANZIA (converte questa voce)</option>
+                    </select>
+                  </label>
+                  <label>
+                    Tipo / Piano<br />
+                    <input
+                      value={editForm.licenza_tipo || ""}
+                      onChange={(e) => setEditForm({ ...editForm, licenza_tipo: e.target.value })}
+                      disabled={editForm.licenza_class === "GARANZIA"}
+                      style={{
+                        width: "100%",
+                        padding: 8,
+                        background: editForm.licenza_class === "GARANZIA" ? "#f9fafb" : "white",
+                      }}
+                    />
+                  </label>
+                  {editForm.licenza_class === "GARANZIA" && (
+                    <div style={{ fontSize: 12, color: "#92400e" }}>
+                      Al salvataggio la licenza verrà rimossa e sarà impostata la scadenza garanzia sul progetto.
+                    </div>
+                  )}
                   <label>
                     Stato<br />
                     <select
@@ -438,6 +493,22 @@ export default function RenewalsBlock({
                         <option key={s} value={s}>{s}</option>
                       ))}
                     </select>
+                  </label>
+                  <label>
+                    Fornitore<br />
+                    <input
+                      value={editForm.fornitore || ""}
+                      onChange={(e) => setEditForm({ ...editForm, fornitore: e.target.value })}
+                      style={{ width: "100%", padding: 8 }}
+                    />
+                  </label>
+                  <label>
+                    Intestato a<br />
+                    <input
+                      value={editForm.intestato_a || ""}
+                      onChange={(e) => setEditForm({ ...editForm, intestato_a: e.target.value })}
+                      style={{ width: "100%", padding: 8 }}
+                    />
                   </label>
                   <label>
                     Note<br />
@@ -489,25 +560,55 @@ export default function RenewalsBlock({
               )}
 
               {editForm.tipo === "RINNOVO" && (
+                <>
+                  <label>
+                    Stato<br />
+                    <select
+                      value={editForm.stato || ""}
+                      onChange={(e) => setEditForm({ ...editForm, stato: e.target.value })}
+                      style={{ width: "100%", padding: 8 }}
+                    >
+                      {rinnovoStati.map((s) => (
+                        <option key={s} value={s}>{s}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label>
+                    Descrizione<br />
+                    <input
+                      value={editForm.descrizione || ""}
+                      onChange={(e) => setEditForm({ ...editForm, descrizione: e.target.value })}
+                      style={{ width: "100%", padding: 8 }}
+                    />
+                  </label>
+                </>
+              )}
+
+              {editForm.tipo === "SAAS" && (
                 <label>
-                  Stato<br />
-                  <select
-                    value={editForm.stato || ""}
-                    onChange={(e) => setEditForm({ ...editForm, stato: e.target.value })}
+                  Note<br />
+                  <input
+                    value={editForm.note || ""}
+                    onChange={(e) => setEditForm({ ...editForm, note: e.target.value })}
                     style={{ width: "100%", padding: 8 }}
-                  >
-                    {rinnovoStati.map((s) => (
-                      <option key={s} value={s}>{s}</option>
-                    ))}
-                  </select>
+                  />
                 </label>
+              )}
+              {editForm.tipo === "SAAS_ULTRA" && (
+                <div style={{ fontSize: 12, opacity: 0.7 }}>Modifica solo la data di scadenza.</div>
+              )}
+              {editForm.tipo === "GARANZIA" && (
+                <div style={{ fontSize: 12, opacity: 0.7 }}>Modifica solo la data di scadenza.</div>
               )}
             </div>
 
             {editError && <div style={{ marginTop: 10, fontSize: 12, color: "#b91c1c" }}>{editError}</div>}
 
             <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 12 }}>
-              {deleteEdit && (
+              {deleteEdit &&
+                ["LICENZA", "TAGLIANDO", "RINNOVO", "SAAS_ULTRA", "SAAS", "GARANZIA"].includes(
+                  String(editForm.tipo || "")
+                ) && (
                 <button
                   type="button"
                   onClick={deleteEdit}
