@@ -1281,32 +1281,10 @@ function buildFormData(c: Checklist): FormData {
       return;
     }
 
-    let tasks: any[] | null = null;
-    let tasksErr: any = null;
-    {
-      const res = await supabase
-        .from("checklist_tasks")
-        .select(
-          "id, sezione, ordine, titolo, stato, note, target, task_template_id, updated_at, updated_by_operatore, operatori:updated_by_operatore ( id, nome )"
-        )
-        .eq("checklist_id", id)
-        .order("sezione", { ascending: true })
-        .order("ordine", { ascending: true });
-      tasks = res.data as any[] | null;
-      tasksErr = res.error;
-    }
-    if (tasksErr && String(tasksErr.message || "").toLowerCase().includes("target")) {
-      const res = await supabase
-        .from("checklist_tasks")
-        .select(
-          "id, sezione, ordine, titolo, stato, note, task_template_id, updated_at, updated_by_operatore, operatori:updated_by_operatore ( id, nome )"
-        )
-        .eq("checklist_id", id)
-        .order("sezione", { ascending: true })
-        .order("ordine", { ascending: true });
-      tasks = (res.data as any[] | null)?.map((r: any) => ({ ...r, target: null })) ?? [];
-      tasksErr = res.error;
-    }
+    const tasksRes = await fetch(`/api/checklists/${id}/tasks`, { cache: "no-store" });
+    const tasksJson = await tasksRes.json().catch(() => ({}));
+    const tasks = (tasksJson?.tasks as any[]) || [];
+    const tasksErr = tasksRes.ok ? null : { message: tasksJson?.error || "Errore caricamento task" };
 
     if (tasksErr) {
       setError("Errore caricamento task: " + tasksErr.message);
