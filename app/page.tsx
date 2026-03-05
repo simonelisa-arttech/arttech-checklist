@@ -946,23 +946,6 @@ export default function Page() {
     if (first?.id) setAddInterventoChecklistId(first.id);
   }, [addInterventoCliente, items]);
 
-  useEffect(() => {
-    const channel = supabase
-      .channel("rt-dashboard")
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "checklist_tasks" },
-        () => {
-          load();
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, []);
-
   function addRow() {
     setRows((prev) => [
       ...prev,

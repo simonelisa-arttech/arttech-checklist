@@ -128,7 +128,16 @@ const TABLE_RULES: Record<
   },
   checklist_alert_log: {
     ops: ["select", "insert", "update"],
-    filterCols: ["id", "checklist_id", "tipo", "riferimento", "trigger", "to_operatore_id", "intervento_id"],
+    filterCols: [
+      "id",
+      "checklist_id",
+      "tipo",
+      "riferimento",
+      "trigger",
+      "to_operatore_id",
+      "intervento_id",
+      "canale",
+    ],
     orderCols: ["created_at"],
     allowNoFilterSelect: true,
   },
