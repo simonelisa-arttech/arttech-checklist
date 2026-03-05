@@ -476,6 +476,9 @@ export default function Page() {
 
   // dashboard: ricerca + ordinamento
   const [q, setQ] = useState("");
+  const [debouncedQ, setDebouncedQ] = useState("");
+  const loadAbortRef = useRef<AbortController | null>(null);
+  const loadRequestSeqRef = useRef(0);
   const [saasServiceFilter, setSaasServiceFilter] = useState<Record<SaasServiceFilter, boolean>>({
     EVENTS: false,
     ULTRA: false,
@@ -692,6 +695,12 @@ export default function Page() {
   }, [items, addInterventoCliente]);
 
   async function load() {
+    const requestSeq = ++loadRequestSeqRef.current;
+    if (loadAbortRef.current) loadAbortRef.current.abort();
+    const controller = new AbortController();
+    loadAbortRef.current = controller;
+    const isLatest = () => requestSeq === loadRequestSeqRef.current;
+
     setLoading(true);
     let data: any[] | null = null;
     let sections: any[] | null = null;
@@ -709,7 +718,7 @@ export default function Page() {
     const debug = new URLSearchParams(window.location.search).get("debug") === "1";
     const params = new URLSearchParams();
     if (debug) params.set("debug", "1");
-    if (q.trim()) params.set("q", q.trim());
+    if (debouncedQ.trim()) params.set("q", debouncedQ.trim());
     const activeSaasFilters = (Object.entries(saasServiceFilter) as Array<[SaasServiceFilter, boolean]>)
       .filter(([, enabled]) => enabled)
       .map(([key]) => key);
@@ -721,25 +730,33 @@ export default function Page() {
       .map(([key]) => key);
     if (activeProjectStatusFilters.length > 0) params.set("stati", activeProjectStatusFilters.join(","));
 
-    const dashboardRes = await fetch(`/api/dashboard${params.size ? `?${params.toString()}` : ""}`);
-    const dashboardData = await dashboardRes.json().catch(() => ({}));
-    if (!dashboardRes.ok) {
-      error = { message: dashboardData?.error || "Errore caricamento dashboard" };
-    } else {
-      data = (dashboardData?.data?.checklists as any[]) || [];
-      sections = (dashboardData?.data?.sections as any[]) || [];
-      licenseSummary = (dashboardData?.data?.licenseSummary as any[]) || [];
-      licensesData = (dashboardData?.data?.licenses as any[]) || [];
-      serialsData = (dashboardData?.data?.serials as any[]) || [];
-      catalogItemsData = (dashboardData?.data?.catalogItems as any[]) || [];
-      if (debug) {
-        console.log("[dashboard] auth_mode:", dashboardData?.auth_mode || dashboardData?.debug?.auth_mode);
-        console.log(
-          "[dashboard] result_count:",
-          dashboardData?.debug?.result_count ?? (dashboardData?.data?.checklists || []).length
-        );
+    try {
+      const dashboardRes = await fetch(`/api/dashboard${params.size ? `?${params.toString()}` : ""}`, {
+        signal: controller.signal,
+      });
+      const dashboardData = await dashboardRes.json().catch(() => ({}));
+      if (!dashboardRes.ok) {
+        error = { message: dashboardData?.error || "Errore caricamento dashboard" };
+      } else {
+        data = (dashboardData?.data?.checklists as any[]) || [];
+        sections = (dashboardData?.data?.sections as any[]) || [];
+        licenseSummary = (dashboardData?.data?.licenseSummary as any[]) || [];
+        licensesData = (dashboardData?.data?.licenses as any[]) || [];
+        serialsData = (dashboardData?.data?.serials as any[]) || [];
+        catalogItemsData = (dashboardData?.data?.catalogItems as any[]) || [];
+        if (debug) {
+          console.log("[dashboard] auth_mode:", dashboardData?.auth_mode || dashboardData?.debug?.auth_mode);
+          console.log(
+            "[dashboard] result_count:",
+            dashboardData?.debug?.result_count ?? (dashboardData?.data?.checklists || []).length
+          );
+        }
       }
+    } catch (e: any) {
+      if (e?.name === "AbortError") return;
+      error = { message: e?.message || "Errore caricamento dashboard" };
     }
+    if (!isLatest()) return;
 
     const sectionsByChecklistId: Record<string, Partial<Checklist>> = {};
     if (!sectionsErr && sections) {
@@ -782,6 +799,7 @@ export default function Page() {
         if (!map[checklistId]) map[checklistId] = { seriali: [] };
         if (r.seriale) map[checklistId].seriali.push(String(r.seriale));
       }
+      if (!isLatest()) return;
       setSerialsByChecklistId(map);
     }
 
@@ -827,6 +845,7 @@ export default function Page() {
           license_search: licenseSearchByChecklistId.get(c.id) || null,
         };
       });
+      if (!isLatest()) return;
       setItems(merged as Checklist[]);
     } else if (error) {
       console.error("Errore caricamento checklists (dashboard)", error);
@@ -835,10 +854,19 @@ export default function Page() {
     if (catalogErr) {
       console.error("Errore caricamento catalogo", catalogErr);
     } else {
+      if (!isLatest()) return;
       setCatalogItems((catalogItemsData || []) as CatalogItem[]);
     }
 
-    const opRes = await fetch("/api/operatori");
+    let opRes: Response;
+    try {
+      opRes = await fetch("/api/operatori", { signal: controller.signal });
+    } catch (e: any) {
+      if (e?.name === "AbortError" || controller.signal.aborted) return;
+      console.error("Errore caricamento operatori", e);
+      if (isLatest()) setLoading(false);
+      return;
+    }
     if (opRes.ok) {
       const opData = await opRes.json().catch(() => ({}));
       const list = Array.isArray(opData?.data) ? opData.data : [];
@@ -851,11 +879,21 @@ export default function Page() {
           email: row?.email ?? null,
         });
       }
+      if (!isLatest()) return;
       setOperatoriLookupById(nextMap);
     }
 
+    if (!isLatest()) return;
     setOperatoreAssociationError(null);
-    const meRes = await fetch("/api/me-operatore");
+    let meRes: Response;
+    try {
+      meRes = await fetch("/api/me-operatore", { signal: controller.signal });
+    } catch (e: any) {
+      if (e?.name === "AbortError" || controller.signal.aborted) return;
+      console.error("Errore caricamento operatore corrente", e);
+      if (isLatest()) setLoading(false);
+      return;
+    }
     const meData = await meRes.json().catch(() => ({}));
     if (!meRes.ok || !meData?.operatore?.id) {
       if (meData?.error) {
@@ -872,12 +910,24 @@ export default function Page() {
       });
     }
 
+    if (!isLatest()) return;
     setLoading(false);
   }
 
   useEffect(() => {
+    const t = setTimeout(() => setDebouncedQ(q), 350);
+    return () => clearTimeout(t);
+  }, [q]);
+
+  useEffect(() => {
     load();
-  }, [q, saasServiceFilter, projectStatusFilter]);
+  }, [debouncedQ, saasServiceFilter, projectStatusFilter]);
+
+  useEffect(() => {
+    return () => {
+      if (loadAbortRef.current) loadAbortRef.current.abort();
+    };
+  }, []);
 
   const closeDupModal = (_reason?: string) => {
     setDupModalOpen(false);

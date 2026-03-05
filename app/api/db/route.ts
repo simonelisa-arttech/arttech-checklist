@@ -217,6 +217,10 @@ function isPlainObject(v: unknown): v is Record<string, any> {
   return !!v && typeof v === "object" && !Array.isArray(v);
 }
 
+function isUuidLike(v: string) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v);
+}
+
 export async function POST(request: Request) {
   const isAuthed = await assertAuthenticated(request);
   if (!isAuthed) return invalid("Unauthorized", 401);
@@ -254,6 +258,17 @@ export async function POST(request: Request) {
     const t = typeof v;
     if (!(v === null || t === "string" || t === "number" || t === "boolean")) {
       return invalid(`Invalid filter value type for ${k}`);
+    }
+    if (k === "id" || k.endsWith("_id")) {
+      if (v !== null) {
+        if (typeof v !== "string") {
+          return invalid(`Invalid UUID filter for ${k}: expected uuid string`, 400);
+        }
+        const normalized = v.trim();
+        if (!isUuidLike(normalized)) {
+          return invalid(`Invalid UUID filter for ${k}: ${normalized}`, 400);
+        }
+      }
     }
   }
 

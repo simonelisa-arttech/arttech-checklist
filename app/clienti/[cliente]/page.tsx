@@ -38,8 +38,15 @@ function startOfToday() {
 function stripPrefixId(value?: string | null) {
   const raw = String(value || "").trim();
   if (!raw) return "";
+  const uuidMatch = raw.match(
+    /[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}/i
+  );
+  if (uuidMatch?.[0]) return uuidMatch[0];
   const idx = raw.indexOf(":");
-  return idx >= 0 ? raw.slice(idx + 1) : raw;
+  if (idx >= 0) return raw.slice(idx + 1);
+  const dashIdx = raw.indexOf("-");
+  if (dashIdx > 0) return raw.slice(dashIdx + 1);
+  return raw;
 }
 
 function escapeHtml(value: string) {
@@ -3634,19 +3641,23 @@ export default function ClientePage({ params }: { params: any }) {
     setEditScadenzaErr(null);
     try {
       if (editScadenzaForm.tipo === "LICENZA") {
+        const licenzaId = stripPrefixId(editScadenzaItem.id);
+        if (!licenzaId) throw new Error("ID licenza non valido");
         const res = await fetch("/api/licenses/action", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           credentials: "include",
-          body: JSON.stringify({ action: "DELETE_LICENSE", licenseId: editScadenzaItem.id }),
+          body: JSON.stringify({ action: "DELETE_LICENSE", licenseId: licenzaId }),
         });
         const json = await res.json().catch(() => ({} as any));
         if (!res.ok) throw new Error(String(json?.error || "Errore eliminazione licenza"));
-        setLicenze((prev) => prev.filter((x) => x.id !== editScadenzaItem.id));
+        setLicenze((prev) => prev.filter((x) => String(x.id) !== String(licenzaId)));
       } else if (editScadenzaForm.tipo === "TAGLIANDO") {
-        const { error } = await dbFrom("tagliandi").delete().eq("id", editScadenzaItem.id);
+        const tagliandoId = stripPrefixId(editScadenzaItem.id);
+        if (!tagliandoId) throw new Error("ID tagliando non valido");
+        const { error } = await dbFrom("tagliandi").delete().eq("id", tagliandoId);
         if (error) throw new Error(error.message);
-        setTagliandi((prev) => prev.filter((x) => x.id !== editScadenzaItem.id));
+        setTagliandi((prev) => prev.filter((x) => String(x.id) !== String(tagliandoId)));
       } else if (editScadenzaForm.tipo === "RINNOVO") {
         const rinnovoId = stripPrefixId(editScadenzaItem.id);
         if (!rinnovoId) throw new Error("ID rinnovo non valido");
@@ -4426,7 +4437,11 @@ export default function ClientePage({ params }: { params: any }) {
 
   async function updateSourceScadenza(r: ScadenzaItem, newDate: string) {
     if (r.source === "tagliandi") {
-      const { error } = await dbFrom("tagliandi").update({ scadenza: newDate }).eq("id", r.id);
+      const tagliandoId = stripPrefixId(r.id);
+      if (!tagliandoId) return false;
+      const { error } = await dbFrom("tagliandi")
+        .update({ scadenza: newDate })
+        .eq("id", tagliandoId);
       if (error) {
         setRinnoviError("Errore aggiornamento scadenza tagliando: " + error.message);
         return false;
@@ -4434,7 +4449,9 @@ export default function ClientePage({ params }: { params: any }) {
       return true;
     }
     if (r.source === "licenze") {
-      const { error } = await dbFrom("licenses").update({ scadenza: newDate }).eq("id", r.id);
+      const licenzaId = stripPrefixId(r.id);
+      if (!licenzaId) return false;
+      const { error } = await dbFrom("licenses").update({ scadenza: newDate }).eq("id", licenzaId);
       if (error) {
         setRinnoviError("Errore aggiornamento scadenza licenza: " + error.message);
         return false;
