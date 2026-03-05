@@ -844,7 +844,9 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
     stato_intervento: "APERTO",
     note: "",
   });
-  const isDevPerf = process.env.NODE_ENV !== "production";
+  const isPerfEnabled = () =>
+    process.env.NODE_ENV !== "production" ||
+    (typeof window !== "undefined" && new URLSearchParams(window.location.search).has("perf"));
   const perfRef = useRef({
     mountDbCalls: 0,
     mountFetchCalls: 0,
@@ -853,13 +855,13 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
   });
 
   const perfCountDb = (label: string) => {
-    if (!isDevPerf) return;
+    if (!isPerfEnabled()) return;
     if (perfRef.current.mountActive) perfRef.current.mountDbCalls += 1;
     console.count(`[perf][checklist][db] ${label}`);
   };
 
   const perfCountFetch = (label: string) => {
-    if (!isDevPerf) return;
+    if (!isPerfEnabled()) return;
     if (perfRef.current.mountActive) perfRef.current.mountFetchCalls += 1;
     console.count(`[perf][checklist][fetch] ${label}`);
   };
@@ -1395,7 +1397,7 @@ function buildFormData(c: Checklist): FormData {
   async function load(id: string) {
     const loadSeq = ++perfRef.current.loadSeq;
     const loadLabel = `[perf][checklist][load#${loadSeq}] total`;
-    if (isDevPerf) {
+    if (isPerfEnabled()) {
       console.time(loadLabel);
       console.info(`[perf][checklist] load start`, { id, loadSeq });
     }
@@ -1404,11 +1406,11 @@ function buildFormData(c: Checklist): FormData {
     setItemsError(null);
 
     const debug = new URLSearchParams(window.location.search).get("debug") === "1";
-    if (isDevPerf) console.time(`[perf][checklist][load#${loadSeq}] fetch head`);
+    if (isPerfEnabled()) console.time(`[perf][checklist][load#${loadSeq}] fetch head`);
     perfCountFetch("GET /api/checklists/:id");
     const headRes = await fetch(`/api/checklists/${id}${debug ? "?debug=1" : ""}`);
     const headJson = await headRes.json().catch(() => ({}));
-    if (isDevPerf) console.timeEnd(`[perf][checklist][load#${loadSeq}] fetch head`);
+    if (isPerfEnabled()) console.timeEnd(`[perf][checklist][load#${loadSeq}] fetch head`);
     const head = headJson?.data as any;
     const err1 = headRes.ok ? null : { message: headJson?.error || "Errore caricamento checklist" };
 
@@ -1418,7 +1420,7 @@ function buildFormData(c: Checklist): FormData {
       return;
     }
 
-    if (isDevPerf) console.time(`[perf][checklist][load#${loadSeq}] db checklist_items`);
+    if (isPerfEnabled()) console.time(`[perf][checklist][load#${loadSeq}] db checklist_items`);
     const { data: items, error: err2 } = await db<any[]>({
       table: "checklist_items",
       op: "select",
@@ -1426,7 +1428,7 @@ function buildFormData(c: Checklist): FormData {
       filter: { checklist_id: id },
       order: [{ col: "created_at", asc: true }],
     });
-    if (isDevPerf) console.timeEnd(`[perf][checklist][load#${loadSeq}] db checklist_items`);
+    if (isPerfEnabled()) console.timeEnd(`[perf][checklist][load#${loadSeq}] db checklist_items`);
 
     if (err2) {
       setError("Errore caricamento righe: " + err2.message);
@@ -1434,11 +1436,11 @@ function buildFormData(c: Checklist): FormData {
       return;
     }
 
-    if (isDevPerf) console.time(`[perf][checklist][load#${loadSeq}] fetch tasks`);
+    if (isPerfEnabled()) console.time(`[perf][checklist][load#${loadSeq}] fetch tasks`);
     perfCountFetch("GET /api/checklists/:id/tasks");
     const tasksRes = await fetch(`/api/checklists/${id}/tasks`, { cache: "no-store" });
     const tasksJson = await tasksRes.json().catch(() => ({}));
-    if (isDevPerf) console.timeEnd(`[perf][checklist][load#${loadSeq}] fetch tasks`);
+    if (isPerfEnabled()) console.timeEnd(`[perf][checklist][load#${loadSeq}] fetch tasks`);
     const tasks = (tasksJson?.tasks as any[]) || [];
     const tasksErr = tasksRes.ok ? null : { message: tasksJson?.error || "Errore caricamento task" };
 
@@ -1448,11 +1450,11 @@ function buildFormData(c: Checklist): FormData {
       return;
     }
 
-    if (isDevPerf) console.time(`[perf][checklist][load#${loadSeq}] fetch licenses`);
+    if (isPerfEnabled()) console.time(`[perf][checklist][load#${loadSeq}] fetch licenses`);
     perfCountFetch("GET /api/checklists/:id/licenses");
     const licenzeRes = await fetch(`/api/checklists/${id}/licenses`, { cache: "no-store" });
     const licenzeJson = await licenzeRes.json().catch(() => ({}));
-    if (isDevPerf) console.timeEnd(`[perf][checklist][load#${loadSeq}] fetch licenses`);
+    if (isPerfEnabled()) console.timeEnd(`[perf][checklist][load#${loadSeq}] fetch licenses`);
     const licenzeData = (licenzeJson?.licenses as any[]) || [];
     const licenzeErr = licenzeRes.ok
       ? null
@@ -1464,11 +1466,11 @@ function buildFormData(c: Checklist): FormData {
       return;
     }
 
-    if (isDevPerf) console.time(`[perf][checklist][load#${loadSeq}] fetch tagliandi`);
+    if (isPerfEnabled()) console.time(`[perf][checklist][load#${loadSeq}] fetch tagliandi`);
     perfCountFetch("GET /api/checklists/:id/tagliandi");
     const tagliandiRes = await fetch(`/api/checklists/${id}/tagliandi`, { cache: "no-store" });
     const tagliandiJson = await tagliandiRes.json().catch(() => ({}));
-    if (isDevPerf) console.timeEnd(`[perf][checklist][load#${loadSeq}] fetch tagliandi`);
+    if (isPerfEnabled()) console.timeEnd(`[perf][checklist][load#${loadSeq}] fetch tagliandi`);
     const tagliandiData = (tagliandiJson?.tagliandi as any[]) || [];
     const tagliandiErr = tagliandiRes.ok
       ? null
@@ -1480,11 +1482,11 @@ function buildFormData(c: Checklist): FormData {
       return;
     }
 
-    if (isDevPerf) console.time(`[perf][checklist][load#${loadSeq}] fetch documents`);
+    if (isPerfEnabled()) console.time(`[perf][checklist][load#${loadSeq}] fetch documents`);
     perfCountFetch("GET /api/checklists/:id/documents");
     const docsRes = await fetch(`/api/checklists/${id}/documents`, { cache: "no-store" });
     const docsJson = await docsRes.json().catch(() => ({}));
-    if (isDevPerf) console.timeEnd(`[perf][checklist][load#${loadSeq}] fetch documents`);
+    if (isPerfEnabled()) console.timeEnd(`[perf][checklist][load#${loadSeq}] fetch documents`);
     const docsData = (docsJson?.documents as any[]) || [];
     const docsErr = docsRes.ok
       ? null
@@ -1497,7 +1499,7 @@ function buildFormData(c: Checklist): FormData {
     }
 
     let taskDocsData: any[] = [];
-    if (isDevPerf) console.time(`[perf][checklist][load#${loadSeq}] db checklist_task_documents`);
+    if (isPerfEnabled()) console.time(`[perf][checklist][load#${loadSeq}] db checklist_task_documents`);
     {
       const { data, error } = await db<any[]>({
         table: "checklist_task_documents",
@@ -1523,9 +1525,9 @@ function buildFormData(c: Checklist): FormData {
         taskDocsData = (data || []) as any[];
       }
     }
-    if (isDevPerf) console.timeEnd(`[perf][checklist][load#${loadSeq}] db checklist_task_documents`);
+    if (isPerfEnabled()) console.timeEnd(`[perf][checklist][load#${loadSeq}] db checklist_task_documents`);
 
-    if (isDevPerf) console.time(`[perf][checklist][load#${loadSeq}] fetch asset_serials`);
+    if (isPerfEnabled()) console.time(`[perf][checklist][load#${loadSeq}] fetch asset_serials`);
     perfCountFetch("POST /api/db asset_serials");
     const serialsRes = await fetch("/api/db", {
       method: "POST",
@@ -1540,7 +1542,7 @@ function buildFormData(c: Checklist): FormData {
       }),
     });
     const serialsJson = await serialsRes.json().catch(() => ({}));
-    if (isDevPerf) console.timeEnd(`[perf][checklist][load#${loadSeq}] fetch asset_serials`);
+    if (isPerfEnabled()) console.timeEnd(`[perf][checklist][load#${loadSeq}] fetch asset_serials`);
     const serialsData = (serialsJson?.data as any[]) || [];
     const serialsErr =
       serialsRes.ok && serialsJson?.ok !== false
@@ -1554,7 +1556,7 @@ function buildFormData(c: Checklist): FormData {
     }
 
     if (!catalogLoaded) {
-      if (isDevPerf) console.time(`[perf][checklist][load#${loadSeq}] db catalog_items`);
+      if (isPerfEnabled()) console.time(`[perf][checklist][load#${loadSeq}] db catalog_items`);
       const { data: catalogData, error: catalogErr } = await db<any[]>({
         table: "catalog_items",
         op: "select",
@@ -1578,7 +1580,7 @@ function buildFormData(c: Checklist): FormData {
         setDeviceCatalogItems((deviceData || []) as CatalogItem[]);
       }
       setCatalogLoaded(true);
-      if (isDevPerf) console.timeEnd(`[perf][checklist][load#${loadSeq}] db catalog_items`);
+      if (isPerfEnabled()) console.timeEnd(`[perf][checklist][load#${loadSeq}] db catalog_items`);
     }
 
     const headChecklist = head as Checklist;
@@ -1739,7 +1741,7 @@ function buildFormData(c: Checklist): FormData {
       stato_intervento: "APERTO",
       note: "",
     });
-    if (isDevPerf) {
+    if (isPerfEnabled()) {
       const renewalRowsCount =
         (headChecklist?.saas_piano ? 1 : 0) +
         (headChecklist?.garanzia_scadenza ? 1 : 0) +
@@ -1764,7 +1766,7 @@ function buildFormData(c: Checklist): FormData {
     let alive = true;
 
     (async () => {
-      if (isDevPerf) {
+      if (isPerfEnabled()) {
         perfRef.current.mountActive = true;
         perfRef.current.mountDbCalls = 0;
         perfRef.current.mountFetchCalls = 0;
@@ -1786,7 +1788,7 @@ function buildFormData(c: Checklist): FormData {
       try {
         await load(nextId);
       } finally {
-        if (isDevPerf) {
+        if (isPerfEnabled()) {
           console.info("[perf][checklist] mount summary", {
             mountDbCalls: perfRef.current.mountDbCalls,
             mountFetchCalls: perfRef.current.mountFetchCalls,
@@ -1809,7 +1811,7 @@ function buildFormData(c: Checklist): FormData {
   }, []);
 
   useEffect(() => {
-    if (!isDevPerf || loading) return;
+    if (!isPerfEnabled() || loading) return;
     console.info("[perf][checklist] render ready", {
       id,
       counts: {
@@ -1818,7 +1820,7 @@ function buildFormData(c: Checklist): FormData {
         tagliandi: projectTagliandi.length,
       },
     });
-  }, [isDevPerf, loading, id, tasks.length, licenze.length, projectTagliandi.length]);
+  }, [loading, id, tasks.length, licenze.length, projectTagliandi.length]);
 
   useEffect(() => {
     (async () => {

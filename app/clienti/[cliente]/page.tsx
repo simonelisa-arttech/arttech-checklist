@@ -886,7 +886,9 @@ export default function ClientePage({ params }: { params: any }) {
     null
   );
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const isDevPerf = process.env.NODE_ENV !== "production";
+  const isPerfEnabled = () =>
+    process.env.NODE_ENV !== "production" ||
+    (typeof window !== "undefined" && new URLSearchParams(window.location.search).has("perf"));
   const perfRef = useRef({
     mountDbCalls: 0,
     mountFetchCalls: 0,
@@ -934,13 +936,13 @@ export default function ClientePage({ params }: { params: any }) {
   }
 
   function perfCountDb(label: string) {
-    if (!isDevPerf) return;
+    if (!isPerfEnabled()) return;
     perfRef.current.mountDbCalls += 1;
     console.count(`[perf][cliente][db] ${label}`);
   }
 
   function perfCountFetch(label: string) {
-    if (!isDevPerf) return;
+    if (!isPerfEnabled()) return;
     perfRef.current.mountFetchCalls += 1;
     console.count(`[perf][cliente][fetch] ${label}`);
   }
@@ -1175,7 +1177,7 @@ export default function ClientePage({ params }: { params: any }) {
     let alive = true;
     (async () => {
       const mountRun = ++perfRef.current.mountRun;
-      if (isDevPerf) {
+      if (isPerfEnabled()) {
         perfRef.current.mountDbCalls = 0;
         perfRef.current.mountFetchCalls = 0;
         console.time(`[perf][cliente][mount#${mountRun}] total`);
@@ -1195,14 +1197,14 @@ export default function ClientePage({ params }: { params: any }) {
       const clienteKey = decoded.trim();
       if (clienteKey) {
         try {
-          if (isDevPerf) console.time(`[perf][cliente][mount#${mountRun}] fetch /api/clienti`);
+          if (isPerfEnabled()) console.time(`[perf][cliente][mount#${mountRun}] fetch /api/clienti`);
           perfCountFetch("GET /api/clienti");
           const anagRes = await fetch(`/api/clienti?q=${encodeURIComponent(clienteKey)}&limit=1`, {
             cache: "no-store",
             credentials: "include",
           });
           const anagJson = await anagRes.json().catch(() => ({} as any));
-          if (isDevPerf) console.timeEnd(`[perf][cliente][mount#${mountRun}] fetch /api/clienti`);
+          if (isPerfEnabled()) console.timeEnd(`[perf][cliente][mount#${mountRun}] fetch /api/clienti`);
           const anagData = Array.isArray(anagJson?.data) ? anagJson.data[0] : null;
           const fullName = String((anagData as any)?.denominazione || "").trim();
           if (fullName) {
@@ -1215,11 +1217,11 @@ export default function ClientePage({ params }: { params: any }) {
           // keep fallback values from URL
         }
       }
-      if (isDevPerf) console.time(`[perf][cliente][mount#${mountRun}] fetch /api/dashboard`);
+      if (isPerfEnabled()) console.time(`[perf][cliente][mount#${mountRun}] fetch /api/dashboard`);
       perfCountFetch("GET /api/dashboard");
       const dashboardRes = await fetch(`/api/dashboard?q=${encodeURIComponent(clienteKey)}`);
       const dashboardJson = await dashboardRes.json().catch(() => ({}));
-      if (isDevPerf) console.timeEnd(`[perf][cliente][mount#${mountRun}] fetch /api/dashboard`);
+      if (isPerfEnabled()) console.timeEnd(`[perf][cliente][mount#${mountRun}] fetch /api/dashboard`);
       if (!dashboardRes.ok) {
         setError("Errore caricamento PROGETTI: " + (dashboardJson?.error || "errore API dashboard"));
         setLoading(false);
@@ -1234,13 +1236,13 @@ export default function ClientePage({ params }: { params: any }) {
       let licenzeCount = 0;
       const firstClienteId = String((list[0] as any)?.cliente_id || "").trim();
       if (firstClienteId) {
-        if (isDevPerf) console.time(`[perf][cliente][mount#${mountRun}] db clienti_anagrafica`);
+        if (isPerfEnabled()) console.time(`[perf][cliente][mount#${mountRun}] db clienti_anagrafica`);
         perfCountDb("clienti_anagrafica.select");
         const { data: clienteById } = await dbFrom("clienti_anagrafica")
           .select("denominazione")
           .eq("id", firstClienteId)
           .maybeSingle();
-        if (isDevPerf) console.timeEnd(`[perf][cliente][mount#${mountRun}] db clienti_anagrafica`);
+        if (isPerfEnabled()) console.timeEnd(`[perf][cliente][mount#${mountRun}] db clienti_anagrafica`);
         const fullById = String((clienteById as any)?.denominazione || "").trim();
         if (fullById) {
           displayCliente = fullById;
@@ -1279,7 +1281,7 @@ export default function ClientePage({ params }: { params: any }) {
         setLicenze([]);
         setLicenzeError(null);
       } else {
-        if (isDevPerf) console.time(`[perf][cliente][mount#${mountRun}] db licenses`);
+        if (isPerfEnabled()) console.time(`[perf][cliente][mount#${mountRun}] db licenses`);
         perfCountDb("licenses.select");
         const { data: licData, error: licErr } = await dbFrom("licenses")
           .select(
@@ -1295,20 +1297,20 @@ export default function ClientePage({ params }: { params: any }) {
           setLicenze((licData || []) as LicenzaRow[]);
           setLicenzeError(null);
         }
-        if (isDevPerf) console.timeEnd(`[perf][cliente][mount#${mountRun}] db licenses`);
+        if (isPerfEnabled()) console.timeEnd(`[perf][cliente][mount#${mountRun}] db licenses`);
       }
-      if (isDevPerf) console.time(`[perf][cliente][mount#${mountRun}] fetchRinnovi`);
+      if (isPerfEnabled()) console.time(`[perf][cliente][mount#${mountRun}] fetchRinnovi`);
       const rinnoviRows = await fetchRinnovi(clienteKey);
-      if (isDevPerf) console.timeEnd(`[perf][cliente][mount#${mountRun}] fetchRinnovi`);
-      if (isDevPerf) console.time(`[perf][cliente][mount#${mountRun}] fetchTagliandi`);
+      if (isPerfEnabled()) console.timeEnd(`[perf][cliente][mount#${mountRun}] fetchRinnovi`);
+      if (isPerfEnabled()) console.time(`[perf][cliente][mount#${mountRun}] fetchTagliandi`);
       const tagliandiRows = await fetchTagliandi(clienteKey);
-      if (isDevPerf) console.timeEnd(`[perf][cliente][mount#${mountRun}] fetchTagliandi`);
+      if (isPerfEnabled()) console.timeEnd(`[perf][cliente][mount#${mountRun}] fetchTagliandi`);
 
-      if (isDevPerf) console.time(`[perf][cliente][mount#${mountRun}] fetchSaasContratti`);
+      if (isPerfEnabled()) console.time(`[perf][cliente][mount#${mountRun}] fetchSaasContratti`);
       await fetchSaasContratti(clienteKey);
-      if (isDevPerf) console.timeEnd(`[perf][cliente][mount#${mountRun}] fetchSaasContratti`);
+      if (isPerfEnabled()) console.timeEnd(`[perf][cliente][mount#${mountRun}] fetchSaasContratti`);
 
-      if (isDevPerf) console.time(`[perf][cliente][mount#${mountRun}] db catalog_items`);
+      if (isPerfEnabled()) console.time(`[perf][cliente][mount#${mountRun}] db catalog_items`);
       perfCountDb("catalog_items.select.saas_ul");
       const { data: pianiData, error: pianiErr } = await dbFrom("catalog_items")
         .select("codice, descrizione")
@@ -1330,15 +1332,15 @@ export default function ClientePage({ params }: { params: any }) {
           .filter(Boolean) as PianoUltraRow[];
         setUltraPiani(mapped);
       }
-      if (isDevPerf) console.timeEnd(`[perf][cliente][mount#${mountRun}] db catalog_items`);
+      if (isPerfEnabled()) console.timeEnd(`[perf][cliente][mount#${mountRun}] db catalog_items`);
 
       let opsData: any[] = [];
       try {
-        if (isDevPerf) console.time(`[perf][cliente][mount#${mountRun}] fetch /api/operatori`);
+        if (isPerfEnabled()) console.time(`[perf][cliente][mount#${mountRun}] fetch /api/operatori`);
         perfCountFetch("GET /api/operatori");
         const res = await fetch("/api/operatori", { credentials: "include" });
         const json = await res.json().catch(() => ({} as any));
-        if (isDevPerf) console.timeEnd(`[perf][cliente][mount#${mountRun}] fetch /api/operatori`);
+        if (isPerfEnabled()) console.timeEnd(`[perf][cliente][mount#${mountRun}] fetch /api/operatori`);
         if (res.ok && Array.isArray(json?.data)) {
           opsData = json.data;
         }
@@ -1346,14 +1348,14 @@ export default function ClientePage({ params }: { params: any }) {
         // fallback below
       }
       if (!Array.isArray(opsData) || opsData.length === 0) {
-        if (isDevPerf) console.time(`[perf][cliente][mount#${mountRun}] db operatori fallback`);
+        if (isPerfEnabled()) console.time(`[perf][cliente][mount#${mountRun}] db operatori fallback`);
         perfCountDb("operatori.select.fallback");
         const fallback = await dbFrom("operatori")
           .select("id, user_id, nome, ruolo, email, attivo, alert_enabled, alert_tasks")
           .order("ruolo", { ascending: true })
           .order("nome", { ascending: true });
         opsData = (fallback.data || []) as any[];
-        if (isDevPerf) console.timeEnd(`[perf][cliente][mount#${mountRun}] db operatori fallback`);
+        if (isPerfEnabled()) console.timeEnd(`[perf][cliente][mount#${mountRun}] db operatori fallback`);
       }
       const mapped = (opsData || []).map((o: any) => ({
         id: o.id,
@@ -1370,7 +1372,7 @@ export default function ClientePage({ params }: { params: any }) {
         console.log("ALERT OPERATORI", mapped.length, mapped);
       }
 
-      if (isDevPerf) {
+      if (isPerfEnabled()) {
         console.info(`[perf][cliente] ready`, {
           mountRun,
           counts: {
@@ -1384,7 +1386,7 @@ export default function ClientePage({ params }: { params: any }) {
         });
       }
       setLoading(false);
-      if (isDevPerf) {
+      if (isPerfEnabled()) {
         console.timeEnd(`[perf][cliente][mount#${mountRun}] total`);
       }
     })();
@@ -1405,7 +1407,7 @@ export default function ClientePage({ params }: { params: any }) {
   }, []);
 
   useEffect(() => {
-    if (!isDevPerf || loading) return;
+    if (!isPerfEnabled() || loading) return;
     console.info("[perf][cliente] render ready", {
       cliente,
       counts: {
@@ -1416,7 +1418,6 @@ export default function ClientePage({ params }: { params: any }) {
       },
     });
   }, [
-    isDevPerf,
     loading,
     cliente,
     checklists.length,
