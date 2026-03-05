@@ -703,11 +703,14 @@ export default function Page() {
     const controller = new AbortController();
     loadAbortRef.current = controller;
     const isLatest = () => requestSeq === loadRequestSeqRef.current;
+
     if (loadSpinnerTimerRef.current) clearTimeout(loadSpinnerTimerRef.current);
     setLoading(false);
+    setDashboardLoadError(null);
     loadSpinnerTimerRef.current = setTimeout(() => {
       if (isLatest()) setLoading(true);
     }, 350);
+
     let data: any[] | null = null;
     let sections: any[] | null = null;
     let licenseSummary: any[] | null = null;
@@ -715,22 +718,18 @@ export default function Page() {
     let serialsData: any[] | null = null;
     let catalogItemsData: any[] | null = null;
     let error: any = null;
-    let sectionsErr: any = null;
-    let licenseErr: any = null;
-    let licensesErr: any = null;
-    let serialsErr: any = null;
-    let catalogErr: any = null;
 
     try {
-      try {
       const debug = new URLSearchParams(window.location.search).get("debug") === "1";
       const params = new URLSearchParams();
       if (debug) params.set("debug", "1");
       if (debouncedQ) params.set("q", debouncedQ);
+
       const activeSaasFilters = (Object.entries(saasServiceFilter) as Array<[SaasServiceFilter, boolean]>)
         .filter(([, enabled]) => enabled)
         .map(([key]) => key);
       if (activeSaasFilters.length > 0) params.set("saas", activeSaasFilters.join(","));
+
       const activeProjectStatusFilters = (
         Object.entries(projectStatusFilter) as Array<[ProjectStatusFilter, boolean]>
       )
@@ -744,37 +743,29 @@ export default function Page() {
       const dashboardData = await dashboardRes.json().catch(() => ({}));
       if (!dashboardRes.ok) {
         error = { message: dashboardData?.error || "Errore caricamento dashboard" };
-        if (isLatest()) {
-          setDashboardLoadError(String(error?.message || "Errore caricamento dashboard"));
-        }
-      } else {
-        if (isLatest()) setDashboardLoadError(null);
-        data = (dashboardData?.data?.checklists as any[]) || [];
-        sections = (dashboardData?.data?.sections as any[]) || [];
-        licenseSummary = (dashboardData?.data?.licenseSummary as any[]) || [];
-        licensesData = (dashboardData?.data?.licenses as any[]) || [];
-        serialsData = (dashboardData?.data?.serials as any[]) || [];
-        catalogItemsData = (dashboardData?.data?.catalogItems as any[]) || [];
-        if (debug) {
-          console.log("[dashboard] auth_mode:", dashboardData?.auth_mode || dashboardData?.debug?.auth_mode);
-          console.log(
-            "[dashboard] result_count:",
-            dashboardData?.debug?.result_count ?? (dashboardData?.data?.checklists || []).length
-          );
-        }
-      }
-    } catch (e: any) {
-      if (e?.name === "AbortError") return;
-      error = { message: e?.message || "Errore caricamento dashboard" };
-      if (isLatest()) {
+        if (!isLatest()) return;
         setDashboardLoadError(String(error?.message || "Errore caricamento dashboard"));
+        return;
       }
-      }
-    }
-    if (!isLatest()) return;
 
-    const sectionsByChecklistId: Record<string, Partial<Checklist>> = {};
-    if (!sectionsErr && sections) {
+      data = (dashboardData?.data?.checklists as any[]) || [];
+      sections = (dashboardData?.data?.sections as any[]) || [];
+      licenseSummary = (dashboardData?.data?.licenseSummary as any[]) || [];
+      licensesData = (dashboardData?.data?.licenses as any[]) || [];
+      serialsData = (dashboardData?.data?.serials as any[]) || [];
+      catalogItemsData = (dashboardData?.data?.catalogItems as any[]) || [];
+
+      if (debug) {
+        console.log("[dashboard] auth_mode:", dashboardData?.auth_mode || dashboardData?.debug?.auth_mode);
+        console.log(
+          "[dashboard] result_count:",
+          dashboardData?.debug?.result_count ?? (dashboardData?.data?.checklists || []).length
+        );
+      }
+
+      if (!isLatest()) return;
+
+      const sectionsByChecklistId: Record<string, Partial<Checklist>> = {};
       for (const r of sections as any[]) {
         const checklistId = String(r.checklist_id ?? "");
         if (!checklistId) continue;
@@ -787,12 +778,8 @@ export default function Page() {
           pct_complessivo: r.pct_complessivo ?? null,
         };
       }
-    }
 
-    const licenzeByChecklistId: Record<string, Partial<Checklist>> = {};
-    if (licenseErr) {
-      console.error("Errore caricamento license_summary_view", licenseErr);
-    } else if (licenseSummary) {
+      const licenzeByChecklistId: Record<string, Partial<Checklist>> = {};
       for (const r of licenseSummary as any[]) {
         const checklistId = String(r.checklist_id ?? "");
         if (!checklistId) continue;
@@ -802,49 +789,35 @@ export default function Page() {
           licenze_dettaglio: r.licenze_dettaglio ?? null,
         };
       }
-    }
 
-    if (serialsErr) {
-      console.error("Errore caricamento seriali", serialsErr);
-    } else if (serialsData) {
-      const map: Record<string, { seriali: string[] }> = {};
+      const serialMap: Record<string, { seriali: string[] }> = {};
       for (const r of serialsData as any[]) {
         const checklistId = String(r.checklist_id ?? "");
         if (!checklistId) continue;
-        if (!map[checklistId]) map[checklistId] = { seriali: [] };
-        if (r.seriale) map[checklistId].seriali.push(String(r.seriale));
+        if (!serialMap[checklistId]) serialMap[checklistId] = { seriali: [] };
+        if (r.seriale) serialMap[checklistId].seriali.push(String(r.seriale));
       }
-      if (!isLatest()) return;
-      setSerialsByChecklistId(map);
-    }
+      setSerialsByChecklistId(serialMap);
 
-    if (!error && data) {
       const licenseSearchByChecklistId = new Map<string, string>();
-      if (licensesErr) {
-        console.error("Errore caricamento licenses", licensesErr);
-      } else if (licensesData) {
-        for (const l of licensesData as any[]) {
-          const checklistId = String(l.checklist_id ?? "");
-          if (!checklistId) continue;
-          const parts = [
-            l.tipo,
-            l.scadenza,
-            l.note,
-            l.ref_univoco,
-            l.telefono,
-            l.intestatario,
-            l.gestore,
-            l.fornitore,
-          ]
-            .filter(Boolean)
-            .map((p) => String(p));
-          if (parts.length === 0) continue;
-          const prev = licenseSearchByChecklistId.get(checklistId) || "";
-          licenseSearchByChecklistId.set(
-            checklistId,
-            prev ? `${prev} ${parts.join(" ")}` : parts.join(" ")
-          );
-        }
+      for (const l of licensesData as any[]) {
+        const checklistId = String(l.checklist_id ?? "");
+        if (!checklistId) continue;
+        const parts = [
+          l.tipo,
+          l.scadenza,
+          l.note,
+          l.ref_univoco,
+          l.telefono,
+          l.intestatario,
+          l.gestore,
+          l.fornitore,
+        ]
+          .filter(Boolean)
+          .map((p) => String(p));
+        if (parts.length === 0) continue;
+        const prev = licenseSearchByChecklistId.get(checklistId) || "";
+        licenseSearchByChecklistId.set(checklistId, prev ? `${prev} ${parts.join(" ")}` : parts.join(" "));
       }
 
       const merged = (data as Checklist[]).map((c) => {
@@ -860,84 +833,71 @@ export default function Page() {
           license_search: licenseSearchByChecklistId.get(c.id) || null,
         };
       });
-      if (!isLatest()) return;
       setItems(merged as Checklist[]);
-    } else if (error) {
-      console.error("Errore caricamento checklists (dashboard)", error);
-    }
-
-    if (catalogErr) {
-      console.error("Errore caricamento catalogo", catalogErr);
-    } else {
-      if (!isLatest()) return;
       setCatalogItems((catalogItemsData || []) as CatalogItem[]);
-    }
 
-    let opRes: Response;
-    try {
-      opRes = await fetch("/api/operatori", { signal: controller.signal });
-    } catch (e: any) {
-      if (e?.name === "AbortError" || controller.signal.aborted) return;
-      console.error("Errore caricamento operatori", e);
-      if (isLatest()) {
-        setDashboardLoadError("Errore caricamento operatori");
+      let opRes: Response;
+      try {
+        opRes = await fetch("/api/operatori", { signal: controller.signal });
+      } catch (e: any) {
+        if (e?.name === "AbortError" || controller.signal.aborted) return;
+        throw new Error("Errore caricamento operatori");
       }
-      return;
-    }
-    if (opRes.ok) {
-      const opData = await opRes.json().catch(() => ({}));
-      const list = Array.isArray(opData?.data) ? opData.data : [];
-      const nextMap = new Map<string, { nome: string | null; email: string | null }>();
-      for (const row of list) {
-        const id = String(row?.id || "");
-        if (!id) continue;
-        nextMap.set(id, {
-          nome: row?.nome ?? null,
-          email: row?.email ?? null,
+      if (!isLatest()) return;
+      if (opRes.ok) {
+        const opData = await opRes.json().catch(() => ({}));
+        const list = Array.isArray(opData?.data) ? opData.data : [];
+        const nextMap = new Map<string, { nome: string | null; email: string | null }>();
+        for (const row of list) {
+          const id = String(row?.id || "");
+          if (!id) continue;
+          nextMap.set(id, {
+            nome: row?.nome ?? null,
+            email: row?.email ?? null,
+          });
+        }
+        setOperatoriLookupById(nextMap);
+      }
+
+      setOperatoreAssociationError(null);
+      let meRes: Response;
+      try {
+        meRes = await fetch("/api/me-operatore", { signal: controller.signal });
+      } catch (e: any) {
+        if (e?.name === "AbortError" || controller.signal.aborted) return;
+        throw new Error("Errore caricamento operatore corrente");
+      }
+      if (!isLatest()) return;
+      const meData = await meRes.json().catch(() => ({}));
+      if (!meRes.ok || !meData?.operatore?.id) {
+        if (meData?.error) {
+          console.error("Errore risoluzione operatore corrente", meData.error);
+        }
+        setCurrentOperatoreId("");
+        setCurrentOperatoreLabel(null);
+        setOperatoreAssociationError("Operatore non associato");
+      } else {
+        setCurrentOperatoreId(String(meData.operatore.id));
+        setCurrentOperatoreLabel({
+          nome: meData.operatore.nome ?? null,
+          ruolo: meData.operatore.ruolo ?? null,
         });
       }
-      if (!isLatest()) return;
-      setOperatoriLookupById(nextMap);
-    }
-
-    if (!isLatest()) return;
-    setOperatoreAssociationError(null);
-    let meRes: Response;
-    try {
-      meRes = await fetch("/api/me-operatore", { signal: controller.signal });
     } catch (e: any) {
       if (e?.name === "AbortError" || controller.signal.aborted) return;
-      console.error("Errore caricamento operatore corrente", e);
-      if (isLatest()) {
-        setDashboardLoadError("Errore caricamento operatore corrente");
+      if (!isLatest()) return;
+      const message = String(e?.message || "Errore caricamento dashboard");
+      console.error("Errore caricamento dashboard", e);
+      setDashboardLoadError(message);
+    } finally {
+      if (!isLatest()) return;
+      if (loadSpinnerTimerRef.current) {
+        clearTimeout(loadSpinnerTimerRef.current);
+        loadSpinnerTimerRef.current = null;
       }
-      return;
+      setLoading(false);
     }
-    const meData = await meRes.json().catch(() => ({}));
-    if (!meRes.ok || !meData?.operatore?.id) {
-      if (meData?.error) {
-        console.error("Errore risoluzione operatore corrente", meData.error);
-      }
-      setCurrentOperatoreId("");
-      setCurrentOperatoreLabel(null);
-      setOperatoreAssociationError("Operatore non associato");
-    } else {
-      setCurrentOperatoreId(String(meData.operatore.id));
-      setCurrentOperatoreLabel({
-        nome: meData.operatore.nome ?? null,
-        ruolo: meData.operatore.ruolo ?? null,
-      });
-    }
-
-    if (!isLatest()) return;
-  } finally {
-    if (loadSpinnerTimerRef.current) {
-      clearTimeout(loadSpinnerTimerRef.current);
-      loadSpinnerTimerRef.current = null;
-    }
-    if (isLatest()) setLoading(false);
   }
-}
 
   useEffect(() => {
     const t = setTimeout(() => {
