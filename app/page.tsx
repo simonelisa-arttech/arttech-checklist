@@ -479,7 +479,7 @@ export default function Page() {
   const [q, setQ] = useState("");
   const [debouncedQ, setDebouncedQ] = useState("");
   const lastDebouncedQRef = useRef("");
-  const lastLoadKeyRef = useRef("");
+  const lastLoadKeyRef = useRef<string | null>(null);
   const loadAbortRef = useRef<AbortController | null>(null);
   const loadSpinnerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const loadRequestSeqRef = useRef(0);
@@ -747,7 +747,7 @@ export default function Page() {
         .map(([key]) => key);
       if (activeProjectStatusFilters.length > 0) params.set("stati", activeProjectStatusFilters.join(","));
       const loadKey = params.toString();
-      if (loadKey === lastLoadKeyRef.current) return;
+      if (lastLoadKeyRef.current === loadKey) return;
       lastLoadKeyRef.current = loadKey;
 
       const dashboardRes = await fetch(`/api/dashboard${params.size ? `?${params.toString()}` : ""}`, {
