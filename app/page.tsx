@@ -362,6 +362,7 @@ export default function Page() {
   }
   const router = useRouter();
   const [items, setItems] = useState<Checklist[]>([]);
+  const [allProjects, setAllProjects] = useState<Checklist[]>([]);
   const [loading, setLoading] = useState(true);
   const [dashboardLoadError, setDashboardLoadError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
@@ -477,11 +478,7 @@ export default function Page() {
 
   // dashboard: ricerca + ordinamento
   const [q, setQ] = useState("");
-  const [debouncedQ, setDebouncedQ] = useState("");
-  const lastDebouncedQRef = useRef("");
-  const lastLoadKeyRef = useRef<string | null>(null);
   const loadAbortRef = useRef<AbortController | null>(null);
-  const loadSpinnerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const loadRequestSeqRef = useRef(0);
   const [saasServiceFilter, setSaasServiceFilter] = useState<Record<SaasServiceFilter, boolean>>({
     EVENTS: false,
@@ -587,13 +584,13 @@ export default function Page() {
   }
 
   const displayRows = useMemo(() => {
-    const rawNeedle = debouncedQ.trim().toLowerCase();
+    const rawNeedle = q.trim().toLowerCase();
     const tokenMatch = rawNeedle.match(/\bproforma:(si|no)\b/);
     const proformaFilter =
       tokenMatch?.[1] === "si" ? true : tokenMatch?.[1] === "no" ? false : null;
     const needle = rawNeedle.replace(/\bproforma:(si|no)\b/g, "").trim();
 
-    const filtered = items.filter((c) => {
+    const filtered = allProjects.filter((c) => {
       const activeFilters = (Object.entries(saasServiceFilter) as Array<[SaasServiceFilter, boolean]>)
         .filter(([, enabled]) => enabled)
         .map(([key]) => key);
@@ -681,7 +678,7 @@ export default function Page() {
     });
 
     return sorted;
-  }, [items, debouncedQ, saasServiceFilter, projectStatusFilter, sortKey, sortDir, serialsByChecklistId]);
+  }, [allProjects, q, saasServiceFilter, projectStatusFilter, sortKey, sortDir, serialsByChecklistId]);
 
   const clientiOptions = useMemo(() => {
     const set = new Set<string>();
@@ -704,22 +701,9 @@ export default function Page() {
     const controller = new AbortController();
     loadAbortRef.current = controller;
     const isLatest = () => requestSeq === loadRequestSeqRef.current;
-    const normalizedDebouncedQ = debouncedQ.trim().toLowerCase();
-    if (normalizedDebouncedQ.length === 1) {
-      if (loadSpinnerTimerRef.current) {
-        clearTimeout(loadSpinnerTimerRef.current);
-        loadSpinnerTimerRef.current = null;
-      }
-      if (isLatest()) setLoading(false);
-      return;
-    }
 
-    if (loadSpinnerTimerRef.current) clearTimeout(loadSpinnerTimerRef.current);
-    setLoading(false);
+    setLoading(true);
     setDashboardLoadError(null);
-    loadSpinnerTimerRef.current = setTimeout(() => {
-      if (isLatest()) setLoading(true);
-    }, 700);
 
     let data: any[] | null = null;
     let sections: any[] | null = null;
@@ -733,7 +717,7 @@ export default function Page() {
       const debug = new URLSearchParams(window.location.search).get("debug") === "1";
       const params = new URLSearchParams();
       if (debug) params.set("debug", "1");
-      if (normalizedDebouncedQ.length >= 2) params.set("q", normalizedDebouncedQ);
+      // ricerca solo client-side: non passare q all'API
 
       const activeSaasFilters = (Object.entries(saasServiceFilter) as Array<[SaasServiceFilter, boolean]>)
         .filter(([, enabled]) => enabled)
@@ -746,10 +730,6 @@ export default function Page() {
         .filter(([, enabled]) => enabled)
         .map(([key]) => key);
       if (activeProjectStatusFilters.length > 0) params.set("stati", activeProjectStatusFilters.join(","));
-      const loadKey = params.toString();
-      if (lastLoadKeyRef.current === loadKey) return;
-      lastLoadKeyRef.current = loadKey;
-
       const dashboardRes = await fetch(`/api/dashboard${params.size ? `?${params.toString()}` : ""}`, {
         signal: controller.signal,
       });
@@ -847,6 +827,7 @@ export default function Page() {
         };
       });
       setItems(merged as Checklist[]);
+      setAllProjects(merged as Checklist[]);
       setCatalogItems((catalogItemsData || []) as CatalogItem[]);
 
       let opRes: Response;
@@ -904,27 +885,13 @@ export default function Page() {
       setDashboardLoadError(message);
     } finally {
       if (!isLatest()) return;
-      if (loadSpinnerTimerRef.current) {
-        clearTimeout(loadSpinnerTimerRef.current);
-        loadSpinnerTimerRef.current = null;
-      }
       setLoading(false);
     }
   }
 
   useEffect(() => {
-    const t = setTimeout(() => {
-      const normalized = q.trim().toLowerCase();
-      if (normalized === lastDebouncedQRef.current) return;
-      lastDebouncedQRef.current = normalized;
-      setDebouncedQ(normalized);
-    }, 900);
-    return () => clearTimeout(t);
-  }, [q]);
-
-  useEffect(() => {
     load();
-  }, [debouncedQ, saasServiceFilter, projectStatusFilter]);
+  }, []);
 
   useEffect(() => {
     return () => {
