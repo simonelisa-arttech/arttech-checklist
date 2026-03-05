@@ -35,6 +35,13 @@ function startOfToday() {
   return today;
 }
 
+function stripPrefixId(value?: string | null) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  const idx = raw.indexOf(":");
+  return idx >= 0 ? raw.slice(idx + 1) : raw;
+}
+
 function escapeHtml(value: string) {
   return value
     .replace(/&/g, "&amp;")
@@ -3271,7 +3278,9 @@ export default function ClientePage({ params }: { params: any }) {
   }
 
   async function updateRinnovo(id: string, payload: Record<string, any>) {
-    const { error } = await dbFrom("rinnovi_servizi").update(payload).eq("id", id);
+    const rawId = stripPrefixId(id);
+    if (!rawId) return false;
+    const { error } = await dbFrom("rinnovi_servizi").update(payload).eq("id", rawId);
     if (error) {
       setRinnoviError("Errore aggiornamento rinnovo: " + error.message);
       return false;
@@ -3280,8 +3289,9 @@ export default function ClientePage({ params }: { params: any }) {
   }
 
   async function updateRinnovi(ids: string[], payload: Record<string, any>) {
-    if (ids.length === 0) return true;
-    const { error } = await dbFrom("rinnovi_servizi").update(payload).in("id", ids);
+    const rawIds = ids.map((id) => stripPrefixId(id)).filter(Boolean);
+    if (rawIds.length === 0) return true;
+    const { error } = await dbFrom("rinnovi_servizi").update(payload).in("id", rawIds);
     if (error) {
       setRinnoviError("Errore aggiornamento rinnovi: " + error.message);
       return false;
@@ -3638,11 +3648,13 @@ export default function ClientePage({ params }: { params: any }) {
         if (error) throw new Error(error.message);
         setTagliandi((prev) => prev.filter((x) => x.id !== editScadenzaItem.id));
       } else if (editScadenzaForm.tipo === "RINNOVO") {
+        const rinnovoId = stripPrefixId(editScadenzaItem.id);
+        if (!rinnovoId) throw new Error("ID rinnovo non valido");
         const { error } = await dbFrom("rinnovi_servizi")
           .delete()
-          .eq("id", editScadenzaItem.id);
+          .eq("id", rinnovoId);
         if (error) throw new Error(error.message);
-        setRinnovi((prev) => prev.filter((x) => x.id !== editScadenzaItem.id));
+        setRinnovi((prev) => prev.filter((x) => String(x.id) !== String(rinnovoId)));
       } else if (editScadenzaForm.tipo === "SAAS_ULTRA") {
         await deleteContrattoFromScadenza();
         return;
@@ -4470,7 +4482,11 @@ export default function ClientePage({ params }: { params: any }) {
       return true;
     }
     if (r.source === "rinnovi") {
-      const { error } = await dbFrom("rinnovi_servizi").update({ scadenza: newDate }).eq("id", r.id);
+      const rinnovoId = stripPrefixId(r.id);
+      if (!rinnovoId) return false;
+      const { error } = await dbFrom("rinnovi_servizi")
+        .update({ scadenza: newDate })
+        .eq("id", rinnovoId);
       if (error) {
         setRinnoviError("Errore aggiornamento scadenza rinnovo: " + error.message);
         return false;
