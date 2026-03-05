@@ -1292,13 +1292,12 @@ function buildFormData(c: Checklist): FormData {
       return;
     }
 
-    const { data: licenzeData, error: licenzeErr } = await supabase
-      .from("licenses")
-      .select(
-        "id, checklist_id, tipo, scadenza, stato, note, intestata_a, ref_univoco, telefono, intestatario, gestore, fornitore, created_at"
-      )
-      .eq("checklist_id", id)
-      .order("created_at", { ascending: false });
+    const licenzeRes = await fetch(`/api/checklists/${id}/licenses`, { cache: "no-store" });
+    const licenzeJson = await licenzeRes.json().catch(() => ({}));
+    const licenzeData = (licenzeJson?.licenses as any[]) || [];
+    const licenzeErr = licenzeRes.ok
+      ? null
+      : { message: licenzeJson?.error || "Errore caricamento licenze" };
 
     if (licenzeErr) {
       setError("Errore caricamento licenze: " + licenzeErr.message);
