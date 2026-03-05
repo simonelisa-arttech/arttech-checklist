@@ -53,7 +53,7 @@ export async function GET(
     return NextResponse.json({ error: e?.message || "Missing SUPABASE_SERVICE_ROLE_KEY" }, { status: 500 });
   }
 
-  let res = await supabaseAdmin
+  const res1 = await supabaseAdmin
     .from("checklist_tasks")
     .select(
       "id, sezione, ordine, titolo, stato, note, target, task_template_id, updated_at, updated_by_operatore, created_at, operatori:updated_by_operatore ( id, nome )"
@@ -62,8 +62,8 @@ export async function GET(
     .order("ordine", { ascending: true, nullsFirst: true })
     .order("created_at", { ascending: true });
 
-  if (res.error && String(res.error.message || "").toLowerCase().includes("target")) {
-    res = await supabaseAdmin
+  if (res1.error && String(res1.error.message || "").toLowerCase().includes("target")) {
+    const res2 = await supabaseAdmin
       .from("checklist_tasks")
       .select(
         "id, sezione, ordine, titolo, stato, note, task_template_id, updated_at, updated_by_operatore, created_at, operatori:updated_by_operatore ( id, nome )"
@@ -71,14 +71,18 @@ export async function GET(
       .eq("checklist_id", checklistId)
       .order("ordine", { ascending: true, nullsFirst: true })
       .order("created_at", { ascending: true });
-    if (!res.error) {
-      res.data = ((res.data || []) as any[]).map((r) => ({ ...r, target: null }));
+
+    if (res2.error) {
+      return NextResponse.json({ error: res2.error.message }, { status: 500 });
     }
+
+    const tasks = (res2.data ?? []).map((r: any) => ({ ...r, target: null }));
+    return NextResponse.json({ ok: true, tasks });
   }
 
-  if (res.error) {
-    return NextResponse.json({ error: res.error.message }, { status: 500 });
+  if (res1.error) {
+    return NextResponse.json({ error: res1.error.message }, { status: 500 });
   }
 
-  return NextResponse.json({ ok: true, tasks: res.data || [] });
+  return NextResponse.json({ ok: true, tasks: res1.data ?? [] });
 }
