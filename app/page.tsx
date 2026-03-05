@@ -722,6 +722,7 @@ export default function Page() {
     let catalogErr: any = null;
 
     try {
+      try {
       const debug = new URLSearchParams(window.location.search).get("debug") === "1";
       const params = new URLSearchParams();
       if (debug) params.set("debug", "1");
@@ -767,6 +768,7 @@ export default function Page() {
       error = { message: e?.message || "Errore caricamento dashboard" };
       if (isLatest()) {
         setDashboardLoadError(String(error?.message || "Errore caricamento dashboard"));
+      }
       }
     }
     if (!isLatest()) return;
