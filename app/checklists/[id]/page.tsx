@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import ConfigMancante from "@/components/ConfigMancante";
 import ClientiCombobox from "@/components/ClientiCombobox";
+import AttachmentsPanel from "@/components/AttachmentsPanel";
 import Toast from "@/components/Toast";
 import { isSupabaseConfigured, supabase } from "@/lib/supabaseClient";
 import { sendAlert } from "@/lib/sendAlert";
@@ -1256,13 +1257,11 @@ function buildFormData(c: Checklist): FormData {
     setError(null);
     setItemsError(null);
 
-    const { data: head, error: err1 } = await supabase
-      .from("checklists")
-      .select(
-        "*, created_by_name, updated_by_name, created_by_operatore, updated_by_operatore"
-      )
-      .eq("id", id)
-      .single();
+    const debug = new URLSearchParams(window.location.search).get("debug") === "1";
+    const headRes = await fetch(`/api/checklists/${id}${debug ? "?debug=1" : ""}`);
+    const headJson = await headRes.json().catch(() => ({}));
+    const head = headJson?.data as any;
+    const err1 = headRes.ok ? null : { message: headJson?.error || "Errore caricamento checklist" };
 
     if (err1) {
       setError("Errore caricamento checklist: " + err1.message);
@@ -3241,6 +3240,7 @@ function buildFormData(c: Checklist): FormData {
                   >
                     <option value="IN_CORSO">IN_CORSO</option>
                     <option value="CONSEGNATO">CONSEGNATO</option>
+                    <option value="RIENTRATO">RIENTRATO</option>
                     <option value="CHIUSO">CHIUSO</option>
                     <option value="SOSPESO">SOSPESO</option>
                   </select>
@@ -5359,155 +5359,168 @@ function buildFormData(c: Checklist): FormData {
       </div>
       <div style={{ marginTop: 22 }}>
         <h2 style={{ marginTop: 0 }}>Documenti checklist</h2>
-
-        {docError && (
-          <div style={{ color: "crimson", marginBottom: 10 }}>{docError}</div>
-        )}
-
-        <div
-          style={{
-            marginBottom: 12,
-            padding: 12,
-            border: "1px solid #eee",
-            borderRadius: 12,
-            background: "white",
-          }}
-        >
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "200px 1fr 140px",
-              gap: 10,
-              alignItems: "end",
-            }}
-          >
-            <label>
-              Tipo documento<br />
-              <select
-                value={docType}
-                onChange={(e) => setDocType(e.target.value)}
-                style={{ width: "100%", padding: 10 }}
-              >
-                <option value="">—</option>
-                <option value="FATTURA_PROFORMA">FATTURA PROFORMA</option>
-                <option value="DDT">DDT</option>
-                <option value="FOTO">FOTO</option>
-                <option value="ALTRO">ALTRO</option>
-              </select>
-            </label>
-            <label>
-              File<br />
-              <input
-                type="file"
-                onChange={(e) => setDocFile(e.target.files?.[0] ?? null)}
-                style={{ width: "100%", padding: 8 }}
-              />
-            </label>
-            <button
-              type="button"
-              onClick={uploadDocument}
-              style={{
-                padding: "10px 12px",
-                borderRadius: 10,
-                border: "1px solid #111",
-                background: "#111",
-                color: "white",
-                cursor: "pointer",
-              }}
-            >
-              Carica documento
-            </button>
-          </div>
+        <div style={{ marginBottom: 12 }}>
+          <AttachmentsPanel
+            title="Allegati checklist (upload + link Drive)"
+            entityType="CHECKLIST"
+            entityId={id}
+            multiple
+            storagePrefix="checklist"
+          />
         </div>
 
-        {documents.length === 0 ? (
-          <div style={{ opacity: 0.7 }}>Nessun documento caricato</div>
-        ) : (
-          <div style={{ border: "1px solid #eee", borderRadius: 12, overflow: "hidden" }}>
+        {false && (
+          <>
+            {docError && (
+              <div style={{ color: "crimson", marginBottom: 10 }}>{docError}</div>
+            )}
+
             <div
               style={{
-                display: "grid",
-                gridTemplateColumns: "2fr 1fr 1fr 1fr 200px",
-                gap: 0,
-                padding: "10px 12px",
-                fontWeight: 700,
-                borderBottom: "1px solid #eee",
-                background: "#fafafa",
+                marginBottom: 12,
+                padding: 12,
+                border: "1px solid #eee",
+                borderRadius: 12,
+                background: "white",
               }}
             >
-              <div>Nome file</div>
-              <div>Tipo</div>
-              <div>Data upload</div>
-              <div>Caricato da</div>
-              <div>Azioni</div>
-            </div>
-
-            {documents.map((d) => (
               <div
-                key={d.id}
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "2fr 1fr 1fr 1fr 200px",
-                  gap: 0,
-                  padding: "10px 12px",
-                  borderBottom: "1px solid #f5f5f5",
-                  alignItems: "center",
-                  fontSize: 13,
+                  gridTemplateColumns: "200px 1fr 140px",
+                  gap: 10,
+                  alignItems: "end",
                 }}
               >
-                <div>{d.filename}</div>
-                <div>{d.tipo ?? "—"}</div>
-                <div>{d.uploaded_at ? new Date(d.uploaded_at).toLocaleString() : "—"}</div>
-                <div>
-                  {d.uploaded_by_operatore
-                    ? operatoriMap.get(d.uploaded_by_operatore) ?? "—"
-                    : "—"}
-                </div>
-                <div style={{ display: "flex", gap: 8 }}>
-                  <button
-                    type="button"
-                    onClick={() => openDocument(d, false)}
-                    style={{
-                      padding: "6px 10px",
-                      borderRadius: 8,
-                      border: "1px solid #ddd",
-                      background: "white",
-                      cursor: "pointer",
-                    }}
+                <label>
+                  Tipo documento<br />
+                  <select
+                    value={docType}
+                    onChange={(e) => setDocType(e.target.value)}
+                    style={{ width: "100%", padding: 10 }}
                   >
-                    Apri
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => openDocument(d, true)}
-                    style={{
-                      padding: "6px 10px",
-                      borderRadius: 8,
-                      border: "1px solid #ddd",
-                      background: "white",
-                      cursor: "pointer",
-                    }}
-                  >
-                    Scarica
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => deleteDocument(d)}
-                    style={{
-                      padding: "6px 10px",
-                      borderRadius: 8,
-                      border: "1px solid #dc2626",
-                      background: "white",
-                      color: "#dc2626",
-                      cursor: "pointer",
-                    }}
-                  >
-                    Elimina
-                  </button>
-                </div>
+                    <option value="">—</option>
+                    <option value="FATTURA_PROFORMA">FATTURA PROFORMA</option>
+                    <option value="DDT">DDT</option>
+                    <option value="FOTO">FOTO</option>
+                    <option value="ALTRO">ALTRO</option>
+                  </select>
+                </label>
+                <label>
+                  File<br />
+                  <input
+                    type="file"
+                    onChange={(e) => setDocFile(e.target.files?.[0] ?? null)}
+                    style={{ width: "100%", padding: 8 }}
+                  />
+                </label>
+                <button
+                  type="button"
+                  onClick={uploadDocument}
+                  style={{
+                    padding: "10px 12px",
+                    borderRadius: 10,
+                    border: "1px solid #111",
+                    background: "#111",
+                    color: "white",
+                    cursor: "pointer",
+                  }}
+                >
+                  Carica documento
+                </button>
               </div>
-            ))}
-          </div>
+            </div>
+
+            {documents.length === 0 ? (
+              <div style={{ opacity: 0.7 }}>Nessun documento caricato</div>
+            ) : (
+              <div style={{ border: "1px solid #eee", borderRadius: 12, overflow: "hidden" }}>
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "2fr 1fr 1fr 1fr 200px",
+                    gap: 0,
+                    padding: "10px 12px",
+                    fontWeight: 700,
+                    borderBottom: "1px solid #eee",
+                    background: "#fafafa",
+                  }}
+                >
+                  <div>Nome file</div>
+                  <div>Tipo</div>
+                  <div>Data upload</div>
+                  <div>Caricato da</div>
+                  <div>Azioni</div>
+                </div>
+
+                {documents.map((d) => (
+                  <div
+                    key={d.id}
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "2fr 1fr 1fr 1fr 200px",
+                      gap: 0,
+                      padding: "10px 12px",
+                      borderBottom: "1px solid #f5f5f5",
+                      alignItems: "center",
+                      fontSize: 13,
+                    }}
+                  >
+                    <div>{d.filename}</div>
+                    <div>{d.tipo ?? "—"}</div>
+                    <div>{d.uploaded_at ? new Date(d.uploaded_at).toLocaleString() : "—"}</div>
+                    <div>
+                      {d.uploaded_by_operatore
+                        ? operatoriMap.get(d.uploaded_by_operatore) ?? "—"
+                        : "—"}
+                    </div>
+                    <div style={{ display: "flex", gap: 8 }}>
+                      <button
+                        type="button"
+                        onClick={() => openDocument(d, false)}
+                        style={{
+                          padding: "6px 10px",
+                          borderRadius: 8,
+                          border: "1px solid #ddd",
+                          background: "white",
+                          cursor: "pointer",
+                        }}
+                      >
+                        Apri
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => openDocument(d, true)}
+                        style={{
+                          padding: "6px 10px",
+                          borderRadius: 8,
+                          border: "1px solid #ddd",
+                          background: "white",
+                          cursor: "pointer",
+                        }}
+                      >
+                        Scarica
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => deleteDocument(d)}
+                        style={{
+                          padding: "6px 10px",
+                          borderRadius: 8,
+                          border: "1px solid #dc2626",
+                          background: "white",
+                          color: "#dc2626",
+                          cursor: "pointer",
+                        }}
+                      >
+                        Elimina
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </>
         )}
       </div>
 
@@ -5955,132 +5968,145 @@ function buildFormData(c: Checklist): FormData {
             {taskDocError && (
               <div style={{ color: "#b91c1c", fontSize: 12, marginBottom: 10 }}>{taskDocError}</div>
             )}
-
-            <div
-              style={{
-                marginBottom: 12,
-                padding: 12,
-                border: "1px solid #eee",
-                borderRadius: 12,
-                background: "white",
-                display: "grid",
-                gridTemplateColumns: "1fr 160px",
-                gap: 10,
-                alignItems: "end",
-              }}
-            >
-              <label>
-                File<br />
-                <input
-                  type="file"
-                  onChange={(e) => setTaskDocFile(e.target.files?.[0] ?? null)}
-                  style={{ width: "100%", padding: 8 }}
-                />
-              </label>
-              <button
-                type="button"
-                onClick={uploadTaskDocument}
-                style={{
-                  padding: "10px 12px",
-                  borderRadius: 10,
-                  border: "1px solid #111",
-                  background: "#111",
-                  color: "white",
-                  cursor: "pointer",
-                }}
-              >
-                Carica file
-              </button>
+            <div style={{ marginBottom: 12 }}>
+              <AttachmentsPanel
+                title="Allegati task (upload + link Drive)"
+                entityType="CHECKLIST_TASK"
+                entityId={taskFilesTask.id}
+                multiple
+                storagePrefix="task"
+              />
             </div>
 
-            {(() => {
-              const rows = taskDocuments.filter((d) => d.task_id === taskFilesTask.id);
-              if (rows.length === 0) {
-                return <div style={{ opacity: 0.7 }}>Nessun file caricato per questo task</div>;
-              }
-              return (
-                <div style={{ border: "1px solid #eee", borderRadius: 12, overflow: "hidden" }}>
-                  <div
+            {false && (
+              <>
+                <div
+                  style={{
+                    marginBottom: 12,
+                    padding: 12,
+                    border: "1px solid #eee",
+                    borderRadius: 12,
+                    background: "white",
+                    display: "grid",
+                    gridTemplateColumns: "1fr 160px",
+                    gap: 10,
+                    alignItems: "end",
+                  }}
+                >
+                  <label>
+                    File<br />
+                    <input
+                      type="file"
+                      onChange={(e) => setTaskDocFile(e.target.files?.[0] ?? null)}
+                      style={{ width: "100%", padding: 8 }}
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    onClick={uploadTaskDocument}
                     style={{
-                      display: "grid",
-                      gridTemplateColumns: "2fr 1fr 1fr 200px",
                       padding: "10px 12px",
-                      fontWeight: 700,
-                      borderBottom: "1px solid #eee",
-                      background: "#fafafa",
+                      borderRadius: 10,
+                      border: "1px solid #111",
+                      background: "#111",
+                      color: "white",
+                      cursor: "pointer",
                     }}
                   >
-                    <div>Nome file</div>
-                    <div>Data upload</div>
-                    <div>Caricato da</div>
-                    <div>Azioni</div>
-                  </div>
-                  {rows.map((d) => (
-                    <div
-                      key={d.id}
-                      style={{
-                        display: "grid",
-                        gridTemplateColumns: "2fr 1fr 1fr 200px",
-                        padding: "10px 12px",
-                        borderBottom: "1px solid #f5f5f5",
-                        alignItems: "center",
-                        fontSize: 13,
-                      }}
-                    >
-                      <div>{d.filename}</div>
-                      <div>{d.uploaded_at ? new Date(d.uploaded_at).toLocaleString() : "—"}</div>
-                      <div>
-                        {d.uploaded_by_operatore
-                          ? operatoriMap.get(d.uploaded_by_operatore) ?? "—"
-                          : "—"}
-                      </div>
-                      <div style={{ display: "flex", gap: 8 }}>
-                        <button
-                          type="button"
-                          onClick={() => openTaskDocument(d, false)}
-                          style={{
-                            padding: "6px 10px",
-                            borderRadius: 8,
-                            border: "1px solid #ddd",
-                            background: "white",
-                            cursor: "pointer",
-                          }}
-                        >
-                          Apri
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => openTaskDocument(d, true)}
-                          style={{
-                            padding: "6px 10px",
-                            borderRadius: 8,
-                            border: "1px solid #ddd",
-                            background: "white",
-                            cursor: "pointer",
-                          }}
-                        >
-                          Scarica
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => deleteTaskDocument(d)}
-                          style={{
-                            padding: "6px 10px",
-                            borderRadius: 8,
-                            border: "1px solid #dc2626",
-                            background: "white",
-                            color: "#dc2626",
-                            cursor: "pointer",
-                          }}
-                        >
-                          Elimina
-                        </button>
-                      </div>
-                    </div>
-                  ))}
+                    Carica file
+                  </button>
                 </div>
-              );
-            })()}
+
+                {(() => {
+                  const rows = taskDocuments.filter((d) => d.task_id === taskFilesTask.id);
+                  if (rows.length === 0) {
+                    return <div style={{ opacity: 0.7 }}>Nessun file caricato per questo task</div>;
+                  }
+                  return (
+                    <div style={{ border: "1px solid #eee", borderRadius: 12, overflow: "hidden" }}>
+                      <div
+                        style={{
+                          display: "grid",
+                          gridTemplateColumns: "2fr 1fr 1fr 200px",
+                          padding: "10px 12px",
+                          fontWeight: 700,
+                          borderBottom: "1px solid #eee",
+                          background: "#fafafa",
+                        }}
+                      >
+                        <div>Nome file</div>
+                        <div>Data upload</div>
+                        <div>Caricato da</div>
+                        <div>Azioni</div>
+                      </div>
+                      {rows.map((d) => (
+                        <div
+                          key={d.id}
+                          style={{
+                            display: "grid",
+                            gridTemplateColumns: "2fr 1fr 1fr 200px",
+                            padding: "10px 12px",
+                            borderBottom: "1px solid #f5f5f5",
+                            alignItems: "center",
+                            fontSize: 13,
+                          }}
+                        >
+                          <div>{d.filename}</div>
+                          <div>{d.uploaded_at ? new Date(d.uploaded_at).toLocaleString() : "—"}</div>
+                          <div>
+                            {d.uploaded_by_operatore
+                              ? operatoriMap.get(d.uploaded_by_operatore) ?? "—"
+                              : "—"}
+                          </div>
+                          <div style={{ display: "flex", gap: 8 }}>
+                            <button
+                              type="button"
+                              onClick={() => openTaskDocument(d, false)}
+                              style={{
+                                padding: "6px 10px",
+                                borderRadius: 8,
+                                border: "1px solid #ddd",
+                                background: "white",
+                                cursor: "pointer",
+                              }}
+                            >
+                              Apri
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => openTaskDocument(d, true)}
+                              style={{
+                                padding: "6px 10px",
+                                borderRadius: 8,
+                                border: "1px solid #ddd",
+                                background: "white",
+                                cursor: "pointer",
+                              }}
+                            >
+                              Scarica
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => deleteTaskDocument(d)}
+                              style={{
+                                padding: "6px 10px",
+                                borderRadius: 8,
+                                border: "1px solid #dc2626",
+                                background: "white",
+                                color: "#dc2626",
+                                cursor: "pointer",
+                              }}
+                            >
+                              Elimina
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })()}
+              </>
+            )}
 
             <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 12 }}>
               <button
