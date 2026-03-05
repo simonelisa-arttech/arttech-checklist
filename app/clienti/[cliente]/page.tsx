@@ -886,6 +886,12 @@ export default function ClientePage({ params }: { params: any }) {
     null
   );
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isDevPerf = process.env.NODE_ENV !== "production";
+  const perfRef = useRef({
+    mountDbCalls: 0,
+    mountFetchCalls: 0,
+    mountRun: 0,
+  });
   const prefillInterventoRef = useRef(false);
   const autoFatturazioneSent = useRef<Set<string>>(new Set());
   const autoFatturazioneInFlight = useRef(false);
@@ -925,6 +931,18 @@ export default function ClientePage({ params }: { params: any }) {
     if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
     setToast({ message, variant });
     toastTimerRef.current = setTimeout(() => setToast(null), duration);
+  }
+
+  function perfCountDb(label: string) {
+    if (!isDevPerf) return;
+    perfRef.current.mountDbCalls += 1;
+    console.count(`[perf][cliente][db] ${label}`);
+  }
+
+  function perfCountFetch(label: string) {
+    if (!isDevPerf) return;
+    perfRef.current.mountFetchCalls += 1;
+    console.count(`[perf][cliente][fetch] ${label}`);
   }
 
   function getOperatoreNome(value?: string | null) {
@@ -1156,6 +1174,13 @@ export default function ClientePage({ params }: { params: any }) {
   useEffect(() => {
     let alive = true;
     (async () => {
+      const mountRun = ++perfRef.current.mountRun;
+      if (isDevPerf) {
+        perfRef.current.mountDbCalls = 0;
+        perfRef.current.mountFetchCalls = 0;
+        console.time(`[perf][cliente][mount#${mountRun}] total`);
+        console.info(`[perf][cliente] mount start`, { mountRun });
+      }
       const resolved = await Promise.resolve(params);
       const raw = (resolved?.cliente as string) || "";
       const decoded = decodeURIComponent(raw);
@@ -1170,11 +1195,14 @@ export default function ClientePage({ params }: { params: any }) {
       const clienteKey = decoded.trim();
       if (clienteKey) {
         try {
+          if (isDevPerf) console.time(`[perf][cliente][mount#${mountRun}] fetch /api/clienti`);
+          perfCountFetch("GET /api/clienti");
           const anagRes = await fetch(`/api/clienti?q=${encodeURIComponent(clienteKey)}&limit=1`, {
             cache: "no-store",
             credentials: "include",
           });
           const anagJson = await anagRes.json().catch(() => ({} as any));
+          if (isDevPerf) console.timeEnd(`[perf][cliente][mount#${mountRun}] fetch /api/clienti`);
           const anagData = Array.isArray(anagJson?.data) ? anagJson.data[0] : null;
           const fullName = String((anagData as any)?.denominazione || "").trim();
           if (fullName) {
@@ -1187,8 +1215,11 @@ export default function ClientePage({ params }: { params: any }) {
           // keep fallback values from URL
         }
       }
+      if (isDevPerf) console.time(`[perf][cliente][mount#${mountRun}] fetch /api/dashboard`);
+      perfCountFetch("GET /api/dashboard");
       const dashboardRes = await fetch(`/api/dashboard?q=${encodeURIComponent(clienteKey)}`);
       const dashboardJson = await dashboardRes.json().catch(() => ({}));
+      if (isDevPerf) console.timeEnd(`[perf][cliente][mount#${mountRun}] fetch /api/dashboard`);
       if (!dashboardRes.ok) {
         setError("Errore caricamento PROGETTI: " + (dashboardJson?.error || "errore API dashboard"));
         setLoading(false);
@@ -1200,12 +1231,16 @@ export default function ClientePage({ params }: { params: any }) {
           .toLowerCase()
           .includes(clienteKey.toLowerCase())
       );
+      let licenzeCount = 0;
       const firstClienteId = String((list[0] as any)?.cliente_id || "").trim();
       if (firstClienteId) {
+        if (isDevPerf) console.time(`[perf][cliente][mount#${mountRun}] db clienti_anagrafica`);
+        perfCountDb("clienti_anagrafica.select");
         const { data: clienteById } = await dbFrom("clienti_anagrafica")
           .select("denominazione")
           .eq("id", firstClienteId)
           .maybeSingle();
+        if (isDevPerf) console.timeEnd(`[perf][cliente][mount#${mountRun}] db clienti_anagrafica`);
         const fullById = String((clienteById as any)?.denominazione || "").trim();
         if (fullById) {
           displayCliente = fullById;
@@ -1244,6 +1279,8 @@ export default function ClientePage({ params }: { params: any }) {
         setLicenze([]);
         setLicenzeError(null);
       } else {
+        if (isDevPerf) console.time(`[perf][cliente][mount#${mountRun}] db licenses`);
+        perfCountDb("licenses.select");
         const { data: licData, error: licErr } = await dbFrom("licenses")
           .select(
             "id, checklist_id, tipo, scadenza, stato, status, note, intestata_a, ref_univoco, telefono, intestatario, gestore, fornitore, alert_sent_at, alert_to, alert_note, updated_by_operatore"
@@ -1254,15 +1291,25 @@ export default function ClientePage({ params }: { params: any }) {
           setLicenzeError("Errore caricamento licenze: " + licErr.message);
           setLicenze([]);
         } else {
+          licenzeCount = (licData || []).length;
           setLicenze((licData || []) as LicenzaRow[]);
           setLicenzeError(null);
         }
+        if (isDevPerf) console.timeEnd(`[perf][cliente][mount#${mountRun}] db licenses`);
       }
-      await fetchRinnovi(clienteKey);
-      await fetchTagliandi(clienteKey);
+      if (isDevPerf) console.time(`[perf][cliente][mount#${mountRun}] fetchRinnovi`);
+      const rinnoviRows = await fetchRinnovi(clienteKey);
+      if (isDevPerf) console.timeEnd(`[perf][cliente][mount#${mountRun}] fetchRinnovi`);
+      if (isDevPerf) console.time(`[perf][cliente][mount#${mountRun}] fetchTagliandi`);
+      const tagliandiRows = await fetchTagliandi(clienteKey);
+      if (isDevPerf) console.timeEnd(`[perf][cliente][mount#${mountRun}] fetchTagliandi`);
 
+      if (isDevPerf) console.time(`[perf][cliente][mount#${mountRun}] fetchSaasContratti`);
       await fetchSaasContratti(clienteKey);
+      if (isDevPerf) console.timeEnd(`[perf][cliente][mount#${mountRun}] fetchSaasContratti`);
 
+      if (isDevPerf) console.time(`[perf][cliente][mount#${mountRun}] db catalog_items`);
+      perfCountDb("catalog_items.select.saas_ul");
       const { data: pianiData, error: pianiErr } = await dbFrom("catalog_items")
         .select("codice, descrizione")
         .eq("attivo", true)
@@ -1283,11 +1330,15 @@ export default function ClientePage({ params }: { params: any }) {
           .filter(Boolean) as PianoUltraRow[];
         setUltraPiani(mapped);
       }
+      if (isDevPerf) console.timeEnd(`[perf][cliente][mount#${mountRun}] db catalog_items`);
 
       let opsData: any[] = [];
       try {
+        if (isDevPerf) console.time(`[perf][cliente][mount#${mountRun}] fetch /api/operatori`);
+        perfCountFetch("GET /api/operatori");
         const res = await fetch("/api/operatori", { credentials: "include" });
         const json = await res.json().catch(() => ({} as any));
+        if (isDevPerf) console.timeEnd(`[perf][cliente][mount#${mountRun}] fetch /api/operatori`);
         if (res.ok && Array.isArray(json?.data)) {
           opsData = json.data;
         }
@@ -1295,11 +1346,14 @@ export default function ClientePage({ params }: { params: any }) {
         // fallback below
       }
       if (!Array.isArray(opsData) || opsData.length === 0) {
+        if (isDevPerf) console.time(`[perf][cliente][mount#${mountRun}] db operatori fallback`);
+        perfCountDb("operatori.select.fallback");
         const fallback = await dbFrom("operatori")
           .select("id, user_id, nome, ruolo, email, attivo, alert_enabled, alert_tasks")
           .order("ruolo", { ascending: true })
           .order("nome", { ascending: true });
         opsData = (fallback.data || []) as any[];
+        if (isDevPerf) console.timeEnd(`[perf][cliente][mount#${mountRun}] db operatori fallback`);
       }
       const mapped = (opsData || []).map((o: any) => ({
         id: o.id,
@@ -1316,7 +1370,23 @@ export default function ClientePage({ params }: { params: any }) {
         console.log("ALERT OPERATORI", mapped.length, mapped);
       }
 
+      if (isDevPerf) {
+        console.info(`[perf][cliente] ready`, {
+          mountRun,
+          counts: {
+            checklists: list.length,
+            licenze: licenzeCount,
+            tagliandi: tagliandiRows.length,
+            rinnovi: rinnoviRows.length,
+          },
+          mountDbCalls: perfRef.current.mountDbCalls,
+          mountFetchCalls: perfRef.current.mountFetchCalls,
+        });
+      }
       setLoading(false);
+      if (isDevPerf) {
+        console.timeEnd(`[perf][cliente][mount#${mountRun}] total`);
+      }
     })();
 
     return () => {
@@ -1333,6 +1403,27 @@ export default function ClientePage({ params }: { params: any }) {
       typeof window !== "undefined" ? window.localStorage.getItem("current_operatore_id") : null;
     if (stored) setCurrentOperatoreId(stored);
   }, []);
+
+  useEffect(() => {
+    if (!isDevPerf || loading) return;
+    console.info("[perf][cliente] render ready", {
+      cliente,
+      counts: {
+        checklists: checklists.length,
+        licenze: licenze.length,
+        tagliandi: tagliandi.length,
+        rinnovi: rinnovi.length,
+      },
+    });
+  }, [
+    isDevPerf,
+    loading,
+    cliente,
+    checklists.length,
+    licenze.length,
+    tagliandi.length,
+    rinnovi.length,
+  ]);
 
   useEffect(() => {
     const today = new Date();
@@ -1360,6 +1451,7 @@ export default function ClientePage({ params }: { params: any }) {
     let ints: any[] | null = null;
     let intsErr: any = null;
     {
+      perfCountDb("saas_interventi.select");
       const res = await dbFrom("saas_interventi")
         .select(
           "id, cliente, checklist_id, contratto_id, ticket_no, data, data_tassativa, descrizione, incluso, proforma, codice_magazzino, fatturazione_stato, stato_intervento, esito_fatturazione, chiuso_il, chiuso_da_operatore, alert_fattura_last_sent_at, alert_fattura_last_sent_by, numero_fattura, fatturato_il, note, note_tecniche, created_at, checklist:checklists(id, nome_checklist, proforma, magazzino_importazione)"
@@ -1370,6 +1462,7 @@ export default function ClientePage({ params }: { params: any }) {
       intsErr = res.error;
     }
     if (intsErr && String(intsErr.message || "").toLowerCase().includes("data_tassativa")) {
+      perfCountDb("saas_interventi.select.retry_no_data_tassativa");
       const res = await dbFrom("saas_interventi")
         .select(
           "id, cliente, checklist_id, contratto_id, ticket_no, data, descrizione, incluso, proforma, codice_magazzino, fatturazione_stato, stato_intervento, esito_fatturazione, chiuso_il, chiuso_da_operatore, alert_fattura_last_sent_at, alert_fattura_last_sent_by, numero_fattura, fatturato_il, note, note_tecniche, created_at, checklist:checklists(id, nome_checklist, proforma, magazzino_importazione)"
@@ -1380,6 +1473,7 @@ export default function ClientePage({ params }: { params: any }) {
       intsErr = res.error;
     }
     if (intsErr && String(intsErr.message || "").toLowerCase().includes("ticket_no")) {
+      perfCountDb("saas_interventi.select.retry_no_ticket_no");
       const res = await dbFrom("saas_interventi")
         .select(
           "id, cliente, checklist_id, contratto_id, data, data_tassativa, descrizione, incluso, proforma, codice_magazzino, fatturazione_stato, stato_intervento, esito_fatturazione, chiuso_il, chiuso_da_operatore, alert_fattura_last_sent_at, alert_fattura_last_sent_by, numero_fattura, fatturato_il, note, note_tecniche, created_at, checklist:checklists(id, nome_checklist, proforma, magazzino_importazione)"
@@ -1404,6 +1498,7 @@ export default function ClientePage({ params }: { params: any }) {
       return;
     }
 
+    perfCountDb("saas_interventi_files.select");
     const { data: filesData, error: filesErr } = await dbFrom("saas_interventi_files")
       .select("id, intervento_id, filename, storage_path, uploaded_at, uploaded_by_operatore")
       .in("intervento_id", ids)
@@ -1419,6 +1514,7 @@ export default function ClientePage({ params }: { params: any }) {
       setInterventoFilesById(map);
     }
 
+    perfCountDb("checklist_alert_log.select.by_intervento");
     const { data: alertsData, error: alertsErr } = await dbFrom("checklist_alert_log")
       .select("intervento_id, to_operatore_id, created_at")
       .in("intervento_id", ids)
@@ -2539,6 +2635,7 @@ export default function ClientePage({ params }: { params: any }) {
   async function fetchSaasContratti(clienteKey: string) {
     const key = (clienteKey || "").trim();
     if (!key) return [];
+    perfCountDb("saas_contratti.select");
     const { data: contrattiData, error: contrattiErr } = await dbFrom("saas_contratti")
       .select("id, cliente, piano_codice, scadenza, interventi_annui, illimitati, created_at")
       .eq("cliente", key)
@@ -3066,30 +3163,36 @@ export default function ClientePage({ params }: { params: any }) {
   }
 
   async function fetchRinnovi(clienteKey: string) {
-    if (!clienteKey) return;
+    if (!clienteKey) return [] as RinnovoServizioRow[];
+    perfCountDb("rinnovi_servizi.select");
     const { data, error } = await dbFrom("rinnovi_servizi")
       .select("*")
       .eq("cliente", clienteKey)
       .order("scadenza", { ascending: true });
     if (error) {
       setRinnoviError("Errore caricamento rinnovi: " + error.message);
-      return;
+      return [] as RinnovoServizioRow[];
     }
-    setRinnovi((data || []) as RinnovoServizioRow[]);
+    const rows = (data || []) as RinnovoServizioRow[];
+    setRinnovi(rows);
     setRinnoviError(null);
+    return rows;
   }
 
   async function fetchTagliandi(clienteKey: string) {
-    if (!clienteKey) return;
+    if (!clienteKey) return [] as TagliandoRow[];
+    perfCountDb("tagliandi.select");
     const { data, error } = await dbFrom("tagliandi")
       .select("*")
       .eq("cliente", clienteKey)
       .order("scadenza", { ascending: true });
     if (error) {
       setRinnoviError("Errore caricamento tagliandi: " + error.message);
-      return;
+      return [] as TagliandoRow[];
     }
-    setTagliandi((data || []) as TagliandoRow[]);
+    const rows = (data || []) as TagliandoRow[];
+    setTagliandi(rows);
+    return rows;
   }
 
   async function addTagliandoPeriodico() {
