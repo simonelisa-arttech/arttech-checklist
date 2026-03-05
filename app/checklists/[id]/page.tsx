@@ -4197,7 +4197,7 @@ function buildFormData(c: Checklist): FormData {
           <RenewalsBlock
             cliente={checklist?.cliente || ""}
             rows={[
-              ...(checklist?.saas_piano
+              ...(checklist?.saas_piano && checklist?.id === id
                 ? [
                     {
                       id: "SAAS",
@@ -4215,7 +4215,7 @@ function buildFormData(c: Checklist): FormData {
                     },
                   ]
                 : []),
-              ...(checklist?.garanzia_scadenza
+              ...(checklist?.garanzia_scadenza && checklist?.id === id
                 ? [
                     {
                       id: "GARANZIA",
@@ -4233,7 +4233,9 @@ function buildFormData(c: Checklist): FormData {
                     },
                   ]
                 : []),
-              ...licenze.map((l) => ({
+              ...licenze
+                .filter((l) => String(l.checklist_id || "") === String(id || ""))
+                .map((l) => ({
                 id: l.id,
                 key: `LIC-${l.id}`,
                 source: "licenze" as const,
@@ -4245,9 +4247,11 @@ function buildFormData(c: Checklist): FormData {
                 stato: l.stato || "ATTIVA",
                 modalita: "—",
                 note: l.note || null,
-                checklist_id: checklist?.id || id || "",
+                checklist_id: id || "",
               })),
-              ...projectTagliandi.map((t) => ({
+              ...projectTagliandi
+                .filter((t) => String(t.checklist_id || "") === String(id || ""))
+                .map((t) => ({
                 id: t.id,
                 key: `TAG-${t.id}`,
                 source: "tagliandi" as const,
@@ -4259,9 +4263,9 @@ function buildFormData(c: Checklist): FormData {
                 stato: t.stato || "ATTIVA",
                 modalita: t.modalita || "—",
                 note: t.note || null,
-                checklist_id: checklist?.id || id || "",
+                checklist_id: id || "",
               })),
-            ]}
+            ].filter((row) => String((row as any).checklist_id || "") === String(id || ""))}
             checklistById={new Map(checklist ? [[checklist.id, checklist]] : [])}
             rinnoviError={projectInterventiError}
             rinnoviNotice={projectInterventiNotice}
