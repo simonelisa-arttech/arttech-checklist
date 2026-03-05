@@ -1356,11 +1356,24 @@ function buildFormData(c: Checklist): FormData {
       }
     }
 
-    const { data: serialsData, error: serialsErr } = await supabase
-      .from("asset_serials")
-      .select("*")
-      .eq("checklist_id", id)
-      .order("created_at", { ascending: true });
+    const serialsRes = await fetch("/api/db", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      cache: "no-store",
+      body: JSON.stringify({
+        table: "asset_serials",
+        op: "select",
+        select: "*",
+        filter: { checklist_id: id },
+        order: [{ col: "created_at", asc: true }],
+      }),
+    });
+    const serialsJson = await serialsRes.json().catch(() => ({}));
+    const serialsData = (serialsJson?.data as any[]) || [];
+    const serialsErr =
+      serialsRes.ok && serialsJson?.ok !== false
+        ? null
+        : { message: serialsJson?.error || "Errore caricamento seriali" };
 
     if (serialsErr) {
       setError("Errore caricamento seriali: " + serialsErr.message);
