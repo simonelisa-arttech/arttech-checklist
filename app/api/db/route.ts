@@ -222,6 +222,11 @@ function invalid(message: string, status = 400) {
   return NextResponse.json({ ok: false, error: message }, { status });
 }
 
+function dbFailure(table: string, op: string, filter: Record<string, any>, message: string) {
+  console.error("[api/db] failure", { table, op, filter, message });
+  return NextResponse.json({ ok: false, error: message }, { status: 500 });
+}
+
 function isPlainObject(v: unknown): v is Record<string, any> {
   return !!v && typeof v === "object" && !Array.isArray(v);
 }
@@ -231,38 +236,39 @@ function isUuidLike(v: string) {
 }
 
 export async function POST(request: Request) {
-  const isAuthed = await assertAuthenticated(request);
-  if (!isAuthed) return invalid("Unauthorized", 401);
-
-  let supabaseAdmin: ReturnType<typeof getSupabaseAdmin>;
   try {
-    supabaseAdmin = getSupabaseAdmin();
-  } catch {
-    return invalid("Missing SUPABASE_SERVICE_ROLE_KEY", 500);
-  }
+    const isAuthed = await assertAuthenticated(request);
+    if (!isAuthed) return invalid("Unauthorized", 401);
 
-  let body: DbRequest;
-  try {
-    body = (await request.json()) as DbRequest;
-  } catch {
-    return invalid("Invalid JSON body");
-  }
+    let supabaseAdmin: ReturnType<typeof getSupabaseAdmin>;
+    try {
+      supabaseAdmin = getSupabaseAdmin();
+    } catch {
+      return invalid("Missing SUPABASE_SERVICE_ROLE_KEY", 500);
+    }
 
-  if (!isPlainObject(body)) return invalid("Invalid body");
-  const allowedBodyKeys = new Set(["table", "op", "select", "filter", "order", "limit", "payload"]);
-  allowedBodyKeys.add("onConflict");
-  for (const key of Object.keys(body)) {
-    if (!allowedBodyKeys.has(key)) return invalid(`Unsupported field: ${key}`);
-  }
+    let body: DbRequest;
+    try {
+      body = (await request.json()) as DbRequest;
+    } catch {
+      return invalid("Invalid JSON body");
+    }
 
-  const table = String(body.table || "").trim();
-  const op = String(body.op || "").trim() as DbOp;
-  const rule = TABLE_RULES[table];
-  if (!rule) return invalid("Table not allowed", 403);
-  if (!rule.ops.includes(op)) return invalid("Operation not allowed", 403);
+    if (!isPlainObject(body)) return invalid("Invalid body");
+    const allowedBodyKeys = new Set(["table", "op", "select", "filter", "order", "limit", "payload"]);
+    allowedBodyKeys.add("onConflict");
+    for (const key of Object.keys(body)) {
+      if (!allowedBodyKeys.has(key)) return invalid(`Unsupported field: ${key}`);
+    }
 
-  const filter = isPlainObject(body.filter) ? body.filter : {};
-  for (const [k, v] of Object.entries(filter)) {
+    const table = String(body.table || "").trim();
+    const op = String(body.op || "").trim() as DbOp;
+    const rule = TABLE_RULES[table];
+    if (!rule) return invalid("Table not allowed", 403);
+    if (!rule.ops.includes(op)) return invalid("Operation not allowed", 403);
+
+    const filter = isPlainObject(body.filter) ? body.filter : {};
+    for (const [k, v] of Object.entries(filter)) {
     if (!rule.filterCols.includes(k)) return invalid(`Filter column not allowed: ${k}`, 403);
     const t = typeof v;
     if (!(v === null || t === "string" || t === "number" || t === "boolean")) {
@@ -279,39 +285,39 @@ export async function POST(request: Request) {
         }
       }
     }
-  }
+    }
 
-  if (
+    if (
     op === "select" &&
     Object.keys(filter).length === 0 &&
     !rule.allowNoFilterSelect
-  ) {
-    return invalid("Select requires eq filter for this table", 403);
-  }
-  if (
+    ) {
+      return invalid("Select requires eq filter for this table", 403);
+    }
+    if (
     op === "select" &&
     rule.requiredEqAnyOf &&
     rule.requiredEqAnyOf.length > 0 &&
     !rule.requiredEqAnyOf.some((c) => Object.prototype.hasOwnProperty.call(filter, c))
-  ) {
-    return invalid(`Missing required eq filter: one of [${rule.requiredEqAnyOf.join(", ")}]`, 403);
-  }
+    ) {
+      return invalid(`Missing required eq filter: one of [${rule.requiredEqAnyOf.join(", ")}]`, 403);
+    }
 
-  const order = Array.isArray(body.order) ? body.order : [];
-  for (const item of order) {
+    const order = Array.isArray(body.order) ? body.order : [];
+    for (const item of order) {
     if (!item || typeof item !== "object") return invalid("Invalid order clause");
     if (!rule.orderCols.includes(String(item.col || ""))) {
       return invalid(`Order column not allowed: ${String(item.col || "")}`, 403);
     }
-  }
+    }
 
-  const limit = Number(body.limit ?? 0);
-  const normalizedLimit = Number.isFinite(limit) && limit > 0 ? Math.min(limit, 1000) : 0;
+    const limit = Number(body.limit ?? 0);
+    const normalizedLimit = Number.isFinite(limit) && limit > 0 ? Math.min(limit, 1000) : 0;
 
-  const payload =
-    isPlainObject(body.payload) || Array.isArray(body.payload) ? body.payload : null;
+    const payload =
+      isPlainObject(body.payload) || Array.isArray(body.payload) ? body.payload : null;
 
-  if (op === "select") {
+    if (op === "select") {
     const select = String(body.select || "*").trim();
     if (select !== "*" && !/^[a-zA-Z0-9_,\s:\(\)\.\*]+$/.test(select)) {
       return invalid("Invalid select clause");
@@ -321,44 +327,51 @@ export async function POST(request: Request) {
     for (const o of order) q = q.order(o.col, { ascending: o.asc !== false });
     if (normalizedLimit > 0) q = q.limit(normalizedLimit);
     const { data, error } = await q;
-    if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+      if (error) return dbFailure(table, op, filter, error.message);
     return NextResponse.json({ ok: true, data: data || [] });
-  }
+    }
 
-  if (op === "insert") {
+    if (op === "insert") {
     if (!payload) return invalid("Missing payload");
     const { data, error } = await supabaseAdmin.from(table).insert(payload).select("*");
-    if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+      if (error) return dbFailure(table, op, filter, error.message);
     return NextResponse.json({ ok: true, data });
-  }
+    }
 
-  if (op === "upsert") {
+    if (op === "upsert") {
     if (!payload) return invalid("Missing payload");
     const onConflict = String((body as any).onConflict || "").trim();
     const options = onConflict ? { onConflict } : undefined;
     const { data, error } = await supabaseAdmin.from(table).upsert(payload as any, options as any).select("*");
-    if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+      if (error) return dbFailure(table, op, filter, error.message);
     return NextResponse.json({ ok: true, data });
-  }
+    }
 
-  if (op === "update") {
+    if (op === "update") {
     if (!payload) return invalid("Missing payload");
     if (Object.keys(filter).length === 0) return invalid("Update requires at least one eq filter");
     let q: any = supabaseAdmin.from(table).update(payload);
     for (const [k, v] of Object.entries(filter)) q = q.eq(k, v);
     const { data, error } = await q.select("*");
-    if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+      if (error) return dbFailure(table, op, filter, error.message);
     return NextResponse.json({ ok: true, data });
-  }
+    }
 
-  if (op === "delete") {
+    if (op === "delete") {
     if (Object.keys(filter).length === 0) return invalid("Delete requires at least one eq filter");
     let q: any = supabaseAdmin.from(table).delete();
     for (const [k, v] of Object.entries(filter)) q = q.eq(k, v);
     const { data, error } = await q.select("*");
-    if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+      if (error) return dbFailure(table, op, filter, error.message);
     return NextResponse.json({ ok: true, data });
-  }
+    }
 
-  return invalid("Unsupported operation");
+    return invalid("Unsupported operation");
+  } catch (e: any) {
+    console.error("[api/db] unexpected", { message: String(e?.message || e) });
+    return NextResponse.json(
+      { ok: false, error: String(e?.message || "Unexpected server error") },
+      { status: 500 }
+    );
+  }
 }

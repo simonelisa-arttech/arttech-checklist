@@ -49,6 +49,22 @@ function stripPrefixId(value?: string | null) {
   return raw;
 }
 
+const ALLOWED_RINNOVO_STATI = new Set([
+  "DA_AVVISARE",
+  "AVVISATO",
+  "CONFERMATO",
+  "DA_FATTURARE",
+  "FATTURATO",
+  "NON_RINNOVATO",
+]);
+
+function normalizeRinnovoStatoForDb(value?: string | null) {
+  const stato = String(value || "")
+    .trim()
+    .toUpperCase();
+  return ALLOWED_RINNOVO_STATI.has(stato) ? stato : "";
+}
+
 function escapeHtml(value: string) {
   return value
     .replace(/&/g, "&amp;")
@@ -3287,7 +3303,16 @@ export default function ClientePage({ params }: { params: any }) {
   async function updateRinnovo(id: string, payload: Record<string, any>) {
     const rawId = stripPrefixId(id);
     if (!rawId) return false;
-    const { error } = await dbFrom("rinnovi_servizi").update(payload).eq("id", rawId);
+    const normalizedPayload = { ...payload };
+    if (Object.prototype.hasOwnProperty.call(normalizedPayload, "stato")) {
+      const normalizedStato = normalizeRinnovoStatoForDb(normalizedPayload.stato);
+      if (!normalizedStato) {
+        setRinnoviError("Stato rinnovo non valido.");
+        return false;
+      }
+      normalizedPayload.stato = normalizedStato;
+    }
+    const { error } = await dbFrom("rinnovi_servizi").update(normalizedPayload).eq("id", rawId);
     if (error) {
       setRinnoviError("Errore aggiornamento rinnovo: " + error.message);
       return false;
@@ -3298,7 +3323,16 @@ export default function ClientePage({ params }: { params: any }) {
   async function updateRinnovi(ids: string[], payload: Record<string, any>) {
     const rawIds = ids.map((id) => stripPrefixId(id)).filter(Boolean);
     if (rawIds.length === 0) return true;
-    const { error } = await dbFrom("rinnovi_servizi").update(payload).in("id", rawIds);
+    const normalizedPayload = { ...payload };
+    if (Object.prototype.hasOwnProperty.call(normalizedPayload, "stato")) {
+      const normalizedStato = normalizeRinnovoStatoForDb(normalizedPayload.stato);
+      if (!normalizedStato) {
+        setRinnoviError("Stato rinnovo non valido.");
+        return false;
+      }
+      normalizedPayload.stato = normalizedStato;
+    }
+    const { error } = await dbFrom("rinnovi_servizi").update(normalizedPayload).in("id", rawIds);
     if (error) {
       setRinnoviError("Errore aggiornamento rinnovi: " + error.message);
       return false;
@@ -3413,7 +3447,9 @@ export default function ClientePage({ params }: { params: any }) {
     setEditScadenzaErr(null);
     try {
       if (editScadenzaForm.tipo === "LICENZA") {
-        const l = licenze.find((x) => x.id === editScadenzaItem.id);
+        const licenzaId = stripPrefixId(editScadenzaItem.id);
+        if (!licenzaId) throw new Error("ID licenza non valido");
+        const l = licenze.find((x) => String(x.id) === String(licenzaId));
         const checklistId = l?.checklist_id ?? editScadenzaItem.checklist_id ?? null;
         if (editScadenzaForm.licenza_class === "GARANZIA") {
           if (!checklistId) {
@@ -3428,10 +3464,10 @@ export default function ClientePage({ params }: { params: any }) {
 
           const { error: delLicErr } = await dbFrom("licenses")
             .delete()
-            .eq("id", editScadenzaItem.id);
+            .eq("id", licenzaId);
           if (delLicErr) throw new Error(delLicErr.message);
 
-          setLicenze((prev) => prev.filter((x) => x.id !== editScadenzaItem.id));
+          setLicenze((prev) => prev.filter((x) => String(x.id) !== String(licenzaId)));
           setChecklists((prev) =>
             prev.map((c) =>
               c.id === checklistId
@@ -3455,11 +3491,11 @@ export default function ClientePage({ params }: { params: any }) {
             intestata_a: editScadenzaForm.intestato_a || null,
             tipo: editScadenzaForm.licenza_tipo || null,
           })
-          .eq("id", editScadenzaItem.id);
+          .eq("id", licenzaId);
         if (error) throw new Error(error.message);
         setLicenze((prev) =>
           prev.map((l) =>
-            l.id === editScadenzaItem.id
+            String(l.id) === String(licenzaId)
               ? {
                   ...l,
                   scadenza: editScadenzaForm.scadenza || null,
@@ -3473,6 +3509,8 @@ export default function ClientePage({ params }: { params: any }) {
           )
         );
       } else if (editScadenzaForm.tipo === "TAGLIANDO") {
+        const tagliandoId = stripPrefixId(editScadenzaItem.id);
+        if (!tagliandoId) throw new Error("ID tagliando non valido");
         const workflowStato = String(editScadenzaForm.stato || "").toUpperCase();
         const dbStato =
           workflowStato === "FATTURATO"
@@ -3480,7 +3518,7 @@ export default function ClientePage({ params }: { params: any }) {
             : workflowStato === "NON_RINNOVATO" || workflowStato === "SCADUTO"
             ? "SCADUTO"
             : "ATTIVA";
-        const okTag = await updateTagliando(editScadenzaItem.id, {
+        const okTag = await updateTagliando(tagliandoId, {
           scadenza: editScadenzaForm.scadenza || null,
           stato: dbStato,
           modalita: editScadenzaForm.modalita || null,
@@ -3498,7 +3536,7 @@ export default function ClientePage({ params }: { params: any }) {
         }
         setTagliandi((prev) =>
           prev.map((t) =>
-            t.id === editScadenzaItem.id
+            String(t.id) === String(tagliandoId)
               ? {
                   ...t,
                   scadenza: editScadenzaForm.scadenza || null,
@@ -3748,6 +3786,7 @@ export default function ClientePage({ params }: { params: any }) {
     setRinnoviAlertSending(true);
     setRinnoviAlertErr(null);
     setRinnoviAlertOk(null);
+    try {
     if (isE2EMode) {
       const list =
         rinnoviAlertItems.length > 0
@@ -3755,7 +3794,6 @@ export default function ClientePage({ params }: { params: any }) {
           : (getRinnoviStageList(rinnoviAlertStage) as ScadenzaItem[]);
       if (list.length === 0) {
         setRinnoviAlertErr("Nessun elemento disponibile per l'invio.");
-        setRinnoviAlertSending(false);
         return;
       }
       for (const r of list) {
@@ -3766,7 +3804,6 @@ export default function ClientePage({ params }: { params: any }) {
       }
       setRinnoviAlertOk("✅ E2E mock: invio avviso simulato.");
       setRinnoviNotice("✅ E2E mock: stato AVVISATO.");
-      setRinnoviAlertSending(false);
       setTimeout(() => setRinnoviAlertOpen(false), 300);
       return;
     }
@@ -3775,25 +3812,21 @@ export default function ClientePage({ params }: { params: any }) {
       (typeof window !== "undefined" ? window.localStorage.getItem("current_operatore_id") : null);
     if (!opId) {
       setRinnoviAlertErr("Seleziona l’Operatore corrente (in alto) prima di inviare un alert.");
-      setRinnoviAlertSending(false);
       return;
     }
     if (rinnoviAlertDestMode === "operatore" && !rinnoviAlertToOperatoreId && !rinnoviAlertToCliente) {
       setRinnoviAlertErr("Seleziona almeno un destinatario (operatore e/o cliente).");
-      setRinnoviAlertSending(false);
       return;
     }
     if (rinnoviAlertDestMode === "email" && !rinnoviAlertToCliente) {
       const mail = rinnoviAlertManualEmail.trim();
       if (!mail.includes("@")) {
         setRinnoviAlertErr("Inserisci un'email valida.");
-        setRinnoviAlertSending(false);
         return;
       }
     }
     if (rinnoviAlertToCliente && !String(clienteAnagraficaEmail || "").includes("@")) {
       setRinnoviAlertErr("Nessuna email valida trovata nell'anagrafica cliente.");
-      setRinnoviAlertSending(false);
       return;
     }
     const list =
@@ -3802,7 +3835,6 @@ export default function ClientePage({ params }: { params: any }) {
         : (getRinnoviStageList(rinnoviAlertStage) as ScadenzaItem[]);
     if (list.length === 0) {
       setRinnoviAlertErr("Nessun elemento disponibile per l'invio.");
-      setRinnoviAlertSending(false);
       return;
     }
     const checklistId = list.find((r) => r.checklist_id)?.checklist_id ?? null;
@@ -3836,7 +3868,6 @@ export default function ClientePage({ params }: { params: any }) {
       const email = String(op?.email || "").trim();
       if (!email.includes("@")) {
         setRinnoviAlertErr("Operatore selezionato senza email valida.");
-        setRinnoviAlertSending(false);
         return;
       }
       recipients.push({
@@ -3867,7 +3898,6 @@ export default function ClientePage({ params }: { params: any }) {
     const finalRecipients = Array.from(dedupMap.values()).filter((r) => r.toEmail.includes("@"));
     if (finalRecipients.length === 0) {
       setRinnoviAlertErr("Nessun destinatario valido selezionato.");
-      setRinnoviAlertSending(false);
       return;
     }
     const subject =
@@ -3956,7 +3986,6 @@ export default function ClientePage({ params }: { params: any }) {
     } catch (err) {
       console.error("Errore invio alert rinnovi", err);
       showToast(`❌ Invio fallito: ${briefError(err)}`, "error");
-      setRinnoviAlertSending(false);
       return;
     }
     const nowIso = new Date().toISOString();
@@ -4028,7 +4057,7 @@ export default function ClientePage({ params }: { params: any }) {
         });
       }
       if (licenzeIds.length > 0) {
-        await Promise.all(
+        await Promise.allSettled(
           licenzeIds.map((id) =>
             fetch("/api/licenses/action", {
               method: "POST",
@@ -4055,7 +4084,7 @@ export default function ClientePage({ params }: { params: any }) {
         });
       }
       if (licenzeIds.length > 0) {
-        await Promise.all(
+        await Promise.allSettled(
           licenzeIds.map((id) =>
             fetch("/api/licenses/action", {
               method: "POST",
@@ -4079,11 +4108,13 @@ export default function ClientePage({ params }: { params: any }) {
     const esitoLabel = rinnoviAlertSendEmail ? "✅ Email inviata" : "✅ Avviso registrato";
     showToast(esitoLabel, "success");
     setRinnoviNotice(`${esitoLabel} — ${recipientLabel}`);
-    setRinnoviAlertSending(false);
     setTimeout(() => setRinnoviAlertOpen(false), 800);
     setRinnoviAlertSendEmail(true);
     await fetchRinnovi((cliente || "").trim());
     await fetchTagliandi((cliente || "").trim());
+    } finally {
+      setRinnoviAlertSending(false);
+    }
   }
 
   async function markRinnovoConfermato(r: RinnovoServizioRow) {
@@ -4146,13 +4177,34 @@ export default function ClientePage({ params }: { params: any }) {
   }
 
   async function updateTagliando(id: string, payload: Record<string, any>) {
-    let { error } = await dbFrom("tagliandi").update(payload).eq("id", id);
-    if (error && isTagliandoStatoCheckViolation(error) && typeof payload?.stato === "string") {
+    const rawId = stripPrefixId(id);
+    if (!rawId) return false;
+    const normalizedPayload = { ...payload };
+    if (typeof normalizedPayload?.stato === "string") {
+      normalizedPayload.stato = normalizeTagliandoStatoForDb(normalizedPayload.stato);
+    }
+    if (
+      Object.prototype.hasOwnProperty.call(normalizedPayload, "modalita") &&
+      normalizedPayload.modalita != null
+    ) {
+      const allowed = new Set(["INCLUSO", "EXTRA", "AUTORIZZATO_CLIENTE"]);
+      const m = String(normalizedPayload.modalita || "")
+        .trim()
+        .toUpperCase();
+      if (!allowed.has(m)) {
+        setRinnoviError("Modalità tagliando non valida.");
+        return false;
+      }
+      normalizedPayload.modalita = m;
+    }
+
+    let { error } = await dbFrom("tagliandi").update(normalizedPayload).eq("id", rawId);
+    if (error && isTagliandoStatoCheckViolation(error) && typeof normalizedPayload?.stato === "string") {
       const retryPayload = {
-        ...payload,
-        stato: normalizeTagliandoStatoForDb(payload.stato),
+        ...normalizedPayload,
+        stato: normalizeTagliandoStatoForDb(normalizedPayload.stato),
       };
-      const retry = await dbFrom("tagliandi").update(retryPayload).eq("id", id);
+      const retry = await dbFrom("tagliandi").update(retryPayload).eq("id", rawId);
       error = retry.error;
     }
     if (error) {
