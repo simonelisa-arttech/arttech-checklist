@@ -288,13 +288,26 @@ type NotificationRule = {
 
 type ProjectRenewalRow = {
   key: string;
-  source: "saas" | "garanzia" | "licenza" | "tagliando";
+  source: "saas" | "garanzia" | "licenza" | "tagliando" | "licenze" | "tagliandi" | "rinnovi";
   recordId: string | null;
   tipo: string;
   riferimento: string;
   scadenza: string | null;
   stato: string | null;
   modalita: string | null;
+  note: string | null;
+  checklist_id?: string | null;
+  item_tipo?: string | null;
+};
+
+type ProjectRinnovoRow = {
+  id: string;
+  checklist_id: string | null;
+  item_tipo: string | null;
+  scadenza: string | null;
+  stato: string | null;
+  riferimento: string | null;
+  descrizione: string | null;
   note: string | null;
 };
 
@@ -818,6 +831,7 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
     fatturazione: string;
     note: string;
   }>({ scadenza: "", fatturazione: "INCLUSO", note: "" });
+  const [projectRinnovi, setProjectRinnovi] = useState<ProjectRinnovoRow[]>([]);
   const [projectTagliandoSaving, setProjectTagliandoSaving] = useState(false);
   const [projectRenewalEdit, setProjectRenewalEdit] = useState<{
     row: ProjectRenewalRow;
@@ -1322,6 +1336,11 @@ function buildFormData(c: Checklist): FormData {
         .update({ scadenza, stato, modalita, note })
         .eq("id", row.recordId);
       err = res.error;
+    } else if (row.source === "rinnovi" && row.recordId) {
+      const res = await dbFrom("rinnovi_servizi")
+        .update({ scadenza, stato, note })
+        .eq("id", row.recordId);
+      err = res.error;
     }
 
     if (err) {
@@ -1367,6 +1386,9 @@ function buildFormData(c: Checklist): FormData {
           ? "ATTIVA"
           : status;
       const res = await dbFrom("tagliandi").update({ stato: mapped }).eq("id", row.recordId);
+      err = res.error;
+    } else if (row.source === "rinnovi" && row.recordId) {
+      const res = await dbFrom("rinnovi_servizi").update({ stato: status }).eq("id", row.recordId);
       err = res.error;
     }
 
@@ -1478,6 +1500,23 @@ function buildFormData(c: Checklist): FormData {
 
     if (tagliandiErr) {
       setError("Errore caricamento tagliandi: " + tagliandiErr.message);
+      setLoading(false);
+      return;
+    }
+
+    if (isPerfEnabled()) console.time(`[perf][checklist][load#${loadSeq}] db rinnovi_servizi`);
+    const { data: rinnoviDataRaw, error: rinnoviErr } = await db<any[]>({
+      table: "rinnovi_servizi",
+      op: "select",
+      select: "id, checklist_id, item_tipo, scadenza, stato, riferimento, descrizione, note",
+      filter: { checklist_id: id },
+      order: [{ col: "scadenza", asc: true }],
+      limit: 1000,
+    });
+    if (isPerfEnabled()) console.timeEnd(`[perf][checklist][load#${loadSeq}] db rinnovi_servizi`);
+    const rinnoviData = (rinnoviDataRaw || []) as ProjectRinnovoRow[];
+    if (rinnoviErr) {
+      setError("Errore caricamento rinnovi: " + rinnoviErr.message);
       setLoading(false);
       return;
     }
@@ -1701,6 +1740,7 @@ function buildFormData(c: Checklist): FormData {
     setTasks((tasks || []) as unknown as ChecklistTask[]);
     setLicenze((licenzeData || []) as Licenza[]);
     setProjectTagliandi((tagliandiData || []) as Tagliando[]);
+    setProjectRinnovi(rinnoviData);
     setDocuments((docsData || []) as ChecklistDocument[]);
     setTaskDocuments(taskDocsData as ChecklistTaskDocument[]);
     setAssetSerials((serialsData || []) as AssetSerial[]);
@@ -1746,13 +1786,15 @@ function buildFormData(c: Checklist): FormData {
         (headChecklist?.saas_piano ? 1 : 0) +
         (headChecklist?.garanzia_scadenza ? 1 : 0) +
         (licenzeData || []).length +
-        (tagliandiData || []).length;
+        (tagliandiData || []).length +
+        (rinnoviData || []).length;
       console.info(`[perf][checklist] ready`, {
         loadSeq,
         counts: {
           tasks: (tasks || []).length,
           licenze: (licenzeData || []).length,
           tagliandi: (tagliandiData || []).length,
+          rinnovi_servizi: (rinnoviData || []).length,
           rinnovi: renewalRowsCount,
           documents: (docsData || []).length,
         },
@@ -1818,9 +1860,10 @@ function buildFormData(c: Checklist): FormData {
         tasks: tasks.length,
         licenze: licenze.length,
         tagliandi: projectTagliandi.length,
+        rinnovi_servizi: projectRinnovi.length,
       },
     });
-  }, [loading, id, tasks.length, licenze.length, projectTagliandi.length]);
+  }, [loading, id, tasks.length, licenze.length, projectTagliandi.length, projectRinnovi.length]);
 
   useEffect(() => {
     (async () => {
@@ -4365,6 +4408,22 @@ function buildFormData(c: Checklist): FormData {
                 note: t.note || null,
                 checklist_id: id || "",
               })),
+              ...projectRinnovi
+                .filter((r) => String(r.checklist_id || "") === String(id || ""))
+                .map((r) => ({
+                  id: r.id,
+                  key: `RIN-${r.id}`,
+                  source: "rinnovi" as const,
+                  recordId: r.id,
+                  item_tipo: String(r.item_tipo || "RINNOVO").toUpperCase(),
+                  tipo: String(r.item_tipo || "RINNOVO").toUpperCase(),
+                  riferimento: r.riferimento || r.descrizione || "Rinnovo",
+                  scadenza: r.scadenza || null,
+                  stato: r.stato || "DA_AVVISARE",
+                  modalita: "—",
+                  note: r.note || null,
+                  checklist_id: id || "",
+                })),
             ].filter((row) => String((row as any).checklist_id || "") === String(id || ""))}
             checklistById={new Map(checklist ? [[checklist.id, checklist]] : [])}
             rinnoviError={projectInterventiError}
