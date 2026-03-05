@@ -618,9 +618,11 @@ export default function NuovaChecklistPage() {
       }
       const checklistId = created.id as string;
 
-      const { count: existingTasksCount, error: existingTasksErr } = await dbFrom("checklist_tasks")
-        .select("id", { count: "exact", head: true })
+      const { data: existingTasksData, error: existingTasksErr } = await dbFrom("checklist_tasks")
+        .select("id")
         .eq("checklist_id", checklistId);
+
+      const existingTasksCount = existingTasksData?.length ?? 0;
 
       if (existingTasksErr) {
         logSupabaseError(existingTasksErr);
