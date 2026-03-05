@@ -6,6 +6,7 @@ import Link from "next/link";
 import ConfigMancante from "@/components/ConfigMancante";
 import ClientiCombobox from "@/components/ClientiCombobox";
 import AttachmentsPanel from "@/components/AttachmentsPanel";
+import RenewalsBlock from "@/components/RenewalsBlock";
 import Toast from "@/components/Toast";
 import { isSupabaseConfigured, supabase } from "@/lib/supabaseClient";
 import { dbFrom } from "@/lib/clientDbBroker";
@@ -562,6 +563,24 @@ const TAGLIANDO_STATI = [
   "SCADUTO",
 ];
 const TAGLIANDO_MODALITA = ["INCLUSO", "EXTRA", "AUTORIZZATO_CLIENTE"];
+const RINNOVO_STATI = [
+  "DA_AVVISARE",
+  "AVVISATO",
+  "CONFERMATO",
+  "DA_FATTURARE",
+  "FATTURATO",
+  "NON_RINNOVATO",
+];
+
+const ACTIONS_BY_TIPO: Record<
+  string,
+  { avviso: boolean; conferma: boolean; non_rinnovato: boolean; fattura: boolean }
+> = {
+  LICENZA: { avviso: true, conferma: true, non_rinnovato: true, fattura: true },
+  TAGLIANDO: { avviso: true, conferma: true, non_rinnovato: true, fattura: true },
+  SAAS: { avviso: true, conferma: true, non_rinnovato: true, fattura: true },
+  GARANZIA: { avviso: false, conferma: false, non_rinnovato: false, fattura: false },
+};
 
 function getNextLicenzaScadenza(licenze: Array<{ scadenza?: string | null }>) {
   const dates = licenze
@@ -1293,6 +1312,49 @@ function buildFormData(c: Checklist): FormData {
     setProjectRenewalEdit(null);
     setProjectRenewalEditSaving(false);
     setProjectInterventiNotice("Voce scadenza/rinnovo aggiornata.");
+  }
+
+  function getProjectWorkflowStato(row: ProjectRenewalRow) {
+    const raw = String(row.stato || "").toUpperCase();
+    if (row.source === "tagliando") {
+      if (raw === "ATTIVA") return "DA_AVVISARE";
+      if (raw === "OK") return "CONFERMATO";
+      return raw || "DA_AVVISARE";
+    }
+    if (RINNOVO_STATI.includes(raw)) return raw;
+    return "DA_AVVISARE";
+  }
+
+  async function updateProjectRenewalStatus(row: ProjectRenewalRow, nextStatus: string) {
+    const status = String(nextStatus || "").toUpperCase();
+    if (!id) return;
+    setProjectInterventiError(null);
+    let err: { message: string } | null = null;
+
+    if (row.source === "saas") {
+      const res = await dbFrom("checklists").update({ saas_stato: status }).eq("id", id);
+      err = res.error;
+    } else if (row.source === "licenza" && row.recordId) {
+      const res = await dbFrom("licenze").update({ stato: status }).eq("id", row.recordId);
+      err = res.error;
+    } else if (row.source === "tagliando" && row.recordId) {
+      const mapped =
+        status === "CONFERMATO"
+          ? "OK"
+          : status === "DA_AVVISARE"
+          ? "ATTIVA"
+          : status;
+      const res = await dbFrom("tagliandi").update({ stato: mapped }).eq("id", row.recordId);
+      err = res.error;
+    }
+
+    if (err) {
+      setProjectInterventiError(err.message);
+      return;
+    }
+
+    await load(id);
+    setProjectInterventiNotice(`Stato aggiornato a ${status}.`);
   }
 
   async function deleteProjectIntervento(idToDelete: string) {
@@ -4132,374 +4194,136 @@ function buildFormData(c: Checklist): FormData {
             ) : null}
           </div>
 
-          <div style={{ border: "1px solid #f1f5f9", borderRadius: 10, overflowX: "hidden", background: "white" }}>
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "72px minmax(170px,1.3fr) 112px 120px 118px 96px 354px",
-                  padding: "10px 12px",
-                  fontWeight: 800,
-                  background: "#fafafa",
-                  borderBottom: "1px solid #eee",
-                  fontSize: 12,
-                  columnGap: 10,
-                }}
-              >
-                <div style={{ textAlign: "center" }}>Tipo</div>
-                <div style={{ textAlign: "center" }}>Riferimento</div>
-                <div style={{ textAlign: "center" }}>Scadenza</div>
-                <div style={{ textAlign: "center" }}>Stato</div>
-                <div style={{ textAlign: "center" }}>Ultimo invio</div>
-                <div style={{ textAlign: "center" }}>Modalità</div>
-                <div style={{ textAlign: "center" }}>Azioni</div>
-              </div>
-            {[
+          <RenewalsBlock
+            cliente={checklist?.cliente || ""}
+            rows={[
               ...(checklist?.saas_piano
-                ? [{
-                    key: "SAAS",
-                    source: "saas" as const,
-                    recordId: checklist.id,
-                    tipo: "SAAS",
-                    riferimento: checklist.saas_piano || "—",
-                    scadenza: checklist.saas_scadenza || null,
-                    stato: checklist.saas_stato || "DA_AVVISARE",
-                    modalita: "—",
-                    note: checklist.saas_note || null,
-                  }]
+                ? [
+                    {
+                      id: "SAAS",
+                      key: "SAAS",
+                      source: "saas" as const,
+                      recordId: checklist.id,
+                      item_tipo: "SAAS",
+                      tipo: "SAAS",
+                      riferimento: checklist.saas_piano || "—",
+                      scadenza: checklist.saas_scadenza || null,
+                      stato: checklist.saas_stato || "DA_AVVISARE",
+                      modalita: "—",
+                      note: checklist.saas_note || null,
+                      checklist_id: checklist.id,
+                    },
+                  ]
                 : []),
               ...(checklist?.garanzia_scadenza
-                ? [{
-                    key: "GARANZIA",
-                    source: "garanzia" as const,
-                    recordId: checklist.id,
-                    tipo: "GARANZIA",
-                    riferimento: "Garanzia impianto",
-                    scadenza: checklist.garanzia_scadenza || null,
-                    stato: "DA_AVVISARE",
-                    modalita: "—",
-                    note: null,
-                  }]
+                ? [
+                    {
+                      id: "GARANZIA",
+                      key: "GARANZIA",
+                      source: "garanzie" as const,
+                      recordId: checklist.id,
+                      item_tipo: "GARANZIA",
+                      tipo: "GARANZIA",
+                      riferimento: "Garanzia impianto",
+                      scadenza: checklist.garanzia_scadenza || null,
+                      stato: "DA_AVVISARE",
+                      modalita: "—",
+                      note: null,
+                      checklist_id: checklist.id,
+                    },
+                  ]
                 : []),
               ...licenze.map((l) => ({
+                id: l.id,
                 key: `LIC-${l.id}`,
-                source: "licenza" as const,
+                source: "licenze" as const,
                 recordId: l.id,
+                item_tipo: "LICENZA",
                 tipo: "LICENZA",
                 riferimento: l.tipo || "—",
                 scadenza: l.scadenza || null,
                 stato: l.stato || "ATTIVA",
                 modalita: "—",
                 note: l.note || null,
+                checklist_id: checklist?.id || id || "",
               })),
               ...projectTagliandi.map((t) => ({
+                id: t.id,
                 key: `TAG-${t.id}`,
-                source: "tagliando" as const,
+                source: "tagliandi" as const,
                 recordId: t.id,
+                item_tipo: "TAGLIANDO",
                 tipo: "TAGLIANDO",
                 riferimento: t.note || "Tagliando periodico",
                 scadenza: t.scadenza || null,
                 stato: t.stato || "ATTIVA",
                 modalita: t.modalita || "—",
                 note: t.note || null,
+                checklist_id: checklist?.id || id || "",
               })),
-            ].map((r: ProjectRenewalRow) => (
-                <div
-                  key={r.key}
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "72px minmax(170px,1.3fr) 112px 120px 118px 96px 354px",
-                    padding: "10px 12px",
-                    borderBottom: "1px solid #f3f4f6",
-                    alignItems: "center",
-                    fontSize: 12,
-                    columnGap: 10,
-                  }}
-                >
-                <div style={{ textAlign: "center" }}>{String(r.tipo || "").toUpperCase()}</div>
-                <div style={{ textAlign: "center" }}>{r.riferimento}</div>
-                <div style={{ textAlign: "center", display: "grid", gap: 6, justifyItems: "center" }}>
-                  <div>{r.scadenza ? new Date(r.scadenza).toLocaleDateString("it-IT") : "—"}</div>
-                  {renderBadge(getExpiryStatus(r.scadenza))}
-                </div>
-                <div style={{ textAlign: "center" }}>
-                  {r.tipo === "TAGLIANDO"
-                    ? renderBadge(String(r.stato || "ATTIVA").toUpperCase() === "OK" ? "ATTIVA" : String(r.stato || "ATTIVA"))
-                    : renderRinnovoStatoBadge(r.stato)}
-                </div>
-                <div style={{ textAlign: "center" }}>—</div>
-                <div style={{ textAlign: "center" }}>
-                  {r.tipo === "TAGLIANDO" ? renderModalitaBadge(r.modalita) : "—"}
-                </div>
-                  <div
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
-                      justifyContent: "center",
-                      alignContent: "center",
-                      gap: 6,
-                      width: "100%",
-                      maxWidth: 354,
-                    }}
-                  >
-                  {[
-                    "Invia avviso",
-                    "DA_FATTURARE",
-                    "FATTURATO",
-                    "Confermato",
-                    "NON_RINNOVATO",
-                    "Modifica",
-                  ].map((label) => (
-                    <button
-                      key={`${r.key}-${label}`}
-                      type="button"
-                      onClick={() => {
-                        if (label === "Modifica") {
-                          openProjectRenewalEdit(r);
-                          return;
-                        }
-                        if (checklist?.cliente) {
-                          router.push(`/clienti/${encodeURIComponent(checklist.cliente)}`);
-                        }
-                      }}
-                      style={{
-                        padding: "0 6px",
-                        width: "100%",
-                        height: 38,
-                        borderRadius: 6,
-                        border: label === "Modifica" || label === "Invia avviso" || label === "DA_FATTURARE" ? "1px solid #111" : "1px solid #ddd",
-                        background: label === "FATTURATO" ? "#f9fafb" : "white",
-                        cursor: checklist?.cliente ? "pointer" : "not-allowed",
-                        fontSize: 10,
-                        opacity: checklist?.cliente ? 1 : 0.5,
-                        fontWeight: label === "Modifica" || label === "Invia avviso" || label === "DA_FATTURARE" ? 700 : 500,
-                        textAlign: "center",
-                        whiteSpace: "normal",
-                        lineHeight: 1.1,
-                        overflowWrap: "anywhere",
-                      }}
-                      title={label === "Modifica" ? "Modifica qui in pagina progetto" : "Gestisci stato completo in Scheda cliente"}
-                    >
-                      {label}
-                    </button>
-                  ))}
-                  </div>
-                </div>
-            ))}
-          </div>
+            ]}
+            checklistById={new Map(checklist ? [[checklist.id, checklist]] : [])}
+            rinnoviError={projectInterventiError}
+            rinnoviNotice={projectInterventiNotice}
+            setRinnoviNotice={setProjectInterventiNotice}
+            getWorkflowStato={(row) => getProjectWorkflowStato(row as ProjectRenewalRow)}
+            actionsByTipo={ACTIONS_BY_TIPO}
+            alertStatsMap={new Map()}
+            renderScadenzaBadge={(scadenza) => renderBadge(getExpiryStatus(scadenza))}
+            renderTagliandoStatoBadge={(stato) =>
+              renderBadge(String(stato || "ATTIVA").toUpperCase() === "OK" ? "ATTIVA" : String(stato || "ATTIVA"))
+            }
+            renderAvvisatoBadge={() => renderRinnovoStatoBadge("AVVISATO")}
+            renderRinnovoStatoBadge={renderRinnovoStatoBadge}
+            renderModalitaBadge={renderModalitaBadge}
+            onSendAlert={() => {
+              if (checklist?.cliente) {
+                router.push(`/clienti/${encodeURIComponent(checklist.cliente)}`);
+              }
+            }}
+            onSetDaFatturare={(row) => updateProjectRenewalStatus(row as ProjectRenewalRow, "DA_FATTURARE")}
+            onSetFatturato={(row) => updateProjectRenewalStatus(row as ProjectRenewalRow, "FATTURATO")}
+            onSetConfermato={(row) => updateProjectRenewalStatus(row as ProjectRenewalRow, "CONFERMATO")}
+            onSetNonRinnovato={(row) => updateProjectRenewalStatus(row as ProjectRenewalRow, "NON_RINNOVATO")}
+            onEdit={(row) => openProjectRenewalEdit(row as ProjectRenewalRow)}
+            editOpen={!!projectRenewalEdit}
+            editForm={
+              projectRenewalEdit
+                ? {
+                    tipo: projectRenewalEdit.row.tipo,
+                    scadenza: projectRenewalEdit.scadenza,
+                    stato: projectRenewalEdit.stato,
+                    modalita: projectRenewalEdit.modalita,
+                    note: projectRenewalEdit.note,
+                  }
+                : null
+            }
+            setEditOpen={(open) => {
+              if (!open) setProjectRenewalEdit(null);
+            }}
+            setEditForm={(next) =>
+              setProjectRenewalEdit((prev) =>
+                prev
+                  ? {
+                      ...prev,
+                      scadenza: typeof next?.scadenza === "string" ? next.scadenza : prev.scadenza,
+                      stato: typeof next?.stato === "string" ? next.stato : prev.stato,
+                      modalita: typeof next?.modalita === "string" ? next.modalita : prev.modalita,
+                      note: typeof next?.note === "string" ? next.note : prev.note,
+                    }
+                  : prev
+              )
+            }
+            saveEdit={saveProjectRenewalEdit}
+            editSaving={projectRenewalEditSaving}
+            editError={projectInterventiError}
+            licenzaStati={LICENZA_STATI}
+            tagliandoStati={TAGLIANDO_STATI}
+            tagliandoModalita={TAGLIANDO_MODALITA}
+            rinnovoStati={RINNOVO_STATI}
+          />
         </div>
       </div>
-      {projectRenewalEdit && (
-        <div
-          style={{
-            position: "fixed",
-            inset: 0,
-            background: "rgba(0,0,0,0.35)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            padding: 16,
-            zIndex: 50,
-          }}
-          onClick={() => setProjectRenewalEdit(null)}
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            style={{
-              width: "100%",
-              maxWidth: 640,
-              background: "white",
-              borderRadius: 12,
-              padding: 16,
-              boxShadow: "0 10px 30px rgba(0,0,0,0.15)",
-            }}
-          >
-            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-              <div style={{ fontWeight: 800, fontSize: 18 }}>Modifica {projectRenewalEdit.row.tipo}</div>
-              <button
-                type="button"
-                onClick={() => setProjectRenewalEdit(null)}
-                style={{
-                  marginLeft: "auto",
-                  padding: "6px 10px",
-                  borderRadius: 8,
-                  border: "1px solid #ddd",
-                  background: "white",
-                }}
-              >
-                Chiudi
-              </button>
-            </div>
-
-            <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
-              <label>
-                Scadenza<br />
-                <input
-                  type="date"
-                  value={projectRenewalEdit.scadenza}
-                  onChange={(e) =>
-                    setProjectRenewalEdit((p) => (p ? { ...p, scadenza: e.target.value } : p))
-                  }
-                  style={{ width: "100%", padding: 8 }}
-                />
-              </label>
-
-              {projectRenewalEdit.row.source === "saas" && (
-                <label>
-                  Piano<br />
-                  <input
-                    value={checklist?.saas_piano || "—"}
-                    readOnly
-                    style={{ width: "100%", padding: 8, background: "#f9fafb" }}
-                  />
-                </label>
-              )}
-
-              {projectRenewalEdit.row.source === "licenza" && (
-                <>
-                  <label>
-                    Stato<br />
-                    <select
-                      value={projectRenewalEdit.stato}
-                      onChange={(e) =>
-                        setProjectRenewalEdit((p) => (p ? { ...p, stato: e.target.value } : p))
-                      }
-                      style={{ width: "100%", padding: 8 }}
-                    >
-                      {LICENZA_STATI.map((s) => (
-                        <option key={s} value={s}>
-                          {s}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label>
-                    Note<br />
-                    <input
-                      value={projectRenewalEdit.note}
-                      onChange={(e) =>
-                        setProjectRenewalEdit((p) => (p ? { ...p, note: e.target.value } : p))
-                      }
-                      style={{ width: "100%", padding: 8 }}
-                    />
-                  </label>
-                </>
-              )}
-
-              {projectRenewalEdit.row.source === "tagliando" && (
-                <>
-                  <label>
-                    Stato<br />
-                    <select
-                      value={projectRenewalEdit.stato}
-                      onChange={(e) =>
-                        setProjectRenewalEdit((p) => (p ? { ...p, stato: e.target.value } : p))
-                      }
-                      style={{ width: "100%", padding: 8 }}
-                    >
-                      {TAGLIANDO_STATI.map((s) => (
-                        <option key={s} value={s}>
-                          {s}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label>
-                    Modalità<br />
-                    <select
-                      value={projectRenewalEdit.modalita || ""}
-                      onChange={(e) =>
-                        setProjectRenewalEdit((p) => (p ? { ...p, modalita: e.target.value } : p))
-                      }
-                      style={{ width: "100%", padding: 8 }}
-                    >
-                      <option value="">—</option>
-                      {TAGLIANDO_MODALITA.map((s) => (
-                        <option key={s} value={s}>
-                          {s}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label>
-                    Note<br />
-                    <input
-                      value={projectRenewalEdit.note}
-                      onChange={(e) =>
-                        setProjectRenewalEdit((p) => (p ? { ...p, note: e.target.value } : p))
-                      }
-                      style={{ width: "100%", padding: 8 }}
-                    />
-                  </label>
-                </>
-              )}
-
-              {projectRenewalEdit.row.source === "saas" && (
-                <label>
-                  Stato<br />
-                  <input
-                    value={projectRenewalEdit.stato}
-                    onChange={(e) =>
-                      setProjectRenewalEdit((p) => (p ? { ...p, stato: e.target.value } : p))
-                    }
-                    style={{ width: "100%", padding: 8 }}
-                  />
-                </label>
-              )}
-
-              {projectRenewalEdit.row.source === "saas" && (
-                <label>
-                  Note<br />
-                  <input
-                    value={projectRenewalEdit.note}
-                    onChange={(e) =>
-                      setProjectRenewalEdit((p) => (p ? { ...p, note: e.target.value } : p))
-                    }
-                    style={{ width: "100%", padding: 8 }}
-                  />
-                </label>
-              )}
-
-              {projectRenewalEdit.row.source === "garanzia" && (
-                <div style={{ fontSize: 12, opacity: 0.7 }}>Modifica solo la data di scadenza.</div>
-              )}
-            </div>
-
-            {projectInterventiError && (
-              <div style={{ marginTop: 10, fontSize: 12, color: "#b91c1c" }}>{projectInterventiError}</div>
-            )}
-
-            <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 12 }}>
-              <button
-                type="button"
-                onClick={() => setProjectRenewalEdit(null)}
-                style={{
-                  padding: "8px 12px",
-                  borderRadius: 8,
-                  border: "1px solid #ddd",
-                  background: "white",
-                }}
-              >
-                Annulla
-              </button>
-              <button
-                type="button"
-                onClick={saveProjectRenewalEdit}
-                disabled={projectRenewalEditSaving}
-                style={{
-                  padding: "8px 12px",
-                  borderRadius: 8,
-                  border: "1px solid #111",
-                  background: "#111",
-                  color: "white",
-                  opacity: projectRenewalEditSaving ? 0.6 : 1,
-                }}
-              >
-                {projectRenewalEditSaving ? "Salvataggio..." : "Salva"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
       <div style={{ marginTop: 12 }}>
         <div
           style={{
