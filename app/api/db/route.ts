@@ -4,7 +4,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 
-type DbOp = "select" | "insert" | "update" | "delete";
+type DbOp = "select" | "insert" | "update" | "delete" | "upsert";
 
 type DbRequest = {
   table?: string;
@@ -13,7 +13,8 @@ type DbRequest = {
   filter?: Record<string, string | number | boolean | null>;
   order?: Array<{ col: string; asc: boolean }>;
   limit?: number;
-  payload?: Record<string, any>;
+  payload?: Record<string, any> | Record<string, any>[];
+  onConflict?: string;
 };
 
 const TABLE_RULES: Record<
@@ -22,77 +23,103 @@ const TABLE_RULES: Record<
     ops: DbOp[];
     filterCols: string[];
     orderCols: string[];
+    requiredEqAnyOf?: string[];
+    allowNoFilterSelect?: boolean;
   }
 > = {
   checklists: {
     ops: ["select", "insert", "update", "delete"],
     filterCols: ["id", "cliente_id", "created_by_operatore", "updated_by_operatore"],
     orderCols: ["created_at", "updated_at", "data_prevista", "data_tassativa"],
+    requiredEqAnyOf: ["id", "cliente_id"],
   },
   checklist_items: {
-    ops: ["select", "insert", "update", "delete"],
+    ops: ["select", "insert", "update", "delete", "upsert"],
     filterCols: ["id", "checklist_id"],
     orderCols: ["created_at", "updated_at"],
+    requiredEqAnyOf: ["id", "checklist_id"],
   },
   checklist_tasks: {
-    ops: ["select", "insert", "update", "delete"],
+    ops: ["select", "insert", "update", "delete", "upsert"],
     filterCols: ["id", "checklist_id", "task_template_id", "updated_by_operatore"],
     orderCols: ["created_at", "updated_at", "ordine", "sezione"],
+    requiredEqAnyOf: ["id", "checklist_id"],
   },
   checklist_documents: {
     ops: ["select", "insert", "update", "delete"],
     filterCols: ["id", "checklist_id", "uploaded_by_operatore"],
     orderCols: ["created_at", "uploaded_at"],
+    requiredEqAnyOf: ["id", "checklist_id"],
   },
   licenses: {
     ops: ["select", "insert", "update", "delete"],
     filterCols: ["id", "checklist_id", "updated_by_operatore"],
     orderCols: ["created_at", "updated_at", "scadenza"],
+    requiredEqAnyOf: ["id", "checklist_id"],
   },
   tagliandi: {
     ops: ["select", "insert", "update", "delete"],
     filterCols: ["id", "checklist_id", "cliente"],
     orderCols: ["created_at", "updated_at", "scadenza"],
+    requiredEqAnyOf: ["id", "checklist_id", "cliente"],
   },
   asset_serials: {
     ops: ["select", "insert", "update", "delete"],
     filterCols: ["id", "checklist_id", "tipo", "seriale"],
     orderCols: ["created_at", "updated_at"],
+    requiredEqAnyOf: ["id", "checklist_id"],
   },
   catalog_items: {
-    ops: ["select", "insert", "update", "delete"],
+    ops: ["select", "insert", "update", "delete", "upsert"],
     filterCols: ["id", "attivo", "codice", "tipo", "categoria"],
     orderCols: ["created_at", "updated_at", "codice", "descrizione"],
+    allowNoFilterSelect: true,
   },
   operatori: {
     ops: ["select", "insert", "update", "delete"],
     filterCols: ["id", "user_id", "attivo", "ruolo", "cliente_id"],
     orderCols: ["created_at", "updated_at", "nome"],
+    allowNoFilterSelect: true,
   },
   attachments: {
     ops: ["select", "insert", "update", "delete"],
     filterCols: ["id", "entity_id", "entity_type", "created_by"],
     orderCols: ["created_at", "updated_at"],
+    requiredEqAnyOf: ["id", "entity_id"],
   },
   saas_interventi: {
-    ops: ["select"],
-    filterCols: ["id", "checklist_id", "cliente_id", "cliente", "stato_intervento", "contratto_id", "incluso"],
+    ops: ["select", "insert", "update", "delete"],
+    filterCols: [
+      "id",
+      "checklist_id",
+      "cliente_id",
+      "cliente",
+      "stato_intervento",
+      "stato",
+      "contratto_id",
+      "incluso",
+      "canale",
+    ],
     orderCols: ["created_at", "updated_at", "data", "data_tassativa"],
+    requiredEqAnyOf: ["id", "checklist_id", "cliente_id", "cliente"],
   },
   checklist_task_documents: {
-    ops: ["select"],
+    ops: ["select", "insert", "delete"],
     filterCols: ["id", "checklist_id", "task_id", "uploaded_by_operatore"],
     orderCols: ["created_at", "uploaded_at"],
+    requiredEqAnyOf: ["id", "checklist_id", "task_id"],
   },
   clienti_anagrafica: {
-    ops: ["select", "insert", "update", "delete"],
+    ops: ["select"],
     filterCols: ["id", "attivo", "codice_interno", "denominazione"],
     orderCols: ["created_at", "updated_at", "denominazione"],
+    allowNoFilterSelect: true,
   },
   saas_contratti: {
-    ops: ["select"],
+    ops: ["select", "insert", "update", "delete"],
     filterCols: ["id", "cliente"],
     orderCols: ["created_at", "updated_at", "scadenza"],
+    requiredEqAnyOf: ["id", "cliente"],
   },
   saas_piani: {
     ops: ["select"],
@@ -100,14 +127,58 @@ const TABLE_RULES: Record<
     orderCols: ["created_at", "updated_at", "codice", "nome"],
   },
   checklist_alert_log: {
-    ops: ["select"],
-    filterCols: ["id", "checklist_id", "tipo", "riferimento", "trigger", "to_operatore_id"],
+    ops: ["select", "insert", "update"],
+    filterCols: ["id", "checklist_id", "tipo", "riferimento", "trigger", "to_operatore_id", "intervento_id"],
     orderCols: ["created_at"],
+    allowNoFilterSelect: true,
   },
   checklist_task_templates: {
     ops: ["select"],
     filterCols: ["id", "target", "attivo", "sezione", "titolo"],
     orderCols: ["created_at", "ordine", "titolo", "sezione"],
+    allowNoFilterSelect: true,
+  },
+  rinnovi_servizi: {
+    ops: ["select", "insert", "update", "delete", "upsert"],
+    filterCols: ["id", "checklist_id", "item_tipo", "cliente", "subtipo"],
+    orderCols: ["created_at", "updated_at", "scadenza", "item_tipo"],
+    requiredEqAnyOf: ["id", "checklist_id", "cliente"],
+  },
+  saas_interventi_files: {
+    ops: ["select", "insert", "delete"],
+    filterCols: ["id", "intervento_id", "checklist_id"],
+    orderCols: ["created_at", "uploaded_at"],
+    requiredEqAnyOf: ["id", "intervento_id", "checklist_id"],
+  },
+  alert_message_templates: {
+    ops: ["select"],
+    filterCols: ["id", "tipo", "trigger", "attivo"],
+    orderCols: ["created_at", "updated_at", "titolo"],
+    allowNoFilterSelect: true,
+  },
+  checklist_checks: {
+    ops: ["insert"],
+    filterCols: ["id", "checklist_id", "checklist_item_id"],
+    orderCols: ["created_at"],
+    requiredEqAnyOf: ["checklist_id"],
+  },
+  checklist_template_items: {
+    ops: ["select"],
+    filterCols: ["id", "target", "attivo"],
+    orderCols: ["created_at", "sezione", "ordine", "voce"],
+    allowNoFilterSelect: true,
+  },
+  notification_jobs: {
+    ops: ["insert"],
+    filterCols: ["id", "checklist_id"],
+    orderCols: ["created_at"],
+    requiredEqAnyOf: ["checklist_id"],
+  },
+  licenze: {
+    ops: ["update"],
+    filterCols: ["id", "checklist_id"],
+    orderCols: ["updated_at"],
+    requiredEqAnyOf: ["id", "checklist_id"],
   },
 };
 
@@ -166,6 +237,7 @@ export async function POST(request: Request) {
 
   if (!isPlainObject(body)) return invalid("Invalid body");
   const allowedBodyKeys = new Set(["table", "op", "select", "filter", "order", "limit", "payload"]);
+  allowedBodyKeys.add("onConflict");
   for (const key of Object.keys(body)) {
     if (!allowedBodyKeys.has(key)) return invalid(`Unsupported field: ${key}`);
   }
@@ -185,6 +257,22 @@ export async function POST(request: Request) {
     }
   }
 
+  if (
+    op === "select" &&
+    Object.keys(filter).length === 0 &&
+    !rule.allowNoFilterSelect
+  ) {
+    return invalid("Select requires eq filter for this table", 403);
+  }
+  if (
+    op === "select" &&
+    rule.requiredEqAnyOf &&
+    rule.requiredEqAnyOf.length > 0 &&
+    !rule.requiredEqAnyOf.some((c) => Object.prototype.hasOwnProperty.call(filter, c))
+  ) {
+    return invalid(`Missing required eq filter: one of [${rule.requiredEqAnyOf.join(", ")}]`, 403);
+  }
+
   const order = Array.isArray(body.order) ? body.order : [];
   for (const item of order) {
     if (!item || typeof item !== "object") return invalid("Invalid order clause");
@@ -196,7 +284,8 @@ export async function POST(request: Request) {
   const limit = Number(body.limit ?? 0);
   const normalizedLimit = Number.isFinite(limit) && limit > 0 ? Math.min(limit, 1000) : 0;
 
-  const payload = isPlainObject(body.payload) ? body.payload : null;
+  const payload =
+    isPlainObject(body.payload) || Array.isArray(body.payload) ? body.payload : null;
 
   if (op === "select") {
     const select = String(body.select || "*").trim();
@@ -215,6 +304,15 @@ export async function POST(request: Request) {
   if (op === "insert") {
     if (!payload) return invalid("Missing payload");
     const { data, error } = await supabaseAdmin.from(table).insert(payload).select("*");
+    if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
+    return NextResponse.json({ ok: true, data });
+  }
+
+  if (op === "upsert") {
+    if (!payload) return invalid("Missing payload");
+    const onConflict = String((body as any).onConflict || "").trim();
+    const options = onConflict ? { onConflict } : undefined;
+    const { data, error } = await supabaseAdmin.from(table).upsert(payload as any, options as any).select("*");
     if (error) return NextResponse.json({ ok: false, error: error.message }, { status: 500 });
     return NextResponse.json({ ok: true, data });
   }

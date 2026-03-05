@@ -8,6 +8,8 @@ import ClientiCombobox from "@/components/ClientiCombobox";
 import AttachmentsPanel from "@/components/AttachmentsPanel";
 import Toast from "@/components/Toast";
 import { isSupabaseConfigured, supabase } from "@/lib/supabaseClient";
+import { dbFrom } from "@/lib/clientDbBroker";
+import { storageRemove, storageSignedUrl, storageUpload } from "@/lib/clientStorageApi";
 import { sendAlert } from "@/lib/sendAlert";
 import { calcM2FromDimensioni } from "@/lib/parseDimensioni";
 
@@ -875,8 +877,7 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
     setSerialsError(null);
     const deviceCode = String(deviceCodeRaw ?? "").trim();
     const deviceDescrizione = String(deviceDescrizioneRaw ?? "").trim();
-    const { data, error: err } = await supabase
-      .from("asset_serials")
+    const { data, error: err } = await dbFrom("asset_serials")
       .insert({
         checklist_id: id,
         tipo,
@@ -909,7 +910,7 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
   }
 
   async function removeSerial(serial: AssetSerial) {
-    const { error: err } = await supabase.from("asset_serials").delete().eq("id", serial.id);
+    const { error: err } = await dbFrom("asset_serials").delete().eq("id", serial.id);
     if (err) {
       setSerialsError(err.message);
       return;
@@ -1106,10 +1107,10 @@ function buildFormData(c: Checklist): FormData {
       stato_intervento: newProjectIntervento.stato_intervento || "APERTO",
       note: newProjectIntervento.note.trim() || null,
     };
-    let insRes = await supabase.from("saas_interventi").insert(payload);
+    let insRes = await dbFrom("saas_interventi").insert(payload);
     if (insRes.error && String(insRes.error.message || "").toLowerCase().includes("data_tassativa")) {
       const { data_tassativa: _skip, ...payloadNoTassativa } = payload;
-      insRes = await supabase.from("saas_interventi").insert(payloadNoTassativa);
+      insRes = await dbFrom("saas_interventi").insert(payloadNoTassativa);
     }
     if (insRes.error) {
       const insErr = insRes.error;
@@ -1154,14 +1155,12 @@ function buildFormData(c: Checklist): FormData {
       stato_intervento: projectInterventoEditForm.stato_intervento || "APERTO",
       note: projectInterventoEditForm.note.trim() || null,
     };
-    let updRes = await supabase
-      .from("saas_interventi")
+    let updRes = await dbFrom("saas_interventi")
       .update(payload)
       .eq("id", projectInterventoEditId);
     if (updRes.error && String(updRes.error.message || "").toLowerCase().includes("data_tassativa")) {
       const { data_tassativa: _skip, ...payloadNoTassativa } = payload;
-      updRes = await supabase
-        .from("saas_interventi")
+      updRes = await dbFrom("saas_interventi")
         .update(payloadNoTassativa)
         .eq("id", projectInterventoEditId);
     }
@@ -1195,7 +1194,7 @@ function buildFormData(c: Checklist): FormData {
       modalita,
       note: projectTagliando.note.trim() || "Tagliando periodico",
     };
-    const { error } = await supabase.from("tagliandi").insert(payload);
+    const { error } = await dbFrom("tagliandi").insert(payload);
     if (error) {
       setProjectInterventiError(error.message);
       setProjectTagliandoSaving(false);
@@ -1243,26 +1242,22 @@ function buildFormData(c: Checklist): FormData {
     let err: any = null;
 
     if (row.source === "saas") {
-      const res = await supabase
-        .from("checklists")
+      const res = await dbFrom("checklists")
         .update({ saas_scadenza: scadenza, saas_stato: stato })
         .eq("id", id);
       err = res.error;
     } else if (row.source === "garanzia") {
-      const res = await supabase
-        .from("checklists")
+      const res = await dbFrom("checklists")
         .update({ garanzia_scadenza: scadenza })
         .eq("id", id);
       err = res.error;
     } else if (row.source === "licenza" && row.recordId) {
-      const res = await supabase
-        .from("licenze")
+      const res = await dbFrom("licenze")
         .update({ scadenza, stato, note })
         .eq("id", row.recordId);
       err = res.error;
     } else if (row.source === "tagliando" && row.recordId) {
-      const res = await supabase
-        .from("tagliandi")
+      const res = await dbFrom("tagliandi")
         .update({ scadenza, stato, modalita, note })
         .eq("id", row.recordId);
       err = res.error;
@@ -1284,7 +1279,7 @@ function buildFormData(c: Checklist): FormData {
     if (!idToDelete) return;
     const ok = typeof window === "undefined" ? true : window.confirm("Eliminare questo intervento?");
     if (!ok) return;
-    const { error: delErr } = await supabase.from("saas_interventi").delete().eq("id", idToDelete);
+    const { error: delErr } = await dbFrom("saas_interventi").delete().eq("id", idToDelete);
     if (delErr) {
       setProjectInterventiError(delErr.message);
       return;
@@ -1868,8 +1863,7 @@ function buildFormData(c: Checklist): FormData {
 
       if (tpl?.id) {
         taskTemplateId = tpl.id;
-        await supabase
-          .from("checklist_tasks")
+        await dbFrom("checklist_tasks")
           .update({ task_template_id: taskTemplateId })
           .eq("id", alertTask.id);
         setTasks((prev) =>
@@ -1968,8 +1962,7 @@ function buildFormData(c: Checklist): FormData {
 
     {
       const nowIso = new Date().toISOString();
-      const { error: updErr } = await supabase
-        .from("checklist_tasks")
+      const { error: updErr } = await dbFrom("checklist_tasks")
         .update({
           updated_by_operatore: opId,
           updated_at: nowIso,
@@ -2331,7 +2324,7 @@ function buildFormData(c: Checklist): FormData {
       gestore: newLicenza.gestore.trim() ? newLicenza.gestore.trim() : null,
       fornitore: newLicenza.fornitore.trim() ? newLicenza.fornitore.trim() : null,
     };
-    const { error: insertErr } = await supabase.from("licenses").insert(payload);
+    const { error: insertErr } = await dbFrom("licenses").insert(payload);
     if (insertErr) {
       const msg = logSupabaseError("insert licenses", insertErr) || "Errore inserimento licenza";
       alert(msg);
@@ -2378,8 +2371,7 @@ function buildFormData(c: Checklist): FormData {
     }
   ) {
     if (!id) return;
-    const { error: updateErr } = await supabase
-      .from("licenses")
+    const { error: updateErr } = await dbFrom("licenses")
       .update(patch)
       .eq("id", licenzaId);
     if (updateErr) {
@@ -2480,9 +2472,7 @@ function buildFormData(c: Checklist): FormData {
     const safeName = docFile.name.replace(/\s+/g, "_");
     const storagePath = `checklists/${id}/${Date.now()}_${safeName}`;
 
-    const { error: uploadErr } = await supabase.storage
-      .from("checklist-documents")
-      .upload(storagePath, docFile, { upsert: false });
+    const { error: uploadErr } = await storageUpload(storagePath, docFile);
 
     if (uploadErr) {
       alert("Errore upload documento: " + uploadErr.message);
@@ -2497,8 +2487,7 @@ function buildFormData(c: Checklist): FormData {
       uploaded_by_operatore: currentOperatoreId || null,
     };
 
-    const { error: insErr } = await supabase
-      .from("checklist_documents")
+    const { error: insErr } = await dbFrom("checklist_documents")
       .insert(payload);
 
     if (insErr) {
@@ -2532,16 +2521,13 @@ function buildFormData(c: Checklist): FormData {
     const safeName = taskDocFile.name.replace(/[^\w.\-]+/g, "_");
     const storagePath = `checklist-tasks/${id}/${taskFilesTask.id}/${Date.now()}_${safeName}`;
 
-    const { error: uploadErr } = await supabase.storage
-      .from("checklist-documents")
-      .upload(storagePath, taskDocFile, { upsert: false });
+    const { error: uploadErr } = await storageUpload(storagePath, taskDocFile);
     if (uploadErr) {
       setTaskDocError("Errore upload file task: " + uploadErr.message);
       return;
     }
 
-    const { data: inserted, error: insErr } = await supabase
-      .from("checklist_task_documents")
+    const { data: inserted, error: insErr } = await dbFrom("checklist_task_documents")
       .insert({
         checklist_id: id,
         task_id: taskFilesTask.id,
@@ -2562,9 +2548,7 @@ function buildFormData(c: Checklist): FormData {
   }
 
   async function openTaskDocument(doc: ChecklistTaskDocument, download = false) {
-    const { data, error: urlErr } = await supabase.storage
-      .from("checklist-documents")
-      .createSignedUrl(doc.storage_path, 60, download ? { download: true } : undefined);
+    const { data, error: urlErr } = await storageSignedUrl(doc.storage_path);
     if (urlErr || !data?.signedUrl) {
       alert("Errore apertura file task.");
       return;
@@ -2576,16 +2560,13 @@ function buildFormData(c: Checklist): FormData {
     const ok = confirm(`Eliminare file task "${doc.filename}"?`);
     if (!ok) return;
 
-    const { error: storageErr } = await supabase.storage
-      .from("checklist-documents")
-      .remove([doc.storage_path]);
+    const { error: storageErr } = await storageRemove(doc.storage_path);
     if (storageErr) {
       alert("Errore eliminazione file task: " + storageErr.message);
       return;
     }
 
-    const { error: delErr } = await supabase
-      .from("checklist_task_documents")
+    const { error: delErr } = await dbFrom("checklist_task_documents")
       .delete()
       .eq("id", doc.id);
     if (delErr) {
@@ -2597,9 +2578,7 @@ function buildFormData(c: Checklist): FormData {
   }
 
   async function openDocument(doc: ChecklistDocument, download: boolean) {
-    const { data, error: urlErr } = await supabase.storage
-      .from("checklist-documents")
-      .createSignedUrl(doc.storage_path, 60, download ? { download: true } : undefined);
+    const { data, error: urlErr } = await storageSignedUrl(doc.storage_path);
     if (urlErr || !data?.signedUrl) {
       alert("Errore apertura documento: " + (urlErr?.message || "URL non disponibile"));
       return;
@@ -2620,17 +2599,14 @@ function buildFormData(c: Checklist): FormData {
     const ok = window.confirm("Eliminare questo documento?");
     if (!ok) return;
 
-    const { error: storageErr } = await supabase.storage
-      .from("checklist-documents")
-      .remove([doc.storage_path]);
+    const { error: storageErr } = await storageRemove(doc.storage_path);
 
     if (storageErr) {
       alert("Errore eliminazione file: " + storageErr.message);
       return;
     }
 
-    const { error: delErr } = await supabase
-      .from("checklist_documents")
+    const { error: delErr } = await dbFrom("checklist_documents")
       .delete()
       .eq("id", doc.id);
 
@@ -2792,7 +2768,7 @@ function buildFormData(c: Checklist): FormData {
     };
 
     const tryUpdate = async (payloadUpdate: Partial<typeof payload>) => {
-      return supabase.from("checklists").update(payloadUpdate).eq("id", id);
+      return dbFrom("checklists").update(payloadUpdate).eq("id", id);
     };
 
     let { error: errUpdate } = await tryUpdate(payload);
@@ -2877,8 +2853,7 @@ function buildFormData(c: Checklist): FormData {
       }));
 
     if (existingPayload.length > 0) {
-      const { error: itemsUpdateErr } = await supabase
-        .from("checklist_items")
+      const { error: itemsUpdateErr } = await dbFrom("checklist_items")
         .upsert(existingPayload, { onConflict: "id" });
 
       if (itemsUpdateErr) {
@@ -2903,8 +2878,7 @@ function buildFormData(c: Checklist): FormData {
       }));
 
     if (insertPayload.length > 0) {
-      const { error: itemsInsertErr } = await supabase
-        .from("checklist_items")
+      const { error: itemsInsertErr } = await dbFrom("checklist_items")
         .insert(insertPayload);
 
       if (itemsInsertErr) {
@@ -2920,8 +2894,7 @@ function buildFormData(c: Checklist): FormData {
     const deletedIds = originalRowIds.filter((rowId) => !remainingIds.has(rowId));
 
     if (deletedIds.length > 0) {
-      const { error: itemsDeleteErr } = await supabase
-        .from("checklist_items")
+      const { error: itemsDeleteErr } = await dbFrom("checklist_items")
         .delete()
         .in("id", deletedIds);
 
@@ -2953,8 +2926,7 @@ function buildFormData(c: Checklist): FormData {
     );
     if (!ok) return;
 
-    const { error: itemsErr } = await supabase
-      .from("checklist_items")
+    const { error: itemsErr } = await dbFrom("checklist_items")
       .delete()
       .eq("checklist_id", id);
     if (itemsErr) {
@@ -2966,8 +2938,7 @@ function buildFormData(c: Checklist): FormData {
       return;
     }
 
-    const { error: licensesErr } = await supabase
-      .from("licenses")
+    const { error: licensesErr } = await dbFrom("licenses")
       .delete()
       .eq("checklist_id", id);
     if (licensesErr) {
@@ -3032,9 +3003,14 @@ function buildFormData(c: Checklist): FormData {
       .filter(Boolean);
     const allPaths = [...paths, ...taskPaths];
     if (allPaths.length > 0) {
-      const { error: storageErr } = await supabase.storage
-        .from("checklist-documents")
-        .remove(allPaths);
+      let storageErr: { message: string } | null = null;
+      for (const path of allPaths) {
+        const rm = await storageRemove(path);
+        if (rm.error) {
+          storageErr = rm.error;
+          break;
+        }
+      }
       if (storageErr) {
         const msg =
           logSupabaseError("delete storage files", storageErr) ||
@@ -3045,8 +3021,7 @@ function buildFormData(c: Checklist): FormData {
       }
     }
 
-    const { error: docsDeleteErr } = await supabase
-      .from("checklist_documents")
+    const { error: docsDeleteErr } = await dbFrom("checklist_documents")
       .delete()
       .eq("checklist_id", id);
     if (docsDeleteErr) {
@@ -3058,8 +3033,7 @@ function buildFormData(c: Checklist): FormData {
       return;
     }
 
-    const { error: taskDocsDeleteErr } = await supabase
-      .from("checklist_task_documents")
+    const { error: taskDocsDeleteErr } = await dbFrom("checklist_task_documents")
       .delete()
       .eq("checklist_id", id);
     if (taskDocsDeleteErr) {
@@ -3077,7 +3051,7 @@ function buildFormData(c: Checklist): FormData {
       }
     }
 
-    const { error: checklistErr } = await supabase.from("checklists").delete().eq("id", id);
+    const { error: checklistErr } = await dbFrom("checklists").delete().eq("id", id);
     if (checklistErr) {
       const msg =
         logSupabaseError("delete checklists", checklistErr) ||
@@ -5865,8 +5839,7 @@ function buildFormData(c: Checklist): FormData {
                         onChange={async (e) => {
                           const newStato = e.target.value;
 
-                          const { error } = await supabase
-                            .from("checklist_tasks")
+                          const { error } = await dbFrom("checklist_tasks")
                             .update({
                               stato: newStato,
                               updated_by_operatore: currentOperatoreId || null,

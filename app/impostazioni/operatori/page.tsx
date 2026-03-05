@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import ConfigMancante from "@/components/ConfigMancante";
 import { isSupabaseConfigured, supabase } from "@/lib/supabaseClient";
+import { dbFrom } from "@/lib/clientDbBroker";
 
 type OperatoreRow = {
   id?: string;
@@ -118,8 +119,7 @@ export default function OperatoriPage() {
   }
 
   async function loadTaskTemplates() {
-    const { data, error: err } = await supabase
-      .from("checklist_task_templates")
+    const { data, error: err } = await dbFrom("checklist_task_templates")
       .select("id, sezione, titolo, ordine, attivo")
       .eq("attivo", true)
       .order("sezione", { ascending: true })

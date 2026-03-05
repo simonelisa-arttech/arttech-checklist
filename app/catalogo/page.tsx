@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import ConfigMancante from '@/components/ConfigMancante'
 import { isSupabaseConfigured, supabase } from '@/lib/supabaseClient'
+import { dbFrom } from '@/lib/clientDbBroker'
 
 type CatalogItem = {
   id: string
@@ -79,8 +80,7 @@ export default function CatalogoPage() {
     setLoading(true)
     setError(null)
 
-    const { data, error } = await supabase
-      .from('catalog_items')
+    const { data, error } = await dbFrom('catalog_items')
       .select('id,codice,descrizione,tipo,attivo,created_at')
       .order('codice', { ascending: true })
       .order('descrizione', { ascending: true })
@@ -126,8 +126,7 @@ export default function CatalogoPage() {
      *
      * Nota: funziona se hai UNIQUE(codice, descrizione) come da screenshot.
      */
-    const { error } = await supabase
-      .from('catalog_items')
+    const { error } = await dbFrom('catalog_items')
       .upsert(
         {
           codice: c,
@@ -179,8 +178,7 @@ export default function CatalogoPage() {
 
     setSaving(true)
 
-    const { error } = await supabase
-      .from('catalog_items')
+    const { error } = await dbFrom('catalog_items')
       .update({
         codice: c,
         descrizione: d,
@@ -199,8 +197,7 @@ export default function CatalogoPage() {
   async function toggleAttivo(it: CatalogItem) {
     setError(null)
 
-    const { error } = await supabase
-      .from('catalog_items')
+    const { error } = await dbFrom('catalog_items')
       .update({ attivo: !it.attivo })
       .eq('id', it.id)
 
@@ -270,7 +267,7 @@ export default function CatalogoPage() {
     }
 
     setSaving(true)
-    const { error } = await supabase.from('catalog_items').upsert(payload, { onConflict: 'codice,descrizione' })
+    const { error } = await dbFrom('catalog_items').upsert(payload, { onConflict: 'codice,descrizione' })
     setSaving(false)
     if (error) {
       setError(error.message)

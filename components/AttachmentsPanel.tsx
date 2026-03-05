@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { supabase } from "@/lib/supabaseClient";
+import { storageSignedUrl, storageUpload } from "@/lib/clientStorageApi";
 
 type AttachmentRow = {
   id: string;
@@ -87,20 +87,10 @@ export default function AttachmentsPanel({
     setSaving(true);
     setError(null);
     try {
-      const {
-        data: { user },
-        error: userErr,
-      } = await supabase.auth.getUser();
-      if (userErr || !user?.id) {
-        throw new Error("Utente non autenticato.");
-      }
-      const userId = String(user.id);
       for (const file of files) {
         const safeName = file.name.replace(/\s+/g, "_");
-        const path = `${userId}/${storagePrefix || entityType.toLowerCase()}/${entityId}/${Date.now()}_${safeName}`;
-        const { error: upErr } = await supabase.storage
-          .from("checklist-documents")
-          .upload(path, file, { upsert: false });
+        const path = `${storagePrefix || entityType.toLowerCase()}/${entityId}/${Date.now()}_${safeName}`;
+        const { error: upErr } = await storageUpload(path, file);
         if (upErr) throw new Error("Errore upload file: " + upErr.message);
 
         const res = await fetch("/api/attachments", {
@@ -185,9 +175,7 @@ export default function AttachmentsPanel({
       return;
     }
     if (row.storage_path) {
-      const { data, error: urlErr } = await supabase.storage
-        .from("checklist-documents")
-        .createSignedUrl(row.storage_path, 60 * 5);
+      const { data, error: urlErr } = await storageSignedUrl(row.storage_path);
       if (urlErr || !data?.signedUrl) {
         setError("Errore apertura allegato.");
         return;

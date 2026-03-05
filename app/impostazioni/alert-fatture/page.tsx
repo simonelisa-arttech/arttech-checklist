@@ -5,6 +5,7 @@ import Link from "next/link";
 import ConfigMancante from "@/components/ConfigMancante";
 import Toast from "@/components/Toast";
 import { isSupabaseConfigured, supabase } from "@/lib/supabaseClient";
+import { dbFrom } from "@/lib/clientDbBroker";
 import { sendAlert } from "@/lib/sendAlert";
 
 type OperatoreRow = {
@@ -123,8 +124,7 @@ export default function AlertFatturePage() {
 
   useEffect(() => {
     (async () => {
-      const { data, error: err } = await supabase
-        .from("operatori")
+      const { data, error: err } = await dbFrom("operatori")
         .select("id, nome, ruolo, attivo, alert_enabled");
       if (err) {
         setError("Errore caricamento operatori: " + err.message);
@@ -154,8 +154,7 @@ export default function AlertFatturePage() {
       return;
     }
 
-    const { data: rows, error: err } = await supabase
-      .from("saas_interventi")
+    const { data: rows, error: err } = await dbFrom("saas_interventi")
       .select(
         "id, cliente, checklist_id, data, proforma, codice_magazzino, note, stato_intervento, esito_fatturazione, fatturazione_stato, alert_fattura_last_sent_at"
       );
@@ -255,8 +254,7 @@ export default function AlertFatturePage() {
     showToast(sendEmail ? "✅ Email inviata" : "✅ Avviso registrato", "success");
 
     const nowIso = new Date().toISOString();
-    const { error: updErr } = await supabase
-      .from("saas_interventi")
+    const { error: updErr } = await dbFrom("saas_interventi")
       .update({
         alert_fattura_last_sent_at: nowIso,
         alert_fattura_last_sent_by: currentOperatoreId ?? null,

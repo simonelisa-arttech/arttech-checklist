@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import ConfigMancante from "@/components/ConfigMancante";
 import { isSupabaseConfigured, supabase } from "@/lib/supabaseClient";
+import { dbFrom } from "@/lib/clientDbBroker";
 
 type AlertLogRow = {
   id: string;
@@ -210,8 +211,7 @@ export default function AvvisiClient() {
     (async () => {
       setLoading(true);
       setError(null);
-      const { data, error: err } = await supabase
-        .from("checklist_alert_log")
+      const { data, error: err } = await dbFrom("checklist_alert_log")
         .select(
           "id, created_at, tipo, riferimento, to_nome, to_email, trigger, subject, inviato_email, checklist_id"
         )
@@ -231,8 +231,7 @@ export default function AvvisiClient() {
           { cliente?: string | null; nome_checklist?: string | null }
         >();
         if (checklistIds.length > 0) {
-          const { data: checklistsData, error: checklistsErr } = await supabase
-            .from("checklists")
+          const { data: checklistsData, error: checklistsErr } = await dbFrom("checklists")
             .select("id, cliente, nome_checklist")
             .in("id", checklistIds);
           if (!checklistsErr && checklistsData) {
@@ -260,19 +259,12 @@ export default function AvvisiClient() {
   useEffect(() => {
     let alive = true;
     (async () => {
-      const { data, error: err } = await supabase
-        .from("checklists")
-        .select("cliente")
-        .not("cliente", "is", null)
-        .neq("cliente", "")
-        .order("cliente", { ascending: true });
+      const res = await fetch("/api/dashboard", { cache: "no-store", credentials: "include" });
+      const json = await res.json().catch(() => ({} as any));
       if (!alive) return;
-      if (err) {
-        console.error("Errore caricamento clienti", err);
-        return;
-      }
+      if (!res.ok) return;
       const set = new Set<string>();
-      for (const row of (data || []) as any[]) {
+      for (const row of (json?.data?.checklists || []) as any[]) {
         if (row?.cliente) set.add(String(row.cliente));
       }
       setClienteOptions(Array.from(set.values()));

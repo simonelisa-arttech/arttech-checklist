@@ -6,7 +6,9 @@ import { useRouter } from "next/navigation";
 import ConfigMancante from "@/components/ConfigMancante";
 import ClientiCombobox from "@/components/ClientiCombobox";
 import ClienteModal, { ClienteRecord } from "@/components/ClienteModal";
+import AttachmentsPanel from "@/components/AttachmentsPanel";
 import { isSupabaseConfigured, supabase } from "@/lib/supabaseClient";
+import { dbFrom } from "@/lib/clientDbBroker";
 import { sendAlert } from "@/lib/sendAlert";
 import { calcM2FromDimensioni } from "@/lib/parseDimensioni";
 
@@ -316,13 +318,11 @@ export default function NuovaChecklistPage() {
 
   useEffect(() => {
     (async () => {
-      const { data: catalogItems, error: catalogErr } = await supabase
-        .from("catalog_items")
+      const { data: catalogItems, error: catalogErr } = await dbFrom("catalog_items")
         .select("id, codice, descrizione, tipo, categoria, attivo")
         .eq("attivo", true)
         .order("descrizione", { ascending: true });
-      const { data: deviceItems, error: deviceErr } = await supabase
-        .from("catalog_items")
+      const { data: deviceItems, error: deviceErr } = await dbFrom("catalog_items")
         .select("id, codice, descrizione, tipo, categoria, attivo")
         .eq("attivo", true)
         .ilike("codice", "EL-%")
@@ -586,8 +586,7 @@ export default function NuovaChecklistPage() {
       };
 
       const tryInsert = async (payload: Partial<typeof payloadChecklist>) => {
-        return supabase
-          .from("checklists")
+        return dbFrom("checklists")
           .insert(payload)
           .select("id")
           .single();
@@ -619,8 +618,7 @@ export default function NuovaChecklistPage() {
       }
       const checklistId = created.id as string;
 
-      const { count: existingTasksCount, error: existingTasksErr } = await supabase
-        .from("checklist_tasks")
+      const { count: existingTasksCount, error: existingTasksErr } = await dbFrom("checklist_tasks")
         .select("id", { count: "exact", head: true })
         .eq("checklist_id", checklistId);
 
@@ -659,8 +657,7 @@ export default function NuovaChecklistPage() {
           }));
 
         {
-          const res = await supabase
-            .from("checklist_task_templates")
+          const res = await dbFrom("checklist_task_templates")
             .select("sezione, ordine, titolo, target")
             .eq("attivo", true)
             .order("sezione", { ascending: true })
@@ -670,8 +667,7 @@ export default function NuovaChecklistPage() {
         }
 
         if (tplErr && String(tplErr.message || "").toLowerCase().includes("target")) {
-          const res = await supabase
-            .from("checklist_task_templates")
+          const res = await dbFrom("checklist_task_templates")
             .select("sezione, ordine, titolo")
             .eq("attivo", true)
             .order("sezione", { ascending: true })
@@ -684,8 +680,7 @@ export default function NuovaChecklistPage() {
           tplErr &&
           String(tplErr.message || "").toLowerCase().includes("checklist_task_templates")
         ) {
-          const res = await supabase
-            .from("checklist_template_items")
+          const res = await dbFrom("checklist_template_items")
             .select("sezione, ordine, voce")
             .eq("attivo", true)
             .order("sezione", { ascending: true })
@@ -709,7 +704,7 @@ export default function NuovaChecklistPage() {
         }));
 
         if (rows.length) {
-          const { error: insErr } = await supabase.from("checklist_tasks").insert(rows);
+          const { error: insErr } = await dbFrom("checklist_tasks").insert(rows);
           if (insErr) {
             logSupabaseError(insErr);
             throw insErr;
@@ -719,8 +714,7 @@ export default function NuovaChecklistPage() {
 
       // Alcuni ambienti creano task via trigger DB: riallineo comunque il target dal template/titolo.
       {
-        const { data: createdTasks, error: createdTasksErr } = await supabase
-          .from("checklist_tasks")
+        const { data: createdTasks, error: createdTasksErr } = await dbFrom("checklist_tasks")
           .select("id, titolo, target, task_template_id")
           .eq("checklist_id", checklistId);
         if (createdTasksErr) {
@@ -740,8 +734,7 @@ export default function NuovaChecklistPage() {
           const templateByTitle = new Map<string, string | null>();
 
           if (templateIds.length > 0) {
-            const { data: templatesById, error: templatesByIdErr } = await supabase
-              .from("checklist_task_templates")
+            const { data: templatesById, error: templatesByIdErr } = await dbFrom("checklist_task_templates")
               .select("id, target")
               .in("id", templateIds);
             if (templatesByIdErr && !String(templatesByIdErr.message || "").toLowerCase().includes("target")) {
@@ -753,8 +746,7 @@ export default function NuovaChecklistPage() {
             });
           }
 
-          const { data: templatesByTitle, error: templatesByTitleErr } = await supabase
-            .from("checklist_task_templates")
+          const { data: templatesByTitle, error: templatesByTitleErr } = await dbFrom("checklist_task_templates")
             .select("titolo, target")
             .eq("attivo", true);
           if (templatesByTitleErr && !String(templatesByTitleErr.message || "").toLowerCase().includes("target")) {
@@ -780,8 +772,7 @@ export default function NuovaChecklistPage() {
               : null;
             const desiredTarget = inferTaskTarget(taskTitle, templateTargetById ?? templateTargetByTitle);
             if (currentTarget !== desiredTarget) {
-              const { error: updTargetErr } = await supabase
-                .from("checklist_tasks")
+              const { error: updTargetErr } = await dbFrom("checklist_tasks")
                 .update({ target: desiredTarget })
                 .eq("id", taskId);
               if (updTargetErr && !String(updTargetErr.message || "").toLowerCase().includes("target")) {
@@ -793,8 +784,7 @@ export default function NuovaChecklistPage() {
         }
       }
 
-      const { data: tmpl, error: tmplErr } = await supabase
-        .from("checklist_template_items")
+      const { data: tmpl, error: tmplErr } = await dbFrom("checklist_template_items")
         .select("sezione, voce")
         .eq("attivo", true)
         .order("sezione", { ascending: true })
@@ -813,8 +803,7 @@ export default function NuovaChecklistPage() {
           note: null,
         }));
 
-        const { error: seedErr } = await supabase
-          .from("checklist_checks")
+        const { error: seedErr } = await dbFrom("checklist_checks")
           .insert(payloadChecks);
 
         if (seedErr) {
@@ -868,8 +857,7 @@ export default function NuovaChecklistPage() {
           note: r.note ? r.note : null,
         }));
 
-        const { error: errItems } = await supabase
-          .from("checklist_items")
+        const { error: errItems } = await dbFrom("checklist_items")
           .insert(payloadItems);
 
         if (errItems) {
@@ -887,7 +875,7 @@ export default function NuovaChecklistPage() {
           stato: "attiva",
           note: l.note ? l.note : null,
         }));
-        const { error: licErr } = await supabase.from("licenses").insert(payloadLicenze);
+        const { error: licErr } = await dbFrom("licenses").insert(payloadLicenze);
         if (licErr) {
           alert("Errore inserimento licenze: " + licErr.message);
           return;
@@ -913,7 +901,7 @@ export default function NuovaChecklistPage() {
         })),
       ];
       if (serialPayload.length > 0) {
-        const { error: serialErr } = await supabase.from("asset_serials").insert(serialPayload);
+        const { error: serialErr } = await dbFrom("asset_serials").insert(serialPayload);
         if (serialErr) {
           const code = (serialErr as any)?.code;
           const msg =
@@ -925,8 +913,7 @@ export default function NuovaChecklistPage() {
         }
       }
 
-      const { data: taskRows, error: taskRowsErr } = await supabase
-        .from("checklist_tasks")
+      const { data: taskRows, error: taskRowsErr } = await dbFrom("checklist_tasks")
         .select("id, titolo, stato")
         .eq("checklist_id", checklistId)
         .eq("stato", "DA_FARE");
@@ -939,13 +926,12 @@ export default function NuovaChecklistPage() {
           task_id: t.id,
           stato: "PENDING",
         }));
-        const { error: jobErr } = await supabase.from("notification_jobs").insert(jobPayload);
+        const { error: jobErr } = await dbFrom("notification_jobs").insert(jobPayload);
         if (jobErr) {
           console.error("Errore inserimento notification_jobs", jobErr);
         }
 
-        const { data: ops } = await supabase
-          .from("operatori")
+        const { data: ops } = await dbFrom("operatori")
           .select("id, nome, email, ruolo, attivo, cliente")
           .eq("cliente", cliente.trim())
           .in("ruolo", ["TECNICO", "MAGAZZINO"])
@@ -1459,6 +1445,7 @@ export default function NuovaChecklistPage() {
             >
               <option value="IN_CORSO">IN_CORSO</option>
               <option value="CONSEGNATO">CONSEGNATO</option>
+              <option value="RIENTRATO">RIENTRATO</option>
               <option value="CHIUSO">CHIUSO</option>
               <option value="SOSPESO">SOSPESO</option>
             </select>
@@ -1591,6 +1578,16 @@ export default function NuovaChecklistPage() {
               style={{ width: "100%", padding: 10 }}
             />
           </label>
+        </div>
+
+        <div style={{ marginTop: 18 }}>
+          <AttachmentsPanel
+            title="Allegati progetto (disponibili dopo creazione)"
+            entityType="CHECKLIST"
+            entityId={null}
+            multiple
+            storagePrefix="checklist"
+          />
         </div>
 
         <div style={{ marginTop: 22 }}>

@@ -9,6 +9,7 @@ import Toast from "@/components/Toast";
 import { isAdminRole } from "@/lib/adminRoles";
 import { calcM2FromDimensioni } from "@/lib/parseDimensioni";
 import { isSupabaseConfigured, supabase } from "@/lib/supabaseClient";
+import { dbFrom } from "@/lib/clientDbBroker";
 
 const SAAS_PIANI = [
   { code: "SAAS-PL", label: "CARE PLUS (ASSISTENZA BASE)" },
@@ -982,8 +983,7 @@ export default function Page() {
         : null,
     };
 
-    const { data: created, error: errCreate } = await supabase
-      .from("checklists")
+    const { data: created, error: errCreate } = await dbFrom("checklists")
       .insert(payloadChecklist)
       .select("id")
       .single();
@@ -1001,8 +1001,7 @@ export default function Page() {
     const checklistId = created.id as string;
 
     // 1) crea tasks da template (solo se non esistono già)
-    const { count: existingTasksCount, error: existingTasksErr } = await supabase
-      .from("checklist_tasks")
+    const { count: existingTasksCount, error: existingTasksErr } = await dbFrom("checklist_tasks")
       .select("id", { count: "exact", head: true })
       .eq("checklist_id", checklistId);
 
@@ -1041,8 +1040,7 @@ export default function Page() {
         }));
 
       {
-        const res = await supabase
-          .from("checklist_task_templates")
+        const res = await dbFrom("checklist_task_templates")
           .select("sezione, ordine, titolo, target")
           .eq("attivo", true)
           .order("sezione", { ascending: true })
@@ -1052,8 +1050,7 @@ export default function Page() {
       }
 
       if (tplErr && String(tplErr.message || "").toLowerCase().includes("target")) {
-        const res = await supabase
-          .from("checklist_task_templates")
+        const res = await dbFrom("checklist_task_templates")
           .select("sezione, ordine, titolo")
           .eq("attivo", true)
           .order("sezione", { ascending: true })
@@ -1066,8 +1063,7 @@ export default function Page() {
         tplErr &&
         String(tplErr.message || "").toLowerCase().includes("checklist_task_templates")
       ) {
-        const res = await supabase
-          .from("checklist_template_items")
+        const res = await dbFrom("checklist_template_items")
           .select("sezione, ordine, voce")
           .eq("attivo", true)
           .order("sezione", { ascending: true })
@@ -1093,8 +1089,7 @@ export default function Page() {
       });
 
       if (rows.length) {
-        const { error: insErr } = await supabase
-          .from("checklist_tasks")
+        const { error: insErr } = await dbFrom("checklist_tasks")
           .insert(rows);
 
         if (insErr) {
@@ -1105,8 +1100,7 @@ export default function Page() {
     }
 
     // 2A) Auto-seed checklist template -> checklist_checks
-    const { data: tmpl, error: tmplErr } = await supabase
-      .from("checklist_template_items")
+    const { data: tmpl, error: tmplErr } = await dbFrom("checklist_template_items")
       .select("sezione, voce")
       .eq("attivo", true)
       .order("sezione", { ascending: true })
@@ -1126,8 +1120,7 @@ export default function Page() {
         note: null,
       }));
 
-      const { error: seedErr } = await supabase
-        .from("checklist_checks")
+      const { error: seedErr } = await dbFrom("checklist_checks")
         .insert(payloadChecks);
 
       if (seedErr) {
@@ -1184,8 +1177,7 @@ export default function Page() {
         note: r.note ? r.note : null,
       }));
 
-      const { error: errItems } = await supabase
-        .from("checklist_items")
+      const { error: errItems } = await dbFrom("checklist_items")
         .insert(payloadItems);
 
       if (errItems) {
@@ -1245,8 +1237,7 @@ export default function Page() {
     setDupSaving(true);
     setDupError(null);
     try {
-      const { data: source, error: srcErr } = await supabase
-        .from("checklists")
+      const { data: source, error: srcErr } = await dbFrom("checklists")
         .select("*")
         .eq("id", dupSourceId)
         .single();
@@ -1283,8 +1274,7 @@ export default function Page() {
         updated_by_operatore: currentOperatoreId || null,
       };
 
-      const { data: created, error: insErr } = await supabase
-        .from("checklists")
+      const { data: created, error: insErr } = await dbFrom("checklists")
         .insert(payload)
         .select("id")
         .single();
@@ -1294,8 +1284,7 @@ export default function Page() {
       const newId = created.id as string;
 
       // Duplica checklist_items (BOM)
-      const { data: srcItems } = await supabase
-        .from("checklist_items")
+      const { data: srcItems } = await dbFrom("checklist_items")
         .select("codice, descrizione, quantita, note")
         .eq("checklist_id", dupSourceId);
       if (srcItems && srcItems.length > 0) {
@@ -1306,12 +1295,11 @@ export default function Page() {
           quantita: r.quantita,
           note: r.note,
         }));
-        await supabase.from("checklist_items").insert(itemRows);
+        await dbFrom("checklist_items").insert(itemRows);
       }
 
       // Duplica checklist_tasks (attività da template)
-      const { data: srcTasks } = await supabase
-        .from("checklist_tasks")
+      const { data: srcTasks } = await dbFrom("checklist_tasks")
         .select("sezione, ordine, titolo, task_template_id, target")
         .eq("checklist_id", dupSourceId);
       if (srcTasks && srcTasks.length > 0) {
@@ -1324,7 +1312,7 @@ export default function Page() {
           task_template_id: r.task_template_id,
           target: inferTaskTarget(r.titolo, r.target),
         }));
-        await supabase.from("checklist_tasks").insert(taskRows);
+        await dbFrom("checklist_tasks").insert(taskRows);
       }
 
       closeDupModal("duplicate-success");

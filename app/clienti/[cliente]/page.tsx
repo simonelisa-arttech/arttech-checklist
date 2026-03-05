@@ -8,6 +8,8 @@ import AttachmentsPanel from "@/components/AttachmentsPanel";
 import Toast from "@/components/Toast";
 import { calcM2FromDimensioni } from "@/lib/parseDimensioni";
 import { isSupabaseConfigured, supabase } from "@/lib/supabaseClient";
+import { dbFrom } from "@/lib/clientDbBroker";
+import { storageRemove, storageSignedUrl, storageUpload } from "@/lib/clientStorageApi";
 import { sendAlert } from "@/lib/sendAlert";
 
 function parseLocalDay(value?: string | null): Date | null {
@@ -1136,19 +1138,23 @@ export default function ClientePage({ params }: { params: any }) {
 
       const clienteKey = decoded.trim();
       if (clienteKey) {
-        const { data: anagData } = await supabase
-          .from("clienti_anagrafica")
-          .select("denominazione, email")
-          .ilike("denominazione", `%${clienteKey}%`)
-          .limit(1)
-          .maybeSingle();
-        const fullName = String((anagData as any)?.denominazione || "").trim();
-        if (fullName) {
-          displayCliente = fullName;
-          setCliente(fullName);
+        try {
+          const anagRes = await fetch(`/api/clienti?q=${encodeURIComponent(clienteKey)}&limit=1`, {
+            cache: "no-store",
+            credentials: "include",
+          });
+          const anagJson = await anagRes.json().catch(() => ({} as any));
+          const anagData = Array.isArray(anagJson?.data) ? anagJson.data[0] : null;
+          const fullName = String((anagData as any)?.denominazione || "").trim();
+          if (fullName) {
+            displayCliente = fullName;
+            setCliente(fullName);
+          }
+          const mail = String((anagData as any)?.email || "").trim();
+          setClienteAnagraficaEmail(mail && mail.includes("@") ? mail : null);
+        } catch {
+          // keep fallback values from URL
         }
-        const mail = String((anagData as any)?.email || "").trim();
-        setClienteAnagraficaEmail(mail && mail.includes("@") ? mail : null);
       }
       const dashboardRes = await fetch(`/api/dashboard?q=${encodeURIComponent(clienteKey)}`);
       const dashboardJson = await dashboardRes.json().catch(() => ({}));
@@ -1165,8 +1171,7 @@ export default function ClientePage({ params }: { params: any }) {
       );
       const firstClienteId = String((list[0] as any)?.cliente_id || "").trim();
       if (firstClienteId) {
-        const { data: clienteById } = await supabase
-          .from("clienti_anagrafica")
+        const { data: clienteById } = await dbFrom("clienti_anagrafica")
           .select("denominazione")
           .eq("id", firstClienteId)
           .maybeSingle();
@@ -1208,8 +1213,7 @@ export default function ClientePage({ params }: { params: any }) {
         setLicenze([]);
         setLicenzeError(null);
       } else {
-        const { data: licData, error: licErr } = await supabase
-          .from("licenses")
+        const { data: licData, error: licErr } = await dbFrom("licenses")
           .select(
             "id, checklist_id, tipo, scadenza, stato, status, note, intestata_a, ref_univoco, telefono, intestatario, gestore, fornitore, alert_sent_at, alert_to, alert_note, updated_by_operatore"
           )
@@ -1228,8 +1232,7 @@ export default function ClientePage({ params }: { params: any }) {
 
       await fetchSaasContratti(clienteKey);
 
-      const { data: pianiData, error: pianiErr } = await supabase
-        .from("catalog_items")
+      const { data: pianiData, error: pianiErr } = await dbFrom("catalog_items")
         .select("codice, descrizione")
         .eq("attivo", true)
         .ilike("codice", "SAAS-UL%")
@@ -1261,8 +1264,7 @@ export default function ClientePage({ params }: { params: any }) {
         // fallback below
       }
       if (!Array.isArray(opsData) || opsData.length === 0) {
-        const fallback = await supabase
-          .from("operatori")
+        const fallback = await dbFrom("operatori")
           .select("id, user_id, nome, ruolo, email, attivo, alert_enabled, alert_tasks")
           .order("ruolo", { ascending: true })
           .order("nome", { ascending: true });
@@ -1327,8 +1329,7 @@ export default function ClientePage({ params }: { params: any }) {
     let ints: any[] | null = null;
     let intsErr: any = null;
     {
-      const res = await supabase
-        .from("saas_interventi")
+      const res = await dbFrom("saas_interventi")
         .select(
           "id, cliente, checklist_id, contratto_id, ticket_no, data, data_tassativa, descrizione, incluso, proforma, codice_magazzino, fatturazione_stato, stato_intervento, esito_fatturazione, chiuso_il, chiuso_da_operatore, alert_fattura_last_sent_at, alert_fattura_last_sent_by, numero_fattura, fatturato_il, note, note_tecniche, created_at, checklist:checklists(id, nome_checklist, proforma, magazzino_importazione)"
         )
@@ -1338,8 +1339,7 @@ export default function ClientePage({ params }: { params: any }) {
       intsErr = res.error;
     }
     if (intsErr && String(intsErr.message || "").toLowerCase().includes("data_tassativa")) {
-      const res = await supabase
-        .from("saas_interventi")
+      const res = await dbFrom("saas_interventi")
         .select(
           "id, cliente, checklist_id, contratto_id, ticket_no, data, descrizione, incluso, proforma, codice_magazzino, fatturazione_stato, stato_intervento, esito_fatturazione, chiuso_il, chiuso_da_operatore, alert_fattura_last_sent_at, alert_fattura_last_sent_by, numero_fattura, fatturato_il, note, note_tecniche, created_at, checklist:checklists(id, nome_checklist, proforma, magazzino_importazione)"
         )
@@ -1349,8 +1349,7 @@ export default function ClientePage({ params }: { params: any }) {
       intsErr = res.error;
     }
     if (intsErr && String(intsErr.message || "").toLowerCase().includes("ticket_no")) {
-      const res = await supabase
-        .from("saas_interventi")
+      const res = await dbFrom("saas_interventi")
         .select(
           "id, cliente, checklist_id, contratto_id, data, data_tassativa, descrizione, incluso, proforma, codice_magazzino, fatturazione_stato, stato_intervento, esito_fatturazione, chiuso_il, chiuso_da_operatore, alert_fattura_last_sent_at, alert_fattura_last_sent_by, numero_fattura, fatturato_il, note, note_tecniche, created_at, checklist:checklists(id, nome_checklist, proforma, magazzino_importazione)"
         )
@@ -1374,8 +1373,7 @@ export default function ClientePage({ params }: { params: any }) {
       return;
     }
 
-    const { data: filesData, error: filesErr } = await supabase
-      .from("saas_interventi_files")
+    const { data: filesData, error: filesErr } = await dbFrom("saas_interventi_files")
       .select("id, intervento_id, filename, storage_path, uploaded_at, uploaded_by_operatore")
       .in("intervento_id", ids)
       .order("uploaded_at", { ascending: false });
@@ -1390,8 +1388,7 @@ export default function ClientePage({ params }: { params: any }) {
       setInterventoFilesById(map);
     }
 
-    const { data: alertsData, error: alertsErr } = await supabase
-      .from("checklist_alert_log")
+    const { data: alertsData, error: alertsErr } = await dbFrom("checklist_alert_log")
       .select("intervento_id, to_operatore_id, created_at")
       .in("intervento_id", ids)
       .order("created_at", { ascending: false });
@@ -1426,8 +1423,7 @@ export default function ClientePage({ params }: { params: any }) {
   useEffect(() => {
     let alive = true;
     (async () => {
-      const { data, error } = await supabase
-        .from("alert_message_templates")
+      const { data, error } = await dbFrom("alert_message_templates")
         .select("id,codice,titolo,tipo,trigger,subject_template,body_template,attivo")
         .eq("attivo", true)
         .eq("trigger", "MANUALE")
@@ -1478,8 +1474,7 @@ export default function ClientePage({ params }: { params: any }) {
         today.setHours(0, 0, 0, 0);
         const todayIso = today.toISOString();
 
-        const { data: existing, error: existingErr } = await supabase
-          .from("checklist_alert_log")
+        const { data: existing, error: existingErr } = await dbFrom("checklist_alert_log")
           .select("intervento_id, created_at")
           .in(
             "intervento_id",
@@ -1526,8 +1521,7 @@ export default function ClientePage({ params }: { params: any }) {
         if (payloads.length === 0) return;
 
         console.log("ALERT FATTURAZIONE opId=", opId);
-        const { error: insErr } = await supabase
-          .from("checklist_alert_log")
+        const { error: insErr } = await dbFrom("checklist_alert_log")
           .insert(payloads);
 
         if (!alive) return;
@@ -1604,22 +1598,19 @@ export default function ClientePage({ params }: { params: any }) {
       note: editIntervento.note.trim() ? editIntervento.note.trim() : null,
     };
 
-    let { error: updErr } = await supabase
-      .from("saas_interventi")
+    let { error: updErr } = await dbFrom("saas_interventi")
       .update(payload)
       .eq("id", editInterventoId);
     if (updErr && String(updErr.message || "").toLowerCase().includes("ticket_no")) {
       const { ticket_no, ...legacyPayload } = payload as any;
-      const retry = await supabase
-        .from("saas_interventi")
+      const retry = await dbFrom("saas_interventi")
         .update(legacyPayload)
         .eq("id", editInterventoId);
       updErr = retry.error;
     }
     if (updErr && String(updErr.message || "").toLowerCase().includes("data_tassativa")) {
       const { data_tassativa, ...legacyPayload } = payload as any;
-      const retry = await supabase
-        .from("saas_interventi")
+      const retry = await dbFrom("saas_interventi")
         .update(legacyPayload)
         .eq("id", editInterventoId);
       updErr = retry.error;
@@ -1643,14 +1634,12 @@ export default function ClientePage({ params }: { params: any }) {
     for (const file of files) {
       const safeName = file.name.replace(/\s+/g, "_");
       const path = `interventi/${interventoId}/${Date.now()}_${safeName}`;
-      const { error: upErr } = await supabase.storage
-        .from("checklist-documents")
-        .upload(path, file, { upsert: false });
+      const { error: upErr } = await storageUpload(path, file);
       if (upErr) {
         setInterventiError("Errore upload file intervento: " + upErr.message);
         return;
       }
-      const { error: insErr } = await supabase.from("saas_interventi_files").insert({
+      const { error: insErr } = await dbFrom("saas_interventi_files").insert({
         intervento_id: interventoId,
         filename: file.name,
         storage_path: path,
@@ -1666,8 +1655,7 @@ export default function ClientePage({ params }: { params: any }) {
 
     const ids = interventi.map((i) => i.id);
     if (ids.length > 0) {
-      const { data: filesData, error: filesErr } = await supabase
-        .from("saas_interventi_files")
+      const { data: filesData, error: filesErr } = await dbFrom("saas_interventi_files")
         .select("id, intervento_id, filename, storage_path, uploaded_at, uploaded_by_operatore")
         .in("intervento_id", ids)
         .order("uploaded_at", { ascending: false });
@@ -1692,14 +1680,12 @@ export default function ClientePage({ params }: { params: any }) {
     for (const file of files) {
       const safeName = file.name.replace(/\s+/g, "_");
       const path = `interventi/${interventoId}/${Date.now()}_${safeName}`;
-      const { error: upErr } = await supabase.storage
-        .from("checklist-documents")
-        .upload(path, file, { upsert: false });
+      const { error: upErr } = await storageUpload(path, file);
       if (upErr) {
         setInterventiError("Errore upload file intervento: " + upErr.message);
         return;
       }
-      const { error: insErr } = await supabase.from("saas_interventi_files").insert({
+      const { error: insErr } = await dbFrom("saas_interventi_files").insert({
         intervento_id: interventoId,
         filename: file.name,
         storage_path: path,
@@ -1713,8 +1699,7 @@ export default function ClientePage({ params }: { params: any }) {
 
     const ids = interventi.map((i) => i.id).concat(interventoId);
     if (ids.length > 0) {
-      const { data: filesData, error: filesErr } = await supabase
-        .from("saas_interventi_files")
+      const { data: filesData, error: filesErr } = await dbFrom("saas_interventi_files")
         .select("id, intervento_id, filename, storage_path, uploaded_at, uploaded_by_operatore")
         .in("intervento_id", ids)
         .order("uploaded_at", { ascending: false });
@@ -1732,9 +1717,7 @@ export default function ClientePage({ params }: { params: any }) {
   }
 
   async function openInterventoFile(file: InterventoFile) {
-    const { data, error: urlErr } = await supabase.storage
-      .from("checklist-documents")
-      .createSignedUrl(file.storage_path, 60 * 5);
+    const { data, error: urlErr } = await storageSignedUrl(file.storage_path);
     if (urlErr || !data?.signedUrl) {
       setInterventiError("Errore apertura file: " + (urlErr?.message || "URL non disponibile"));
       return;
@@ -1743,9 +1726,7 @@ export default function ClientePage({ params }: { params: any }) {
   }
 
   async function openProformaDoc(doc: { filename: string; storage_path: string }) {
-    const { data, error: urlErr } = await supabase.storage
-      .from("checklist-documents")
-      .createSignedUrl(doc.storage_path, 60 * 5);
+    const { data, error: urlErr } = await storageSignedUrl(doc.storage_path);
     if (urlErr || !data?.signedUrl) {
       setInterventiError("Errore apertura proforma: " + (urlErr?.message || "URL non disponibile"));
       return;
@@ -1756,15 +1737,12 @@ export default function ClientePage({ params }: { params: any }) {
   async function deleteInterventoFile(file: InterventoFile) {
     const ok = window.confirm("Eliminare questo file?");
     if (!ok) return;
-    const { error: storErr } = await supabase.storage
-      .from("checklist-documents")
-      .remove([file.storage_path]);
+    const { error: storErr } = await storageRemove(file.storage_path);
     if (storErr) {
       setInterventiError("Errore eliminazione file: " + storErr.message);
       return;
     }
-    const { error: delErr } = await supabase
-      .from("saas_interventi_files")
+    const { error: delErr } = await dbFrom("saas_interventi_files")
       .delete()
       .eq("id", file.id);
     if (delErr) {
@@ -1986,8 +1964,7 @@ export default function ClientePage({ params }: { params: any }) {
         if (alive) setAlertStatsMap(new Map());
         return;
       }
-      const { data, error } = await supabase
-        .from("checklist_alert_log")
+      const { data, error } = await dbFrom("checklist_alert_log")
         .select("checklist_id, tipo, riferimento, to_operatore_id, to_email, created_at")
         .in("checklist_id", checklistIds);
       if (!alive) return;
@@ -2294,8 +2271,7 @@ export default function ClientePage({ params }: { params: any }) {
       const defaultFrom = new Date(today);
       defaultFrom.setDate(defaultFrom.getDate() - 365);
       for (const ids of chunks) {
-        let q = supabase
-          .from("checklist_alert_log")
+        let q = dbFrom("checklist_alert_log")
           .select(
             "created_at, tipo, riferimento, scadenza, modalita, stato, trigger, inviato_email, to_operatore_id, to_email, to_nome, destinatario, subject, messaggio, checklist_id, intervento_id"
           )
@@ -2506,9 +2482,7 @@ export default function ClientePage({ params }: { params: any }) {
       }
       const entries: Record<string, string> = {};
       for (const f of files) {
-        const { data, error: urlErr } = await supabase.storage
-          .from("checklist-documents")
-          .createSignedUrl(f.storage_path, 60 * 10);
+        const { data, error: urlErr } = await storageSignedUrl(f.storage_path);
         if (!urlErr && data?.signedUrl) {
           entries[f.id] = data.signedUrl;
         }
@@ -2534,10 +2508,9 @@ export default function ClientePage({ params }: { params: any }) {
   async function fetchSaasContratti(clienteKey: string) {
     const key = (clienteKey || "").trim();
     if (!key) return [];
-    const { data: contrattiData, error: contrattiErr } = await supabase
-      .from("saas_contratti")
+    const { data: contrattiData, error: contrattiErr } = await dbFrom("saas_contratti")
       .select("id, cliente, piano_codice, scadenza, interventi_annui, illimitati, created_at")
-      .ilike("cliente", `%${key}%`)
+      .eq("cliente", key)
       .order("created_at", { ascending: false });
 
     if (contrattiErr) {
@@ -2612,8 +2585,7 @@ export default function ClientePage({ params }: { params: any }) {
 
     let savedContratto: ContrattoRow | null = null;
     if (contratto?.id) {
-      const { data, error: updErr } = await supabase
-        .from("saas_contratti")
+      const { data, error: updErr } = await dbFrom("saas_contratti")
         .update(payload)
         .eq("id", contratto.id)
         .select("id, cliente, piano_codice, scadenza, interventi_annui, illimitati, created_at")
@@ -2626,8 +2598,7 @@ export default function ClientePage({ params }: { params: any }) {
       savedContratto = data as ContrattoRow;
       setContratto(savedContratto);
     } else {
-      const { data, error: insErr } = await supabase
-        .from("saas_contratti")
+      const { data, error: insErr } = await dbFrom("saas_contratti")
         .insert(payload)
         .select("id, cliente, piano_codice, scadenza, interventi_annui, illimitati, created_at")
         .single();
@@ -2665,8 +2636,7 @@ export default function ClientePage({ params }: { params: any }) {
       }
 
       if (scopedChecklistIds.length > 0) {
-        const { error: delGlobalErr } = await supabase
-          .from("rinnovi_servizi")
+        const { error: delGlobalErr } = await dbFrom("rinnovi_servizi")
           .delete()
           .eq("cliente", clienteKey)
           .eq("item_tipo", "SAAS")
@@ -2675,8 +2645,7 @@ export default function ClientePage({ params }: { params: any }) {
         if (delGlobalErr) console.error("Errore delete ultra globale", delGlobalErr);
 
         // Evita duplicati: massimo una SAAS_ULTRA per progetto.
-        const { error: delScopedErr } = await supabase
-          .from("rinnovi_servizi")
+        const { error: delScopedErr } = await dbFrom("rinnovi_servizi")
           .delete()
           .eq("cliente", clienteKey)
           .eq("item_tipo", "SAAS")
@@ -2695,14 +2664,12 @@ export default function ClientePage({ params }: { params: any }) {
               cod_magazzino: checklist?.magazzino_importazione ?? null,
             };
           });
-        const { error: insScopedErr } = await supabase
-          .from("rinnovi_servizi")
+        const { error: insScopedErr } = await dbFrom("rinnovi_servizi")
           .insert(scopedRows);
         if (insScopedErr) console.error("Errore insert ultra per progetto", insScopedErr);
       } else {
         // Modalità globale: pulisce eventuali associazioni ULTRA per-progetto.
-        const { error: delAllScopedErr } = await supabase
-          .from("rinnovi_servizi")
+        const { error: delAllScopedErr } = await dbFrom("rinnovi_servizi")
           .delete()
           .eq("cliente", clienteKey)
           .eq("item_tipo", "SAAS")
@@ -2710,8 +2677,7 @@ export default function ClientePage({ params }: { params: any }) {
           .not("checklist_id", "is", null);
         if (delAllScopedErr) console.error("Errore delete ultra scoped all", delAllScopedErr);
 
-        const { data: existing, error: findErr } = await supabase
-          .from("rinnovi_servizi")
+        const { data: existing, error: findErr } = await dbFrom("rinnovi_servizi")
           .select("id")
           .eq("item_tipo", "SAAS")
           .eq("subtipo", "ULTRA")
@@ -2722,14 +2688,12 @@ export default function ClientePage({ params }: { params: any }) {
         if (findErr) {
           console.error("Errore lookup rinnovo SAAS", findErr);
         } else if (existing?.id) {
-          const { error: updErr } = await supabase
-            .from("rinnovi_servizi")
+          const { error: updErr } = await dbFrom("rinnovi_servizi")
             .update(rinnovoPayload)
             .eq("id", existing.id);
           if (updErr) console.error("Errore update rinnovo SAAS", updErr);
         } else {
-          const { error: insErr } = await supabase
-            .from("rinnovi_servizi")
+          const { error: insErr } = await dbFrom("rinnovi_servizi")
             .insert(rinnovoPayload);
           if (insErr) console.error("Errore insert rinnovo SAAS", insErr);
         }
@@ -2823,8 +2787,7 @@ export default function ClientePage({ params }: { params: any }) {
     let inserted: any = null;
     let insertErr: any = null;
     {
-      const res = await supabase
-        .from("saas_interventi")
+      const res = await dbFrom("saas_interventi")
         .insert(payload)
         .select("id")
         .single();
@@ -2833,8 +2796,7 @@ export default function ClientePage({ params }: { params: any }) {
     }
     if (insertErr && String(insertErr.message || "").toLowerCase().includes("ticket_no")) {
       const { ticket_no, ...legacyPayload } = payload as any;
-      const res = await supabase
-        .from("saas_interventi")
+      const res = await dbFrom("saas_interventi")
         .insert(legacyPayload)
         .select("id")
         .single();
@@ -2843,8 +2805,7 @@ export default function ClientePage({ params }: { params: any }) {
     }
     if (insertErr && String(insertErr.message || "").toLowerCase().includes("data_tassativa")) {
       const { data_tassativa, ...legacyPayload } = payload as any;
-      const res = await supabase
-        .from("saas_interventi")
+      const res = await dbFrom("saas_interventi")
         .insert(legacyPayload)
         .select("id")
         .single();
@@ -2885,7 +2846,7 @@ export default function ClientePage({ params }: { params: any }) {
   async function deleteIntervento(id: string) {
     const ok = window.confirm("Eliminare questo intervento?");
     if (!ok) return;
-    const { error: delErr } = await supabase.from("saas_interventi").delete().eq("id", id);
+    const { error: delErr } = await dbFrom("saas_interventi").delete().eq("id", id);
     if (delErr) {
       setInterventiError("Errore eliminazione intervento: " + delErr.message);
       return;
@@ -3017,8 +2978,7 @@ export default function ClientePage({ params }: { params: any }) {
       note_tecniche: noteTecniche ? noteTecniche : null,
     };
 
-    const { error: updErr } = await supabase
-      .from("saas_interventi")
+    const { error: updErr } = await dbFrom("saas_interventi")
       .update(payload)
       .eq("id", closeInterventoId);
 
@@ -3076,8 +3036,7 @@ export default function ClientePage({ params }: { params: any }) {
 
   async function fetchRinnovi(clienteKey: string) {
     if (!clienteKey) return;
-    const { data, error } = await supabase
-      .from("rinnovi_servizi")
+    const { data, error } = await dbFrom("rinnovi_servizi")
       .select("*")
       .eq("cliente", clienteKey)
       .order("scadenza", { ascending: true });
@@ -3091,8 +3050,7 @@ export default function ClientePage({ params }: { params: any }) {
 
   async function fetchTagliandi(clienteKey: string) {
     if (!clienteKey) return;
-    const { data, error } = await supabase
-      .from("tagliandi")
+    const { data, error } = await dbFrom("tagliandi")
       .select("*")
       .eq("cliente", clienteKey)
       .order("scadenza", { ascending: true });
@@ -3138,13 +3096,13 @@ export default function ClientePage({ params }: { params: any }) {
         stato,
         note: (newTagliando.note || "").trim() || "Tagliando periodico",
       };
-      let { error } = await supabase.from("tagliandi").insert(payload);
+      let { error } = await dbFrom("tagliandi").insert(payload);
       if (error && isTagliandoStatoCheckViolation(error)) {
         const retryPayload = {
           ...payload,
           stato: normalizeTagliandoStatoForDb(payload.stato),
         };
-        const retry = await supabase.from("tagliandi").insert(retryPayload);
+        const retry = await dbFrom("tagliandi").insert(retryPayload);
         error = retry.error;
       }
       if (error) {
@@ -3313,7 +3271,7 @@ export default function ClientePage({ params }: { params: any }) {
   }
 
   async function updateRinnovo(id: string, payload: Record<string, any>) {
-    const { error } = await supabase.from("rinnovi_servizi").update(payload).eq("id", id);
+    const { error } = await dbFrom("rinnovi_servizi").update(payload).eq("id", id);
     if (error) {
       setRinnoviError("Errore aggiornamento rinnovo: " + error.message);
       return false;
@@ -3323,7 +3281,7 @@ export default function ClientePage({ params }: { params: any }) {
 
   async function updateRinnovi(ids: string[], payload: Record<string, any>) {
     if (ids.length === 0) return true;
-    const { error } = await supabase.from("rinnovi_servizi").update(payload).in("id", ids);
+    const { error } = await dbFrom("rinnovi_servizi").update(payload).in("id", ids);
     if (error) {
       setRinnoviError("Errore aggiornamento rinnovi: " + error.message);
       return false;
@@ -3446,14 +3404,12 @@ export default function ClientePage({ params }: { params: any }) {
               "Questa licenza non è associata a un progetto. Impossibile convertirla in garanzia."
             );
           }
-          const { error: updChecklistErr } = await supabase
-            .from("checklists")
+          const { error: updChecklistErr } = await dbFrom("checklists")
             .update({ garanzia_scadenza: editScadenzaForm.scadenza || null })
             .eq("id", checklistId);
           if (updChecklistErr) throw new Error(updChecklistErr.message);
 
-          const { error: delLicErr } = await supabase
-            .from("licenses")
+          const { error: delLicErr } = await dbFrom("licenses")
             .delete()
             .eq("id", editScadenzaItem.id);
           if (delLicErr) throw new Error(delLicErr.message);
@@ -3473,8 +3429,7 @@ export default function ClientePage({ params }: { params: any }) {
           setEditScadenzaOpen(false);
           return;
         }
-        const { error } = await supabase
-          .from("licenses")
+        const { error } = await dbFrom("licenses")
           .update({
             scadenza: editScadenzaForm.scadenza || null,
             status: editScadenzaForm.stato || null,
@@ -3540,8 +3495,7 @@ export default function ClientePage({ params }: { params: any }) {
       } else if (editScadenzaForm.tipo === "SAAS") {
         const checklistId = editScadenzaItem.checklist_id;
         if (!checklistId) throw new Error("Checklist non trovata");
-        const { error } = await supabase
-          .from("checklists")
+        const { error } = await dbFrom("checklists")
           .update({
             saas_scadenza: editScadenzaForm.scadenza || null,
             saas_note: editScadenzaForm.note || null,
@@ -3562,8 +3516,7 @@ export default function ClientePage({ params }: { params: any }) {
       } else if (editScadenzaForm.tipo === "SAAS_ULTRA") {
         const contrattoId = editScadenzaItem.contratto_id;
         if (!contrattoId) throw new Error("Contratto non trovato");
-        const { error } = await supabase
-          .from("saas_contratti")
+        const { error } = await dbFrom("saas_contratti")
           .update({
             scadenza: editScadenzaForm.scadenza || null,
           })
@@ -3592,8 +3545,7 @@ export default function ClientePage({ params }: { params: any }) {
       } else if (editScadenzaForm.tipo === "GARANZIA") {
         const checklistId = editScadenzaItem.checklist_id;
         if (!checklistId) throw new Error("Checklist non trovata");
-        const { error } = await supabase
-          .from("checklists")
+        const { error } = await dbFrom("checklists")
           .update({
             garanzia_scadenza: editScadenzaForm.scadenza || null,
           })
@@ -3649,8 +3601,7 @@ export default function ClientePage({ params }: { params: any }) {
     setEditScadenzaSaving(true);
     setEditScadenzaErr(null);
     try {
-      const { error } = await supabase
-        .from("saas_contratti")
+      const { error } = await dbFrom("saas_contratti")
         .delete()
         .eq("id", editScadenzaItem.contratto_id);
       if (error) throw new Error(error.message);
@@ -3683,12 +3634,11 @@ export default function ClientePage({ params }: { params: any }) {
         if (!res.ok) throw new Error(String(json?.error || "Errore eliminazione licenza"));
         setLicenze((prev) => prev.filter((x) => x.id !== editScadenzaItem.id));
       } else if (editScadenzaForm.tipo === "TAGLIANDO") {
-        const { error } = await supabase.from("tagliandi").delete().eq("id", editScadenzaItem.id);
+        const { error } = await dbFrom("tagliandi").delete().eq("id", editScadenzaItem.id);
         if (error) throw new Error(error.message);
         setTagliandi((prev) => prev.filter((x) => x.id !== editScadenzaItem.id));
       } else if (editScadenzaForm.tipo === "RINNOVO") {
-        const { error } = await supabase
-          .from("rinnovi_servizi")
+        const { error } = await dbFrom("rinnovi_servizi")
           .delete()
           .eq("id", editScadenzaItem.id);
         if (error) throw new Error(error.message);
@@ -3999,8 +3949,7 @@ export default function ClientePage({ params }: { params: any }) {
         pairs.set(key, { checklistId: r.checklist_id, itemTipo });
       }
       for (const { checklistId, itemTipo } of pairs.values()) {
-        await supabase
-          .from("rinnovi_servizi")
+        await dbFrom("rinnovi_servizi")
           .update({ stato: "AVVISATO", updated_at: nowIso })
           .eq("checklist_id", checklistId)
           .eq("item_tipo", itemTipo);
@@ -4174,13 +4123,13 @@ export default function ClientePage({ params }: { params: any }) {
   }
 
   async function updateTagliando(id: string, payload: Record<string, any>) {
-    let { error } = await supabase.from("tagliandi").update(payload).eq("id", id);
+    let { error } = await dbFrom("tagliandi").update(payload).eq("id", id);
     if (error && isTagliandoStatoCheckViolation(error) && typeof payload?.stato === "string") {
       const retryPayload = {
         ...payload,
         stato: normalizeTagliandoStatoForDb(payload.stato),
       };
-      const retry = await supabase.from("tagliandi").update(retryPayload).eq("id", id);
+      const retry = await dbFrom("tagliandi").update(retryPayload).eq("id", id);
       error = retry.error;
     }
     if (error) {
@@ -4447,13 +4396,11 @@ export default function ClientePage({ params }: { params: any }) {
     const isGaranzia =
       String(mapped.item_tipo || "").toUpperCase() === "GARANZIA" && payload.checklist_id;
     const { data, error } = isGaranzia
-      ? await supabase
-          .from("rinnovi_servizi")
+      ? await dbFrom("rinnovi_servizi")
           .upsert(payload, { onConflict: "checklist_id,item_tipo" })
           .select("*")
           .single()
-      : await supabase
-          .from("rinnovi_servizi")
+      : await dbFrom("rinnovi_servizi")
           .insert(payload)
           .select("*")
           .single();
@@ -4467,7 +4414,7 @@ export default function ClientePage({ params }: { params: any }) {
 
   async function updateSourceScadenza(r: ScadenzaItem, newDate: string) {
     if (r.source === "tagliandi") {
-      const { error } = await supabase.from("tagliandi").update({ scadenza: newDate }).eq("id", r.id);
+      const { error } = await dbFrom("tagliandi").update({ scadenza: newDate }).eq("id", r.id);
       if (error) {
         setRinnoviError("Errore aggiornamento scadenza tagliando: " + error.message);
         return false;
@@ -4475,7 +4422,7 @@ export default function ClientePage({ params }: { params: any }) {
       return true;
     }
     if (r.source === "licenze") {
-      const { error } = await supabase.from("licenses").update({ scadenza: newDate }).eq("id", r.id);
+      const { error } = await dbFrom("licenses").update({ scadenza: newDate }).eq("id", r.id);
       if (error) {
         setRinnoviError("Errore aggiornamento scadenza licenza: " + error.message);
         return false;
@@ -4483,7 +4430,7 @@ export default function ClientePage({ params }: { params: any }) {
       return true;
     }
     if (r.source === "saas") {
-      const { error } = await supabase.from("checklists").update({ saas_scadenza: newDate }).eq("id", r.checklist_id);
+      const { error } = await dbFrom("checklists").update({ saas_scadenza: newDate }).eq("id", r.checklist_id);
       if (error) {
         setRinnoviError("Errore aggiornamento scadenza SAAS: " + error.message);
         return false;
@@ -4494,8 +4441,7 @@ export default function ClientePage({ params }: { params: any }) {
       return true;
     }
     if (r.source === "garanzie") {
-      const { error } = await supabase
-        .from("checklists")
+      const { error } = await dbFrom("checklists")
         .update({ garanzia_scadenza: newDate })
         .eq("id", r.checklist_id);
       if (error) {
@@ -4509,8 +4455,7 @@ export default function ClientePage({ params }: { params: any }) {
     }
     if (r.source === "saas_contratto") {
       const contrattoId = r.contratto_id ?? String(r.id || "").replace("saas_contratto:", "");
-      const { error } = await supabase
-        .from("saas_contratti")
+      const { error } = await dbFrom("saas_contratti")
         .update({ scadenza: newDate })
         .eq("id", contrattoId);
       if (error) {
@@ -4523,7 +4468,7 @@ export default function ClientePage({ params }: { params: any }) {
       return true;
     }
     if (r.source === "rinnovi") {
-      const { error } = await supabase.from("rinnovi_servizi").update({ scadenza: newDate }).eq("id", r.id);
+      const { error } = await dbFrom("rinnovi_servizi").update({ scadenza: newDate }).eq("id", r.id);
       if (error) {
         setRinnoviError("Errore aggiornamento scadenza rinnovo: " + error.message);
         return false;
@@ -4593,8 +4538,7 @@ export default function ClientePage({ params }: { params: any }) {
       setBulkLastMessage(null);
       return;
     }
-    const { data, error } = await supabase
-      .from("checklist_alert_log")
+    const { data, error } = await dbFrom("checklist_alert_log")
       .select("created_at, to_operatore_id, checklist_id, messaggio")
       .eq("canale", "fatturazione_bulk")
       .in("checklist_id", checklistIds)
@@ -4839,8 +4783,7 @@ export default function ClientePage({ params }: { params: any }) {
       chiuso_il: null,
       chiuso_da_operatore: null,
     };
-    const { error: updErr } = await supabase
-      .from("saas_interventi")
+    const { error: updErr } = await dbFrom("saas_interventi")
       .update(payload)
       .eq("id", interventoId);
     if (updErr) {
