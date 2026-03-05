@@ -4430,6 +4430,7 @@ export default function ClientePage({ params }: { params: any }) {
       return true;
     }
     if (r.source === "saas") {
+      if (!r.checklist_id) return false;
       const { error } = await dbFrom("checklists").update({ saas_scadenza: newDate }).eq("id", r.checklist_id);
       if (error) {
         setRinnoviError("Errore aggiornamento scadenza SAAS: " + error.message);
@@ -4441,6 +4442,7 @@ export default function ClientePage({ params }: { params: any }) {
       return true;
     }
     if (r.source === "garanzie") {
+      if (!r.checklist_id) return false;
       const { error } = await dbFrom("checklists")
         .update({ garanzia_scadenza: newDate })
         .eq("id", r.checklist_id);
