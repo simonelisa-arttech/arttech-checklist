@@ -7287,6 +7287,7 @@ ${rinnovi30ggBreakdown.debugSample
             {(() => {
               const i = interventi.find((x) => x.id === expandedInterventoId);
               if (!i) return null;
+              const interventoId = i.id;
               const files = interventoFilesById.get(i.id) || [];
               return (
                 <>
@@ -7334,7 +7335,7 @@ ${rinnovi30ggBreakdown.debugSample
                       <AttachmentsPanel
                         title="Allegati intervento (upload + link Drive)"
                         entityType="INTERVENTO"
-                        entityId={i.id}
+                        entityId={interventoId}
                         multiple
                         storagePrefix="intervento"
                       />
@@ -7348,13 +7349,13 @@ ${rinnovi30ggBreakdown.debugSample
                             onChange={(e) =>
                               setInterventoUploadFiles((prev) => ({
                                 ...prev,
-                                [i.id]: e.target.files ? Array.from(e.target.files) : [],
+                                [interventoId]: e.target.files ? Array.from(e.target.files) : [],
                               }))
                             }
                           />
                           <button
                             type="button"
-                            onClick={() => uploadInterventoFiles(i.id)}
+                            onClick={() => uploadInterventoFiles(interventoId)}
                             style={{
                               padding: "6px 10px",
                               borderRadius: 8,
