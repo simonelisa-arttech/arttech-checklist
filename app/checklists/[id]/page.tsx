@@ -1318,13 +1318,12 @@ function buildFormData(c: Checklist): FormData {
       return;
     }
 
-    const { data: docsData, error: docsErr } = await supabase
-      .from("checklist_documents")
-      .select(
-        "id, checklist_id, tipo, filename, storage_path, uploaded_at, uploaded_by_operatore"
-      )
-      .eq("checklist_id", id)
-      .order("uploaded_at", { ascending: false });
+    const docsRes = await fetch(`/api/checklists/${id}/documents`, { cache: "no-store" });
+    const docsJson = await docsRes.json().catch(() => ({}));
+    const docsData = (docsJson?.documents as any[]) || [];
+    const docsErr = docsRes.ok
+      ? null
+      : { message: docsJson?.error || "Errore caricamento documenti" };
 
     if (docsErr) {
       setError("Errore caricamento documenti: " + docsErr.message);
