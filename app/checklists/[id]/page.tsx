@@ -1305,11 +1305,12 @@ function buildFormData(c: Checklist): FormData {
       return;
     }
 
-    const { data: tagliandiData, error: tagliandiErr } = await supabase
-      .from("tagliandi")
-      .select("id, checklist_id, scadenza, stato, modalita, note, created_at")
-      .eq("checklist_id", id)
-      .order("scadenza", { ascending: true });
+    const tagliandiRes = await fetch(`/api/checklists/${id}/tagliandi`, { cache: "no-store" });
+    const tagliandiJson = await tagliandiRes.json().catch(() => ({}));
+    const tagliandiData = (tagliandiJson?.tagliandi as any[]) || [];
+    const tagliandiErr = tagliandiRes.ok
+      ? null
+      : { message: tagliandiJson?.error || "Errore caricamento tagliandi" };
 
     if (tagliandiErr) {
       setError("Errore caricamento tagliandi: " + tagliandiErr.message);
