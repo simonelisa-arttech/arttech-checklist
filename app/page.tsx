@@ -1187,8 +1187,8 @@ export default function Page() {
         alert(
           "Errore insert righe: " +
             (info || errItems.message || "") +
-            (errItems.details ? `\nDettagli: ${errItems.details}` : "") +
-            (errItems.hint ? `\nHint: ${errItems.hint}` : "")
+            ((errItems as any)?.details ? `\nDettagli: ${(errItems as any).details}` : "") +
+            ((errItems as any)?.hint ? `\nHint: ${(errItems as any).hint}` : "")
         );
         return;
       }
