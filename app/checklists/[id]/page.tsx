@@ -1505,14 +1505,46 @@ function buildFormData(c: Checklist): FormData {
     }
 
     if (isPerfEnabled()) console.time(`[perf][checklist][load#${loadSeq}] db rinnovi_servizi`);
-    const { data: rinnoviDataRaw, error: rinnoviErr } = await db<any[]>({
+    let rinnoviSelect =
+      "id, checklist_id, item_tipo, scadenza, stato, riferimento, descrizione, note";
+    let { data: rinnoviDataRaw, error: rinnoviErr } = await db<any[]>({
       table: "rinnovi_servizi",
       op: "select",
-      select: "id, checklist_id, item_tipo, scadenza, stato, riferimento, descrizione, note",
+      select: rinnoviSelect,
       filter: { checklist_id: id },
       order: [{ col: "scadenza", asc: true }],
       limit: 1000,
     });
+    if (rinnoviErr && String(rinnoviErr.message || "").toLowerCase().includes("riferimento")) {
+      rinnoviSelect = "id, checklist_id, item_tipo, scadenza, stato, descrizione, note";
+      const retry = await db<any[]>({
+        table: "rinnovi_servizi",
+        op: "select",
+        select: rinnoviSelect,
+        filter: { checklist_id: id },
+        order: [{ col: "scadenza", asc: true }],
+        limit: 1000,
+      });
+      rinnoviDataRaw = (retry.data || []).map((r: any) => ({ ...r, riferimento: null }));
+      rinnoviErr = retry.error;
+    }
+    if (rinnoviErr && String(rinnoviErr.message || "").toLowerCase().includes("descrizione")) {
+      rinnoviSelect = "id, checklist_id, item_tipo, scadenza, stato, note";
+      const retry = await db<any[]>({
+        table: "rinnovi_servizi",
+        op: "select",
+        select: rinnoviSelect,
+        filter: { checklist_id: id },
+        order: [{ col: "scadenza", asc: true }],
+        limit: 1000,
+      });
+      rinnoviDataRaw = (retry.data || []).map((r: any) => ({
+        ...r,
+        riferimento: null,
+        descrizione: null,
+      }));
+      rinnoviErr = retry.error;
+    }
     if (isPerfEnabled()) console.timeEnd(`[perf][checklist][load#${loadSeq}] db rinnovi_servizi`);
     const rinnoviData = (rinnoviDataRaw || []) as ProjectRinnovoRow[];
     if (rinnoviErr) {
