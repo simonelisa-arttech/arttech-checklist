@@ -1001,9 +1001,10 @@ export default function Page() {
     const checklistId = created.id as string;
 
     // 1) crea tasks da template (solo se non esistono già)
-    const { count: existingTasksCount, error: existingTasksErr } = await dbFrom("checklist_tasks")
-      .select("id", { count: "exact", head: true })
+    const { data: existingTasksRows, error: existingTasksErr } = await dbFrom("checklist_tasks")
+      .select("id")
       .eq("checklist_id", checklistId);
+    const existingTasksCount = existingTasksRows?.length ?? 0;
 
     if (existingTasksErr) {
       logSupabaseError(existingTasksErr);
