@@ -479,6 +479,7 @@ export default function Page() {
   const [q, setQ] = useState("");
   const [debouncedQ, setDebouncedQ] = useState("");
   const lastDebouncedQRef = useRef("");
+  const lastLoadKeyRef = useRef("");
   const loadAbortRef = useRef<AbortController | null>(null);
   const loadSpinnerTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const loadRequestSeqRef = useRef(0);
@@ -703,13 +704,22 @@ export default function Page() {
     const controller = new AbortController();
     loadAbortRef.current = controller;
     const isLatest = () => requestSeq === loadRequestSeqRef.current;
+    const normalizedDebouncedQ = debouncedQ.trim().toLowerCase();
+    if (normalizedDebouncedQ.length === 1) {
+      if (loadSpinnerTimerRef.current) {
+        clearTimeout(loadSpinnerTimerRef.current);
+        loadSpinnerTimerRef.current = null;
+      }
+      if (isLatest()) setLoading(false);
+      return;
+    }
 
     if (loadSpinnerTimerRef.current) clearTimeout(loadSpinnerTimerRef.current);
     setLoading(false);
     setDashboardLoadError(null);
     loadSpinnerTimerRef.current = setTimeout(() => {
       if (isLatest()) setLoading(true);
-    }, 350);
+    }, 700);
 
     let data: any[] | null = null;
     let sections: any[] | null = null;
@@ -723,7 +733,7 @@ export default function Page() {
       const debug = new URLSearchParams(window.location.search).get("debug") === "1";
       const params = new URLSearchParams();
       if (debug) params.set("debug", "1");
-      if (debouncedQ) params.set("q", debouncedQ);
+      if (normalizedDebouncedQ.length >= 2) params.set("q", normalizedDebouncedQ);
 
       const activeSaasFilters = (Object.entries(saasServiceFilter) as Array<[SaasServiceFilter, boolean]>)
         .filter(([, enabled]) => enabled)
@@ -736,6 +746,9 @@ export default function Page() {
         .filter(([, enabled]) => enabled)
         .map(([key]) => key);
       if (activeProjectStatusFilters.length > 0) params.set("stati", activeProjectStatusFilters.join(","));
+      const loadKey = params.toString();
+      if (loadKey === lastLoadKeyRef.current) return;
+      lastLoadKeyRef.current = loadKey;
 
       const dashboardRes = await fetch(`/api/dashboard${params.size ? `?${params.toString()}` : ""}`, {
         signal: controller.signal,
@@ -901,11 +914,11 @@ export default function Page() {
 
   useEffect(() => {
     const t = setTimeout(() => {
-      const normalized = q.trim();
+      const normalized = q.trim().toLowerCase();
       if (normalized === lastDebouncedQRef.current) return;
       lastDebouncedQRef.current = normalized;
       setDebouncedQ(normalized);
-    }, 350);
+    }, 900);
     return () => clearTimeout(t);
   }, [q]);
 
