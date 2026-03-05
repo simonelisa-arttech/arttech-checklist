@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import ConfigMancante from '@/components/ConfigMancante'
 import { isSupabaseConfigured, supabase } from '@/lib/supabaseClient'
 
@@ -17,6 +17,40 @@ function norm(s: string) {
   return (s ?? '').trim()
 }
 
+function csvEscape(v: string) {
+  const s = String(v ?? '')
+  if (s.includes(';') || s.includes('"') || s.includes('\n')) {
+    return `"${s.replace(/"/g, '""')}"`
+  }
+  return s
+}
+
+function parseCsvLine(line: string, delimiter: string) {
+  const out: string[] = []
+  let cur = ''
+  let inQuotes = false
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i]
+    if (ch === '"') {
+      if (inQuotes && line[i + 1] === '"') {
+        cur += '"'
+        i++
+      } else {
+        inQuotes = !inQuotes
+      }
+      continue
+    }
+    if (ch === delimiter && !inQuotes) {
+      out.push(cur)
+      cur = ''
+      continue
+    }
+    cur += ch
+  }
+  out.push(cur)
+  return out.map((s) => s.trim())
+}
+
 export default function CatalogoPage() {
   if (!isSupabaseConfigured) {
     return <ConfigMancante />
@@ -27,6 +61,7 @@ export default function CatalogoPage() {
 
   const [items, setItems] = useState<CatalogItem[]>([])
   const [q, setQ] = useState('')
+  const importInputRef = useRef<HTMLInputElement | null>(null)
 
   // form nuova voce
   const [codice, setCodice] = useState('')
@@ -173,6 +208,78 @@ export default function CatalogoPage() {
     await load()
   }
 
+  function exportExcelCompatibleCsv() {
+    const header = ['codice', 'descrizione', 'tipo', 'attivo']
+    const rows = items.map((it) => [
+      it.codice || '',
+      it.descrizione || '',
+      it.tipo || '',
+      it.attivo ? 'TRUE' : 'FALSE',
+    ])
+    const content = [header, ...rows].map((r) => r.map(csvEscape).join(';')).join('\n')
+    const blob = new Blob(['\ufeff' + content], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    const today = new Date().toISOString().slice(0, 10)
+    a.href = url
+    a.download = `catalogo_${today}.csv`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+  }
+
+  async function onImportFile(file: File) {
+    setError(null)
+    const raw = await file.text()
+    const lines = raw
+      .replace(/\r\n/g, '\n')
+      .replace(/\r/g, '\n')
+      .split('\n')
+      .map((l) => l.trim())
+      .filter(Boolean)
+    if (lines.length < 2) {
+      setError('File vuoto o senza righe dati')
+      return
+    }
+    const delimiter = (lines[0].match(/;/g)?.length || 0) >= (lines[0].match(/,/g)?.length || 0) ? ';' : ','
+    const header = parseCsvLine(lines[0].replace(/^\uFEFF/, ''), delimiter).map((h) => h.toLowerCase())
+    const idxCodice = header.indexOf('codice')
+    const idxDescrizione = header.indexOf('descrizione')
+    const idxTipo = header.indexOf('tipo')
+    const idxAttivo = header.indexOf('attivo')
+    if (idxCodice < 0 || idxDescrizione < 0) {
+      setError('Intestazioni mancanti: servono almeno codice, descrizione')
+      return
+    }
+
+    const payload: Array<{ codice: string; descrizione: string; tipo: string | null; attivo: boolean }> = []
+    for (let i = 1; i < lines.length; i++) {
+      const cols = parseCsvLine(lines[i], delimiter)
+      const c = norm(cols[idxCodice] || '').toUpperCase()
+      const d = norm(cols[idxDescrizione] || '')
+      if (!c || !d) continue
+      const t = idxTipo >= 0 ? norm(cols[idxTipo] || '') || null : null
+      const attivoRaw = idxAttivo >= 0 ? norm(cols[idxAttivo] || '').toUpperCase() : 'TRUE'
+      const attivo = !(attivoRaw === 'FALSE' || attivoRaw === '0' || attivoRaw === 'NO')
+      payload.push({ codice: c, descrizione: d, tipo: t, attivo })
+    }
+    if (payload.length === 0) {
+      setError('Nessuna riga valida da importare')
+      return
+    }
+
+    setSaving(true)
+    const { error } = await supabase.from('catalog_items').upsert(payload, { onConflict: 'codice,descrizione' })
+    setSaving(false)
+    if (error) {
+      setError(error.message)
+      return
+    }
+    await load()
+    alert(`Import completato: ${payload.length} righe elaborate`)
+  }
+
   return (
     <div style={{ padding: 20, maxWidth: 1200, margin: '0 auto' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
@@ -281,6 +388,32 @@ export default function CatalogoPage() {
         >
           {loading ? 'Carico...' : 'Ricarica'}
         </button>
+        <button
+          onClick={exportExcelCompatibleCsv}
+          disabled={loading || saving}
+          style={{ padding: '10px 14px', borderRadius: 10, border: '1px solid #d1d5db', background: 'white' }}
+        >
+          Esporta Excel
+        </button>
+        <button
+          onClick={() => importInputRef.current?.click()}
+          disabled={loading || saving}
+          style={{ padding: '10px 14px', borderRadius: 10, border: '1px solid #d1d5db', background: 'white' }}
+        >
+          Importa Excel
+        </button>
+        <input
+          ref={importInputRef}
+          type="file"
+          accept=".csv,text/csv,application/vnd.ms-excel"
+          style={{ display: 'none' }}
+          onChange={async (e) => {
+            const file = e.target.files?.[0]
+            e.currentTarget.value = ''
+            if (!file) return
+            await onImportFile(file)
+          }}
+        />
       </div>
 
       <div style={{ height: 10 }} />
