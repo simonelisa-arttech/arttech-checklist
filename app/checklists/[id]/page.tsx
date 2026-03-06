@@ -1806,17 +1806,15 @@ function buildFormData(c: Checklist): FormData {
 
     const clienteKey = String(headChecklist.cliente ?? "").trim();
     setChecklistClienteEmail(null);
-    if (clienteKey) {
+    if (headChecklist.cliente_id) {
       const { data: clienteRows } = await db<any[]>({
         table: "clienti_anagrafica",
         op: "select",
-        select: "email, denominazione",
-        limit: 500,
+        select: "email",
+        filter: { id: headChecklist.cliente_id },
+        limit: 1,
       });
-      const clienteRow = (clienteRows || []).find(
-        (r: any) => String(r?.denominazione || "").toLowerCase() === clienteKey.toLowerCase()
-      );
-      const mail = String((clienteRow as any)?.email || "").trim();
+      const mail = String((clienteRows?.[0] as any)?.email || "").trim();
       setChecklistClienteEmail(mail && mail.includes("@") ? mail : null);
     }
 
@@ -1827,12 +1825,11 @@ function buildFormData(c: Checklist): FormData {
         table: "saas_contratti",
         op: "select",
         select: "id, cliente, piano_codice, scadenza, interventi_annui, illimitati, created_at",
+        filter: { cliente: clienteKey },
         order: [{ col: "created_at", asc: false }],
         limit: 1000,
       });
-      const contrattiData = (contrattiDataRaw || []).filter((r: any) =>
-        String(r?.cliente || "").toLowerCase().includes(clienteKey.toLowerCase())
-      );
+      const contrattiData = contrattiDataRaw || [];
 
       if (!contrattiErr) {
         const today = new Date();
@@ -2023,6 +2020,7 @@ function buildFormData(c: Checklist): FormData {
         table: "operatori",
         op: "select",
         select: "id, nome, email, attivo, alert_enabled, alert_tasks, cliente, ruolo",
+        filter: { attivo: true },
         limit: 1000,
       });
       if (opErr) {
