@@ -26,7 +26,7 @@ function csvEscape(v: string) {
   return s
 }
 
-function parseCsvLine(line: string, delimiter: string) {
+function parseDelimitedLine(line: string, delimiter: string) {
   const out: string[] = []
   let cur = ''
   let inQuotes = false
@@ -205,7 +205,7 @@ export default function CatalogoPage() {
     await load()
   }
 
-  function exportExcelCompatibleCsv() {
+  function exportExcelFile() {
     const header = ['codice', 'descrizione', 'tipo', 'attivo']
     const rows = items.map((it) => [
       it.codice || '',
@@ -213,13 +213,14 @@ export default function CatalogoPage() {
       it.tipo || '',
       it.attivo ? 'TRUE' : 'FALSE',
     ])
-    const content = [header, ...rows].map((r) => r.map(csvEscape).join(';')).join('\n')
-    const blob = new Blob(['\ufeff' + content], { type: 'text/csv;charset=utf-8;' })
+    // TSV (tab-delimited) in .xls extension: Excel opens it natively and avoids .csv UX.
+    const content = [header, ...rows].map((r) => r.map(csvEscape).join('\t')).join('\n')
+    const blob = new Blob(['\ufeff' + content], { type: 'application/vnd.ms-excel;charset=utf-8;' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     const today = new Date().toISOString().slice(0, 10)
     a.href = url
-    a.download = `catalogo_${today}.csv`
+    a.download = `catalogo_${today}.xls`
     document.body.appendChild(a)
     a.click()
     document.body.removeChild(a)
@@ -239,8 +240,12 @@ export default function CatalogoPage() {
       setError('File vuoto o senza righe dati')
       return
     }
-    const delimiter = (lines[0].match(/;/g)?.length || 0) >= (lines[0].match(/,/g)?.length || 0) ? ';' : ','
-    const header = parseCsvLine(lines[0].replace(/^\uFEFF/, ''), delimiter).map((h) => h.toLowerCase())
+    const firstLine = lines[0].replace(/^\uFEFF/, '')
+    const sepCount = (firstLine.match(/;/g)?.length || 0)
+    const commaCount = (firstLine.match(/,/g)?.length || 0)
+    const tabCount = (firstLine.match(/\t/g)?.length || 0)
+    const delimiter = tabCount >= sepCount && tabCount >= commaCount ? '\t' : sepCount >= commaCount ? ';' : ','
+    const header = parseDelimitedLine(firstLine, delimiter).map((h) => h.toLowerCase())
     const idxCodice = header.indexOf('codice')
     const idxDescrizione = header.indexOf('descrizione')
     const idxTipo = header.indexOf('tipo')
@@ -252,7 +257,7 @@ export default function CatalogoPage() {
 
     const payload: Array<{ codice: string; descrizione: string; tipo: string | null; attivo: boolean }> = []
     for (let i = 1; i < lines.length; i++) {
-      const cols = parseCsvLine(lines[i], delimiter)
+      const cols = parseDelimitedLine(lines[i], delimiter)
       const c = norm(cols[idxCodice] || '').toUpperCase()
       const d = norm(cols[idxDescrizione] || '')
       if (!c || !d) continue
@@ -386,7 +391,7 @@ export default function CatalogoPage() {
           {loading ? 'Carico...' : 'Ricarica'}
         </button>
         <button
-          onClick={exportExcelCompatibleCsv}
+          onClick={exportExcelFile}
           disabled={loading || saving}
           style={{ padding: '10px 14px', borderRadius: 10, border: '1px solid #d1d5db', background: 'white' }}
         >
@@ -402,7 +407,7 @@ export default function CatalogoPage() {
         <input
           ref={importInputRef}
           type="file"
-          accept=".csv,text/csv,application/vnd.ms-excel"
+          accept=".xls,.csv,text/csv,application/vnd.ms-excel"
           style={{ display: 'none' }}
           onChange={async (e) => {
             const file = e.target.files?.[0]
