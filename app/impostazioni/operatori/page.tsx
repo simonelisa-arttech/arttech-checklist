@@ -1,10 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import ConfigMancante from "@/components/ConfigMancante";
 import { isSupabaseConfigured, supabase } from "@/lib/supabaseClient";
-import { dbFrom } from "@/lib/clientDbBroker";
 
 type OperatoreRow = {
   id?: string;
@@ -42,11 +41,6 @@ export default function OperatoriPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [rows, setRows] = useState<OperatoreRow[]>([]);
-  const [expandedId, setExpandedId] = useState<string | null>(null);
-  const [taskTemplates, setTaskTemplates] = useState<
-    { id: string; sezione: string | null; titolo: string | null; ordine: number | null }[]
-  >([]);
-  const [taskSearch, setTaskSearch] = useState("");
   const [showQuickStart, setShowQuickStart] = useState(false);
   const [quickName, setQuickName] = useState("");
   const [quickEmail, setQuickEmail] = useState("");
@@ -144,24 +138,8 @@ export default function OperatoriPage() {
     setLoading(false);
   }
 
-  async function loadTaskTemplates() {
-    const { data, error: err } = await dbFrom("checklist_task_templates")
-      .select("id, sezione, titolo, ordine, attivo")
-      .eq("attivo", true)
-      .order("sezione", { ascending: true })
-      .order("ordine", { ascending: true });
-
-    if (err) {
-      setError("Errore caricamento attività operative: " + err.message);
-      return;
-    }
-
-    setTaskTemplates((data || []) as any[]);
-  }
-
   useEffect(() => {
     loadOperatori();
-    loadTaskTemplates();
     loadAdminAccess();
   }, []);
 
@@ -405,20 +383,6 @@ export default function OperatoriPage() {
     }
     await loadOperatori();
   }
-
-  const groupedTemplates = useMemo(() => {
-    const q = taskSearch.trim().toLowerCase();
-    const filtered = taskTemplates.filter((t) =>
-      !q ? true : String(t.titolo ?? "").toLowerCase().includes(q)
-    );
-    const map = new Map<string, typeof taskTemplates>();
-    for (const t of filtered) {
-      const key = t.sezione || "ALTRO";
-      if (!map.has(key)) map.set(key, []);
-      map.get(key)!.push(t);
-    }
-    return map;
-  }, [taskTemplates, taskSearch]);
 
   return (
     <div style={{ maxWidth: 1100, margin: "40px auto", padding: 16 }}>
@@ -698,19 +662,6 @@ export default function OperatoriPage() {
                   <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                     <button
                       type="button"
-                      onClick={() => setExpandedId((prev) => (prev === row.id ? null : row.id || null))}
-                      style={{
-                        padding: "6px 10px",
-                        borderRadius: 8,
-                        border: "1px solid #ddd",
-                        background: "white",
-                        cursor: "pointer",
-                      }}
-                    >
-                      Preferenze alert
-                    </button>
-                    <button
-                      type="button"
                       onClick={() => saveRowByIndex(idx)}
                       style={{
                         padding: "6px 10px",
@@ -757,86 +708,6 @@ export default function OperatoriPage() {
                     </button>
                   </div>
                 </div>
-                {expandedId && expandedId === row.id && (
-                  <div
-                    style={{
-                      padding: "10px 12px 14px",
-                      borderBottom: "1px solid #f3f4f6",
-                      background: "#fafafa",
-                    }}
-                  >
-                    <div style={{ fontWeight: 700, marginBottom: 6 }}>Preferenze alert</div>
-                    <div style={{ marginBottom: 10 }}>
-                      <input
-                        value={taskSearch}
-                        onChange={(e) => setTaskSearch(e.target.value)}
-                        placeholder="Cerca attività..."
-                        style={{ padding: "6px 8px", minWidth: 240 }}
-                      />
-                    </div>
-                    <div style={{ display: "grid", gap: 12 }}>
-                      {Array.from(groupedTemplates.entries()).map(([section, templates]) => (
-                        <div key={section}>
-                          <div style={{ fontSize: 12, fontWeight: 700, opacity: 0.7 }}>
-                            {section}
-                          </div>
-                          <div style={{ display: "grid", gap: 6, marginTop: 6 }}>
-                            {templates.map((t) => {
-                              const checked = Boolean(
-                                row.alert_tasks?.task_template_ids?.includes(t.id)
-                              );
-                              return (
-                                <label
-                                  key={t.id}
-                                  style={{ display: "flex", alignItems: "center", gap: 8 }}
-                                >
-                                  <input
-                                    type="checkbox"
-                                    disabled={!row.alert_enabled}
-                                    checked={checked}
-                                    onChange={(e) => {
-                                      const current = normalizeAlertTasks(row.alert_tasks);
-                                      const set = new Set<string>(current.task_template_ids);
-                                      if (e.target.checked) {
-                                        set.add(t.id);
-                                      } else {
-                                        set.delete(t.id);
-                                      }
-                                      updateRow(idx, {
-                                        alert_tasks: {
-                                          ...current,
-                                          task_template_ids: Array.from(set),
-                                        },
-                                      });
-                                    }}
-                                  />
-                                  {t.titolo ?? "—"}
-                                </label>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      ))}
-                      <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                        <input
-                          type="checkbox"
-                          disabled={!row.alert_enabled}
-                          checked={Boolean(row.alert_tasks?.all_task_status_change)}
-                          onChange={(e) => {
-                            const current = normalizeAlertTasks(row.alert_tasks);
-                            updateRow(idx, {
-                              alert_tasks: {
-                                ...current,
-                                all_task_status_change: e.target.checked,
-                              },
-                            });
-                          }}
-                        />
-                        ALL_TASK_STATUS_CHANGE
-                      </label>
-                    </div>
-                  </div>
-                )}
               </div>
             ))
           )}
