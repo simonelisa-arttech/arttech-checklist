@@ -937,8 +937,7 @@ export default function NuovaChecklistPage() {
         }
 
         const { data: ops } = await dbFrom("operatori")
-          .select("id, nome, email, ruolo, attivo, cliente")
-          .eq("cliente", cliente.trim())
+          .select("id, nome, email, ruolo, attivo")
           .in("ruolo", ["TECNICO", "MAGAZZINO"])
           .eq("attivo", true);
 

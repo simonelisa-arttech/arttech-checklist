@@ -1618,6 +1618,18 @@ function buildFormData(c: Checklist): FormData {
       select: "id, checklist_id, task_id, filename, storage_path, uploaded_at, uploaded_by_operatore",
       filter: { checklist_id: id },
       order: [{ col: "uploaded_at", asc: false }],
+    }).then((res) => {
+      const msg = String(res.error?.message || "").toLowerCase();
+      const missingTable =
+        msg.includes("checklist_task_documents") &&
+        (msg.includes("does not exist") ||
+          msg.includes("relation") ||
+          msg.includes("could not find the table") ||
+          msg.includes("schema cache"));
+      if (missingTable) {
+        return { data: [] as any[], error: null as any };
+      }
+      return res;
     });
     const rinnoviPromise = (async () => {
       let rinnoviSelect = "id, checklist_id, item_tipo, scadenza, stato, riferimento, descrizione, note";

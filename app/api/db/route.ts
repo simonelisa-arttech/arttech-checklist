@@ -223,6 +223,19 @@ function invalid(message: string, status = 400) {
   return NextResponse.json({ ok: false, error: message }, { status });
 }
 
+function stripSelectColumn(selectClause: string, columnName: string) {
+  const parts = selectClause
+    .split(",")
+    .map((p) => p.trim())
+    .filter(Boolean);
+  const next = parts.filter((part) => {
+    const base = part.split(":")[0]?.trim().toLowerCase() || "";
+    return base !== columnName.toLowerCase();
+  });
+  if (next.length === 0) return "*";
+  return next.join(", ");
+}
+
 function dbFailure(table: string, op: string, filter: Record<string, any>, message: string) {
   console.error("[api/db] failure", { table, op, filter, message });
   return NextResponse.json({ ok: false, error: message }, { status: 500 });
@@ -365,8 +378,54 @@ export async function POST(request: Request) {
     for (const [k, v] of Object.entries(filterIn)) q = q.in(k, v as any[]);
     for (const o of order) q = q.order(o.col, { ascending: o.asc !== false });
     if (normalizedLimit > 0) q = q.limit(normalizedLimit);
-    const { data, error } = await q;
-      if (error) return dbFailure(table, op, filter, error.message);
+    let { data, error } = await q;
+    if (error) {
+      const msg = String(error.message || "").toLowerCase();
+
+      if (
+        table === "checklist_task_documents" &&
+        (msg.includes("could not find the table") ||
+          msg.includes("schema cache") ||
+          msg.includes("relation") && msg.includes("does not exist"))
+      ) {
+        return NextResponse.json({ ok: true, data: [] });
+      }
+
+      if (
+        table === "operatori" &&
+        select !== "*" &&
+        msg.includes("operatori.cliente") &&
+        msg.includes("does not exist")
+      ) {
+        const retrySelect = stripSelectColumn(select, "cliente");
+        let retryQ: any = supabaseAdmin.from(table).select(retrySelect);
+        for (const [k, v] of Object.entries(filter)) retryQ = retryQ.eq(k, v);
+        for (const [k, v] of Object.entries(filterIn)) retryQ = retryQ.in(k, v as any[]);
+        for (const o of order) retryQ = retryQ.order(o.col, { ascending: o.asc !== false });
+        if (normalizedLimit > 0) retryQ = retryQ.limit(normalizedLimit);
+        const retry = await retryQ;
+        data = retry.data;
+        error = retry.error;
+      }
+
+      if (
+        table === "rinnovi_servizi" &&
+        select !== "*" &&
+        msg.includes("rinnovi_servizi.riferimento") &&
+        msg.includes("does not exist")
+      ) {
+        const retrySelect = stripSelectColumn(select, "riferimento");
+        let retryQ: any = supabaseAdmin.from(table).select(retrySelect);
+        for (const [k, v] of Object.entries(filter)) retryQ = retryQ.eq(k, v);
+        for (const [k, v] of Object.entries(filterIn)) retryQ = retryQ.in(k, v as any[]);
+        for (const o of order) retryQ = retryQ.order(o.col, { ascending: o.asc !== false });
+        if (normalizedLimit > 0) retryQ = retryQ.limit(normalizedLimit);
+        const retry = await retryQ;
+        data = (retry.data || []).map((row: any) => ({ ...row, riferimento: null }));
+        error = retry.error;
+      }
+    }
+    if (error) return dbFailure(table, op, { ...filter, ...filterIn }, error.message);
     return NextResponse.json({ ok: true, data: data || [] });
     }
 
