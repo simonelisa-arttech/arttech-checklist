@@ -910,6 +910,7 @@ export default function ClientePage({ params }: { params: any }) {
     Map<string, { toOperatoreId: string | null; toNome: string | null; createdAt: string }>
   >(new Map());
   const [alertStatsMap, setAlertStatsMap] = useState<Map<string, AlertStats>>(new Map());
+  const [initialClienteLoadDone, setInitialClienteLoadDone] = useState(false);
 
   const [toast, setToast] = useState<{ message: string; variant: "success" | "error" } | null>(
     null
@@ -931,6 +932,8 @@ export default function ClientePage({ params }: { params: any }) {
   const operatoriLoadingRef = useRef(false);
   const lastMountClienteKeyRef = useRef("");
   const alertStatsLoadKeyRef = useRef("");
+  const lastBulkAlertLoadKeyRef = useRef("");
+  const singleFlightRef = useRef<Map<string, Promise<any>>>(new Map());
   const [editIntervento, setEditIntervento] = useState({
     data: "",
     dataTassativa: "",
@@ -981,6 +984,21 @@ export default function ClientePage({ params }: { params: any }) {
     console.count(`[perf][cliente][fetch] ${label}`);
   }
 
+  function checklistIdsKey(ids?: string[] | null) {
+    if (!ids || ids.length === 0) return "";
+    return Array.from(new Set(ids.filter(Boolean))).sort().join(",");
+  }
+
+  async function runSingleFlight<T>(key: string, run: () => Promise<T>): Promise<T> {
+    const existing = singleFlightRef.current.get(key);
+    if (existing) return existing as Promise<T>;
+    const p = run().finally(() => {
+      singleFlightRef.current.delete(key);
+    });
+    singleFlightRef.current.set(key, p);
+    return p;
+  }
+
   async function loadAlertOperatori() {
     if (operatoriLoadedRef.current || operatoriLoadingRef.current) return;
     operatoriLoadingRef.current = true;
@@ -1023,17 +1041,19 @@ export default function ClientePage({ params }: { params: any }) {
 
   async function ensureAlertTemplatesLoaded() {
     if (alertTemplatesLoadedRef.current) return;
-    const { data, error } = await dbFrom("alert_message_templates")
-      .select("id,codice,titolo,tipo,trigger,subject_template,body_template,attivo")
-      .eq("attivo", true)
-      .eq("trigger", "MANUALE")
-      .order("titolo", { ascending: true });
-    if (error) {
-      console.error("Errore caricamento template avvisi", error);
-      return;
-    }
-    alertTemplatesLoadedRef.current = true;
-    setAlertTemplates((data || []) as AlertMessageTemplate[]);
+    await runSingleFlight("alert_message_templates:manuale:attivo", async () => {
+      const { data, error } = await dbFrom("alert_message_templates")
+        .select("id,codice,titolo,tipo,trigger,subject_template,body_template,attivo")
+        .eq("attivo", true)
+        .eq("trigger", "MANUALE")
+        .order("titolo", { ascending: true });
+      if (error) {
+        console.error("Errore caricamento template avvisi", error);
+        return;
+      }
+      alertTemplatesLoadedRef.current = true;
+      setAlertTemplates((data || []) as AlertMessageTemplate[]);
+    });
   }
 
   function getOperatoreNome(value?: string | null) {
@@ -1281,6 +1301,7 @@ export default function ClientePage({ params }: { params: any }) {
       setCliente(displayCliente);
       setClienteAnagraficaEmail(null);
       setLoading(true);
+      setInitialClienteLoadDone(false);
       setError(null);
 
       const clienteKey = decoded.trim();
@@ -1292,10 +1313,12 @@ export default function ClientePage({ params }: { params: any }) {
         setTagliandi([]);
         setInterventi([]);
         setLoading(false);
+        setInitialClienteLoadDone(true);
         return;
       }
       if (lastMountClienteKeyRef.current === normalizedClienteKey) {
         setLoading(false);
+        setInitialClienteLoadDone(true);
         return;
       }
       lastMountClienteKeyRef.current = normalizedClienteKey;
@@ -1329,6 +1352,7 @@ export default function ClientePage({ params }: { params: any }) {
       if (!dashboardRes.ok) {
         setError("Errore caricamento PROGETTI: " + (dashboardJson?.error || "errore API dashboard"));
         setLoading(false);
+        setInitialClienteLoadDone(true);
         return;
       }
 
@@ -1385,14 +1409,20 @@ export default function ClientePage({ params }: { params: any }) {
         setLicenze([]);
         setLicenzeError(null);
       } else {
+        const idsKey = checklistIdsKey(checklistIds);
         if (isPerfEnabled()) console.time(`[perf][cliente][mount#${mountRun}] db licenses`);
-        perfCountDb("licenses.select");
-        const { data: licData, error: licErr } = await dbFrom("licenses")
-          .select(
-            "id, checklist_id, tipo, scadenza, stato, status, note, intestata_a, ref_univoco, telefono, intestatario, gestore, fornitore, alert_sent_at, alert_to, alert_note, updated_by_operatore"
-          )
-          .in("checklist_id", checklistIds)
-          .order("scadenza", { ascending: true });
+        const { data: licData, error: licErr } = await runSingleFlight(
+          `licenses.select.by_checklist_id:${idsKey}`,
+          async () => {
+            perfCountDb("licenses.select");
+            return dbFrom("licenses")
+              .select(
+                "id, checklist_id, tipo, scadenza, stato, status, note, intestata_a, ref_univoco, telefono, intestatario, gestore, fornitore, alert_sent_at, alert_to, alert_note, updated_by_operatore"
+              )
+              .in("checklist_id", checklistIds)
+              .order("scadenza", { ascending: true });
+          }
+        );
         if (licErr) {
           setLicenzeError("Errore caricamento licenze: " + licErr.message);
           setLicenze([]);
@@ -1415,12 +1445,17 @@ export default function ClientePage({ params }: { params: any }) {
       if (isPerfEnabled()) console.timeEnd(`[perf][cliente][mount#${mountRun}] batch checklist data`);
 
       if (isPerfEnabled()) console.time(`[perf][cliente][mount#${mountRun}] db catalog_items`);
-      perfCountDb("catalog_items.select.saas_ul");
-      const { data: pianiData, error: pianiErr } = await dbFrom("catalog_items")
-        .select("codice, descrizione")
-        .eq("attivo", true)
-        .ilike("codice", "SAAS-UL%")
-        .order("codice", { ascending: true });
+      const { data: pianiData, error: pianiErr } = await runSingleFlight(
+        "catalog_items.select.saas_ul",
+        async () => {
+          perfCountDb("catalog_items.select.saas_ul");
+          return dbFrom("catalog_items")
+            .select("codice, descrizione")
+            .eq("attivo", true)
+            .ilike("codice", "SAAS-UL%")
+            .order("codice", { ascending: true });
+        }
+      );
 
       if (!pianiErr) {
         const mapped = ((pianiData || []) as any[])
@@ -1452,6 +1487,7 @@ export default function ClientePage({ params }: { params: any }) {
         });
       }
       setLoading(false);
+      setInitialClienteLoadDone(true);
       if (isPerfEnabled()) {
         console.timeEnd(`[perf][cliente][mount#${mountRun}] total`);
       }
@@ -1471,8 +1507,9 @@ export default function ClientePage({ params }: { params: any }) {
   }, [loading, cliente]);
 
   useEffect(() => {
+    if (!initialClienteLoadDone) return;
     fetchLastBulkAlert();
-  }, [checklists]);
+  }, [checklists, initialClienteLoadDone]);
 
   useEffect(() => {
     const stored =
@@ -1518,6 +1555,10 @@ export default function ClientePage({ params }: { params: any }) {
   async function loadInterventiForCliente(clienteKey: string, checklistIdsInput?: string[]) {
     const cleanCliente = String(clienteKey || "").trim();
     const checklistIds = (checklistIdsInput || []).filter(Boolean);
+    const loadKey = `saas_interventi.select:${cleanCliente.toLowerCase()}:${checklistIdsKey(
+      checklistIds
+    )}`;
+    return runSingleFlight(loadKey, async () => {
     if (!cleanCliente) {
       setInterventi([]);
       setInterventoFilesById(new Map());
@@ -1606,6 +1647,7 @@ export default function ClientePage({ params }: { params: any }) {
       }
       setLastAlertByIntervento(map);
     }
+    });
   }
 
   // Interventi are loaded in the main mount batch and refreshed by CRUD handlers.
@@ -1614,6 +1656,7 @@ export default function ClientePage({ params }: { params: any }) {
     let alive = true;
 
     (async () => {
+      if (!initialClienteLoadDone) return;
       if (autoFatturazioneInFlight.current) return;
       if (interventi.length === 0) return;
       if (alertOperatori.length === 0) return;
@@ -1644,14 +1687,17 @@ export default function ClientePage({ params }: { params: any }) {
         today.setHours(0, 0, 0, 0);
         const todayIso = today.toISOString();
 
-        const { data: existing, error: existingErr } = await dbFrom("checklist_alert_log")
-          .select("intervento_id, created_at")
-          .in(
-            "intervento_id",
-            eligible.map((i) => i.id)
-          )
-          .eq("canale", "fatturazione_auto")
-          .gte("created_at", todayIso);
+        const eligibleIds = eligible.map((i) => i.id).filter(Boolean);
+        const eligibleIdsKey = checklistIdsKey(eligibleIds);
+        const { data: existing, error: existingErr } = await runSingleFlight(
+          `checklist_alert_log.select.fatturazione_auto:${eligibleIdsKey}:${todayIso}`,
+          async () =>
+            dbFrom("checklist_alert_log")
+              .select("intervento_id, created_at")
+              .in("intervento_id", eligibleIds)
+              .eq("canale", "fatturazione_auto")
+              .gte("created_at", todayIso)
+        );
 
         if (!alive) return;
 
@@ -1710,7 +1756,7 @@ export default function ClientePage({ params }: { params: any }) {
     return () => {
       alive = false;
     };
-  }, [alertOperatori, cliente, interventi]);
+  }, [alertOperatori, cliente, interventi, initialClienteLoadDone]);
 
   function startEditIntervento(i: InterventoRow) {
     setEditInterventoId(i.id);
@@ -2130,6 +2176,7 @@ export default function ClientePage({ params }: { params: any }) {
   useEffect(() => {
     let alive = true;
     (async () => {
+      if (!initialClienteLoadDone) return;
       const checklistIds = Array.from(
         new Set(rinnoviAll.map((r) => r.checklist_id).filter(Boolean))
       ) as string[];
@@ -2141,9 +2188,13 @@ export default function ClientePage({ params }: { params: any }) {
         if (alive) setAlertStatsMap(new Map());
         return;
       }
-      const { data, error } = await dbFrom("checklist_alert_log")
-        .select("checklist_id, tipo, riferimento, to_operatore_id, to_email, created_at")
-        .in("checklist_id", checklistIdsSorted);
+      const { data, error } = await runSingleFlight(
+        `checklist_alert_log.select.by_checklist_id:${loadKey}`,
+        async () =>
+          dbFrom("checklist_alert_log")
+            .select("checklist_id, tipo, riferimento, to_operatore_id, to_email, created_at")
+            .in("checklist_id", checklistIdsSorted)
+      );
       if (!alive) return;
       if (error) {
         console.error("Errore lettura alert log scadenze", error);
@@ -2191,7 +2242,7 @@ export default function ClientePage({ params }: { params: any }) {
     return () => {
       alive = false;
     };
-  }, [rinnoviAll]);
+  }, [rinnoviAll, initialClienteLoadDone]);
 
   const exportRangeLabel = useMemo(() => {
     const from = exportFrom ? exportFrom.replaceAll("-", "") : "TUTTO";
@@ -2684,50 +2735,52 @@ export default function ClientePage({ params }: { params: any }) {
 
   async function fetchSaasContratti(clienteKey: string) {
     const key = (clienteKey || "").trim();
-    if (!key) return [];
-    perfCountDb("saas_contratti.select");
-    const { data: contrattiData, error: contrattiErr } = await dbFrom("saas_contratti")
-      .select("id, cliente, piano_codice, scadenza, interventi_annui, illimitati, created_at")
-      .eq("cliente", key)
-      .order("created_at", { ascending: false });
+    if (!key) return [] as ContrattoRow[];
+    return runSingleFlight(`saas_contratti.select:${key.toLowerCase()}`, async () => {
+      perfCountDb("saas_contratti.select");
+      const { data: contrattiData, error: contrattiErr } = await dbFrom("saas_contratti")
+        .select("id, cliente, piano_codice, scadenza, interventi_annui, illimitati, created_at")
+        .eq("cliente", key)
+        .order("created_at", { ascending: false });
 
-    if (contrattiErr) {
-      setContrattoError("Errore caricamento contratto: " + contrattiErr.message);
-      setContratto(null);
-      setContrattiRows([]);
-      return [];
-    }
+      if (contrattiErr) {
+        setContrattoError("Errore caricamento contratto: " + contrattiErr.message);
+        setContratto(null);
+        setContrattiRows([]);
+        return [] as ContrattoRow[];
+      }
 
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const rows = (contrattiData || []) as ContrattoRow[];
-    const active =
-      rows.find((r) => {
-        if (!r.scadenza) return true;
-        const dt = parseLocalDay(r.scadenza);
-        return dt != null && dt >= today;
-      }) || (rows.length > 0 ? rows[0] : null);
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const rows = (contrattiData || []) as ContrattoRow[];
+      const active =
+        rows.find((r) => {
+          if (!r.scadenza) return true;
+          const dt = parseLocalDay(r.scadenza);
+          return dt != null && dt >= today;
+        }) || (rows.length > 0 ? rows[0] : null);
 
-    setContratto(active);
-    setContrattiRows(rows);
-    setContrattoError(null);
-    if (active) {
-      setContrattoForm({
-        piano_codice: active.piano_codice ?? "",
-        scadenza: active.scadenza ?? "",
-        interventi_annui: active.interventi_annui != null ? String(active.interventi_annui) : "",
-        illimitati: Boolean(active.illimitati),
-      });
-    } else {
-      setContrattoForm({
-        piano_codice: "",
-        scadenza: "",
-        interventi_annui: "",
-        illimitati: false,
-      });
-    }
+      setContratto(active);
+      setContrattiRows(rows);
+      setContrattoError(null);
+      if (active) {
+        setContrattoForm({
+          piano_codice: active.piano_codice ?? "",
+          scadenza: active.scadenza ?? "",
+          interventi_annui: active.interventi_annui != null ? String(active.interventi_annui) : "",
+          illimitati: Boolean(active.illimitati),
+        });
+      } else {
+        setContrattoForm({
+          piano_codice: "",
+          scadenza: "",
+          interventi_annui: "",
+          illimitati: false,
+        });
+      }
 
-    return rows;
+      return rows;
+    });
   }
 
   async function saveContratto() {
@@ -3221,36 +3274,50 @@ export default function ClientePage({ params }: { params: any }) {
   async function fetchRinnovi(clienteKey: string, checklistIdsInput?: string[]) {
     if (!clienteKey) return [] as RinnovoServizioRow[];
     const checklistIds = (checklistIdsInput || []).filter(Boolean);
-    perfCountDb("rinnovi_servizi.select");
-    const base = dbFrom("rinnovi_servizi").select("*");
-    const q =
-      checklistIds.length > 0 ? base.in("checklist_id", checklistIds) : base.eq("cliente", clienteKey);
-    const { data, error } = await q.order("scadenza", { ascending: true });
-    if (error) {
-      setRinnoviError("Errore caricamento rinnovi: " + error.message);
-      return [] as RinnovoServizioRow[];
-    }
-    const rows = (data || []) as RinnovoServizioRow[];
-    setRinnovi(rows);
-    setRinnoviError(null);
-    return rows;
+    const loadKey = `rinnovi_servizi.select:${String(clienteKey || "")
+      .trim()
+      .toLowerCase()}:${checklistIdsKey(checklistIds)}`;
+    return runSingleFlight(loadKey, async () => {
+      perfCountDb("rinnovi_servizi.select");
+      const base = dbFrom("rinnovi_servizi").select("*");
+      const q =
+        checklistIds.length > 0
+          ? base.in("checklist_id", checklistIds)
+          : base.eq("cliente", clienteKey);
+      const { data, error } = await q.order("scadenza", { ascending: true });
+      if (error) {
+        setRinnoviError("Errore caricamento rinnovi: " + error.message);
+        return [] as RinnovoServizioRow[];
+      }
+      const rows = (data || []) as RinnovoServizioRow[];
+      setRinnovi(rows);
+      setRinnoviError(null);
+      return rows;
+    });
   }
 
   async function fetchTagliandi(clienteKey: string, checklistIdsInput?: string[]) {
     if (!clienteKey) return [] as TagliandoRow[];
     const checklistIds = (checklistIdsInput || []).filter(Boolean);
-    perfCountDb("tagliandi.select");
-    const base = dbFrom("tagliandi").select("*");
-    const q =
-      checklistIds.length > 0 ? base.in("checklist_id", checklistIds) : base.eq("cliente", clienteKey);
-    const { data, error } = await q.order("scadenza", { ascending: true });
-    if (error) {
-      setRinnoviError("Errore caricamento tagliandi: " + error.message);
-      return [] as TagliandoRow[];
-    }
-    const rows = (data || []) as TagliandoRow[];
-    setTagliandi(rows);
-    return rows;
+    const loadKey = `tagliandi.select:${String(clienteKey || "")
+      .trim()
+      .toLowerCase()}:${checklistIdsKey(checklistIds)}`;
+    return runSingleFlight(loadKey, async () => {
+      perfCountDb("tagliandi.select");
+      const base = dbFrom("tagliandi").select("*");
+      const q =
+        checklistIds.length > 0
+          ? base.in("checklist_id", checklistIds)
+          : base.eq("cliente", clienteKey);
+      const { data, error } = await q.order("scadenza", { ascending: true });
+      if (error) {
+        setRinnoviError("Errore caricamento tagliandi: " + error.message);
+        return [] as TagliandoRow[];
+      }
+      const rows = (data || []) as TagliandoRow[];
+      setTagliandi(rows);
+      return rows;
+    });
   }
 
   async function addTagliandoPeriodico() {
@@ -4790,19 +4857,26 @@ export default function ClientePage({ params }: { params: any }) {
 
   async function fetchLastBulkAlert() {
     const checklistIds = checklists.map((c) => c.id).filter(Boolean);
+    const loadKey = checklistIdsKey(checklistIds);
+    if (loadKey === lastBulkAlertLoadKeyRef.current) return;
+    lastBulkAlertLoadKeyRef.current = loadKey;
     if (checklistIds.length === 0) {
       setBulkLastSentAt(null);
       setBulkLastToOperatoreId(null);
       setBulkLastMessage(null);
       return;
     }
-    const { data, error } = await dbFrom("checklist_alert_log")
-      .select("created_at, to_operatore_id, checklist_id, messaggio")
-      .eq("canale", "fatturazione_bulk")
-      .in("checklist_id", checklistIds)
-      .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
+    const { data, error } = await runSingleFlight(
+      `checklist_alert_log.select.fatturazione_bulk:${loadKey}`,
+      async () =>
+        dbFrom("checklist_alert_log")
+          .select("created_at, to_operatore_id, checklist_id, messaggio")
+          .eq("canale", "fatturazione_bulk")
+          .in("checklist_id", checklistIds)
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle()
+    );
     if (error) {
       console.error("Errore lettura ultimo alert bulk", error);
       return;
