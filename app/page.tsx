@@ -454,7 +454,11 @@ export default function Page() {
   }, []);
 
   const showDebugAuth = process.env.NODE_ENV !== "production" || debugForcedByQuery;
-  const canAccessSettings = isAdminRole(currentOperatoreLabel?.ruolo);
+  const currentRoleNormalized = String(currentOperatoreLabel?.ruolo || "")
+    .trim()
+    .toUpperCase();
+  const canAccessSettings =
+    isAdminRole(currentOperatoreLabel?.ruolo) || currentRoleNormalized === "MAGAZZINO";
 
   function formatOperatoreRef(refId?: string | null) {
     if (!refId) return "—";
