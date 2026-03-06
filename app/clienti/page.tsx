@@ -74,7 +74,7 @@ export default function ClientiPage() {
   }, [loading, rows.length]);
 
   return (
-    <div style={{ maxWidth: 1100, margin: "24px auto", padding: 16 }}>
+    <div style={{ maxWidth: 1320, margin: "24px auto", padding: 16 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
         <div>
           <h1 style={{ margin: 0, fontSize: 34 }}>AT SYSTEM</h1>
@@ -132,20 +132,32 @@ export default function ClientiPage() {
 
       <div style={{ marginTop: 8, fontSize: 12, opacity: 0.7 }}>{countLabel}</div>
 
-      <div style={{ marginTop: 14, border: "1px solid #eee", borderRadius: 12 }}>
-        <table style={{ width: "100%", borderCollapse: "collapse" }}>
+      <div style={{ marginTop: 14, border: "1px solid #eee", borderRadius: 12, overflowX: "auto" }}>
+        <table style={{ width: "100%", minWidth: 1240, borderCollapse: "collapse", tableLayout: "fixed" }}>
+          <colgroup>
+            <col style={{ width: "28%" }} />
+            <col style={{ width: "9%" }} />
+            <col style={{ width: "12%" }} />
+            <col style={{ width: "6%" }} />
+            <col style={{ width: "9%" }} />
+            <col style={{ width: "16%" }} />
+            <col style={{ width: "20%" }} />
+            <col style={{ width: "11%" }} />
+            <col style={{ width: "7%" }} />
+            <col style={{ width: "10%" }} />
+          </colgroup>
           <thead>
             <tr style={{ textAlign: "left", fontSize: 12, opacity: 0.7 }}>
-              <th style={{ padding: "10px 12px" }}>Denominazione</th>
-              <th style={{ padding: "10px 12px" }}>Codice interno</th>
-              <th style={{ padding: "10px 12px" }}>Comune</th>
-              <th style={{ padding: "10px 12px" }}>Prov.</th>
-              <th style={{ padding: "10px 12px" }}>P.IVA</th>
-              <th style={{ padding: "10px 12px" }}>Codice fiscale</th>
-              <th style={{ padding: "10px 12px" }}>Email</th>
-              <th style={{ padding: "10px 12px" }}>Telefono</th>
-              <th style={{ padding: "10px 12px" }}>Stato</th>
-              <th style={{ padding: "10px 12px" }}>Azioni</th>
+              <th style={{ padding: "10px 12px", whiteSpace: "nowrap" }}>Denominazione</th>
+              <th style={{ padding: "10px 12px", whiteSpace: "nowrap" }}>Codice interno</th>
+              <th style={{ padding: "10px 12px", whiteSpace: "nowrap" }}>Comune</th>
+              <th style={{ padding: "10px 12px", whiteSpace: "nowrap" }}>Prov.</th>
+              <th style={{ padding: "10px 12px", whiteSpace: "nowrap" }}>P.IVA</th>
+              <th style={{ padding: "10px 12px", whiteSpace: "nowrap" }}>Codice fiscale</th>
+              <th style={{ padding: "10px 12px", whiteSpace: "nowrap" }}>Email</th>
+              <th style={{ padding: "10px 12px", whiteSpace: "nowrap" }}>Telefono</th>
+              <th style={{ padding: "10px 12px", whiteSpace: "nowrap" }}>Stato</th>
+              <th style={{ padding: "10px 12px", whiteSpace: "nowrap" }}>Azioni</th>
             </tr>
           </thead>
           <tbody>
@@ -158,20 +170,20 @@ export default function ClientiPage() {
             )}
             {rows.map((row) => (
               <tr key={row.id} style={{ borderTop: "1px solid #f1f1f1" }}>
-                <td style={{ padding: "10px 12px", fontWeight: 600 }}>
+                <td style={{ padding: "10px 12px", fontWeight: 600, verticalAlign: "top", wordBreak: "break-word" }}>
                   {row.denominazione}
                 </td>
-                <td style={{ padding: "10px 12px" }}>{row.codice_interno || "—"}</td>
-                <td style={{ padding: "10px 12px" }}>{row.comune || "—"}</td>
-                <td style={{ padding: "10px 12px" }}>{row.provincia || "—"}</td>
-                <td style={{ padding: "10px 12px" }}>{row.piva || "—"}</td>
-                <td style={{ padding: "10px 12px" }}>{row.codice_fiscale || "—"}</td>
-                <td style={{ padding: "10px 12px" }}>{row.email || "—"}</td>
-                <td style={{ padding: "10px 12px" }}>{row.telefono || "—"}</td>
-                <td style={{ padding: "10px 12px" }}>
+                <td style={{ padding: "10px 12px", verticalAlign: "top", wordBreak: "break-word" }}>{row.codice_interno || "—"}</td>
+                <td style={{ padding: "10px 12px", verticalAlign: "top", wordBreak: "break-word" }}>{row.comune || "—"}</td>
+                <td style={{ padding: "10px 12px", verticalAlign: "top" }}>{row.provincia || "—"}</td>
+                <td style={{ padding: "10px 12px", verticalAlign: "top", wordBreak: "break-word" }}>{row.piva || "—"}</td>
+                <td style={{ padding: "10px 12px", verticalAlign: "top", wordBreak: "break-word" }}>{row.codice_fiscale || "—"}</td>
+                <td style={{ padding: "10px 12px", verticalAlign: "top", wordBreak: "break-word" }}>{row.email || "—"}</td>
+                <td style={{ padding: "10px 12px", verticalAlign: "top", wordBreak: "break-word" }}>{row.telefono || "—"}</td>
+                <td style={{ padding: "10px 12px", verticalAlign: "top" }}>
                   {row.attivo === false ? "Disattivo" : "Attivo"}
                 </td>
-                <td style={{ padding: "10px 12px" }}>
+                <td style={{ padding: "10px 12px", verticalAlign: "top", whiteSpace: "nowrap" }}>
                   <button
                     type="button"
                     onClick={() => {

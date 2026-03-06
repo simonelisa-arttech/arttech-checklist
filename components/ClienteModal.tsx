@@ -30,6 +30,7 @@ type ClienteModalProps = {
 export default function ClienteModal({ open, onClose, initial, onSaved }: ClienteModalProps) {
   const [form, setForm] = useState<ClienteRecord>({
     denominazione: "",
+    attivo: true,
     codice_interno: "",
     comune: "",
     provincia: "",
@@ -51,6 +52,7 @@ export default function ClienteModal({ open, onClose, initial, onSaved }: Client
     setError(null);
     setForm({
       denominazione: initial?.denominazione || "",
+      attivo: initial?.attivo !== false,
       codice_interno: initial?.codice_interno || "",
       comune: initial?.comune || "",
       provincia: initial?.provincia || "",
@@ -78,6 +80,7 @@ export default function ClienteModal({ open, onClose, initial, onSaved }: Client
     try {
       const payload: ClienteRecord = {
         denominazione: form.denominazione.trim(),
+        attivo: form.attivo !== false,
         codice_interno: form.codice_interno?.trim() || null,
         comune: form.comune?.trim() || null,
         provincia: form.provincia?.trim() || null,
@@ -167,6 +170,17 @@ export default function ClienteModal({ open, onClose, initial, onSaved }: Client
             />
           </label>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <label>
+              Stato<br />
+              <select
+                value={form.attivo === false ? "0" : "1"}
+                onChange={(e) => setForm({ ...form, attivo: e.target.value === "1" })}
+                style={{ width: "100%", padding: 10 }}
+              >
+                <option value="1">Attivo</option>
+                <option value="0">Disattivo</option>
+              </select>
+            </label>
             <label>
               Codice interno<br />
               <input
