@@ -192,14 +192,105 @@ const TABLE_RULES: Record<
   },
 };
 
+function parseCookieHeader(cookieHeader: string | null) {
+  const out = new Map<string, string>();
+  if (!cookieHeader) return out;
+  for (const chunk of cookieHeader.split(";")) {
+    const part = chunk.trim();
+    if (!part) continue;
+    const idx = part.indexOf("=");
+    if (idx <= 0) continue;
+    const key = part.slice(0, idx).trim();
+    const value = part.slice(idx + 1).trim();
+    if (!key) continue;
+    out.set(key, value);
+  }
+  return out;
+}
+
+function tryDecodeCookieValue(raw: string) {
+  const unquoted = raw.replace(/^"(.*)"$/, "$1");
+  try {
+    return decodeURIComponent(unquoted);
+  } catch {
+    return unquoted;
+  }
+}
+
+function extractAccessTokenFromAuthCookieValue(raw: string) {
+  const decoded = tryDecodeCookieValue(raw);
+  if (!decoded) return "";
+
+  if (/^[A-Za-z0-9-_]+\.[A-Za-z0-9-_]+\.[A-Za-z0-9-_]+$/.test(decoded)) {
+    return decoded;
+  }
+
+  const parseJsonToken = (payload: any) => {
+    if (Array.isArray(payload) && typeof payload[0] === "string") return payload[0];
+    if (payload && typeof payload === "object" && typeof payload.access_token === "string") {
+      return payload.access_token;
+    }
+    return "";
+  };
+
+  try {
+    const parsed = JSON.parse(decoded);
+    const tok = parseJsonToken(parsed);
+    if (tok) return tok;
+  } catch {
+    // not json
+  }
+
+  if (decoded.startsWith("base64-")) {
+    try {
+      const b64 = decoded.slice("base64-".length);
+      const parsed = JSON.parse(Buffer.from(b64, "base64").toString("utf8"));
+      const tok = parseJsonToken(parsed);
+      if (tok) return tok;
+    } catch {
+      // ignore
+    }
+  }
+
+  return "";
+}
+
 function getAccessTokenFromCookieHeader(cookieHeader: string | null) {
-  if (!cookieHeader) return "";
-  const raw = cookieHeader
-    .split(";")
-    .map((s) => s.trim())
-    .find((s) => s.startsWith("sb-access-token="));
-  if (!raw) return "";
-  return raw.split("=").slice(1).join("=");
+  const cookies = parseCookieHeader(cookieHeader);
+
+  const direct = cookies.get("sb-access-token");
+  if (direct) return tryDecodeCookieValue(direct);
+
+  const authCookieNames = Array.from(cookies.keys()).filter((k) =>
+    /^sb-[a-z0-9]+-auth-token$/i.test(k)
+  );
+  for (const name of authCookieNames) {
+    const raw = cookies.get(name) || "";
+    const tok = extractAccessTokenFromAuthCookieValue(raw);
+    if (tok) return tok;
+  }
+
+  // Support chunked auth cookies: sb-<ref>-auth-token.0 / .1 / ...
+  const chunked = new Map<string, Array<{ idx: number; value: string }>>();
+  for (const [name, value] of cookies.entries()) {
+    const m = /^((?:sb-[a-z0-9]+-auth-token))\.(\d+)$/i.exec(name);
+    if (!m) continue;
+    const base = m[1];
+    const idx = Number(m[2]);
+    const list = chunked.get(base) || [];
+    list.push({ idx, value });
+    chunked.set(base, list);
+  }
+  for (const list of chunked.values()) {
+    const joined = list
+      .sort((a, b) => a.idx - b.idx)
+      .map((p) => p.value)
+      .join("");
+    const tok = extractAccessTokenFromAuthCookieValue(joined);
+    if (tok) return tok;
+  }
+
+  return "";
 }
 
 async function assertAuthenticated(request: Request) {
