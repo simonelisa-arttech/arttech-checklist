@@ -18,6 +18,10 @@ type OperatoreRow = {
   alert_tasks?: {
     task_template_ids: string[];
     all_task_status_change: boolean;
+    on_checklist_open: boolean;
+    allow_manual: boolean;
+    allow_automatic: boolean;
+    allow_scheduled: boolean;
   };
   isNew?: boolean;
 };
@@ -59,14 +63,29 @@ export default function OperatoriPage() {
   const [resettingOperatoreId, setResettingOperatoreId] = useState<string | null>(null);
   const [realigning, setRealigning] = useState(false);
 
+  function defaultAlertTasks() {
+    return {
+      task_template_ids: [] as string[],
+      all_task_status_change: false,
+      on_checklist_open: false,
+      allow_manual: true,
+      allow_automatic: true,
+      allow_scheduled: true,
+    };
+  }
+
   function normalizeAlertTasks(input: any) {
     if (!input) {
-      return { task_template_ids: [], all_task_status_change: false };
+      return defaultAlertTasks();
     }
     if (Array.isArray(input)) {
       return {
         task_template_ids: input.filter(Boolean).map(String),
         all_task_status_change: false,
+        on_checklist_open: false,
+        allow_manual: true,
+        allow_automatic: true,
+        allow_scheduled: true,
       };
     }
     if (typeof input === "object") {
@@ -74,9 +93,16 @@ export default function OperatoriPage() {
         ? input.task_template_ids.filter(Boolean).map(String)
         : [];
       const all = Boolean(input.all_task_status_change);
-      return { task_template_ids: ids, all_task_status_change: all };
+      return {
+        task_template_ids: ids,
+        all_task_status_change: all,
+        on_checklist_open: Boolean(input.on_checklist_open),
+        allow_manual: input.allow_manual !== false,
+        allow_automatic: input.allow_automatic !== false,
+        allow_scheduled: input.allow_scheduled !== false,
+      };
     }
-    return { task_template_ids: [], all_task_status_change: false };
+    return defaultAlertTasks();
   }
 
   async function loadOperatori() {
@@ -156,7 +182,7 @@ export default function OperatoriPage() {
         attivo: true,
         alert_enabled: false,
         riceve_notifiche: true,
-        alert_tasks: { task_template_ids: [], all_task_status_change: false },
+        alert_tasks: defaultAlertTasks(),
         isNew: true,
       },
       ...prev,
@@ -171,7 +197,9 @@ export default function OperatoriPage() {
     });
   }
 
-  async function saveRow(row: OperatoreRow) {
+  async function saveRowByIndex(idx: number) {
+    const row = rows[idx];
+    if (!row) return;
     const payload = {
       id: row.id,
       nome: row.nome.trim() ? row.nome.trim() : null,
@@ -239,7 +267,7 @@ export default function OperatoriPage() {
         attivo: true,
         alert_enabled: true,
         riceve_notifiche: true,
-        alert_tasks: { task_template_ids: [], all_task_status_change: false },
+        alert_tasks: defaultAlertTasks(),
       };
       const res = await fetch("/api/operatori", {
         method: "POST",
@@ -683,7 +711,7 @@ export default function OperatoriPage() {
                     </button>
                     <button
                       type="button"
-                      onClick={() => saveRow(row)}
+                      onClick={() => saveRowByIndex(idx)}
                       style={{
                         padding: "6px 10px",
                         borderRadius: 8,
@@ -806,6 +834,87 @@ export default function OperatoriPage() {
                         />
                         ALL_TASK_STATUS_CHANGE
                       </label>
+                      <div
+                        style={{
+                          marginTop: 4,
+                          paddingTop: 10,
+                          borderTop: "1px dashed #e5e7eb",
+                          display: "grid",
+                          gap: 6,
+                        }}
+                      >
+                        <div style={{ fontSize: 12, fontWeight: 700, opacity: 0.75 }}>
+                          Canali / trigger email
+                        </div>
+                        <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          <input
+                            type="checkbox"
+                            disabled={!row.alert_enabled}
+                            checked={Boolean(normalizeAlertTasks(row.alert_tasks).on_checklist_open)}
+                            onChange={(e) => {
+                              const current = normalizeAlertTasks(row.alert_tasks);
+                              updateRow(idx, {
+                                alert_tasks: {
+                                  ...current,
+                                  on_checklist_open: e.target.checked,
+                                },
+                              });
+                            }}
+                          />
+                          Apertura checklist
+                        </label>
+                        <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          <input
+                            type="checkbox"
+                            disabled={!row.alert_enabled}
+                            checked={Boolean(normalizeAlertTasks(row.alert_tasks).allow_manual)}
+                            onChange={(e) => {
+                              const current = normalizeAlertTasks(row.alert_tasks);
+                              updateRow(idx, {
+                                alert_tasks: {
+                                  ...current,
+                                  allow_manual: e.target.checked,
+                                },
+                              });
+                            }}
+                          />
+                          Invio manuale
+                        </label>
+                        <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          <input
+                            type="checkbox"
+                            disabled={!row.alert_enabled}
+                            checked={Boolean(normalizeAlertTasks(row.alert_tasks).allow_automatic)}
+                            onChange={(e) => {
+                              const current = normalizeAlertTasks(row.alert_tasks);
+                              updateRow(idx, {
+                                alert_tasks: {
+                                  ...current,
+                                  allow_automatic: e.target.checked,
+                                },
+                              });
+                            }}
+                          />
+                          Invio automatico
+                        </label>
+                        <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                          <input
+                            type="checkbox"
+                            disabled={!row.alert_enabled}
+                            checked={Boolean(normalizeAlertTasks(row.alert_tasks).allow_scheduled)}
+                            onChange={(e) => {
+                              const current = normalizeAlertTasks(row.alert_tasks);
+                              updateRow(idx, {
+                                alert_tasks: {
+                                  ...current,
+                                  allow_scheduled: e.target.checked,
+                                },
+                              });
+                            }}
+                          />
+                          Invio programmato
+                        </label>
+                      </div>
                     </div>
                   </div>
                 )}

@@ -189,6 +189,10 @@ type AlertOperatore = {
   alert_tasks: {
     task_template_ids: string[];
     all_task_status_change: boolean;
+    on_checklist_open: boolean;
+    allow_manual: boolean;
+    allow_automatic: boolean;
+    allow_scheduled: boolean;
   };
 };
 
@@ -1064,12 +1068,23 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
 
   function normalizeAlertTasks(input: any) {
     if (!input) {
-      return { task_template_ids: [], all_task_status_change: false };
+      return {
+        task_template_ids: [],
+        all_task_status_change: false,
+        on_checklist_open: false,
+        allow_manual: true,
+        allow_automatic: true,
+        allow_scheduled: true,
+      };
     }
     if (Array.isArray(input)) {
       return {
         task_template_ids: input.filter(Boolean).map(String),
         all_task_status_change: false,
+        on_checklist_open: false,
+        allow_manual: true,
+        allow_automatic: true,
+        allow_scheduled: true,
       };
     }
     if (typeof input === "object") {
@@ -1077,9 +1092,23 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
         ? input.task_template_ids.filter(Boolean).map(String)
         : [];
       const all = Boolean(input.all_task_status_change);
-      return { task_template_ids: ids, all_task_status_change: all };
+      return {
+        task_template_ids: ids,
+        all_task_status_change: all,
+        on_checklist_open: Boolean(input.on_checklist_open),
+        allow_manual: input.allow_manual !== false,
+        allow_automatic: input.allow_automatic !== false,
+        allow_scheduled: input.allow_scheduled !== false,
+      };
     }
-    return { task_template_ids: [], all_task_status_change: false };
+    return {
+      task_template_ids: [],
+      all_task_status_change: false,
+      on_checklist_open: false,
+      allow_manual: true,
+      allow_automatic: true,
+      allow_scheduled: true,
+    };
   }
 
 function buildFormData(c: Checklist): FormData {
@@ -2107,18 +2136,22 @@ function buildFormData(c: Checklist): FormData {
     });
   }
 
-  function getEligibleOperatori(task: ChecklistTask | null) {
+  function getEligibleOperatori(task: ChecklistTask | null, channel: "manual" | "automatic" | "scheduled" = "manual") {
     if (!task) return [];
     const taskTarget = normalizeRuleTargetValue(task.target);
     const strict = alertOperatori.filter((o) => {
       if (!o.attivo) return false;
       if (!isSameClienteOperator(checklist?.cliente, o.cliente)) return false;
+      const prefs = normalizeAlertTasks(o.alert_tasks);
+      if (channel === "manual" && !prefs.allow_manual) return false;
+      if (channel === "automatic" && !prefs.allow_automatic) return false;
+      if (channel === "scheduled" && !prefs.allow_scheduled) return false;
       const roleTarget = normalizeRuleTargetValue(o.ruolo);
       if (taskTarget !== "GENERICA" && roleTarget === taskTarget) return true;
       if (!o.alert_enabled) return false;
-      if (o.alert_tasks?.all_task_status_change) return true;
+      if (prefs.all_task_status_change) return true;
       if (!task.task_template_id) return true;
-      return o.alert_tasks?.task_template_ids?.includes(task.task_template_id);
+      return prefs.task_template_ids?.includes(task.task_template_id);
     });
     if (strict.length > 0) return strict;
 

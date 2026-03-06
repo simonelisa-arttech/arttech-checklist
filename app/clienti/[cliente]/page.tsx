@@ -450,12 +450,23 @@ function renderStatoInterventoBadge(label: string) {
 
 function normalizeAlertTasks(input: any) {
   if (!input) {
-    return { task_template_ids: [], all_task_status_change: false };
+    return {
+      task_template_ids: [],
+      all_task_status_change: false,
+      on_checklist_open: false,
+      allow_manual: true,
+      allow_automatic: true,
+      allow_scheduled: true,
+    };
   }
   if (Array.isArray(input)) {
     return {
       task_template_ids: input.filter(Boolean).map(String),
       all_task_status_change: false,
+      on_checklist_open: false,
+      allow_manual: true,
+      allow_automatic: true,
+      allow_scheduled: true,
     };
   }
   if (typeof input === "object") {
@@ -463,9 +474,23 @@ function normalizeAlertTasks(input: any) {
       ? input.task_template_ids.filter(Boolean).map(String)
       : [];
     const all = Boolean(input.all_task_status_change);
-    return { task_template_ids: ids, all_task_status_change: all };
+    return {
+      task_template_ids: ids,
+      all_task_status_change: all,
+      on_checklist_open: Boolean(input.on_checklist_open),
+      allow_manual: input.allow_manual !== false,
+      allow_automatic: input.allow_automatic !== false,
+      allow_scheduled: input.allow_scheduled !== false,
+    };
   }
-  return { task_template_ids: [], all_task_status_change: false };
+  return {
+    task_template_ids: [],
+    all_task_status_change: false,
+    on_checklist_open: false,
+    allow_manual: true,
+    allow_automatic: true,
+    allow_scheduled: true,
+  };
 }
 
 function getInterventoStato(i: InterventoRow): "APERTO" | "CHIUSO" {
@@ -688,6 +713,10 @@ type OperatoreRow = {
   alert_tasks?: {
     task_template_ids: string[];
     all_task_status_change: boolean;
+    on_checklist_open: boolean;
+    allow_manual: boolean;
+    allow_automatic: boolean;
+    allow_scheduled: boolean;
   } | null;
 };
 
@@ -1577,9 +1606,11 @@ export default function ClientePage({ params }: { params: any }) {
 
       const recipients = alertOperatori.filter((o) => {
         const ruolo = String(o.ruolo || "").toUpperCase();
+        const prefs = normalizeAlertTasks(o.alert_tasks);
         return (
           o.attivo !== false &&
-          (ruolo === "AMMINISTRAZIONE" || o.alert_tasks?.all_task_status_change)
+          prefs.allow_automatic &&
+          (ruolo === "AMMINISTRAZIONE" || prefs.all_task_status_change)
         );
       });
       if (recipients.length === 0) return;

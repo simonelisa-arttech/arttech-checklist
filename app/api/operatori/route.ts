@@ -14,6 +14,10 @@ type OperatorePayload = {
   alert_tasks: {
     task_template_ids: string[];
     all_task_status_change: boolean;
+    on_checklist_open?: boolean;
+    allow_manual?: boolean;
+    allow_automatic?: boolean;
+    allow_scheduled?: boolean;
   };
 };
 

@@ -95,7 +95,14 @@ export async function POST(request: NextRequest) {
       email: emailNorm,
       attivo: true,
       alert_enabled: false,
-      alert_tasks: { task_template_ids: [], all_task_status_change: false },
+      alert_tasks: {
+        task_template_ids: [],
+        all_task_status_change: false,
+        on_checklist_open: false,
+        allow_manual: true,
+        allow_automatic: true,
+        allow_scheduled: true,
+      },
     });
     if (createErr) {
       return NextResponse.json(

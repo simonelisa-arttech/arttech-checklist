@@ -142,12 +142,20 @@ type OperatoreRecipientRow = {
   attivo: boolean | null;
   riceve_notifiche?: boolean | null;
   alert_enabled?: boolean | null;
+  alert_tasks?: {
+    task_template_ids?: string[];
+    all_task_status_change?: boolean;
+    on_checklist_open?: boolean;
+    allow_manual?: boolean;
+    allow_automatic?: boolean;
+    allow_scheduled?: boolean;
+  } | null;
 };
 
 async function listOperatoriForNotifications(adminClient: any): Promise<OperatoreRecipientRow[]> {
   const withRiceve = await adminClient
     .from("operatori")
-    .select("nome, email, ruolo, attivo, riceve_notifiche")
+    .select("nome, email, ruolo, attivo, riceve_notifiche, alert_tasks")
     .eq("attivo", true);
   if (!withRiceve.error) return (withRiceve.data || []) as OperatoreRecipientRow[];
   if (!isMissingColumn(withRiceve.error, "riceve_notifiche")) {
@@ -156,7 +164,7 @@ async function listOperatoriForNotifications(adminClient: any): Promise<Operator
 
   const fallback = await adminClient
     .from("operatori")
-    .select("nome, email, ruolo, attivo, alert_enabled")
+    .select("nome, email, ruolo, attivo, alert_enabled, alert_tasks")
     .eq("attivo", true);
   if (fallback.error) throw new Error(fallback.error.message);
   return ((fallback.data || []) as OperatoreRecipientRow[]).map((o) => ({
@@ -165,13 +173,25 @@ async function listOperatoriForNotifications(adminClient: any): Promise<Operator
   }));
 }
 
-function buildAutoRecipients(target: string, operatori: OperatoreRecipientRow[]) {
+function operatorAllowsRule(rule: any, operatore: OperatoreRecipientRow) {
+  const prefs = operatore.alert_tasks && typeof operatore.alert_tasks === "object"
+    ? operatore.alert_tasks
+    : null;
+  if (!prefs) return true;
+  const mode = String(rule?.mode || "AUTOMATICA").toUpperCase();
+  if (mode === "MANUALE") return prefs.allow_manual !== false;
+  if (rule?.send_on_create === true) return prefs.allow_automatic !== false;
+  return prefs.allow_scheduled !== false;
+}
+
+function buildAutoRecipients(rule: any, target: string, operatori: OperatoreRecipientRow[]) {
   const normalizedTarget = normalizeTarget(target);
   return Array.from(
     new Set(
       operatori
         .filter((o) => normalizeTarget(o.ruolo) === normalizedTarget)
         .filter((o) => o.riceve_notifiche !== false)
+        .filter((o) => operatorAllowsRule(rule, o))
         .map((o) => String(o.email || "").trim().toLowerCase())
         .filter((email) => email.includes("@"))
     )
@@ -237,7 +257,7 @@ function resolveExtraRecipientsFromTokens(tokens: string[], operatori: Operatore
 
 function withRecipients(rule: any, operatori: OperatoreRecipientRow[]) {
   const extra_recipients = sanitizeEmailList(rule?.recipients);
-  const auto_recipients = buildAutoRecipients(String(rule?.target || "GENERICA"), operatori);
+  const auto_recipients = buildAutoRecipients(rule, String(rule?.target || "GENERICA"), operatori);
   const effective_recipients = Array.from(new Set([...auto_recipients, ...extra_recipients]));
   return {
     ...(rule || {}),

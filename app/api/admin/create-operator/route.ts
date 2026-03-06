@@ -127,7 +127,14 @@ export async function POST(request: Request) {
       user_id: userId,
       alert_enabled: true,
       riceve_notifiche: true,
-      alert_tasks: { task_template_ids: [], all_task_status_change: false },
+      alert_tasks: {
+        task_template_ids: [],
+        all_task_status_change: false,
+        on_checklist_open: false,
+        allow_manual: true,
+        allow_automatic: true,
+        allow_scheduled: true,
+      },
     });
     if (insErr && String(insErr.message || "").toLowerCase().includes("riceve_notifiche")) {
       const fallback = await adminClient.from("operatori").insert({
@@ -137,7 +144,14 @@ export async function POST(request: Request) {
         attivo: true,
         user_id: userId,
         alert_enabled: true,
-        alert_tasks: { task_template_ids: [], all_task_status_change: false },
+        alert_tasks: {
+          task_template_ids: [],
+          all_task_status_change: false,
+          on_checklist_open: false,
+          allow_manual: true,
+          allow_automatic: true,
+          allow_scheduled: true,
+        },
       });
       insErr = fallback.error as any;
     }
