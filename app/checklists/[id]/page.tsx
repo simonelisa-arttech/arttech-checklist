@@ -598,7 +598,7 @@ const ACTIONS_BY_TIPO: Record<
   LICENZA: { avviso: true, conferma: true, non_rinnovato: true, fattura: true },
   TAGLIANDO: { avviso: true, conferma: true, non_rinnovato: true, fattura: true },
   SAAS: { avviso: true, conferma: true, non_rinnovato: true, fattura: true },
-  GARANZIA: { avviso: false, conferma: false, non_rinnovato: false, fattura: false },
+  GARANZIA: { avviso: true, conferma: true, non_rinnovato: true, fattura: true },
 };
 
 function getNextLicenzaScadenza(licenze: Array<{ scadenza?: string | null }>) {
@@ -1527,149 +1527,42 @@ function buildFormData(c: Checklist): FormData {
       return;
     }
 
-    if (isPerfEnabled()) console.time(`[perf][checklist][load#${loadSeq}] fetch tasks`);
+    if (isPerfEnabled()) console.time(`[perf][checklist][load#${loadSeq}] parallel datasets`);
     perfCountFetch("GET /api/checklists/:id/tasks");
-    const tasksRes = await fetch(`/api/checklists/${id}/tasks`, { cache: "no-store" });
-    const tasksJson = await tasksRes.json().catch(() => ({}));
-    if (isPerfEnabled()) console.timeEnd(`[perf][checklist][load#${loadSeq}] fetch tasks`);
-    const tasks = (tasksJson?.tasks as any[]) || [];
-    const tasksErr = tasksRes.ok ? null : { message: tasksJson?.error || "Errore caricamento task" };
-
-    if (tasksErr) {
-      setError("Errore caricamento task: " + tasksErr.message);
-      setLoading(false);
-      return;
-    }
-
-    if (isPerfEnabled()) console.time(`[perf][checklist][load#${loadSeq}] fetch licenses`);
     perfCountFetch("GET /api/checklists/:id/licenses");
-    const licenzeRes = await fetch(`/api/checklists/${id}/licenses`, { cache: "no-store" });
-    const licenzeJson = await licenzeRes.json().catch(() => ({}));
-    if (isPerfEnabled()) console.timeEnd(`[perf][checklist][load#${loadSeq}] fetch licenses`);
-    const licenzeData = (licenzeJson?.licenses as any[]) || [];
-    const licenzeErr = licenzeRes.ok
-      ? null
-      : { message: licenzeJson?.error || "Errore caricamento licenze" };
-
-    if (licenzeErr) {
-      setError("Errore caricamento licenze: " + licenzeErr.message);
-      setLoading(false);
-      return;
-    }
-
-    if (isPerfEnabled()) console.time(`[perf][checklist][load#${loadSeq}] fetch tagliandi`);
     perfCountFetch("GET /api/checklists/:id/tagliandi");
-    const tagliandiRes = await fetch(`/api/checklists/${id}/tagliandi`, { cache: "no-store" });
-    const tagliandiJson = await tagliandiRes.json().catch(() => ({}));
-    if (isPerfEnabled()) console.timeEnd(`[perf][checklist][load#${loadSeq}] fetch tagliandi`);
-    const tagliandiData = (tagliandiJson?.tagliandi as any[]) || [];
-    const tagliandiErr = tagliandiRes.ok
-      ? null
-      : { message: tagliandiJson?.error || "Errore caricamento tagliandi" };
-
-    if (tagliandiErr) {
-      setError("Errore caricamento tagliandi: " + tagliandiErr.message);
-      setLoading(false);
-      return;
-    }
-
-    if (isPerfEnabled()) console.time(`[perf][checklist][load#${loadSeq}] db rinnovi_servizi`);
-    let rinnoviSelect =
-      "id, checklist_id, item_tipo, scadenza, stato, riferimento, descrizione, note";
-    let { data: rinnoviDataRaw, error: rinnoviErr } = await db<any[]>({
-      table: "rinnovi_servizi",
-      op: "select",
-      select: rinnoviSelect,
-      filter: { checklist_id: id },
-      order: [{ col: "scadenza", asc: true }],
-      limit: 1000,
-    });
-    if (rinnoviErr && String(rinnoviErr.message || "").toLowerCase().includes("riferimento")) {
-      rinnoviSelect = "id, checklist_id, item_tipo, scadenza, stato, descrizione, note";
-      const retry = await db<any[]>({
-        table: "rinnovi_servizi",
-        op: "select",
-        select: rinnoviSelect,
-        filter: { checklist_id: id },
-        order: [{ col: "scadenza", asc: true }],
-        limit: 1000,
-      });
-      rinnoviDataRaw = (retry.data || []).map((r: any) => ({ ...r, riferimento: null }));
-      rinnoviErr = retry.error;
-    }
-    if (rinnoviErr && String(rinnoviErr.message || "").toLowerCase().includes("descrizione")) {
-      rinnoviSelect = "id, checklist_id, item_tipo, scadenza, stato, note";
-      const retry = await db<any[]>({
-        table: "rinnovi_servizi",
-        op: "select",
-        select: rinnoviSelect,
-        filter: { checklist_id: id },
-        order: [{ col: "scadenza", asc: true }],
-        limit: 1000,
-      });
-      rinnoviDataRaw = (retry.data || []).map((r: any) => ({
-        ...r,
-        riferimento: null,
-        descrizione: null,
-      }));
-      rinnoviErr = retry.error;
-    }
-    if (isPerfEnabled()) console.timeEnd(`[perf][checklist][load#${loadSeq}] db rinnovi_servizi`);
-    const rinnoviData = (rinnoviDataRaw || []) as ProjectRinnovoRow[];
-    if (rinnoviErr) {
-      setError("Errore caricamento rinnovi: " + rinnoviErr.message);
-      setLoading(false);
-      return;
-    }
-
-    if (isPerfEnabled()) console.time(`[perf][checklist][load#${loadSeq}] fetch documents`);
     perfCountFetch("GET /api/checklists/:id/documents");
-    const docsRes = await fetch(`/api/checklists/${id}/documents`, { cache: "no-store" });
-    const docsJson = await docsRes.json().catch(() => ({}));
-    if (isPerfEnabled()) console.timeEnd(`[perf][checklist][load#${loadSeq}] fetch documents`);
-    const docsData = (docsJson?.documents as any[]) || [];
-    const docsErr = docsRes.ok
-      ? null
-      : { message: docsJson?.error || "Errore caricamento documenti" };
-
-    if (docsErr) {
-      setError("Errore caricamento documenti: " + docsErr.message);
-      setLoading(false);
-      return;
-    }
-
-    let taskDocsData: any[] = [];
-    if (isPerfEnabled()) console.time(`[perf][checklist][load#${loadSeq}] db checklist_task_documents`);
-    {
-      const { data, error } = await db<any[]>({
-        table: "checklist_task_documents",
-        op: "select",
-        select: "id, checklist_id, task_id, filename, storage_path, uploaded_at, uploaded_by_operatore",
-        filter: { checklist_id: id },
-        order: [{ col: "uploaded_at", asc: false }],
-      });
-      if (error) {
-        const msg = String(error.message || "").toLowerCase();
-        const missingTable =
-          msg.includes("checklist_task_documents") &&
-          (msg.includes("does not exist") ||
-            msg.includes("relation") ||
-            msg.includes("could not find the table") ||
-            msg.includes("schema cache"));
-        if (!missingTable) {
-          setError("Errore caricamento allegati task: " + error.message);
-          setLoading(false);
-          return;
-        }
-      } else {
-        taskDocsData = (data || []) as any[];
-      }
-    }
-    if (isPerfEnabled()) console.timeEnd(`[perf][checklist][load#${loadSeq}] db checklist_task_documents`);
-
-    if (isPerfEnabled()) console.time(`[perf][checklist][load#${loadSeq}] fetch asset_serials`);
     perfCountFetch("POST /api/db asset_serials");
-    const serialsRes = await fetch("/api/db", {
+
+    const tasksPromise = fetch(`/api/checklists/${id}/tasks`, { cache: "no-store" }).then(async (res) => {
+      const json = await res.json().catch(() => ({}));
+      return {
+        data: (json?.tasks as any[]) || [],
+        error: res.ok ? null : { message: json?.error || "Errore caricamento task" },
+      };
+    });
+    const licenzePromise = fetch(`/api/checklists/${id}/licenses`, { cache: "no-store" }).then(async (res) => {
+      const json = await res.json().catch(() => ({}));
+      return {
+        data: (json?.licenses as any[]) || [],
+        error: res.ok ? null : { message: json?.error || "Errore caricamento licenze" },
+      };
+    });
+    const tagliandiPromise = fetch(`/api/checklists/${id}/tagliandi`, { cache: "no-store" }).then(async (res) => {
+      const json = await res.json().catch(() => ({}));
+      return {
+        data: (json?.tagliandi as any[]) || [],
+        error: res.ok ? null : { message: json?.error || "Errore caricamento tagliandi" },
+      };
+    });
+    const docsPromise = fetch(`/api/checklists/${id}/documents`, { cache: "no-store" }).then(async (res) => {
+      const json = await res.json().catch(() => ({}));
+      return {
+        data: (json?.documents as any[]) || [],
+        error: res.ok ? null : { message: json?.error || "Errore caricamento documenti" },
+      };
+    });
+    const serialsPromise = fetch("/api/db", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       cache: "no-store",
@@ -1680,17 +1573,134 @@ function buildFormData(c: Checklist): FormData {
         filter: { checklist_id: id },
         order: [{ col: "created_at", asc: true }],
       }),
+    }).then(async (res) => {
+      const json = await res.json().catch(() => ({}));
+      return {
+        data: (json?.data as any[]) || [],
+        error:
+          res.ok && json?.ok !== false
+            ? null
+            : { message: json?.error || "Errore caricamento seriali" },
+      };
     });
-    const serialsJson = await serialsRes.json().catch(() => ({}));
-    if (isPerfEnabled()) console.timeEnd(`[perf][checklist][load#${loadSeq}] fetch asset_serials`);
-    const serialsData = (serialsJson?.data as any[]) || [];
-    const serialsErr =
-      serialsRes.ok && serialsJson?.ok !== false
-        ? null
-        : { message: serialsJson?.error || "Errore caricamento seriali" };
+    const taskDocsPromise = db<any[]>({
+      table: "checklist_task_documents",
+      op: "select",
+      select: "id, checklist_id, task_id, filename, storage_path, uploaded_at, uploaded_by_operatore",
+      filter: { checklist_id: id },
+      order: [{ col: "uploaded_at", asc: false }],
+    });
+    const rinnoviPromise = (async () => {
+      let rinnoviSelect = "id, checklist_id, item_tipo, scadenza, stato, riferimento, descrizione, note";
+      let { data: rinnoviDataRaw, error: rinnoviErr } = await db<any[]>({
+        table: "rinnovi_servizi",
+        op: "select",
+        select: rinnoviSelect,
+        filter: { checklist_id: id },
+        order: [{ col: "scadenza", asc: true }],
+        limit: 1000,
+      });
+      if (rinnoviErr && String(rinnoviErr.message || "").toLowerCase().includes("riferimento")) {
+        rinnoviSelect = "id, checklist_id, item_tipo, scadenza, stato, descrizione, note";
+        const retry = await db<any[]>({
+          table: "rinnovi_servizi",
+          op: "select",
+          select: rinnoviSelect,
+          filter: { checklist_id: id },
+          order: [{ col: "scadenza", asc: true }],
+          limit: 1000,
+        });
+        rinnoviDataRaw = (retry.data || []).map((r: any) => ({ ...r, riferimento: null }));
+        rinnoviErr = retry.error;
+      }
+      if (rinnoviErr && String(rinnoviErr.message || "").toLowerCase().includes("descrizione")) {
+        rinnoviSelect = "id, checklist_id, item_tipo, scadenza, stato, note";
+        const retry = await db<any[]>({
+          table: "rinnovi_servizi",
+          op: "select",
+          select: rinnoviSelect,
+          filter: { checklist_id: id },
+          order: [{ col: "scadenza", asc: true }],
+          limit: 1000,
+        });
+        rinnoviDataRaw = (retry.data || []).map((r: any) => ({
+          ...r,
+          riferimento: null,
+          descrizione: null,
+        }));
+        rinnoviErr = retry.error;
+      }
+      return { data: (rinnoviDataRaw || []) as ProjectRinnovoRow[], error: rinnoviErr };
+    })();
 
-    if (serialsErr) {
-      setError("Errore caricamento seriali: " + serialsErr.message);
+    const [tasksResult, licenzeResult, tagliandiResult, docsResult, serialsResult, taskDocsResult, rinnoviResult] =
+      await Promise.all([
+        tasksPromise,
+        licenzePromise,
+        tagliandiPromise,
+        docsPromise,
+        serialsPromise,
+        taskDocsPromise,
+        rinnoviPromise,
+      ]);
+    if (isPerfEnabled()) console.timeEnd(`[perf][checklist][load#${loadSeq}] parallel datasets`);
+
+    const tasks = tasksResult.data;
+    if (tasksResult.error) {
+      setError("Errore caricamento task: " + tasksResult.error.message);
+      setLoading(false);
+      return;
+    }
+
+    const licenzeData = licenzeResult.data;
+    if (licenzeResult.error) {
+      setError("Errore caricamento licenze: " + licenzeResult.error.message);
+      setLoading(false);
+      return;
+    }
+
+    const tagliandiData = tagliandiResult.data;
+    if (tagliandiResult.error) {
+      setError("Errore caricamento tagliandi: " + tagliandiResult.error.message);
+      setLoading(false);
+      return;
+    }
+
+    const rinnoviData = rinnoviResult.data;
+    if (rinnoviResult.error) {
+      setError("Errore caricamento rinnovi: " + rinnoviResult.error.message);
+      setLoading(false);
+      return;
+    }
+
+    const docsData = docsResult.data;
+    if (docsResult.error) {
+      setError("Errore caricamento documenti: " + docsResult.error.message);
+      setLoading(false);
+      return;
+    }
+
+    let taskDocsData: any[] = [];
+    if (taskDocsResult.error) {
+      const msg = String(taskDocsResult.error.message || "").toLowerCase();
+      const missingTable =
+        msg.includes("checklist_task_documents") &&
+        (msg.includes("does not exist") ||
+          msg.includes("relation") ||
+          msg.includes("could not find the table") ||
+          msg.includes("schema cache"));
+      if (!missingTable) {
+        setError("Errore caricamento allegati task: " + taskDocsResult.error.message);
+        setLoading(false);
+        return;
+      }
+    } else {
+      taskDocsData = (taskDocsResult.data || []) as any[];
+    }
+
+    const serialsData = serialsResult.data;
+    if (serialsResult.error) {
+      setError("Errore caricamento seriali: " + serialsResult.error.message);
       setLoading(false);
       return;
     }

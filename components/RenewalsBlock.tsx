@@ -77,6 +77,8 @@ export default function RenewalsBlock({
   tagliandoModalita,
   rinnovoStati,
 }: Props) {
+  const tableGrid = "88px minmax(230px,1.6fr) 130px 140px 140px 120px minmax(430px,1.9fr)";
+
   return (
     <>
       {rinnoviError && <div style={{ marginTop: 6, color: "crimson", fontSize: 12 }}>{rinnoviError}</div>}
@@ -91,20 +93,22 @@ export default function RenewalsBlock({
             marginTop: 10,
             border: "1px solid #eee",
             borderRadius: 12,
-            overflow: "hidden",
+            overflowX: "auto",
+            overflowY: "hidden",
             background: "white",
           }}
         >
           <div
             style={{
               display: "grid",
-              gridTemplateColumns: "72px minmax(170px,1.3fr) 112px 120px 118px 96px 354px",
+              gridTemplateColumns: tableGrid,
               padding: "10px 12px",
               fontWeight: 800,
               background: "#fafafa",
               borderBottom: "1px solid #eee",
               fontSize: 12,
               columnGap: 10,
+              minWidth: 1320,
             }}
           >
             <div style={{ textAlign: "center" }}>Tipo</div>
@@ -160,12 +164,13 @@ export default function RenewalsBlock({
                 data-source={String(r.source || "")}
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "72px minmax(170px,1.3fr) 112px 120px 118px 96px 354px",
+                  gridTemplateColumns: tableGrid,
                   padding: "10px 12px",
                   borderBottom: "1px solid #f3f4f6",
                   alignItems: "center",
                   fontSize: 12,
                   columnGap: 10,
+                  minWidth: 1320,
                 }}
               >
                 <div style={{ textAlign: "center" }}>{String(r.item_tipo || r.tipo || "—").toUpperCase()}</div>
@@ -209,7 +214,6 @@ export default function RenewalsBlock({
                     alignContent: "center",
                     gap: 6,
                     width: "100%",
-                    maxWidth: 354,
                   }}
                 >
                   {actions.avviso && (
