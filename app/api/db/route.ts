@@ -323,6 +323,7 @@ export async function POST(request: Request) {
     if (
     op === "select" &&
     Object.keys(filter).length === 0 &&
+    Object.keys(filterIn).length === 0 &&
     !rule.allowNoFilterSelect
     ) {
       return invalid("Select requires eq filter for this table", 403);
