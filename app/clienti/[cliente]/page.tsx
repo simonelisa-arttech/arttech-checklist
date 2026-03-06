@@ -897,6 +897,8 @@ export default function ClientePage({ params }: { params: any }) {
   const prefillInterventoRef = useRef(false);
   const autoFatturazioneSent = useRef<Set<string>>(new Set());
   const autoFatturazioneInFlight = useRef(false);
+  const alertTemplatesLoadedRef = useRef(false);
+  const alertStatsLoadKeyRef = useRef("");
   const [editIntervento, setEditIntervento] = useState({
     data: "",
     dataTassativa: "",
@@ -1546,11 +1548,12 @@ export default function ClientePage({ params }: { params: any }) {
     return () => {
       alive = false;
     };
-  }, [contratto?.id, cliente]);
+  }, [cliente]);
 
   useEffect(() => {
     let alive = true;
     (async () => {
+      if (alertTemplatesLoadedRef.current) return;
       const { data, error } = await dbFrom("alert_message_templates")
         .select("id,codice,titolo,tipo,trigger,subject_template,body_template,attivo")
         .eq("attivo", true)
@@ -1561,6 +1564,7 @@ export default function ClientePage({ params }: { params: any }) {
         console.error("Errore caricamento template avvisi", error);
         return;
       }
+      alertTemplatesLoadedRef.current = true;
       setAlertTemplates((data || []) as AlertMessageTemplate[]);
     })();
     return () => {
@@ -2088,13 +2092,17 @@ export default function ClientePage({ params }: { params: any }) {
       const checklistIds = Array.from(
         new Set(rinnoviAll.map((r) => r.checklist_id).filter(Boolean))
       ) as string[];
+      const checklistIdsSorted = checklistIds.slice().sort();
+      const loadKey = checklistIdsSorted.join(",");
+      if (loadKey === alertStatsLoadKeyRef.current) return;
+      alertStatsLoadKeyRef.current = loadKey;
       if (checklistIds.length === 0) {
         if (alive) setAlertStatsMap(new Map());
         return;
       }
       const { data, error } = await dbFrom("checklist_alert_log")
         .select("checklist_id, tipo, riferimento, to_operatore_id, to_email, created_at")
-        .in("checklist_id", checklistIds);
+        .in("checklist_id", checklistIdsSorted);
       if (!alive) return;
       if (error) {
         console.error("Errore lettura alert log scadenze", error);
@@ -2142,7 +2150,7 @@ export default function ClientePage({ params }: { params: any }) {
     return () => {
       alive = false;
     };
-  }, [rinnoviAll, alertOperatori]);
+  }, [rinnoviAll]);
 
   const exportRangeLabel = useMemo(() => {
     const from = exportFrom ? exportFrom.replaceAll("-", "") : "TUTTO";

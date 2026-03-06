@@ -11,6 +11,7 @@ type DbRequest = {
   op?: DbOp;
   select?: string;
   filter?: Record<string, string | number | boolean | null>;
+  filterIn?: Record<string, Array<string | number | boolean | null>>;
   order?: Array<{ col: string; asc: boolean }>;
   limit?: number;
   payload?: Record<string, any> | Record<string, any>[];
@@ -255,7 +256,7 @@ export async function POST(request: Request) {
     }
 
     if (!isPlainObject(body)) return invalid("Invalid body");
-    const allowedBodyKeys = new Set(["table", "op", "select", "filter", "order", "limit", "payload"]);
+    const allowedBodyKeys = new Set(["table", "op", "select", "filter", "filterIn", "order", "limit", "payload"]);
     allowedBodyKeys.add("onConflict");
     for (const key of Object.keys(body)) {
       if (!allowedBodyKeys.has(key)) return invalid(`Unsupported field: ${key}`);
@@ -267,24 +268,56 @@ export async function POST(request: Request) {
     if (!rule) return invalid("Table not allowed", 403);
     if (!rule.ops.includes(op)) return invalid("Operation not allowed", 403);
 
+    const filterInRaw = isPlainObject(body.filterIn) ? body.filterIn : {};
+    const filterIn: Record<string, Array<string | number | boolean | null>> = {};
+    for (const [k, v] of Object.entries(filterInRaw)) {
+      if (!rule.filterCols.includes(k)) return invalid(`Filter column not allowed: ${k}`, 403);
+      if (!Array.isArray(v)) return invalid(`Invalid IN filter for ${k}: expected array`);
+      if (v.length === 0) return invalid(`Invalid IN filter for ${k}: empty array`);
+      if (v.length > 1000) return invalid(`Invalid IN filter for ${k}: too many values`);
+      let normalized: Array<string | number | boolean | null>;
+      try {
+        normalized = v.map((item) => {
+          const t = typeof item;
+          if (!(item === null || t === "string" || t === "number" || t === "boolean")) {
+            throw new Error(`Invalid IN filter value type for ${k}`);
+          }
+          if ((k === "id" || k.endsWith("_id")) && item !== null) {
+            if (typeof item !== "string") {
+              throw new Error(`Invalid UUID IN filter for ${k}: expected uuid string`);
+            }
+            const uuid = item.trim();
+            if (!isUuidLike(uuid)) {
+              throw new Error(`Invalid UUID IN filter for ${k}: ${uuid}`);
+            }
+            return uuid;
+          }
+          return item;
+        });
+      } catch (e: any) {
+        return invalid(String(e?.message || `Invalid IN filter for ${k}`), 400);
+      }
+      filterIn[k] = normalized;
+    }
+
     const filter = isPlainObject(body.filter) ? body.filter : {};
     for (const [k, v] of Object.entries(filter)) {
-    if (!rule.filterCols.includes(k)) return invalid(`Filter column not allowed: ${k}`, 403);
-    const t = typeof v;
-    if (!(v === null || t === "string" || t === "number" || t === "boolean")) {
-      return invalid(`Invalid filter value type for ${k}`);
-    }
-    if (k === "id" || k.endsWith("_id")) {
-      if (v !== null) {
-        if (typeof v !== "string") {
-          return invalid(`Invalid UUID filter for ${k}: expected uuid string`, 400);
-        }
-        const normalized = v.trim();
-        if (!isUuidLike(normalized)) {
-          return invalid(`Invalid UUID filter for ${k}: ${normalized}`, 400);
+      if (!rule.filterCols.includes(k)) return invalid(`Filter column not allowed: ${k}`, 403);
+      const t = typeof v;
+      if (!(v === null || t === "string" || t === "number" || t === "boolean")) {
+        return invalid(`Invalid filter value type for ${k}`);
+      }
+      if (k === "id" || k.endsWith("_id")) {
+        if (v !== null) {
+          if (typeof v !== "string") {
+            return invalid(`Invalid UUID filter for ${k}: expected uuid string`, 400);
+          }
+          const normalized = v.trim();
+          if (!isUuidLike(normalized)) {
+            return invalid(`Invalid UUID filter for ${k}: ${normalized}`, 400);
+          }
         }
       }
-    }
     }
 
     if (
@@ -298,7 +331,11 @@ export async function POST(request: Request) {
     op === "select" &&
     rule.requiredEqAnyOf &&
     rule.requiredEqAnyOf.length > 0 &&
-    !rule.requiredEqAnyOf.some((c) => Object.prototype.hasOwnProperty.call(filter, c))
+    !rule.requiredEqAnyOf.some(
+      (c) =>
+        Object.prototype.hasOwnProperty.call(filter, c) ||
+        Object.prototype.hasOwnProperty.call(filterIn, c)
+    )
     ) {
       return invalid(`Missing required eq filter: one of [${rule.requiredEqAnyOf.join(", ")}]`, 403);
     }
@@ -324,6 +361,7 @@ export async function POST(request: Request) {
     }
     let q: any = supabaseAdmin.from(table).select(select);
     for (const [k, v] of Object.entries(filter)) q = q.eq(k, v);
+    for (const [k, v] of Object.entries(filterIn)) q = q.in(k, v as any[]);
     for (const o of order) q = q.order(o.col, { ascending: o.asc !== false });
     if (normalizedLimit > 0) q = q.limit(normalizedLimit);
     const { data, error } = await q;

@@ -7,6 +7,7 @@ type DbPayload = {
   op: DbOp;
   select?: string;
   filter?: Record<string, string | number | boolean | null>;
+  filterIn?: Record<string, Array<string | number | boolean | null>>;
   order?: Array<{ col: string; asc: boolean }>;
   limit?: number;
   payload?: any;
@@ -217,35 +218,25 @@ class DbFromBuilder {
   }
 
   private async runSelect() {
-    const inFilter = this.inFilters[0];
-    if (!inFilter) {
-      const res = await callDb<any[]>({
-        table: this.table,
-        op: "select",
-        select: this.selectClause,
-        filter: this.eqFilters,
-        order: this.orders,
-        limit: this.maxRows || undefined,
-      });
-      if (res.error) return res;
-      const rows = this.applyClientFilters(this.uniqueRows((res.data || []) as any[]));
-      return { data: rows, error: null, count: rows.length };
-    }
-
-    const rows: any[] = [];
-    for (const value of inFilter.values) {
-      const res = await callDb<any[]>({
-        table: this.table,
-        op: "select",
-        select: this.selectClause,
-        filter: { ...this.eqFilters, [inFilter.col]: value },
-        order: this.orders,
-      });
-      if (res.error) return res;
-      rows.push(...(res.data || []));
-    }
-    const merged = this.applyClientFilters(this.uniqueRows(rows));
-    return { data: merged, error: null, count: merged.length };
+    const filterIn = this.inFilters.reduce(
+      (acc, f) => {
+        acc[f.col] = f.values || [];
+        return acc;
+      },
+      {} as Record<string, Array<string | number | boolean | null>>
+    );
+    const res = await callDb<any[]>({
+      table: this.table,
+      op: "select",
+      select: this.selectClause,
+      filter: this.eqFilters,
+      filterIn: Object.keys(filterIn).length > 0 ? filterIn : undefined,
+      order: this.orders,
+      limit: this.maxRows || undefined,
+    });
+    if (res.error) return res;
+    const rows = this.applyClientFilters(this.uniqueRows((res.data || []) as any[]));
+    return { data: rows, error: null, count: rows.length };
   }
 
   private async runWrite() {
