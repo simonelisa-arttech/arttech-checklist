@@ -1301,16 +1301,16 @@ export default function ClientePage({ params }: { params: any }) {
         }
         if (isPerfEnabled()) console.timeEnd(`[perf][cliente][mount#${mountRun}] db licenses`);
       }
-      if (isPerfEnabled()) console.time(`[perf][cliente][mount#${mountRun}] fetchRinnovi`);
-      const rinnoviRows = await fetchRinnovi(clienteKey);
-      if (isPerfEnabled()) console.timeEnd(`[perf][cliente][mount#${mountRun}] fetchRinnovi`);
-      if (isPerfEnabled()) console.time(`[perf][cliente][mount#${mountRun}] fetchTagliandi`);
-      const tagliandiRows = await fetchTagliandi(clienteKey);
-      if (isPerfEnabled()) console.timeEnd(`[perf][cliente][mount#${mountRun}] fetchTagliandi`);
-
-      if (isPerfEnabled()) console.time(`[perf][cliente][mount#${mountRun}] fetchSaasContratti`);
-      await fetchSaasContratti(clienteKey);
-      if (isPerfEnabled()) console.timeEnd(`[perf][cliente][mount#${mountRun}] fetchSaasContratti`);
+      if (isPerfEnabled()) console.time(`[perf][cliente][mount#${mountRun}] batch checklist data`);
+      const [rinnoviRows, tagliandiRows] = await Promise.all([
+        fetchRinnovi(clienteKey, checklistIds),
+        fetchTagliandi(clienteKey, checklistIds),
+      ]);
+      await Promise.all([
+        loadInterventiForCliente(clienteKey, checklistIds),
+        fetchSaasContratti(clienteKey),
+      ]);
+      if (isPerfEnabled()) console.timeEnd(`[perf][cliente][mount#${mountRun}] batch checklist data`);
 
       if (isPerfEnabled()) console.time(`[perf][cliente][mount#${mountRun}] db catalog_items`);
       perfCountDb("catalog_items.select.saas_ul");
@@ -1443,8 +1443,9 @@ export default function ClientePage({ params }: { params: any }) {
     return () => clearTimeout(t);
   }, [exportNotice]);
 
-  async function loadInterventiForCliente(clienteKey: string) {
+  async function loadInterventiForCliente(clienteKey: string, checklistIdsInput?: string[]) {
     const cleanCliente = String(clienteKey || "").trim();
+    const checklistIds = (checklistIdsInput || []).filter(Boolean);
     if (!cleanCliente) {
       setInterventi([]);
       setInterventoFilesById(new Map());
@@ -1455,34 +1456,31 @@ export default function ClientePage({ params }: { params: any }) {
     let intsErr: any = null;
     {
       perfCountDb("saas_interventi.select");
-      const res = await dbFrom("saas_interventi")
-        .select(
-          "id, cliente, checklist_id, contratto_id, ticket_no, data, data_tassativa, descrizione, incluso, proforma, codice_magazzino, fatturazione_stato, stato_intervento, esito_fatturazione, chiuso_il, chiuso_da_operatore, alert_fattura_last_sent_at, alert_fattura_last_sent_by, numero_fattura, fatturato_il, note, note_tecniche, created_at, checklist:checklists(id, nome_checklist, proforma, magazzino_importazione)"
-        )
-        .ilike("cliente", cleanCliente)
-        .order("data", { ascending: false });
+      let q = dbFrom("saas_interventi").select(
+        "id, cliente, checklist_id, contratto_id, ticket_no, data, data_tassativa, descrizione, incluso, proforma, codice_magazzino, fatturazione_stato, stato_intervento, esito_fatturazione, chiuso_il, chiuso_da_operatore, alert_fattura_last_sent_at, alert_fattura_last_sent_by, numero_fattura, fatturato_il, note, note_tecniche, created_at, checklist:checklists(id, nome_checklist, proforma, magazzino_importazione)"
+      );
+      q = checklistIds.length > 0 ? q.in("checklist_id", checklistIds) : q.ilike("cliente", cleanCliente);
+      const res = await q.order("data", { ascending: false });
       ints = res.data;
       intsErr = res.error;
     }
     if (intsErr && String(intsErr.message || "").toLowerCase().includes("data_tassativa")) {
       perfCountDb("saas_interventi.select.retry_no_data_tassativa");
-      const res = await dbFrom("saas_interventi")
-        .select(
-          "id, cliente, checklist_id, contratto_id, ticket_no, data, descrizione, incluso, proforma, codice_magazzino, fatturazione_stato, stato_intervento, esito_fatturazione, chiuso_il, chiuso_da_operatore, alert_fattura_last_sent_at, alert_fattura_last_sent_by, numero_fattura, fatturato_il, note, note_tecniche, created_at, checklist:checklists(id, nome_checklist, proforma, magazzino_importazione)"
-        )
-        .ilike("cliente", cleanCliente)
-        .order("data", { ascending: false });
+      let q = dbFrom("saas_interventi").select(
+        "id, cliente, checklist_id, contratto_id, ticket_no, data, descrizione, incluso, proforma, codice_magazzino, fatturazione_stato, stato_intervento, esito_fatturazione, chiuso_il, chiuso_da_operatore, alert_fattura_last_sent_at, alert_fattura_last_sent_by, numero_fattura, fatturato_il, note, note_tecniche, created_at, checklist:checklists(id, nome_checklist, proforma, magazzino_importazione)"
+      );
+      q = checklistIds.length > 0 ? q.in("checklist_id", checklistIds) : q.ilike("cliente", cleanCliente);
+      const res = await q.order("data", { ascending: false });
       ints = (res.data || []).map((x: any) => ({ ...x, data_tassativa: null }));
       intsErr = res.error;
     }
     if (intsErr && String(intsErr.message || "").toLowerCase().includes("ticket_no")) {
       perfCountDb("saas_interventi.select.retry_no_ticket_no");
-      const res = await dbFrom("saas_interventi")
-        .select(
-          "id, cliente, checklist_id, contratto_id, data, data_tassativa, descrizione, incluso, proforma, codice_magazzino, fatturazione_stato, stato_intervento, esito_fatturazione, chiuso_il, chiuso_da_operatore, alert_fattura_last_sent_at, alert_fattura_last_sent_by, numero_fattura, fatturato_il, note, note_tecniche, created_at, checklist:checklists(id, nome_checklist, proforma, magazzino_importazione)"
-        )
-        .ilike("cliente", cleanCliente)
-        .order("data", { ascending: false });
+      let q = dbFrom("saas_interventi").select(
+        "id, cliente, checklist_id, contratto_id, data, data_tassativa, descrizione, incluso, proforma, codice_magazzino, fatturazione_stato, stato_intervento, esito_fatturazione, chiuso_il, chiuso_da_operatore, alert_fattura_last_sent_at, alert_fattura_last_sent_by, numero_fattura, fatturato_il, note, note_tecniche, created_at, checklist:checklists(id, nome_checklist, proforma, magazzino_importazione)"
+      );
+      q = checklistIds.length > 0 ? q.in("checklist_id", checklistIds) : q.ilike("cliente", cleanCliente);
+      const res = await q.order("data", { ascending: false });
       ints = (res.data || []).map((x: any) => ({ ...x, ticket_no: null }));
       intsErr = res.error;
     }
@@ -1538,17 +1536,7 @@ export default function ClientePage({ params }: { params: any }) {
     }
   }
 
-  useEffect(() => {
-    let alive = true;
-    (async () => {
-      await loadInterventiForCliente(cliente);
-      if (!alive) return;
-    })();
-
-    return () => {
-      alive = false;
-    };
-  }, [cliente]);
+  // Interventi are loaded in the main mount batch and refreshed by CRUD handlers.
 
   useEffect(() => {
     let alive = true;
@@ -1753,7 +1741,10 @@ export default function ClientePage({ params }: { params: any }) {
       return;
     }
 
-    await loadInterventiForCliente(cliente);
+    await loadInterventiForCliente(
+      cliente,
+      checklists.map((c) => c.id).filter(Boolean)
+    );
     setEditInterventoId(null);
     setInterventiError(null);
   }
@@ -2959,7 +2950,10 @@ export default function ClientePage({ params }: { params: any }) {
       await uploadInterventoFilesList(inserted.id, newInterventoFiles);
     }
 
-    await loadInterventiForCliente(clienteKey);
+    await loadInterventiForCliente(
+      clienteKey,
+      checklists.map((c) => c.id).filter(Boolean)
+    );
 
     setNewIntervento({
       data: "",
@@ -3124,7 +3118,10 @@ export default function ClientePage({ params }: { params: any }) {
       return;
     }
 
-    await loadInterventiForCliente(cliente);
+    await loadInterventiForCliente(
+      cliente,
+      checklists.map((c) => c.id).filter(Boolean)
+    );
 
     setCloseInterventoId(null);
     setCloseEsito("");
@@ -3171,13 +3168,14 @@ export default function ClientePage({ params }: { params: any }) {
     return `Operatore: ${op.nome ?? op.id}${role}${email}`;
   }
 
-  async function fetchRinnovi(clienteKey: string) {
+  async function fetchRinnovi(clienteKey: string, checklistIdsInput?: string[]) {
     if (!clienteKey) return [] as RinnovoServizioRow[];
+    const checklistIds = (checklistIdsInput || []).filter(Boolean);
     perfCountDb("rinnovi_servizi.select");
-    const { data, error } = await dbFrom("rinnovi_servizi")
-      .select("*")
-      .eq("cliente", clienteKey)
-      .order("scadenza", { ascending: true });
+    const base = dbFrom("rinnovi_servizi").select("*");
+    const q =
+      checklistIds.length > 0 ? base.in("checklist_id", checklistIds) : base.eq("cliente", clienteKey);
+    const { data, error } = await q.order("scadenza", { ascending: true });
     if (error) {
       setRinnoviError("Errore caricamento rinnovi: " + error.message);
       return [] as RinnovoServizioRow[];
@@ -3188,13 +3186,14 @@ export default function ClientePage({ params }: { params: any }) {
     return rows;
   }
 
-  async function fetchTagliandi(clienteKey: string) {
+  async function fetchTagliandi(clienteKey: string, checklistIdsInput?: string[]) {
     if (!clienteKey) return [] as TagliandoRow[];
+    const checklistIds = (checklistIdsInput || []).filter(Boolean);
     perfCountDb("tagliandi.select");
-    const { data, error } = await dbFrom("tagliandi")
-      .select("*")
-      .eq("cliente", clienteKey)
-      .order("scadenza", { ascending: true });
+    const base = dbFrom("tagliandi").select("*");
+    const q =
+      checklistIds.length > 0 ? base.in("checklist_id", checklistIds) : base.eq("cliente", clienteKey);
+    const { data, error } = await q.order("scadenza", { ascending: true });
     if (error) {
       setRinnoviError("Errore caricamento tagliandi: " + error.message);
       return [] as TagliandoRow[];
@@ -4113,26 +4112,33 @@ export default function ClientePage({ params }: { params: any }) {
         const key = `${r.checklist_id}::${itemTipo}`;
         pairs.set(key, { checklistId: r.checklist_id, itemTipo });
       }
+      const byTipo = new Map<string, string[]>();
       for (const { checklistId, itemTipo } of pairs.values()) {
+        const prev = byTipo.get(itemTipo) || [];
+        prev.push(checklistId);
+        byTipo.set(itemTipo, Array.from(new Set(prev)));
+      }
+      for (const [itemTipo, checklistIds] of byTipo.entries()) {
         await dbFrom("rinnovi_servizi")
           .update({ stato: "AVVISATO", updated_at: nowIso })
-          .eq("checklist_id", checklistId)
-          .eq("item_tipo", itemTipo);
-        setRinnovi((prev) =>
-          prev.map((row) =>
-            String(row.checklist_id || "") === String(checklistId) &&
-            String(row.item_tipo || "").toUpperCase() === itemTipo
-              ? {
-                  ...row,
-                  stato: "AVVISATO",
-                  notify_stage1_sent_at: nowIso,
-                  notify_stage1_to_operatore_id:
-                    rinnoviAlertDestMode === "operatore" ? rinnoviAlertToOperatoreId : null,
-                }
-              : row
-          )
-        );
+          .eq("item_tipo", itemTipo)
+          .in("checklist_id", checklistIds);
       }
+      setRinnovi((prev) =>
+        prev.map((row) => {
+          const itemTipo = String(row.item_tipo || "").toUpperCase();
+          const checklistIds = byTipo.get(itemTipo);
+          if (!checklistIds) return row;
+          if (!checklistIds.includes(String(row.checklist_id || ""))) return row;
+          return {
+            ...row,
+            stato: "AVVISATO",
+            notify_stage1_sent_at: nowIso,
+            notify_stage1_to_operatore_id:
+              rinnoviAlertDestMode === "operatore" ? rinnoviAlertToOperatoreId : null,
+          };
+        })
+      );
     }
     const rinnoviIds = list.filter((r) => r.source === "rinnovi").map((r) => r.id);
     const licenzeIds = list.filter((r) => r.source === "licenze").map((r) => r.id);
@@ -5018,7 +5024,10 @@ export default function ClientePage({ params }: { params: any }) {
       }
     }
 
-    await loadInterventiForCliente(cliente);
+    await loadInterventiForCliente(
+      cliente,
+      checklists.map((c) => c.id).filter(Boolean)
+    );
   }
 
   async function sendInterventoAlert() {
