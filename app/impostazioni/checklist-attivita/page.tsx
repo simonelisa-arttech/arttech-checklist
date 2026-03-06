@@ -662,7 +662,7 @@ export default function ChecklistAttivitaPage() {
                     />
                   </label>
                 </div>
-                {ruleDraft.mode === "AUTOMATICA" && (
+                {(ruleDraft.mode === "AUTOMATICA" || ruleDraft.target === "AMMINISTRAZIONE") && (
                   <label style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 10 }}>
                     <input
                       type="checkbox"

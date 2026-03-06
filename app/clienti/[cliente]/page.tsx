@@ -1606,11 +1606,9 @@ export default function ClientePage({ params }: { params: any }) {
 
       const recipients = alertOperatori.filter((o) => {
         const ruolo = String(o.ruolo || "").toUpperCase();
-        const prefs = normalizeAlertTasks(o.alert_tasks);
         return (
           o.attivo !== false &&
-          prefs.allow_automatic &&
-          (ruolo === "AMMINISTRAZIONE" || prefs.all_task_status_change)
+          (ruolo === "AMMINISTRAZIONE" || normalizeAlertTasks(o.alert_tasks).all_task_status_change)
         );
       });
       if (recipients.length === 0) return;

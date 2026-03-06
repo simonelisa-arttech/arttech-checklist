@@ -197,8 +197,8 @@ export async function POST(request: Request) {
     .select("id, task_title, target, recipients, only_future, send_on_create")
     .is("checklist_id", null)
     .eq("enabled", true)
-    .eq("mode", "AUTOMATICA")
-    .eq("send_on_create", true);
+    .eq("send_on_create", true)
+    .or("mode.eq.AUTOMATICA,target.eq.AMMINISTRAZIONE");
   if (rulesErr && String(rulesErr.message || "").toLowerCase().includes("send_on_create")) {
     return NextResponse.json({ ok: true, sent: 0, skipped: "missing_send_on_create_column" });
   }

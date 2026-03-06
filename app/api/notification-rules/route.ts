@@ -173,25 +173,13 @@ async function listOperatoriForNotifications(adminClient: any): Promise<Operator
   }));
 }
 
-function operatorAllowsRule(rule: any, operatore: OperatoreRecipientRow) {
-  const prefs = operatore.alert_tasks && typeof operatore.alert_tasks === "object"
-    ? operatore.alert_tasks
-    : null;
-  if (!prefs) return true;
-  const mode = String(rule?.mode || "AUTOMATICA").toUpperCase();
-  if (mode === "MANUALE") return prefs.allow_manual !== false;
-  if (rule?.send_on_create === true) return prefs.allow_automatic !== false;
-  return prefs.allow_scheduled !== false;
-}
-
-function buildAutoRecipients(rule: any, target: string, operatori: OperatoreRecipientRow[]) {
+function buildAutoRecipients(_rule: any, target: string, operatori: OperatoreRecipientRow[]) {
   const normalizedTarget = normalizeTarget(target);
   return Array.from(
     new Set(
       operatori
         .filter((o) => normalizeTarget(o.ruolo) === normalizedTarget)
         .filter((o) => o.riceve_notifiche !== false)
-        .filter((o) => operatorAllowsRule(rule, o))
         .map((o) => String(o.email || "").trim().toLowerCase())
         .filter((email) => email.includes("@"))
     )

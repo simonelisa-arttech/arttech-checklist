@@ -2136,16 +2136,13 @@ function buildFormData(c: Checklist): FormData {
     });
   }
 
-  function getEligibleOperatori(task: ChecklistTask | null, channel: "manual" | "automatic" | "scheduled" = "manual") {
+  function getEligibleOperatori(task: ChecklistTask | null) {
     if (!task) return [];
     const taskTarget = normalizeRuleTargetValue(task.target);
     const strict = alertOperatori.filter((o) => {
       if (!o.attivo) return false;
       if (!isSameClienteOperator(checklist?.cliente, o.cliente)) return false;
       const prefs = normalizeAlertTasks(o.alert_tasks);
-      if (channel === "manual" && !prefs.allow_manual) return false;
-      if (channel === "automatic" && !prefs.allow_automatic) return false;
-      if (channel === "scheduled" && !prefs.allow_scheduled) return false;
       const roleTarget = normalizeRuleTargetValue(o.ruolo);
       if (taskTarget !== "GENERICA" && roleTarget === taskTarget) return true;
       if (!o.alert_enabled) return false;
@@ -6952,7 +6949,7 @@ function buildFormData(c: Checklist): FormData {
                     />
                   </label>
                 </div>
-                {ruleDraft.mode === "AUTOMATICA" && (
+                {(ruleDraft.mode === "AUTOMATICA" || ruleDraft.target === "AMMINISTRAZIONE") && (
                   <label style={{ display: "flex", gap: 8, alignItems: "center", marginTop: 10 }}>
                     <input
                       type="checkbox"
