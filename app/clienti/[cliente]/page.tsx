@@ -927,6 +927,9 @@ export default function ClientePage({ params }: { params: any }) {
   const autoFatturazioneSent = useRef<Set<string>>(new Set());
   const autoFatturazioneInFlight = useRef(false);
   const alertTemplatesLoadedRef = useRef(false);
+  const operatoriLoadedRef = useRef(false);
+  const operatoriLoadingRef = useRef(false);
+  const lastMountClienteKeyRef = useRef("");
   const alertStatsLoadKeyRef = useRef("");
   const [editIntervento, setEditIntervento] = useState({
     data: "",
@@ -976,6 +979,61 @@ export default function ClientePage({ params }: { params: any }) {
     if (!isPerfEnabled()) return;
     perfRef.current.mountFetchCalls += 1;
     console.count(`[perf][cliente][fetch] ${label}`);
+  }
+
+  async function loadAlertOperatori() {
+    if (operatoriLoadedRef.current || operatoriLoadingRef.current) return;
+    operatoriLoadingRef.current = true;
+    try {
+      let opsData: any[] = [];
+      try {
+        perfCountFetch("GET /api/operatori");
+        const res = await fetch("/api/operatori", { credentials: "include" });
+        const json = await res.json().catch(() => ({} as any));
+        if (res.ok && Array.isArray(json?.data)) {
+          opsData = json.data;
+        }
+      } catch {
+        // fallback below
+      }
+      if (!Array.isArray(opsData) || opsData.length === 0) {
+        perfCountDb("operatori.select.fallback");
+        const fallback = await dbFrom("operatori")
+          .select("id, user_id, nome, ruolo, email, attivo, alert_enabled, alert_tasks")
+          .order("ruolo", { ascending: true })
+          .order("nome", { ascending: true });
+        opsData = (fallback.data || []) as any[];
+      }
+      const mapped = (opsData || []).map((o: any) => ({
+        id: o.id,
+        user_id: o.user_id ?? null,
+        nome: o.nome ?? null,
+        ruolo: o.ruolo ?? null,
+        email: o.email ?? null,
+        attivo: o.attivo ?? null,
+        alert_enabled: o.alert_enabled ?? null,
+        alert_tasks: normalizeAlertTasks(o.alert_tasks),
+      }));
+      setAlertOperatori(mapped as OperatoreRow[]);
+      operatoriLoadedRef.current = true;
+    } finally {
+      operatoriLoadingRef.current = false;
+    }
+  }
+
+  async function ensureAlertTemplatesLoaded() {
+    if (alertTemplatesLoadedRef.current) return;
+    const { data, error } = await dbFrom("alert_message_templates")
+      .select("id,codice,titolo,tipo,trigger,subject_template,body_template,attivo")
+      .eq("attivo", true)
+      .eq("trigger", "MANUALE")
+      .order("titolo", { ascending: true });
+    if (error) {
+      console.error("Errore caricamento template avvisi", error);
+      return;
+    }
+    alertTemplatesLoadedRef.current = true;
+    setAlertTemplates((data || []) as AlertMessageTemplate[]);
   }
 
   function getOperatoreNome(value?: string | null) {
@@ -1226,6 +1284,21 @@ export default function ClientePage({ params }: { params: any }) {
       setError(null);
 
       const clienteKey = decoded.trim();
+      const normalizedClienteKey = clienteKey.toLowerCase();
+      if (!normalizedClienteKey) {
+        setChecklists([]);
+        setLicenze([]);
+        setRinnovi([]);
+        setTagliandi([]);
+        setInterventi([]);
+        setLoading(false);
+        return;
+      }
+      if (lastMountClienteKeyRef.current === normalizedClienteKey) {
+        setLoading(false);
+        return;
+      }
+      lastMountClienteKeyRef.current = normalizedClienteKey;
       if (clienteKey) {
         try {
           if (isPerfEnabled()) console.time(`[perf][cliente][mount#${mountRun}] fetch /api/clienti`);
@@ -1365,44 +1438,6 @@ export default function ClientePage({ params }: { params: any }) {
       }
       if (isPerfEnabled()) console.timeEnd(`[perf][cliente][mount#${mountRun}] db catalog_items`);
 
-      let opsData: any[] = [];
-      try {
-        if (isPerfEnabled()) console.time(`[perf][cliente][mount#${mountRun}] fetch /api/operatori`);
-        perfCountFetch("GET /api/operatori");
-        const res = await fetch("/api/operatori", { credentials: "include" });
-        const json = await res.json().catch(() => ({} as any));
-        if (isPerfEnabled()) console.timeEnd(`[perf][cliente][mount#${mountRun}] fetch /api/operatori`);
-        if (res.ok && Array.isArray(json?.data)) {
-          opsData = json.data;
-        }
-      } catch {
-        // fallback below
-      }
-      if (!Array.isArray(opsData) || opsData.length === 0) {
-        if (isPerfEnabled()) console.time(`[perf][cliente][mount#${mountRun}] db operatori fallback`);
-        perfCountDb("operatori.select.fallback");
-        const fallback = await dbFrom("operatori")
-          .select("id, user_id, nome, ruolo, email, attivo, alert_enabled, alert_tasks")
-          .order("ruolo", { ascending: true })
-          .order("nome", { ascending: true });
-        opsData = (fallback.data || []) as any[];
-        if (isPerfEnabled()) console.timeEnd(`[perf][cliente][mount#${mountRun}] db operatori fallback`);
-      }
-      const mapped = (opsData || []).map((o: any) => ({
-        id: o.id,
-        user_id: o.user_id ?? null,
-        nome: o.nome ?? null,
-        ruolo: o.ruolo ?? null,
-        email: o.email ?? null,
-        attivo: o.attivo ?? null,
-        alert_enabled: o.alert_enabled ?? null,
-        alert_tasks: normalizeAlertTasks(o.alert_tasks),
-      }));
-      setAlertOperatori(mapped as OperatoreRow[]);
-      if (mapped.length <= 1) {
-        console.log("ALERT OPERATORI", mapped.length, mapped);
-      }
-
       if (isPerfEnabled()) {
         console.info(`[perf][cliente] ready`, {
           mountRun,
@@ -1425,7 +1460,15 @@ export default function ClientePage({ params }: { params: any }) {
     return () => {
       alive = false;
     };
-  }, [params]);
+  }, [params?.cliente]);
+
+  useEffect(() => {
+    if (loading) return;
+    const t = setTimeout(() => {
+      loadAlertOperatori();
+    }, 350);
+    return () => clearTimeout(t);
+  }, [loading, cliente]);
 
   useEffect(() => {
     fetchLastBulkAlert();
@@ -1566,28 +1609,6 @@ export default function ClientePage({ params }: { params: any }) {
   }
 
   // Interventi are loaded in the main mount batch and refreshed by CRUD handlers.
-
-  useEffect(() => {
-    let alive = true;
-    (async () => {
-      if (alertTemplatesLoadedRef.current) return;
-      const { data, error } = await dbFrom("alert_message_templates")
-        .select("id,codice,titolo,tipo,trigger,subject_template,body_template,attivo")
-        .eq("attivo", true)
-        .eq("trigger", "MANUALE")
-        .order("titolo", { ascending: true });
-      if (!alive) return;
-      if (error) {
-        console.error("Errore caricamento template avvisi", error);
-        return;
-      }
-      alertTemplatesLoadedRef.current = true;
-      setAlertTemplates((data || []) as AlertMessageTemplate[]);
-    })();
-    return () => {
-      alive = false;
-    };
-  }, []);
 
   useEffect(() => {
     let alive = true;
@@ -3888,6 +3909,8 @@ export default function ClientePage({ params }: { params: any }) {
     onlyWithin30Days = false,
     listOverride?: ScadenzaItem[] | RinnovoServizioRow[]
   ) {
+    void ensureAlertTemplatesLoaded();
+    void loadAlertOperatori();
     const list = (listOverride
       ? (listOverride as any[]).map((r) =>
           "source" in r ? (r as ScadenzaItem) : toScadenzaItemFromRinnovo(r)
