@@ -2486,7 +2486,6 @@ function buildFormData(c: Checklist): FormData {
         table: "operatori",
         op: "select",
         select: "id, nome, email, attivo, alert_enabled, alert_tasks, cliente, ruolo",
-        filter: { cliente: checklistCliente } as any,
         limit: 1000,
       });
       if (opErr) {
@@ -2494,7 +2493,10 @@ function buildFormData(c: Checklist): FormData {
         return;
       }
       const map = new Map<string, string>();
-      const activeOperatori = (data || []).filter((o: any) => Boolean(o?.attivo));
+      const activeOperatori = (data || []).filter((o: any) => {
+        if (!Boolean(o?.attivo)) return false;
+        return isSameClienteOperator(checklistCliente, o?.cliente ?? null);
+      });
       const list: AlertOperatore[] = activeOperatori.map((o: any) => ({
         id: o.id,
         nome: o.nome ?? null,
