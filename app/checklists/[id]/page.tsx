@@ -5846,6 +5846,10 @@ function buildFormData(c: Checklist): FormData {
                 </button>
               </div>
             </div>
+            <div style={{ marginTop: 8, fontSize: 12, opacity: 0.75 }}>
+              Allegati/link intervento: disponibili subito dopo il salvataggio, nel pannello
+              "Dettagli" della riga.
+            </div>
             {projectInterventiError && (
               <div style={{ color: "crimson", marginTop: 8, fontSize: 12 }}>{projectInterventiError}</div>
             )}
@@ -6091,6 +6095,15 @@ function buildFormData(c: Checklist): FormData {
                             <div><strong>Note:</strong> {it.note || "—"}</div>
                           </div>
                         )}
+                        <div style={{ marginTop: 10 }}>
+                          <AttachmentsPanel
+                            title="Allegati intervento (upload + link Drive)"
+                            entityType="INTERVENTO"
+                            entityId={it.id}
+                            multiple
+                            storagePrefix="intervento"
+                          />
+                        </div>
                       </div>
                     )}
                   </div>

@@ -6376,7 +6376,7 @@ ${rinnovi30ggBreakdown.debugSample
 
       <div style={{ marginTop: 18 }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <h2 style={{ margin: 0 }}>Interventi</h2>
+          <h2 style={{ margin: 0, fontSize: 34, fontWeight: 800 }}>Interventi</h2>
           <div style={{ fontSize: 12, opacity: 0.8 }}>
             Inclusi usati: {interventiInclusiUsati}
             {!contratto ? (
