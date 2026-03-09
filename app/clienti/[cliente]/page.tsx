@@ -4708,15 +4708,41 @@ export default function ClientePage({ params }: { params: any }) {
     }
     const isGaranzia =
       String(mapped.item_tipo || "").toUpperCase() === "GARANZIA" && payload.checklist_id;
-    const { data, error } = isGaranzia
-      ? await dbFrom("rinnovi_servizi")
-          .upsert(payload, { onConflict: "checklist_id,item_tipo" })
+    let data: any = null;
+    let error: any = null;
+    if (isGaranzia) {
+      const existing = await dbFrom("rinnovi_servizi")
+        .select("*")
+        .eq("checklist_id", String(payload.checklist_id))
+        .eq("item_tipo", String(mapped.item_tipo || "").toUpperCase())
+        .limit(1)
+        .maybeSingle();
+      if (existing.error) {
+        error = existing.error;
+      } else if (existing.data?.id) {
+        const upd = await dbFrom("rinnovi_servizi")
+          .update(payload)
+          .eq("id", existing.data.id)
           .select("*")
-          .single()
-      : await dbFrom("rinnovi_servizi")
+          .single();
+        data = upd.data;
+        error = upd.error;
+      } else {
+        const ins = await dbFrom("rinnovi_servizi")
           .insert(payload)
           .select("*")
           .single();
+        data = ins.data;
+        error = ins.error;
+      }
+    } else {
+      const ins = await dbFrom("rinnovi_servizi")
+        .insert(payload)
+        .select("*")
+        .single();
+      data = ins.data;
+      error = ins.error;
+    }
     if (error) {
       setRinnoviError("Errore creazione rinnovo: " + error.message);
       return null;
