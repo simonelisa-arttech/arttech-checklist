@@ -5860,27 +5860,39 @@ function buildFormData(c: Checklist): FormData {
           {projectInterventi.length === 0 ? (
             <div style={{ opacity: 0.7 }}>Nessun intervento registrato</div>
           ) : (
-            <div style={{ border: "1px solid #f1f5f9", borderRadius: 10, overflow: "hidden" }}>
+            <div
+              style={{
+                border: "1px solid #eee",
+                borderRadius: 12,
+                overflowX: "auto",
+                width: "100%",
+                background: "white",
+              }}
+            >
               <div
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "90px 90px 95px 1fr 90px 100px 105px 190px",
+                  gridTemplateColumns:
+                    "90px minmax(180px,1fr) minmax(240px,1.5fr) 110px 90px 120px 150px 150px 130px 150px",
                   gap: 8,
-                  padding: "8px 10px",
-                  fontWeight: 700,
+                  padding: "6px 8px",
+                  fontWeight: 800,
                   background: "#fafafa",
                   borderBottom: "1px solid #eee",
                   fontSize: 12,
+                  minWidth: 1410,
                 }}
               >
                 <div>Data</div>
-                <div>Tassativa</div>
-                <div>Ticket/Pf</div>
+                <div>PROGETTO</div>
                 <div>Descrizione</div>
+                <div>Ticket n°</div>
                 <div>Tipo</div>
                 <div>Stato</div>
-                <div>Fatturaz.</div>
-                <div>Azioni</div>
+                <div>Proforma</div>
+                <div>Codice</div>
+                <div>Fatturazione</div>
+                <div>AZIONI</div>
               </div>
               {projectInterventi.map((it) => {
                 const expanded = projectInterventiExpandedId === it.id;
@@ -5890,41 +5902,62 @@ function buildFormData(c: Checklist): FormData {
                     <div
                       style={{
                         display: "grid",
-                        gridTemplateColumns: "90px 90px 95px 1fr 90px 100px 105px 190px",
+                        gridTemplateColumns:
+                          "90px minmax(180px,1fr) minmax(240px,1.5fr) 110px 90px 120px 150px 150px 130px 150px",
                         gap: 8,
-                        padding: "8px 10px",
+                        padding: "6px 8px",
                         alignItems: "center",
                         fontSize: 12,
+                        minWidth: 1410,
                       }}
                     >
                       <div>{it.data ? new Date(it.data).toLocaleDateString("it-IT") : "—"}</div>
-                      <div>{it.data_tassativa ? new Date(it.data_tassativa).toLocaleDateString("it-IT") : "—"}</div>
-                      <div>{it.ticket_no || it.proforma || "—"}</div>
-                      <div>{it.descrizione || "—"}</div>
-                      <div>{it.incluso ? "INCLUSO" : "EXTRA"}</div>
-                      <div>{String(it.stato_intervento || "—").toUpperCase()}</div>
-                      <div>{String(it.fatturazione_stato || "—").toUpperCase()}</div>
-                      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                      <div style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                        {checklist?.nome_checklist || "—"}
+                      </div>
+                      <div style={{ whiteSpace: "normal", overflowWrap: "anywhere" }}>{it.descrizione || "—"}</div>
+                      <div style={{ whiteSpace: "nowrap" }}>{it.ticket_no || "—"}</div>
+                      <div style={{ whiteSpace: "nowrap" }}>{it.incluso ? "INCLUSO" : "EXTRA"}</div>
+                      <div style={{ whiteSpace: "nowrap" }}>{String(it.stato_intervento || "—").toUpperCase()}</div>
+                      <div style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                        {it.proforma || "—"}
+                      </div>
+                      <div style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                        {it.codice_magazzino || "—"}
+                      </div>
+                      <div style={{ whiteSpace: "nowrap" }}>
+                        {String(it.fatturazione_stato || "—").toUpperCase()}
+                      </div>
+                      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                         <button
                           type="button"
                           onClick={() =>
                             setProjectInterventiExpandedId((prev) => (prev === it.id ? null : it.id))
                           }
-                          style={{ padding: "6px 8px", borderRadius: 8, border: "1px solid #ddd", background: "white", cursor: "pointer" }}
+                          style={{ padding: "3px 6px", borderRadius: 6, border: "1px solid #d1d5db", background: "#f8fafc", cursor: "pointer", fontSize: 12 }}
+                        >
+                          📎 File
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setProjectInterventiExpandedId((prev) => (prev === it.id ? null : it.id))
+                          }
+                          style={{ padding: "3px 6px", borderRadius: 6, border: "1px solid #ddd", background: "white", cursor: "pointer", fontSize: 12 }}
                         >
                           Dettagli
                         </button>
                         <button
                           type="button"
                           onClick={() => startEditProjectIntervento(it)}
-                          style={{ padding: "6px 8px", borderRadius: 8, border: "1px solid #111", background: "white", cursor: "pointer" }}
+                          style={{ padding: "3px 6px", borderRadius: 6, border: "1px solid #ddd", background: "white", cursor: "pointer", fontSize: 12 }}
                         >
                           Modifica
                         </button>
                         <button
                           type="button"
                           onClick={() => deleteProjectIntervento(it.id)}
-                          style={{ padding: "6px 8px", borderRadius: 8, border: "1px solid #dc2626", color: "#dc2626", background: "white", cursor: "pointer" }}
+                          style={{ padding: "3px 6px", borderRadius: 6, border: "1px solid #ddd", background: "white", cursor: "pointer", fontSize: 12 }}
                         >
                           Elimina
                         </button>

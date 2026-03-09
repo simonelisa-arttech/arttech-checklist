@@ -247,7 +247,7 @@ export async function POST(request: Request) {
 
     for (const i of interventi || []) {
       const ii = i as any;
-      const statoIntervento = String(ii.stato_intervento || ii.fatturazione_stato || "APERTO").trim().toUpperCase();
+      const statoIntervento = String(ii.stato_intervento || "APERTO").trim().toUpperCase();
       if (statoIntervento !== "APERTO") continue;
       const date = toIsoDay(ii.data_tassativa) || toIsoDay(ii.data);
       if (!date || date < CUTOFF_DATE) continue;
@@ -342,7 +342,7 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: interventiErr.message }, { status: 500 });
       }
       for (const row of interventiRows || []) {
-        const stato = String((row as any).stato_intervento || "").trim().toUpperCase();
+        const stato = String((row as any).stato_intervento || "APERTO").trim().toUpperCase();
         const dataEvento = toIsoDay((row as any).data_tassativa) || toIsoDay((row as any).data);
         if (stato === "APERTO" && isOnOrAfterCutoff(dataEvento)) {
           allowedInterventi.add(String((row as any).id));
