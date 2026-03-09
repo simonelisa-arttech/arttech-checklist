@@ -292,7 +292,15 @@ type NotificationRule = {
 
 type ProjectRenewalRow = {
   key: string;
-  source: "saas" | "garanzia" | "licenza" | "tagliando" | "licenze" | "tagliandi" | "rinnovi";
+  source:
+    | "saas"
+    | "garanzia"
+    | "garanzie"
+    | "licenza"
+    | "tagliando"
+    | "licenze"
+    | "tagliandi"
+    | "rinnovi";
   recordId: string | null;
   tipo: string;
   riferimento: string;
@@ -341,6 +349,15 @@ type AlertTemplate = {
   subject_template: string | null;
   body_template: string | null;
   attivo: boolean;
+};
+
+type AlertStats = {
+  n_avvisi: number;
+  n_operatore: number;
+  n_email_manual: number;
+  last_sent_at: string | null;
+  last_recipients: string[];
+  total_recipients: number;
 };
 
 function toDateInput(value?: string | null) {
@@ -608,6 +625,45 @@ function renderModalitaBadge(value?: string | null) {
       {raw}
     </span>
   );
+}
+
+function alertKey(tipo?: string | null, checklistId?: string | null, riferimento?: string | null) {
+  const t = String(tipo || "NULL").toUpperCase();
+  const c = checklistId || "NULL";
+  const r = riferimento ?? "NULL";
+  return `${t}::${c}::${r}`;
+}
+
+function alertKeyForLogRow(row: any) {
+  const tipo = String(row?.tipo || "").toUpperCase();
+  const checklistId = row?.checklist_id ?? null;
+  if (tipo === "TAGLIANDO" || tipo === "LICENZA") {
+    return `${tipo}::${checklistId || "NULL"}::${tipo}`;
+  }
+  return alertKey(tipo, checklistId, row?.riferimento ?? null);
+}
+
+function alertKeyForProjectRow(row: ProjectRenewalRow) {
+  if (row.source === "tagliando" || row.source === "tagliandi") {
+    return `TAGLIANDO::${row.checklist_id || "NULL"}::TAGLIANDO`;
+  }
+  if (row.source === "licenza" || row.source === "licenze") {
+    return `LICENZA::${row.checklist_id || "NULL"}::LICENZA`;
+  }
+  return alertKey(row.item_tipo ?? row.tipo ?? null, row.checklist_id ?? null, row.riferimento ?? null);
+}
+
+function escapeHtml(value: string) {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
+function textToHtml(value: string) {
+  return escapeHtml(value).replace(/\n/g, "<br/>");
 }
 
 const LICENZA_STATI = [
@@ -902,6 +958,23 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
   const [projectRenewalEditSaving, setProjectRenewalEditSaving] = useState(false);
   const [projectInterventiError, setProjectInterventiError] = useState<string | null>(null);
   const [projectInterventiNotice, setProjectInterventiNotice] = useState<string | null>(null);
+  const [projectAlertStatsMap, setProjectAlertStatsMap] = useState<Map<string, AlertStats>>(new Map());
+  const [projectRinnoviAlertOpen, setProjectRinnoviAlertOpen] = useState(false);
+  const [projectRinnoviAlertStage, setProjectRinnoviAlertStage] = useState<"stage1" | "stage2">("stage1");
+  const [projectRinnoviAlertToOperatoreId, setProjectRinnoviAlertToOperatoreId] = useState("");
+  const [projectRinnoviAlertSubject, setProjectRinnoviAlertSubject] = useState("");
+  const [projectRinnoviAlertMsg, setProjectRinnoviAlertMsg] = useState("");
+  const [projectRinnoviAlertSendEmail, setProjectRinnoviAlertSendEmail] = useState(true);
+  const [projectRinnoviAlertItems, setProjectRinnoviAlertItems] = useState<ProjectRenewalRow[]>([]);
+  const [projectRinnoviAlertDestMode, setProjectRinnoviAlertDestMode] = useState<"operatore" | "email">("operatore");
+  const [projectRinnoviAlertTrigger, setProjectRinnoviAlertTrigger] = useState<"MANUALE" | "AUTOMATICO">("MANUALE");
+  const [projectRinnoviAlertToArtTech, setProjectRinnoviAlertToArtTech] = useState(true);
+  const [projectRinnoviAlertToCliente, setProjectRinnoviAlertToCliente] = useState(false);
+  const [projectRinnoviAlertManualEmail, setProjectRinnoviAlertManualEmail] = useState("");
+  const [projectRinnoviAlertManualName, setProjectRinnoviAlertManualName] = useState("");
+  const [projectRinnoviAlertSending, setProjectRinnoviAlertSending] = useState(false);
+  const [projectRinnoviAlertErr, setProjectRinnoviAlertErr] = useState<string | null>(null);
+  const [projectRinnoviAlertOk, setProjectRinnoviAlertOk] = useState<string | null>(null);
   const [cronoOperativiMeta, setCronoOperativiMeta] = useState<CronoOperativiMeta | null>(null);
   const [cronoOperativiForm, setCronoOperativiForm] = useState(EMPTY_CRONO_OPERATIVI);
   const [cronoOperativiSaving, setCronoOperativiSaving] = useState(false);
@@ -1503,10 +1576,36 @@ function buildFormData(c: Checklist): FormData {
 
   function getProjectWorkflowStato(row: ProjectRenewalRow) {
     const raw = String(row.stato || "").toUpperCase();
-    if (row.source === "tagliando") {
+    if (row.source === "tagliando" || row.source === "tagliandi") {
+      const match = projectRinnovi.find(
+        (x) =>
+          String(x.checklist_id || "") === String(row.checklist_id || "") &&
+          String(x.item_tipo || "").toUpperCase() === "TAGLIANDO"
+      );
+      if (match?.stato) return String(match.stato).toUpperCase();
       if (raw === "ATTIVA") return "DA_AVVISARE";
       if (raw === "OK") return "CONFERMATO";
       return raw || "DA_AVVISARE";
+    }
+    if (
+      row.source === "saas" ||
+      row.source === "garanzia" ||
+      row.source === "garanzie" ||
+      String(row.item_tipo || "").toUpperCase() === "SAAS" ||
+      String(row.item_tipo || "").toUpperCase() === "GARANZIA" ||
+      String(row.item_tipo || "").toUpperCase() === "SAAS_ULTRA"
+    ) {
+      const targetTipo = String(row.item_tipo || row.tipo || "").toUpperCase();
+      const match = projectRinnovi.find(
+        (x) =>
+          String(x.checklist_id || "") === String(row.checklist_id || "") &&
+          String(x.item_tipo || "").toUpperCase() === targetTipo
+      );
+      return String(match?.stato || "DA_AVVISARE").toUpperCase();
+    }
+    if (row.source === "licenza" || row.source === "licenze") {
+      if (raw === "ATTIVA") return "DA_AVVISARE";
+      if (raw === "OK") return "CONFERMATO";
     }
     if (RINNOVO_STATI.includes(raw)) return raw;
     return "DA_AVVISARE";
@@ -1521,10 +1620,10 @@ function buildFormData(c: Checklist): FormData {
     if (row.source === "saas") {
       const res = await dbFrom("checklists").update({ saas_stato: status }).eq("id", id);
       err = res.error;
-    } else if (row.source === "licenza" && row.recordId) {
+    } else if ((row.source === "licenza" || row.source === "licenze") && row.recordId) {
       const res = await dbFrom("licenze").update({ stato: status }).eq("id", row.recordId);
       err = res.error;
-    } else if (row.source === "tagliando" && row.recordId) {
+    } else if ((row.source === "tagliando" || row.source === "tagliandi") && row.recordId) {
       const mapped =
         status === "CONFERMATO"
           ? "OK"
@@ -1545,6 +1644,257 @@ function buildFormData(c: Checklist): FormData {
 
     await load(id);
     setProjectInterventiNotice(`Stato aggiornato a ${status}.`);
+  }
+
+  function getProjectStageList(stage: "stage1" | "stage2", onlyWithin30Days = false) {
+    const base = (projectRenewalsAll as ProjectRenewalRow[]).filter((row) =>
+      stage === "stage1"
+        ? getProjectWorkflowStato(row) === "DA_AVVISARE"
+        : getProjectWorkflowStato(row) === "DA_FATTURARE"
+    );
+    if (!onlyWithin30Days) return base;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    return base.filter((row) => {
+      const dt = parseLocalDay(row.scadenza);
+      if (!dt) return false;
+      const diff = Math.ceil((dt.getTime() - today.getTime()) / (24 * 60 * 60 * 1000));
+      return diff >= 0 && diff <= 30;
+    });
+  }
+
+  function openProjectRinnoviAlert(
+    stage: "stage1" | "stage2",
+    onlyWithin30Days = false,
+    listOverride?: ProjectRenewalRow[]
+  ) {
+    const list = listOverride?.length
+      ? listOverride
+      : getProjectStageList(stage, onlyWithin30Days);
+    if (list.length === 0) {
+      setProjectInterventiError(
+        stage === "stage1" ? "Nessuna scadenza da avvisare." : "Nessun rinnovo da fatturare."
+      );
+      return;
+    }
+    setProjectInterventiError(null);
+    setProjectRinnoviAlertStage(stage);
+    setProjectRinnoviAlertItems(list);
+    setProjectRinnoviAlertTrigger("MANUALE");
+    setProjectRinnoviAlertToArtTech(true);
+    setProjectRinnoviAlertToCliente(false);
+    setProjectRinnoviAlertDestMode("operatore");
+    setProjectRinnoviAlertToOperatoreId("");
+    setProjectRinnoviAlertManualEmail("");
+    setProjectRinnoviAlertManualName("");
+    setProjectRinnoviAlertSubject(
+      stage === "stage1"
+        ? `[Art Tech] Scadenze servizi – ${checklist?.cliente || "—"}`
+        : `[Art Tech] Da fatturare – ${checklist?.cliente || "—"}`
+    );
+    const lines = list
+      .map((row) => {
+        const dataLabel = row.scadenza ? new Date(row.scadenza).toLocaleDateString("it-IT") : "—";
+        const projectLabel = checklist?.nome_checklist || checklist?.id || "—";
+        return `- ${dataLabel} | ${row.riferimento || "—"} | PROGETTO: ${projectLabel}`;
+      })
+      .join("\n");
+    setProjectRinnoviAlertMsg(lines);
+    setProjectRinnoviAlertErr(null);
+    setProjectRinnoviAlertOk(null);
+    setProjectRinnoviAlertOpen(true);
+  }
+
+  function getProjectAlertRecipients() {
+    return alertOperatori.filter((o) => o.attivo !== false && String(o.email || "").includes("@"));
+  }
+
+  async function sendProjectRinnoviAlert() {
+    if (!id || !checklist) return;
+    setProjectRinnoviAlertSending(true);
+    setProjectRinnoviAlertErr(null);
+    setProjectRinnoviAlertOk(null);
+    try {
+      const opId =
+        currentOperatoreId ??
+        (typeof window !== "undefined" ? window.localStorage.getItem("current_operatore_id") : null);
+      if (!opId) {
+        setProjectRinnoviAlertErr("Seleziona l'Operatore corrente prima di inviare.");
+        return;
+      }
+      if (!projectRinnoviAlertToArtTech && !projectRinnoviAlertToCliente) {
+        setProjectRinnoviAlertErr("Seleziona almeno un destinatario (Art Tech e/o cliente).");
+        return;
+      }
+      if (
+        projectRinnoviAlertToArtTech &&
+        projectRinnoviAlertDestMode === "operatore" &&
+        !projectRinnoviAlertToOperatoreId
+      ) {
+        setProjectRinnoviAlertErr("Seleziona un destinatario Art Tech.");
+        return;
+      }
+      if (
+        projectRinnoviAlertToArtTech &&
+        projectRinnoviAlertDestMode === "email" &&
+        !String(projectRinnoviAlertManualEmail || "").includes("@")
+      ) {
+        setProjectRinnoviAlertErr("Inserisci un'email Art Tech valida.");
+        return;
+      }
+      if (projectRinnoviAlertToCliente && !String(checklistClienteEmail || "").includes("@")) {
+        setProjectRinnoviAlertErr("Cliente senza email valida in anagrafica.");
+        return;
+      }
+      const list = projectRinnoviAlertItems.length
+        ? projectRinnoviAlertItems
+        : getProjectStageList(projectRinnoviAlertStage, false);
+      if (list.length === 0) {
+        setProjectRinnoviAlertErr("Nessun elemento disponibile.");
+        return;
+      }
+      const recipients: Array<{ toEmail: string; toNome: string | null; toOperatoreId: string | null }> = [];
+      if (projectRinnoviAlertToArtTech && projectRinnoviAlertDestMode === "operatore") {
+        const op = alertOperatori.find((o) => o.id === projectRinnoviAlertToOperatoreId) || null;
+        const email = String(op?.email || "").trim();
+        if (email.includes("@")) {
+          recipients.push({
+            toEmail: email,
+            toNome: op?.nome ?? null,
+            toOperatoreId: projectRinnoviAlertToOperatoreId,
+          });
+        }
+      }
+      if (
+        projectRinnoviAlertToArtTech &&
+        projectRinnoviAlertDestMode === "email" &&
+        projectRinnoviAlertManualEmail.trim()
+      ) {
+        recipients.push({
+          toEmail: projectRinnoviAlertManualEmail.trim(),
+          toNome: projectRinnoviAlertManualName.trim() || null,
+          toOperatoreId: null,
+        });
+      }
+      if (projectRinnoviAlertToCliente && checklistClienteEmail) {
+        recipients.push({
+          toEmail: checklistClienteEmail,
+          toNome: "Cliente",
+          toOperatoreId: null,
+        });
+      }
+      const dedup = new Map<string, { toEmail: string; toNome: string | null; toOperatoreId: string | null }>();
+      for (const recipient of recipients) {
+        dedup.set(
+          `${String(recipient.toOperatoreId || "")}::${String(recipient.toEmail || "").toLowerCase()}`,
+          recipient
+        );
+      }
+      const finalRecipients = Array.from(dedup.values()).filter((r) => String(r.toEmail || "").includes("@"));
+      if (finalRecipients.length === 0) {
+        setProjectRinnoviAlertErr("Nessun destinatario valido selezionato.");
+        return;
+      }
+      const subject =
+        projectRinnoviAlertSubject ||
+        (projectRinnoviAlertStage === "stage1"
+          ? `[Art Tech] Scadenze servizi – ${checklist?.cliente || "—"}`
+          : `[Art Tech] Da fatturare – ${checklist?.cliente || "—"}`);
+      const message = (projectRinnoviAlertMsg || "").trim();
+      const html = `
+        <div>
+          <h2>${escapeHtml(subject)}</h2>
+          <div>${textToHtml(message)}</div>
+          <p style="font-size:12px;color:#6b7280">Messaggio ${projectRinnoviAlertTrigger.toLowerCase()} Art Tech.</p>
+        </div>
+      `;
+      const byItemCanale = (item: ProjectRenewalRow) => {
+        const src = String(item.source || "");
+        const isTag = src === "tagliando" || src === "tagliandi";
+        const isLic = src === "licenza" || src === "licenze";
+        if (projectRinnoviAlertStage === "stage1") {
+          if (isTag) return "tagliando_stage1";
+          if (isLic) return "licenza_stage1";
+          return "rinnovo_stage1";
+        }
+        if (isTag) return "tagliando_stage2";
+        if (isLic) return "licenza_stage2";
+        return "rinnovo_stage2";
+      };
+      const normalizeTipo = (item: ProjectRenewalRow) => {
+        const src = String(item.source || "");
+        if (src === "tagliando" || src === "tagliandi") return "TAGLIANDO";
+        if (src === "licenza" || src === "licenze") return "LICENZA";
+        return String(item.item_tipo || item.tipo || "RINNOVO").toUpperCase();
+      };
+      const normalizeRiferimento = (item: ProjectRenewalRow) => {
+        const src = String(item.source || "");
+        if (src === "tagliando" || src === "tagliandi") return "TAGLIANDO";
+        if (src === "licenza" || src === "licenze") return "LICENZA";
+        return item.riferimento || null;
+      };
+
+      for (const recipient of finalRecipients) {
+        for (let i = 0; i < list.length; i += 1) {
+          const item = list[i];
+          await sendAlert({
+            canale: byItemCanale(item),
+            subject,
+            message,
+            text: message,
+            html,
+            to_email: recipient.toEmail || null,
+            to_nome: recipient.toNome,
+            to_operatore_id: recipient.toOperatoreId,
+            from_operatore_id: opId,
+            checklist_id: id,
+            tagliando_id:
+              item.source === "tagliando" || item.source === "tagliandi" ? item.recordId : null,
+            tipo: normalizeTipo(item),
+            riferimento: normalizeRiferimento(item),
+            stato: getProjectWorkflowStato(item),
+            trigger: projectRinnoviAlertTrigger,
+            send_email: i === 0 ? projectRinnoviAlertSendEmail : false,
+          });
+        }
+      }
+
+      if (projectRinnoviAlertStage === "stage1") {
+        const licenzaIds = list
+          .filter((item) => item.source === "licenza" || item.source === "licenze")
+          .map((item) => item.recordId)
+          .filter(Boolean) as string[];
+        if (licenzaIds.length > 0) {
+          await Promise.allSettled(
+            licenzaIds.map((licenseId) =>
+              fetch("/api/licenses/action", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  action: "SEND_ALERT",
+                  licenseId,
+                  status: "AVVISATO",
+                  updatedByOperatoreId: opId,
+                }),
+              })
+            )
+          );
+        }
+      }
+
+      await load(id);
+      setProjectRinnoviAlertOk(
+        projectRinnoviAlertSendEmail ? "✅ Email inviata e log registrato." : "✅ Log avviso registrato."
+      );
+      setProjectInterventiNotice(
+        projectRinnoviAlertSendEmail ? "✅ Email inviata e stato aggiornato." : "✅ Avviso registrato."
+      );
+      setTimeout(() => setProjectRinnoviAlertOpen(false), 800);
+    } catch (e: any) {
+      setProjectRinnoviAlertErr(e?.message || "Errore invio avviso.");
+    } finally {
+      setProjectRinnoviAlertSending(false);
+    }
   }
 
   async function deleteProjectIntervento(idToDelete: string) {
@@ -3680,6 +4030,83 @@ function buildFormData(c: Checklist): FormData {
     });
   }
 
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      if (!id) return;
+      const { data, error: err } = await db<any[]>({
+        table: "checklist_alert_log",
+        op: "select",
+        select: "checklist_id, tipo, riferimento, to_operatore_id, to_email, created_at",
+        filter: { checklist_id: id },
+        order: [{ col: "created_at", asc: false }],
+        limit: 2000,
+      });
+      if (!alive) return;
+      if (err) return;
+      const map = new Map<string, AlertStats>();
+      const recipientTotal = new Map<string, Set<string>>();
+      for (const row of data || []) {
+        const key = alertKeyForLogRow(row);
+        const prev = map.get(key) || {
+          n_avvisi: 0,
+          n_operatore: 0,
+          n_email_manual: 0,
+          last_sent_at: null,
+          last_recipients: [],
+          total_recipients: 0,
+        };
+        const next: AlertStats = { ...prev };
+        next.n_avvisi += 1;
+        if (row.to_operatore_id) next.n_operatore += 1;
+        else if (row.to_email) next.n_email_manual += 1;
+        if (!next.last_sent_at || String(row.created_at) > next.last_sent_at) {
+          next.last_sent_at = row.created_at ?? null;
+        }
+        const op = alertOperatori.find((o) => o.id === row.to_operatore_id);
+        const recipient =
+          row.to_email ||
+          (op?.nome || op?.email
+            ? `👤 ${op?.nome ?? "Operatore"}${op?.email ? ` (${op.email})` : ""}`
+            : null) ||
+          null;
+        if (recipient) {
+          const list = [recipient, ...next.last_recipients.filter((r) => r !== recipient)];
+          next.last_recipients = list.slice(0, 5);
+          const set = recipientTotal.get(key) || new Set<string>();
+          set.add(recipient);
+          recipientTotal.set(key, set);
+          next.total_recipients = set.size;
+        }
+        map.set(key, next);
+      }
+      setProjectAlertStatsMap(map);
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [id, alertOperatori, projectRinnovi, licenze, projectTagliandi]);
+
+  function renderProjectAvvisatoBadge(stats?: AlertStats | null) {
+    const count = stats?.n_avvisi ?? null;
+    const label = count != null ? `AVVISATO (${count})` : "AVVISATO";
+    const lastSent = stats?.last_sent_at
+      ? new Date(stats.last_sent_at).toLocaleString()
+      : "—";
+    const recipients =
+      stats && stats.last_recipients.length > 0
+        ? `Ultimi destinatari:\n${stats.last_recipients.join("\n")}`
+        : "Ultimi destinatari: —";
+    const tooltip = stats
+      ? `Ultimo invio: ${lastSent}\nOperatori: ${stats.n_operatore}\nEmail manuali: ${stats.n_email_manual}\n${recipients}`
+      : undefined;
+    return (
+      <span title={tooltip}>
+        {renderRinnovoStatoBadge(label)}
+      </span>
+    );
+  }
+
   return (
     <div style={{ maxWidth: 1100, margin: "40px auto", padding: 16 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
@@ -4759,6 +5186,256 @@ function buildFormData(c: Checklist): FormData {
           ) : null}
         </div>
       </div>
+      {projectRinnoviAlertOpen && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.45)",
+            zIndex: 1000,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 16,
+          }}
+          onClick={() => setProjectRinnoviAlertOpen(false)}
+        >
+          <div
+            style={{
+              width: "100%",
+              maxWidth: 780,
+              maxHeight: "90vh",
+              overflow: "auto",
+              background: "white",
+              borderRadius: 12,
+              border: "1px solid #eee",
+              padding: 16,
+              boxShadow: "0 10px 30px rgba(0,0,0,0.2)",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
+              <div style={{ fontWeight: 800, fontSize: 18 }}>
+                {projectRinnoviAlertStage === "stage1" ? "Invia avviso scadenza" : "Invia avviso fatturazione"}
+              </div>
+              <button
+                type="button"
+                onClick={() => setProjectRinnoviAlertOpen(false)}
+                style={{
+                  marginLeft: "auto",
+                  padding: "6px 10px",
+                  borderRadius: 8,
+                  border: "1px solid #ddd",
+                  background: "white",
+                }}
+              >
+                Chiudi
+              </button>
+            </div>
+
+            <label style={{ display: "block", marginBottom: 10 }}>
+              Modalità invio<br />
+              <select
+                value={projectRinnoviAlertTrigger}
+                onChange={(e) =>
+                  setProjectRinnoviAlertTrigger(
+                    String(e.target.value || "MANUALE").toUpperCase() === "AUTOMATICO"
+                      ? "AUTOMATICO"
+                      : "MANUALE"
+                  )
+                }
+                style={{ width: "100%", padding: 8 }}
+              >
+                <option value="MANUALE">MANUALE</option>
+                <option value="AUTOMATICO">AUTOMATICO</option>
+              </select>
+            </label>
+
+            <div style={{ display: "flex", gap: 12, marginBottom: 10, fontSize: 12, flexWrap: "wrap" }}>
+              <label style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                <input
+                  type="checkbox"
+                  checked={projectRinnoviAlertToArtTech}
+                  onChange={(e) => setProjectRinnoviAlertToArtTech(e.target.checked)}
+                />
+                Art Tech
+              </label>
+              <label style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                <input
+                  type="checkbox"
+                  checked={projectRinnoviAlertToCliente}
+                  onChange={(e) => setProjectRinnoviAlertToCliente(e.target.checked)}
+                />
+                Cliente
+              </label>
+            </div>
+
+            <div
+              style={{
+                display: "flex",
+                gap: 12,
+                marginBottom: 10,
+                fontSize: 12,
+                opacity: projectRinnoviAlertToArtTech ? 1 : 0.55,
+              }}
+            >
+              <label style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                <input
+                  type="radio"
+                  name="project-rinnovi-dest"
+                  checked={projectRinnoviAlertDestMode === "operatore"}
+                  onChange={() => setProjectRinnoviAlertDestMode("operatore")}
+                  disabled={!projectRinnoviAlertToArtTech}
+                />
+                Operatore
+              </label>
+              <label style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                <input
+                  type="radio"
+                  name="project-rinnovi-dest"
+                  checked={projectRinnoviAlertDestMode === "email"}
+                  onChange={() => setProjectRinnoviAlertDestMode("email")}
+                  disabled={!projectRinnoviAlertToArtTech}
+                />
+                Email manuale
+              </label>
+            </div>
+
+            {projectRinnoviAlertTrigger === "AUTOMATICO" && (
+              <div style={{ marginTop: -4, marginBottom: 10, fontSize: 12, opacity: 0.8 }}>
+                Regola collegata: verrà registrato trigger AUTOMATICO nel log avvisi.
+              </div>
+            )}
+            {projectRinnoviAlertToCliente && (
+              <div style={{ marginTop: -4, marginBottom: 10, fontSize: 12, opacity: 0.8 }}>
+                Cliente {checklistClienteEmail ? "selezionato" : "senza email in anagrafica"}
+              </div>
+            )}
+
+            {projectRinnoviAlertToArtTech && (
+              <label style={{ display: "block", marginBottom: 10 }}>
+                Destinatario<br />
+                {projectRinnoviAlertDestMode === "operatore" ? (
+                  <select
+                    value={projectRinnoviAlertToOperatoreId}
+                    onChange={(e) => setProjectRinnoviAlertToOperatoreId(e.target.value)}
+                    style={{ width: "100%", padding: 8 }}
+                  >
+                    <option value="">—</option>
+                    {getProjectAlertRecipients().map((op) => (
+                      <option key={op.id} value={op.id}>
+                        {op.nome ?? "—"}
+                        {op.ruolo ? ` — ${op.ruolo}` : ""}
+                        {op.email ? ` — ${op.email}` : " — (senza email)"}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+                    <input
+                      placeholder="Email"
+                      value={projectRinnoviAlertManualEmail}
+                      onChange={(e) => setProjectRinnoviAlertManualEmail(e.target.value)}
+                      style={{ width: "100%", padding: 8 }}
+                    />
+                    <input
+                      placeholder="Nome (opzionale)"
+                      value={projectRinnoviAlertManualName}
+                      onChange={(e) => setProjectRinnoviAlertManualName(e.target.value)}
+                      style={{ width: "100%", padding: 8 }}
+                    />
+                  </div>
+                )}
+              </label>
+            )}
+
+            <label style={{ display: "block", marginBottom: 10 }}>
+              Subject<br />
+              <input
+                value={projectRinnoviAlertSubject}
+                onChange={(e) => setProjectRinnoviAlertSubject(e.target.value)}
+                style={{ width: "100%", padding: 8 }}
+              />
+            </label>
+            <label style={{ display: "block", marginBottom: 10 }}>
+              Messaggio<br />
+              <textarea
+                value={projectRinnoviAlertMsg}
+                onChange={(e) => setProjectRinnoviAlertMsg(e.target.value)}
+                rows={10}
+                style={{ width: "100%", padding: 8 }}
+              />
+            </label>
+            <label style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 6 }}>
+              <input
+                type="checkbox"
+                checked={projectRinnoviAlertSendEmail}
+                onChange={(e) => setProjectRinnoviAlertSendEmail(e.target.checked)}
+              />
+              Invia email
+            </label>
+
+            <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+              <button
+                type="button"
+                onClick={() => setProjectRinnoviAlertOpen(false)}
+                style={{
+                  padding: "8px 12px",
+                  borderRadius: 8,
+                  border: "1px solid #ddd",
+                  background: "white",
+                }}
+              >
+                Annulla
+              </button>
+              <button
+                type="button"
+                onClick={sendProjectRinnoviAlert}
+                disabled={
+                  projectRinnoviAlertSending ||
+                  (!projectRinnoviAlertToCliente &&
+                    !(
+                      projectRinnoviAlertToArtTech &&
+                      (projectRinnoviAlertDestMode === "operatore"
+                        ? Boolean(projectRinnoviAlertToOperatoreId)
+                        : Boolean(projectRinnoviAlertManualEmail.trim()))
+                    ))
+                }
+                style={{
+                  padding: "8px 12px",
+                  borderRadius: 8,
+                  border: "1px solid #111",
+                  background: "#111",
+                  color: "white",
+                  opacity:
+                    projectRinnoviAlertSending ||
+                    (!projectRinnoviAlertToCliente &&
+                      !(
+                        projectRinnoviAlertToArtTech &&
+                        (projectRinnoviAlertDestMode === "operatore"
+                          ? Boolean(projectRinnoviAlertToOperatoreId)
+                          : Boolean(projectRinnoviAlertManualEmail.trim()))
+                      ))
+                      ? 0.6
+                      : 1,
+                }}
+              >
+                {projectRinnoviAlertSending ? "Invio..." : "Invia"}
+              </button>
+            </div>
+            {projectRinnoviAlertErr && (
+              <div style={{ marginTop: 10, fontSize: 12, color: "#b91c1c" }}>
+                {projectRinnoviAlertErr}
+              </div>
+            )}
+            {projectRinnoviAlertOk && (
+              <div style={{ marginTop: 6, fontSize: 12, color: "#166534" }}>
+                {projectRinnoviAlertOk}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
       <div style={{ marginTop: 12 }}>
         <div
           style={{
@@ -4872,11 +5549,7 @@ function buildFormData(c: Checklist): FormData {
               </Link>
               <button
                 type="button"
-                onClick={() => {
-                  if (checklist?.cliente) {
-                    router.push(`/clienti/${encodeURIComponent(checklist.cliente)}`);
-                  }
-                }}
+                onClick={() => openProjectRinnoviAlert("stage1", true)}
                 style={{
                   padding: "6px 10px",
                   borderRadius: 8,
@@ -4927,19 +5600,16 @@ function buildFormData(c: Checklist): FormData {
             setRinnoviNotice={setProjectInterventiNotice}
             getWorkflowStato={(row) => getProjectWorkflowStato(row as ProjectRenewalRow)}
             actionsByTipo={ACTIONS_BY_TIPO}
-            alertStatsMap={new Map()}
+            alertStatsMap={projectAlertStatsMap}
+            getAlertKeyForRow={(row) => alertKeyForProjectRow(row as ProjectRenewalRow)}
             renderScadenzaBadge={(scadenza) => renderBadge(getExpiryStatus(scadenza))}
             renderTagliandoStatoBadge={(stato) =>
               renderBadge(String(stato || "ATTIVA").toUpperCase() === "OK" ? "ATTIVA" : String(stato || "ATTIVA"))
             }
-            renderAvvisatoBadge={() => renderRinnovoStatoBadge("AVVISATO")}
+            renderAvvisatoBadge={(stats) => renderProjectAvvisatoBadge(stats)}
             renderRinnovoStatoBadge={renderRinnovoStatoBadge}
             renderModalitaBadge={renderModalitaBadge}
-            onSendAlert={() => {
-              if (checklist?.cliente) {
-                router.push(`/clienti/${encodeURIComponent(checklist.cliente)}`);
-              }
-            }}
+            onSendAlert={(row) => openProjectRinnoviAlert("stage1", false, [row as ProjectRenewalRow])}
             onSetDaFatturare={(row) => updateProjectRenewalStatus(row as ProjectRenewalRow, "DA_FATTURARE")}
             onSetFatturato={(row) => updateProjectRenewalStatus(row as ProjectRenewalRow, "FATTURATO")}
             onSetConfermato={(row) => updateProjectRenewalStatus(row as ProjectRenewalRow, "CONFERMATO")}
