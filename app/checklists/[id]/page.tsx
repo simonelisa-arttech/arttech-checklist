@@ -2479,12 +2479,14 @@ function buildFormData(c: Checklist): FormData {
   }, [loading, id, tasks.length, licenze.length, projectTagliandi.length, projectRinnovi.length]);
 
   useEffect(() => {
+    const checklistCliente = String(checklist?.cliente || "").trim();
+    if (!checklistCliente) return;
     (async () => {
       const { data, error: opErr } = await db<any[]>({
         table: "operatori",
         op: "select",
         select: "id, nome, email, attivo, alert_enabled, alert_tasks, cliente, ruolo",
-        filter: { attivo: true },
+        filter: { cliente: checklistCliente, attivo: true } as any,
         limit: 1000,
       });
       if (opErr) {
@@ -2533,7 +2535,7 @@ function buildFormData(c: Checklist): FormData {
         );
       }
     })();
-  }, []);
+  }, [checklist?.cliente]);
 
   const m2Calcolati = calcM2FromDimensioni(
     formData?.dimensioni ?? null,
