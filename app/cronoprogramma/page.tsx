@@ -700,13 +700,13 @@ export default function CronoprogrammaPage() {
           style={{
             display: "grid",
             gridTemplateColumns:
-              "110px 110px 110px 240px 220px 260px 140px 130px 120px 260px 260px 220px 260px 160px 220px 220px 220px 220px 120px 120px",
+              "110px 110px 110px 240px 220px 260px 140px 130px 120px 260px 260px 220px 260px 160px 140px 300px 300px 120px",
             gap: 12,
             padding: "10px 12px",
             fontWeight: 700,
             background: "#fafafa",
             borderBottom: "1px solid #eee",
-            minWidth: 4320,
+            minWidth: 3860,
           }}
         >
           <button
@@ -739,9 +739,7 @@ export default function CronoprogrammaPage() {
           <div>Indirizzo</div>
           <div>Orario</div>
           <div>Referente cliente</div>
-          <div>Contatto referente cliente</div>
           <div>Commerciale Art Tech</div>
-          <div>Contatto commerciale Art Tech</div>
           <div>Azioni</div>
         </div>
         {loading ? (
@@ -761,14 +759,14 @@ export default function CronoprogrammaPage() {
                 style={{
                   display: "grid",
                   gridTemplateColumns:
-                    "110px 110px 110px 240px 220px 260px 140px 130px 120px 260px 260px 220px 260px 160px 220px 220px 220px 220px 120px 120px",
+                    "110px 110px 110px 240px 220px 260px 140px 130px 120px 260px 260px 220px 260px 160px 140px 300px 300px 120px",
                   gap: 12,
                   padding: "10px 12px",
                   borderBottom: "1px solid #f3f4f6",
                   alignItems: "start",
                   opacity: hidden && showHidden ? 0.6 : 1,
                   fontStyle: hidden && showHidden ? "italic" : "normal",
-                  minWidth: 4320,
+                  minWidth: 3860,
                 }}
               >
                 <div>{r.data_prevista ? new Date(r.data_prevista).toLocaleDateString("it-IT") : "—"}</div>
@@ -950,59 +948,59 @@ export default function CronoprogrammaPage() {
                   />
                 </div>
                 <div>
-                  <input
-                    value={operativiDraftByKey[key]?.referente_cliente_nome ?? ""}
-                    onChange={(e) =>
-                      setOperativiDraftByKey((prev) => ({
-                        ...prev,
-                        [key]: { ...(prev[key] || EMPTY_OPERATIVI), referente_cliente_nome: e.target.value },
-                      }))
-                    }
-                    placeholder="Nome referente cliente"
-                    style={{ width: "100%", padding: 6 }}
-                  />
+                  <div style={{ display: "grid", gap: 6 }}>
+                    <input
+                      value={operativiDraftByKey[key]?.referente_cliente_nome ?? ""}
+                      onChange={(e) =>
+                        setOperativiDraftByKey((prev) => ({
+                          ...prev,
+                          [key]: { ...(prev[key] || EMPTY_OPERATIVI), referente_cliente_nome: e.target.value },
+                        }))
+                      }
+                      placeholder="Nome referente cliente"
+                      style={{ width: "100%", padding: 6 }}
+                    />
+                    <input
+                      value={operativiDraftByKey[key]?.referente_cliente_contatto ?? ""}
+                      onChange={(e) =>
+                        setOperativiDraftByKey((prev) => ({
+                          ...prev,
+                          [key]: { ...(prev[key] || EMPTY_OPERATIVI), referente_cliente_contatto: e.target.value },
+                        }))
+                      }
+                      placeholder="Contatto referente cliente"
+                      style={{ width: "100%", padding: 6 }}
+                    />
+                  </div>
                 </div>
                 <div>
-                  <input
-                    value={operativiDraftByKey[key]?.referente_cliente_contatto ?? ""}
-                    onChange={(e) =>
-                      setOperativiDraftByKey((prev) => ({
-                        ...prev,
-                        [key]: { ...(prev[key] || EMPTY_OPERATIVI), referente_cliente_contatto: e.target.value },
-                      }))
-                    }
-                    placeholder="Contatto referente cliente"
-                    style={{ width: "100%", padding: 6 }}
-                  />
-                </div>
-                <div>
-                  <input
-                    value={operativiDraftByKey[key]?.commerciale_art_tech_nome ?? ""}
-                    onChange={(e) =>
-                      setOperativiDraftByKey((prev) => ({
-                        ...prev,
-                        [key]: { ...(prev[key] || EMPTY_OPERATIVI), commerciale_art_tech_nome: e.target.value },
-                      }))
-                    }
-                    placeholder="Nome commerciale Art Tech"
-                    style={{ width: "100%", padding: 6 }}
-                  />
-                </div>
-                <div>
-                  <input
-                    value={operativiDraftByKey[key]?.commerciale_art_tech_contatto ?? ""}
-                    onChange={(e) =>
-                      setOperativiDraftByKey((prev) => ({
-                        ...prev,
-                        [key]: {
-                          ...(prev[key] || EMPTY_OPERATIVI),
-                          commerciale_art_tech_contatto: e.target.value,
-                        },
-                      }))
-                    }
-                    placeholder="Contatto commerciale Art Tech"
-                    style={{ width: "100%", padding: 6 }}
-                  />
+                  <div style={{ display: "grid", gap: 6 }}>
+                    <input
+                      value={operativiDraftByKey[key]?.commerciale_art_tech_nome ?? ""}
+                      onChange={(e) =>
+                        setOperativiDraftByKey((prev) => ({
+                          ...prev,
+                          [key]: { ...(prev[key] || EMPTY_OPERATIVI), commerciale_art_tech_nome: e.target.value },
+                        }))
+                      }
+                      placeholder="Nome commerciale Art Tech"
+                      style={{ width: "100%", padding: 6 }}
+                    />
+                    <input
+                      value={operativiDraftByKey[key]?.commerciale_art_tech_contatto ?? ""}
+                      onChange={(e) =>
+                        setOperativiDraftByKey((prev) => ({
+                          ...prev,
+                          [key]: {
+                            ...(prev[key] || EMPTY_OPERATIVI),
+                            commerciale_art_tech_contatto: e.target.value,
+                          },
+                        }))
+                      }
+                      placeholder="Contatto commerciale Art Tech"
+                      style={{ width: "100%", padding: 6 }}
+                    />
+                  </div>
                 </div>
                 <div>
                   <button

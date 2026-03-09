@@ -225,7 +225,6 @@ export async function POST(request: Request) {
     }
 
     const timeline: any[] = [];
-    const toIsoDay = (value?: string | null) => (value ? String(value).slice(0, 10) : "");
 
     for (const c of checklists || []) {
       const cc = c as any;
