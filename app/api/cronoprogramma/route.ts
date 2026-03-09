@@ -178,7 +178,6 @@ export async function POST(request: Request) {
     const { data: checklists, error: cErr } = await supabaseAdmin
       .from("checklists")
       .select("id, cliente, nome_checklist, proforma, data_prevista, data_tassativa, stato_progetto, noleggio_vendita, tipo_impianto")
-      .eq("stato_progetto", "IN_CORSO")
       .order("created_at", { ascending: false });
     if (cErr) return NextResponse.json({ error: cErr.message }, { status: 500 });
 
@@ -251,7 +250,6 @@ export async function POST(request: Request) {
       if (statoIntervento !== "APERTO") continue;
       const date = toIsoDay(ii.data_tassativa) || toIsoDay(ii.data);
       if (!date || date < CUTOFF_DATE) continue;
-      if (ii.checklist_id && !inCorsoChecklistIds.has(String(ii.checklist_id))) continue;
       const c = ii.checklist_id ? checklistById.get(String(ii.checklist_id)) : null;
       const prevista = toIsoDay(ii.data) || toIsoDay(ii.data_tassativa) || date;
       const tassativa = toIsoDay(ii.data_tassativa) || toIsoDay(ii.data) || date;
