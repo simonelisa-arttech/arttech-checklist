@@ -1321,7 +1321,9 @@ function buildFormData(c: Checklist): FormData {
       }
     }
     if (res.error) throw new Error(res.error.message || "Errore caricamento interventi progetto");
-    return (res.data || []) as ProjectIntervento[];
+    return ((res.data || []) as ProjectIntervento[]).filter(
+      (row) => String(row?.checklist_id || "") === String(checklistId)
+    );
   }
 
   async function addProjectIntervento() {
