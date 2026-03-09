@@ -5,6 +5,17 @@ import { createClient } from "@supabase/supabase-js";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 
 type RowRef = { row_kind: "INSTALLAZIONE" | "INTERVENTO"; row_ref_id: string };
+type OperativiInput = {
+  personale_previsto?: string | null;
+  mezzi?: string | null;
+  descrizione_attivita?: string | null;
+  indirizzo?: string | null;
+  orario?: string | null;
+  referente_cliente_nome?: string | null;
+  referente_cliente_contatto?: string | null;
+  commerciale_art_tech_nome?: string | null;
+  commerciale_art_tech_contatto?: string | null;
+};
 const CUTOFF = "2026-01-01";
 
 function getAccessTokenFromCookieHeader(cookieHeader: string | null) {
@@ -28,6 +39,44 @@ function toIsoDay(value?: string | null) {
 function isOnOrAfterCutoff(value?: string | null) {
   const day = toIsoDay(value);
   return !!day && day >= CUTOFF;
+}
+
+function cleanText(v: unknown) {
+  const s = String(v ?? "").trim();
+  return s ? s : null;
+}
+
+function toOperativiPayload(input: OperativiInput) {
+  return {
+    personale_previsto: cleanText(input?.personale_previsto),
+    mezzi: cleanText(input?.mezzi),
+    descrizione_attivita: cleanText(input?.descrizione_attivita),
+    indirizzo: cleanText(input?.indirizzo),
+    orario: cleanText(input?.orario),
+    referente_cliente_nome: cleanText(input?.referente_cliente_nome),
+    referente_cliente_contatto: cleanText(input?.referente_cliente_contatto),
+    commerciale_art_tech_nome: cleanText(input?.commerciale_art_tech_nome),
+    commerciale_art_tech_contatto: cleanText(input?.commerciale_art_tech_contatto),
+  };
+}
+
+function mapMetaRow(row: any) {
+  return {
+    fatto: Boolean(row?.fatto),
+    hidden: Boolean(row?.hidden),
+    updated_at: row?.updated_at || null,
+    updated_by_operatore: row?.updated_by_operatore || null,
+    updated_by_nome: row?.operatore?.nome || null,
+    personale_previsto: row?.personale_previsto || null,
+    mezzi: row?.mezzi || null,
+    descrizione_attivita: row?.descrizione_attivita || null,
+    indirizzo: row?.indirizzo || null,
+    orario: row?.orario || null,
+    referente_cliente_nome: row?.referente_cliente_nome || null,
+    referente_cliente_contatto: row?.referente_cliente_contatto || null,
+    commerciale_art_tech_nome: row?.commerciale_art_tech_nome || null,
+    commerciale_art_tech_contatto: row?.commerciale_art_tech_contatto || null,
+  };
 }
 
 async function getAuthContext(request: Request) {
@@ -318,7 +367,7 @@ export async function POST(request: Request) {
     {
       const res = await supabaseAdmin
         .from("cronoprogramma_meta")
-        .select("row_kind, row_ref_id, fatto, hidden, updated_at, updated_by_operatore, operatore:updated_by_operatore(nome)")
+        .select("*, operatore:updated_by_operatore(nome)")
         .in("row_ref_id", rowIds)
         .in("row_kind", rowKinds as any);
       metaRows = res.data as any[] | null;
@@ -353,13 +402,7 @@ export async function POST(request: Request) {
     for (const row of metaRows || []) {
       const key = rowKey(String((row as any).row_kind), String((row as any).row_ref_id));
       if (!wanted.has(key)) continue;
-      metaByKey[key] = {
-        fatto: Boolean((row as any).fatto),
-        hidden: Boolean((row as any).hidden),
-        updated_at: (row as any).updated_at || null,
-        updated_by_operatore: (row as any).updated_by_operatore || null,
-        updated_by_nome: (row as any).operatore?.nome || null,
-      };
+      metaByKey[key] = mapMetaRow(row as any);
     }
 
     const commentsByKey: Record<string, any[]> = {};
@@ -402,7 +445,7 @@ export async function POST(request: Request) {
     const { data, error } = await supabaseAdmin
       .from("cronoprogramma_meta")
       .upsert(payload, { onConflict: "row_kind,row_ref_id" })
-      .select("row_kind, row_ref_id, fatto, hidden, updated_at, updated_by_operatore, operatore:updated_by_operatore(nome)")
+      .select("*, operatore:updated_by_operatore(nome)")
       .maybeSingle();
 
     if (error) {
@@ -411,13 +454,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({
       ok: true,
-      meta: {
-        fatto: Boolean((data as any)?.fatto),
-        hidden: Boolean((data as any)?.hidden),
-        updated_at: (data as any)?.updated_at || null,
-        updated_by_operatore: (data as any)?.updated_by_operatore || null,
-        updated_by_nome: (data as any)?.operatore?.nome || null,
-      },
+      meta: mapMetaRow(data as any),
     });
   }
 
@@ -440,7 +477,7 @@ export async function POST(request: Request) {
     const { data, error } = await supabaseAdmin
       .from("cronoprogramma_meta")
       .upsert(payload, { onConflict: "row_kind,row_ref_id" })
-      .select("row_kind, row_ref_id, fatto, hidden, updated_at, updated_by_operatore, operatore:updated_by_operatore(nome)")
+      .select("*, operatore:updated_by_operatore(nome)")
       .maybeSingle();
 
     if (error) {
@@ -449,13 +486,38 @@ export async function POST(request: Request) {
 
     return NextResponse.json({
       ok: true,
-      meta: {
-        fatto: Boolean((data as any)?.fatto),
-        hidden: Boolean((data as any)?.hidden),
-        updated_at: (data as any)?.updated_at || null,
-        updated_by_operatore: (data as any)?.updated_by_operatore || null,
-        updated_by_nome: (data as any)?.operatore?.nome || null,
-      },
+      meta: mapMetaRow(data as any),
+    });
+  }
+
+  if (action === "set_operativi") {
+    const rowKind = String(body?.row_kind || "").trim().toUpperCase();
+    const rowRefId = String(body?.row_ref_id || "").trim();
+    if (!(rowKind === "INSTALLAZIONE" || rowKind === "INTERVENTO") || !rowRefId) {
+      return NextResponse.json({ error: "row_kind/row_ref_id non validi" }, { status: 400 });
+    }
+
+    const payload = {
+      row_kind: rowKind,
+      row_ref_id: rowRefId,
+      ...toOperativiPayload(body || {}),
+      updated_at: new Date().toISOString(),
+      updated_by_operatore: operatore.id,
+    };
+
+    const { data, error } = await supabaseAdmin
+      .from("cronoprogramma_meta")
+      .upsert(payload, { onConflict: "row_kind,row_ref_id" })
+      .select("*, operatore:updated_by_operatore(nome)")
+      .maybeSingle();
+
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+
+    return NextResponse.json({
+      ok: true,
+      meta: mapMetaRow(data as any),
     });
   }
 

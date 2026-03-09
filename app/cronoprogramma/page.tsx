@@ -28,6 +28,15 @@ type CronoMeta = {
   updated_at: string | null;
   updated_by_operatore: string | null;
   updated_by_nome: string | null;
+  personale_previsto?: string | null;
+  mezzi?: string | null;
+  descrizione_attivita?: string | null;
+  indirizzo?: string | null;
+  orario?: string | null;
+  referente_cliente_nome?: string | null;
+  referente_cliente_contatto?: string | null;
+  commerciale_art_tech_nome?: string | null;
+  commerciale_art_tech_contatto?: string | null;
 };
 
 type CronoComment = {
@@ -37,6 +46,44 @@ type CronoComment = {
   created_by_operatore: string | null;
   created_by_nome: string | null;
 };
+
+type OperativiFields = {
+  personale_previsto: string;
+  mezzi: string;
+  descrizione_attivita: string;
+  indirizzo: string;
+  orario: string;
+  referente_cliente_nome: string;
+  referente_cliente_contatto: string;
+  commerciale_art_tech_nome: string;
+  commerciale_art_tech_contatto: string;
+};
+
+const EMPTY_OPERATIVI: OperativiFields = {
+  personale_previsto: "",
+  mezzi: "",
+  descrizione_attivita: "",
+  indirizzo: "",
+  orario: "",
+  referente_cliente_nome: "",
+  referente_cliente_contatto: "",
+  commerciale_art_tech_nome: "",
+  commerciale_art_tech_contatto: "",
+};
+
+function extractOperativi(meta?: CronoMeta | null): OperativiFields {
+  return {
+    personale_previsto: String(meta?.personale_previsto || ""),
+    mezzi: String(meta?.mezzi || ""),
+    descrizione_attivita: String(meta?.descrizione_attivita || ""),
+    indirizzo: String(meta?.indirizzo || ""),
+    orario: String(meta?.orario || ""),
+    referente_cliente_nome: String(meta?.referente_cliente_nome || ""),
+    referente_cliente_contatto: String(meta?.referente_cliente_contatto || ""),
+    commerciale_art_tech_nome: String(meta?.commerciale_art_tech_nome || ""),
+    commerciale_art_tech_contatto: String(meta?.commerciale_art_tech_contatto || ""),
+  };
+}
 
 function inferInterventoTipologia(text?: string | null) {
   const v = String(text || "").toLowerCase();
@@ -68,6 +115,15 @@ function downloadCsv(
     "fatto",
     "nota_ultima",
     "descrizione",
+    "personale_previsto",
+    "mezzi",
+    "descrizione_attivita",
+    "indirizzo",
+    "orario",
+    "referente_cliente_nome",
+    "referente_cliente_contatto",
+    "commerciale_art_tech_nome",
+    "commerciale_art_tech_contatto",
     "checklist_link",
   ];
   const lines = [header.join(",")];
@@ -75,6 +131,7 @@ function downloadCsv(
     const key = getRowKey(r.kind, r.row_ref_id);
     const fatto = Boolean(metaByKey[key]?.fatto ?? r.fatto);
     const latestComment = commentsByKey[key]?.[0];
+    const op = extractOperativi(metaByKey[key] || null);
     const cells = [
       r.kind,
       r.data_prevista,
@@ -85,6 +142,15 @@ function downloadCsv(
       fatto ? "FATTO" : "DA_FINIRE",
       latestComment?.commento || "",
       r.descrizione,
+      op.personale_previsto,
+      op.mezzi,
+      op.descrizione_attivita,
+      op.indirizzo,
+      op.orario,
+      op.referente_cliente_nome,
+      op.referente_cliente_contatto,
+      op.commerciale_art_tech_nome,
+      op.commerciale_art_tech_contatto,
       r.checklist_id ? `/checklists/${r.checklist_id}` : "",
     ].map((x) => `"${String(x || "").replaceAll('"', '""')}"`);
     lines.push(cells.join(","));
@@ -124,8 +190,10 @@ export default function CronoprogrammaPage() {
   const [savingFattoKey, setSavingFattoKey] = useState<string | null>(null);
   const [savingHiddenKey, setSavingHiddenKey] = useState<string | null>(null);
   const [savingCommentKey, setSavingCommentKey] = useState<string | null>(null);
+  const [savingOperativiKey, setSavingOperativiKey] = useState<string | null>(null);
   const [deletingCommentId, setDeletingCommentId] = useState<string | null>(null);
   const [noteHistoryKey, setNoteHistoryKey] = useState<string | null>(null);
+  const [operativiDraftByKey, setOperativiDraftByKey] = useState<Record<string, OperativiFields>>({});
 
   async function loadRowState(timelineRows: TimelineRow[]) {
     if (!timelineRows.length) {
@@ -165,7 +233,18 @@ export default function CronoprogrammaPage() {
         setCommentsByKey({});
         return;
       }
-      setMetaByKey((data?.meta as Record<string, CronoMeta>) || {});
+      const nextMeta = (data?.meta as Record<string, CronoMeta>) || {};
+      setMetaByKey(nextMeta);
+      setOperativiDraftByKey((prev) => {
+        const next = { ...prev };
+        for (const r of timelineRows) {
+          const key = getRowKey(r.kind, r.row_ref_id);
+          if (!next[key]) {
+            next[key] = extractOperativi(nextMeta[key]);
+          }
+        }
+        return next;
+      });
       setCommentsByKey((data?.comments as Record<string, CronoComment[]>) || {});
     } finally {
       setStateLoading(false);
@@ -258,6 +337,34 @@ export default function CronoprogrammaPage() {
       }));
     } finally {
       setSavingCommentKey(null);
+    }
+  }
+
+  async function saveOperativi(row: TimelineRow) {
+    const key = getRowKey(row.kind, row.row_ref_id);
+    const draft = operativiDraftByKey[key] || EMPTY_OPERATIVI;
+    setSavingOperativiKey(key);
+    setStateError(null);
+    try {
+      const res = await fetch("/api/cronoprogramma", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "set_operativi",
+          row_kind: row.kind,
+          row_ref_id: row.row_ref_id,
+          ...draft,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setStateError(data?.error || "Errore salvataggio dati operativi");
+        return;
+      }
+      setMetaByKey((prev) => ({ ...prev, [key]: data?.meta }));
+      setOperativiDraftByKey((prev) => ({ ...prev, [key]: extractOperativi(data?.meta || null) }));
+    } finally {
+      setSavingOperativiKey(null);
     }
   }
 
@@ -559,15 +666,18 @@ export default function CronoprogrammaPage() {
       </div>
 
       <div style={{ border: "1px solid #eee", borderRadius: 12, overflow: "hidden" }}>
+        <div style={{ overflowX: "auto" }}>
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "110px 110px 110px 1fr 1fr 1fr 120px 130px 120px 1.6fr",
+            gridTemplateColumns:
+              "110px 110px 110px 240px 220px 260px 140px 130px 120px 260px 260px 220px 260px 160px 220px 220px 220px 220px 120px",
             gap: 12,
             padding: "10px 12px",
             fontWeight: 700,
             background: "#fafafa",
             borderBottom: "1px solid #eee",
+            minWidth: 4200,
           }}
         >
           <button
@@ -594,6 +704,16 @@ export default function CronoprogrammaPage() {
           <div>Fatto</div>
           <div>Nascosta</div>
           <div>Note</div>
+          <div>Personale previsto / incarico</div>
+          <div>Mezzi</div>
+          <div>Descrizione attività</div>
+          <div>Indirizzo</div>
+          <div>Orario</div>
+          <div>Referente cliente</div>
+          <div>Contatto referente cliente</div>
+          <div>Commerciale Art Tech</div>
+          <div>Contatto commerciale Art Tech</div>
+          <div>Salva op.</div>
         </div>
         {loading ? (
           <div style={{ padding: 12, opacity: 0.7 }}>Caricamento...</div>
@@ -611,13 +731,15 @@ export default function CronoprogrammaPage() {
                 key={r.id}
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "110px 110px 110px 1fr 1fr 1fr 120px 130px 120px 1.6fr",
+                  gridTemplateColumns:
+                    "110px 110px 110px 240px 220px 260px 140px 130px 120px 260px 260px 220px 260px 160px 220px 220px 220px 220px 120px",
                   gap: 12,
                   padding: "10px 12px",
                   borderBottom: "1px solid #f3f4f6",
                   alignItems: "start",
                   opacity: hidden && showHidden ? 0.6 : 1,
                   fontStyle: hidden && showHidden ? "italic" : "normal",
+                  minWidth: 4200,
                 }}
               >
                 <div>{r.data_prevista ? new Date(r.data_prevista).toLocaleDateString("it-IT") : "—"}</div>
@@ -733,10 +855,149 @@ export default function CronoprogrammaPage() {
                     )}
                   </div>
                 </div>
+                <div>
+                  <textarea
+                    value={operativiDraftByKey[key]?.personale_previsto ?? ""}
+                    onChange={(e) =>
+                      setOperativiDraftByKey((prev) => ({
+                        ...prev,
+                        [key]: { ...(prev[key] || EMPTY_OPERATIVI), personale_previsto: e.target.value },
+                      }))
+                    }
+                    placeholder="Nominativi + incarichi"
+                    style={{ width: "100%", minHeight: 64, padding: 6, resize: "vertical" }}
+                  />
+                </div>
+                <div>
+                  <textarea
+                    value={operativiDraftByKey[key]?.mezzi ?? ""}
+                    onChange={(e) =>
+                      setOperativiDraftByKey((prev) => ({
+                        ...prev,
+                        [key]: { ...(prev[key] || EMPTY_OPERATIVI), mezzi: e.target.value },
+                      }))
+                    }
+                    placeholder="Mezzi"
+                    style={{ width: "100%", minHeight: 64, padding: 6, resize: "vertical" }}
+                  />
+                </div>
+                <div>
+                  <textarea
+                    value={operativiDraftByKey[key]?.descrizione_attivita ?? ""}
+                    onChange={(e) =>
+                      setOperativiDraftByKey((prev) => ({
+                        ...prev,
+                        [key]: { ...(prev[key] || EMPTY_OPERATIVI), descrizione_attivita: e.target.value },
+                      }))
+                    }
+                    placeholder="Descrizione attività"
+                    style={{ width: "100%", minHeight: 64, padding: 6, resize: "vertical" }}
+                  />
+                </div>
+                <div>
+                  <textarea
+                    value={operativiDraftByKey[key]?.indirizzo ?? ""}
+                    onChange={(e) =>
+                      setOperativiDraftByKey((prev) => ({
+                        ...prev,
+                        [key]: { ...(prev[key] || EMPTY_OPERATIVI), indirizzo: e.target.value },
+                      }))
+                    }
+                    placeholder="Indirizzo"
+                    style={{ width: "100%", minHeight: 64, padding: 6, resize: "vertical" }}
+                  />
+                </div>
+                <div>
+                  <input
+                    value={operativiDraftByKey[key]?.orario ?? ""}
+                    onChange={(e) =>
+                      setOperativiDraftByKey((prev) => ({
+                        ...prev,
+                        [key]: { ...(prev[key] || EMPTY_OPERATIVI), orario: e.target.value },
+                      }))
+                    }
+                    placeholder="Orario"
+                    style={{ width: "100%", padding: 6 }}
+                  />
+                </div>
+                <div>
+                  <input
+                    value={operativiDraftByKey[key]?.referente_cliente_nome ?? ""}
+                    onChange={(e) =>
+                      setOperativiDraftByKey((prev) => ({
+                        ...prev,
+                        [key]: { ...(prev[key] || EMPTY_OPERATIVI), referente_cliente_nome: e.target.value },
+                      }))
+                    }
+                    placeholder="Nome referente cliente"
+                    style={{ width: "100%", padding: 6 }}
+                  />
+                </div>
+                <div>
+                  <input
+                    value={operativiDraftByKey[key]?.referente_cliente_contatto ?? ""}
+                    onChange={(e) =>
+                      setOperativiDraftByKey((prev) => ({
+                        ...prev,
+                        [key]: { ...(prev[key] || EMPTY_OPERATIVI), referente_cliente_contatto: e.target.value },
+                      }))
+                    }
+                    placeholder="Contatto referente cliente"
+                    style={{ width: "100%", padding: 6 }}
+                  />
+                </div>
+                <div>
+                  <input
+                    value={operativiDraftByKey[key]?.commerciale_art_tech_nome ?? ""}
+                    onChange={(e) =>
+                      setOperativiDraftByKey((prev) => ({
+                        ...prev,
+                        [key]: { ...(prev[key] || EMPTY_OPERATIVI), commerciale_art_tech_nome: e.target.value },
+                      }))
+                    }
+                    placeholder="Nome commerciale Art Tech"
+                    style={{ width: "100%", padding: 6 }}
+                  />
+                </div>
+                <div>
+                  <input
+                    value={operativiDraftByKey[key]?.commerciale_art_tech_contatto ?? ""}
+                    onChange={(e) =>
+                      setOperativiDraftByKey((prev) => ({
+                        ...prev,
+                        [key]: {
+                          ...(prev[key] || EMPTY_OPERATIVI),
+                          commerciale_art_tech_contatto: e.target.value,
+                        },
+                      }))
+                    }
+                    placeholder="Contatto commerciale Art Tech"
+                    style={{ width: "100%", padding: 6 }}
+                  />
+                </div>
+                <div>
+                  <button
+                    type="button"
+                    onClick={() => saveOperativi(r)}
+                    disabled={savingOperativiKey === key || stateLoading}
+                    style={{
+                      padding: "6px 10px",
+                      borderRadius: 8,
+                      border: "1px solid #111",
+                      background: savingOperativiKey === key ? "#f3f4f6" : "#111",
+                      color: savingOperativiKey === key ? "#111" : "white",
+                      cursor: savingOperativiKey === key ? "not-allowed" : "pointer",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {savingOperativiKey === key ? "..." : "Salva"}
+                  </button>
+                </div>
               </div>
             );
           })
         )}
+        </div>
       </div>
       {noteHistoryKey && (
         <div
