@@ -2552,6 +2552,63 @@ function buildFormData(c: Checklist): FormData {
     })();
   }, [checklist?.cliente]);
 
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      if (!id) return;
+      const { data, error: err } = await db<any[]>({
+        table: "checklist_alert_log",
+        op: "select",
+        select: "checklist_id, tipo, riferimento, to_operatore_id, to_email, created_at",
+        filter: { checklist_id: id },
+        order: [{ col: "created_at", asc: false }],
+        limit: 2000,
+      });
+      if (!alive) return;
+      if (err) return;
+      const map = new Map<string, AlertStats>();
+      const recipientTotal = new Map<string, Set<string>>();
+      for (const row of data || []) {
+        const key = alertKeyForLogRow(row);
+        const prev = map.get(key) || {
+          n_avvisi: 0,
+          n_operatore: 0,
+          n_email_manual: 0,
+          last_sent_at: null,
+          last_recipients: [],
+          total_recipients: 0,
+        };
+        const next: AlertStats = { ...prev };
+        next.n_avvisi += 1;
+        if (row.to_operatore_id) next.n_operatore += 1;
+        else if (row.to_email) next.n_email_manual += 1;
+        if (!next.last_sent_at || String(row.created_at) > next.last_sent_at) {
+          next.last_sent_at = row.created_at ?? null;
+        }
+        const op = alertOperatori.find((o) => o.id === row.to_operatore_id);
+        const recipient =
+          row.to_email ||
+          (op?.nome || op?.email
+            ? `👤 ${op?.nome ?? "Operatore"}${op?.email ? ` (${op.email})` : ""}`
+            : null) ||
+          null;
+        if (recipient) {
+          const list = [recipient, ...next.last_recipients.filter((r) => r !== recipient)];
+          next.last_recipients = list.slice(0, 5);
+          const set = recipientTotal.get(key) || new Set<string>();
+          set.add(recipient);
+          recipientTotal.set(key, set);
+          next.total_recipients = set.size;
+        }
+        map.set(key, next);
+      }
+      setProjectAlertStatsMap(map);
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [id, alertOperatori, projectRinnovi, licenze, projectTagliandi]);
+
   const m2Calcolati = calcM2FromDimensioni(
     formData?.dimensioni ?? null,
     formData?.numero_facce ?? 1
@@ -4048,63 +4105,6 @@ function buildFormData(c: Checklist): FormData {
       return dt < startOfToday();
     });
   }
-
-  useEffect(() => {
-    let alive = true;
-    (async () => {
-      if (!id) return;
-      const { data, error: err } = await db<any[]>({
-        table: "checklist_alert_log",
-        op: "select",
-        select: "checklist_id, tipo, riferimento, to_operatore_id, to_email, created_at",
-        filter: { checklist_id: id },
-        order: [{ col: "created_at", asc: false }],
-        limit: 2000,
-      });
-      if (!alive) return;
-      if (err) return;
-      const map = new Map<string, AlertStats>();
-      const recipientTotal = new Map<string, Set<string>>();
-      for (const row of data || []) {
-        const key = alertKeyForLogRow(row);
-        const prev = map.get(key) || {
-          n_avvisi: 0,
-          n_operatore: 0,
-          n_email_manual: 0,
-          last_sent_at: null,
-          last_recipients: [],
-          total_recipients: 0,
-        };
-        const next: AlertStats = { ...prev };
-        next.n_avvisi += 1;
-        if (row.to_operatore_id) next.n_operatore += 1;
-        else if (row.to_email) next.n_email_manual += 1;
-        if (!next.last_sent_at || String(row.created_at) > next.last_sent_at) {
-          next.last_sent_at = row.created_at ?? null;
-        }
-        const op = alertOperatori.find((o) => o.id === row.to_operatore_id);
-        const recipient =
-          row.to_email ||
-          (op?.nome || op?.email
-            ? `👤 ${op?.nome ?? "Operatore"}${op?.email ? ` (${op.email})` : ""}`
-            : null) ||
-          null;
-        if (recipient) {
-          const list = [recipient, ...next.last_recipients.filter((r) => r !== recipient)];
-          next.last_recipients = list.slice(0, 5);
-          const set = recipientTotal.get(key) || new Set<string>();
-          set.add(recipient);
-          recipientTotal.set(key, set);
-          next.total_recipients = set.size;
-        }
-        map.set(key, next);
-      }
-      setProjectAlertStatsMap(map);
-    })();
-    return () => {
-      alive = false;
-    };
-  }, [id, alertOperatori, projectRinnovi, licenze, projectTagliandi]);
 
   function renderProjectAvvisatoBadge(stats?: AlertStats | null) {
     const count = stats?.n_avvisi ?? null;
