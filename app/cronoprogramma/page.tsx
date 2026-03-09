@@ -671,13 +671,13 @@ export default function CronoprogrammaPage() {
           style={{
             display: "grid",
             gridTemplateColumns:
-              "110px 110px 110px 240px 220px 260px 140px 130px 120px 260px 260px 220px 260px 160px 220px 220px 220px 220px 120px",
+              "110px 110px 110px 240px 220px 260px 140px 130px 120px 260px 260px 220px 260px 160px 220px 220px 220px 220px 120px 120px",
             gap: 12,
             padding: "10px 12px",
             fontWeight: 700,
             background: "#fafafa",
             borderBottom: "1px solid #eee",
-            minWidth: 4200,
+            minWidth: 4320,
           }}
         >
           <button
@@ -713,7 +713,7 @@ export default function CronoprogrammaPage() {
           <div>Contatto referente cliente</div>
           <div>Commerciale Art Tech</div>
           <div>Contatto commerciale Art Tech</div>
-          <div>Salva op.</div>
+          <div>Azioni</div>
         </div>
         {loading ? (
           <div style={{ padding: 12, opacity: 0.7 }}>Caricamento...</div>
@@ -732,14 +732,14 @@ export default function CronoprogrammaPage() {
                 style={{
                   display: "grid",
                   gridTemplateColumns:
-                    "110px 110px 110px 240px 220px 260px 140px 130px 120px 260px 260px 220px 260px 160px 220px 220px 220px 220px 120px",
+                    "110px 110px 110px 240px 220px 260px 140px 130px 120px 260px 260px 220px 260px 160px 220px 220px 220px 220px 120px 120px",
                   gap: 12,
                   padding: "10px 12px",
                   borderBottom: "1px solid #f3f4f6",
                   alignItems: "start",
                   opacity: hidden && showHidden ? 0.6 : 1,
                   fontStyle: hidden && showHidden ? "italic" : "normal",
-                  minWidth: 4200,
+                  minWidth: 4320,
                 }}
               >
                 <div>{r.data_prevista ? new Date(r.data_prevista).toLocaleDateString("it-IT") : "—"}</div>
