@@ -2215,10 +2215,10 @@ function buildFormData(c: Checklist): FormData {
         table: "catalog_items",
         op: "select",
         select: "id, codice, descrizione, tipo, categoria, attivo",
-        filter: { attivo: true },
         order: [{ col: "descrizione", asc: true }],
       });
-      const deviceData = ((catalogData || []) as any[]).filter((d) =>
+      const activeCatalogData = ((catalogData || []) as any[]).filter((d) => d?.attivo !== false);
+      const deviceData = activeCatalogData.filter((d) =>
         String(d?.codice || "").toUpperCase().startsWith("EL-")
       );
       const deviceErr = null;
@@ -2226,7 +2226,7 @@ function buildFormData(c: Checklist): FormData {
       if (catalogErr) {
         console.error("Errore caricamento catalogo", catalogErr);
       } else {
-        setCatalogItems((catalogData || []) as CatalogItem[]);
+        setCatalogItems(activeCatalogData as CatalogItem[]);
       }
       if (deviceErr) {
         console.error("Errore caricamento device/modelli (EL-%)", deviceErr);
@@ -2486,7 +2486,7 @@ function buildFormData(c: Checklist): FormData {
         table: "operatori",
         op: "select",
         select: "id, nome, email, attivo, alert_enabled, alert_tasks, cliente, ruolo",
-        filter: { cliente: checklistCliente, attivo: true } as any,
+        filter: { cliente: checklistCliente } as any,
         limit: 1000,
       });
       if (opErr) {
@@ -2494,17 +2494,18 @@ function buildFormData(c: Checklist): FormData {
         return;
       }
       const map = new Map<string, string>();
-      const list: AlertOperatore[] = (data || []).map((o: any) => ({
+      const activeOperatori = (data || []).filter((o: any) => Boolean(o?.attivo));
+      const list: AlertOperatore[] = activeOperatori.map((o: any) => ({
         id: o.id,
         nome: o.nome ?? null,
         email: o.email ?? null,
-        attivo: Boolean(o.attivo),
+        attivo: true,
         cliente: o.cliente ?? null,
         ruolo: o.ruolo ?? null,
         alert_enabled: Boolean(o.alert_enabled),
         alert_tasks: normalizeAlertTasks(o.alert_tasks),
       }));
-      (data || []).forEach((o: any) => {
+      activeOperatori.forEach((o: any) => {
         const id = String(o?.id || "").trim();
         const nome = String(o?.nome || "").trim();
         if (id && nome) map.set(id, nome);
