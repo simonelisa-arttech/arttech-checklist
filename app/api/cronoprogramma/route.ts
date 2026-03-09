@@ -188,7 +188,6 @@ export async function POST(request: Request) {
       const res = await supabaseAdmin
         .from("saas_interventi")
         .select("id, cliente, checklist_id, ticket_no, data, data_tassativa, descrizione, tipo, proforma, stato_intervento, fatturazione_stato")
-        .eq("stato_intervento", "APERTO")
         .order("data", { ascending: true });
       interventi = res.data as any[] | null;
       iErr = res.error;
@@ -197,7 +196,6 @@ export async function POST(request: Request) {
       const res = await supabaseAdmin
         .from("saas_interventi")
         .select("id, cliente, checklist_id, ticket_no, data, descrizione, tipo, proforma, stato_intervento, fatturazione_stato")
-        .eq("stato_intervento", "APERTO")
         .order("data", { ascending: true });
       interventi = (res.data as any[] | null)?.map((r) => ({ ...r, data_tassativa: null })) ?? [];
       iErr = res.error;
@@ -206,7 +204,6 @@ export async function POST(request: Request) {
       const res = await supabaseAdmin
         .from("saas_interventi")
         .select("id, cliente, checklist_id, data, data_tassativa, descrizione, tipo, proforma, stato_intervento, fatturazione_stato")
-        .eq("stato_intervento", "APERTO")
         .order("data", { ascending: true });
       interventi = (res.data as any[] | null)?.map((r) => ({ ...r, ticket_no: null, data_tassativa: r.data_tassativa ?? null })) ?? [];
       iErr = res.error;
@@ -250,7 +247,7 @@ export async function POST(request: Request) {
 
     for (const i of interventi || []) {
       const ii = i as any;
-      const statoIntervento = String(ii.stato_intervento || ii.fatturazione_stato || "APERTO").toUpperCase();
+      const statoIntervento = String(ii.stato_intervento || ii.fatturazione_stato || "APERTO").trim().toUpperCase();
       if (statoIntervento !== "APERTO") continue;
       const date = toIsoDay(ii.data_tassativa) || toIsoDay(ii.data);
       if (!date || date < CUTOFF_DATE) continue;
@@ -345,7 +342,7 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: interventiErr.message }, { status: 500 });
       }
       for (const row of interventiRows || []) {
-        const stato = String((row as any).stato_intervento || "").toUpperCase();
+        const stato = String((row as any).stato_intervento || "").trim().toUpperCase();
         const dataEvento = toIsoDay((row as any).data_tassativa) || toIsoDay((row as any).data);
         if (stato === "APERTO" && isOnOrAfterCutoff(dataEvento)) {
           allowedInterventi.add(String((row as any).id));
