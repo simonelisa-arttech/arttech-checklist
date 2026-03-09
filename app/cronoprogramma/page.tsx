@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type UIEvent } from "react";
 import Link from "next/link";
 import ConfigMancante from "@/components/ConfigMancante";
 import { isSupabaseConfigured } from "@/lib/supabaseClient";
@@ -194,6 +194,11 @@ export default function CronoprogrammaPage() {
   const [deletingCommentId, setDeletingCommentId] = useState<string | null>(null);
   const [noteHistoryKey, setNoteHistoryKey] = useState<string | null>(null);
   const [operativiDraftByKey, setOperativiDraftByKey] = useState<Record<string, OperativiFields>>({});
+  const topScrollRef = useRef<HTMLDivElement | null>(null);
+  const bottomScrollRef = useRef<HTMLDivElement | null>(null);
+  const scrollContentRef = useRef<HTMLDivElement | null>(null);
+  const syncingScrollRef = useRef<"top" | "bottom" | null>(null);
+  const [scrollContentWidth, setScrollContentWidth] = useState(4320);
 
   async function loadRowState(timelineRows: TimelineRow[]) {
     if (!timelineRows.length) {
@@ -441,6 +446,20 @@ export default function CronoprogrammaPage() {
     );
   }, [rows]);
 
+  function onTopScroll(e: UIEvent<HTMLDivElement>) {
+    if (syncingScrollRef.current === "bottom") return;
+    syncingScrollRef.current = "top";
+    if (bottomScrollRef.current) bottomScrollRef.current.scrollLeft = e.currentTarget.scrollLeft;
+    syncingScrollRef.current = null;
+  }
+
+  function onBottomScroll(e: UIEvent<HTMLDivElement>) {
+    if (syncingScrollRef.current === "top") return;
+    syncingScrollRef.current = "bottom";
+    if (topScrollRef.current) topScrollRef.current.scrollLeft = e.currentTarget.scrollLeft;
+    syncingScrollRef.current = null;
+  }
+
   const filtered = useMemo(() => {
     const needle = q.trim().toLowerCase();
     const alwaysVisibleThreshold = "2026-01-01";
@@ -481,6 +500,18 @@ export default function CronoprogrammaPage() {
     });
     return sorted;
   }, [filtered, sortBy, sortDir]);
+
+  useEffect(() => {
+    const updateScrollWidth = () => {
+      const w = scrollContentRef.current?.scrollWidth || 4320;
+      setScrollContentWidth(w);
+    };
+    updateScrollWidth();
+    if (typeof window !== "undefined") {
+      window.addEventListener("resize", updateScrollWidth);
+      return () => window.removeEventListener("resize", updateScrollWidth);
+    }
+  }, [filteredSorted.length, loading]);
 
   function toggleSort(field: "data_prevista" | "data_tassativa") {
     if (sortBy === field) {
@@ -666,8 +697,9 @@ export default function CronoprogrammaPage() {
       </div>
 
       <div style={{ border: "1px solid #eee", borderRadius: 12, overflow: "hidden" }}>
-        <div style={{ overflowX: "auto" }}>
+        <div ref={topScrollRef} onScroll={onTopScroll} style={{ overflowX: "auto", overflowY: "hidden" }}>
         <div
+          ref={scrollContentRef}
           style={{
             display: "grid",
             gridTemplateColumns:
@@ -997,6 +1029,20 @@ export default function CronoprogrammaPage() {
             );
           })
         )}
+        </div>
+        <div
+          ref={bottomScrollRef}
+          onScroll={onBottomScroll}
+          style={{
+            overflowX: "scroll",
+            overflowY: "hidden",
+            borderTop: "1px solid #eee",
+            background: "#fafafa",
+            height: 16,
+          }}
+          aria-label="Scrollbar orizzontale cronoprogramma"
+        >
+          <div style={{ width: scrollContentWidth, height: 1 }} />
         </div>
       </div>
       {noteHistoryKey && (
