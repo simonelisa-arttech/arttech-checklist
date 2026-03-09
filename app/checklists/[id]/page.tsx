@@ -1988,7 +1988,9 @@ function buildFormData(c: Checklist): FormData {
     setError(null);
     setItemsError(null);
 
-    const debug = new URLSearchParams(window.location.search).get("debug") === "1";
+    const debug =
+      typeof window !== "undefined" &&
+      new URLSearchParams(window.location.search).get("debug") === "1";
     if (isPerfEnabled()) console.time(`[perf][checklist][load#${loadSeq}] fetch head`);
     perfCountFetch("GET /api/checklists/:id");
     const headRes = await fetch(`/api/checklists/${id}${debug ? "?debug=1" : ""}`);
@@ -2442,6 +2444,12 @@ function buildFormData(c: Checklist): FormData {
       setId(nextId);
       try {
         await load(nextId);
+      } catch (e: any) {
+        if (!alive) return;
+        setError(
+          "Errore caricamento checklist: " + String(e?.message || "eccezione client non gestita")
+        );
+        setLoading(false);
       } finally {
         if (isPerfEnabled()) {
           console.info("[perf][checklist] mount summary", {
@@ -2482,60 +2490,64 @@ function buildFormData(c: Checklist): FormData {
     const checklistCliente = String(checklist?.cliente || "").trim();
     if (!checklistCliente) return;
     (async () => {
-      const { data, error: opErr } = await db<any[]>({
-        table: "operatori",
-        op: "select",
-        select: "id, nome, email, attivo, alert_enabled, alert_tasks, cliente, ruolo",
-        limit: 1000,
-      });
-      if (opErr) {
-        console.error("Errore caricamento operatori", opErr);
-        return;
-      }
-      const map = new Map<string, string>();
-      const activeOperatori = (data || []).filter((o: any) => {
-        if (!Boolean(o?.attivo)) return false;
-        return isSameClienteOperator(checklistCliente, o?.cliente ?? null);
-      });
-      const list: AlertOperatore[] = activeOperatori.map((o: any) => ({
-        id: o.id,
-        nome: o.nome ?? null,
-        email: o.email ?? null,
-        attivo: true,
-        cliente: o.cliente ?? null,
-        ruolo: o.ruolo ?? null,
-        alert_enabled: Boolean(o.alert_enabled),
-        alert_tasks: normalizeAlertTasks(o.alert_tasks),
-      }));
-      activeOperatori.forEach((o: any) => {
-        const id = String(o?.id || "").trim();
-        const nome = String(o?.nome || "").trim();
-        if (id && nome) map.set(id, nome);
-      });
-      setOperatoriMap(map);
-      setAlertOperatori(list);
+      try {
+        const { data, error: opErr } = await db<any[]>({
+          table: "operatori",
+          op: "select",
+          select: "id, nome, email, attivo, alert_enabled, alert_tasks, cliente, ruolo",
+          limit: 1000,
+        });
+        if (opErr) {
+          console.error("Errore caricamento operatori", opErr);
+          return;
+        }
+        const map = new Map<string, string>();
+        const activeOperatori = (data || []).filter((o: any) => {
+          if (!Boolean(o?.attivo)) return false;
+          return isSameClienteOperator(checklistCliente, o?.cliente ?? null);
+        });
+        const list: AlertOperatore[] = activeOperatori.map((o: any) => ({
+          id: o.id,
+          nome: o.nome ?? null,
+          email: o.email ?? null,
+          attivo: true,
+          cliente: o.cliente ?? null,
+          ruolo: o.ruolo ?? null,
+          alert_enabled: Boolean(o.alert_enabled),
+          alert_tasks: normalizeAlertTasks(o.alert_tasks),
+        }));
+        activeOperatori.forEach((o: any) => {
+          const id = String(o?.id || "").trim();
+          const nome = String(o?.nome || "").trim();
+          if (id && nome) map.set(id, nome);
+        });
+        setOperatoriMap(map);
+        setAlertOperatori(list);
 
-      const tplRes = await fetch("/api/alert-templates", {
-        method: "GET",
-        credentials: "include",
-      });
-      if (tplRes.ok) {
-        const tplJson = await tplRes.json().catch(() => ({}));
-        const rows = Array.isArray(tplJson?.data) ? tplJson.data : [];
-        setAlertTemplates(
-          rows
-            .filter((t: any) => t?.attivo === true)
-            .map((t: any) => ({
-              id: String(t.id || ""),
-              codice: t.codice ?? null,
-              titolo: t.titolo ?? null,
-              tipo: t.tipo ?? null,
-              trigger: t.trigger ?? null,
-              subject_template: t.subject_template ?? null,
-              body_template: t.body_template ?? null,
-              attivo: t.attivo === true,
-            }))
-        );
+        const tplRes = await fetch("/api/alert-templates", {
+          method: "GET",
+          credentials: "include",
+        });
+        if (tplRes.ok) {
+          const tplJson = await tplRes.json().catch(() => ({}));
+          const rows = Array.isArray(tplJson?.data) ? tplJson.data : [];
+          setAlertTemplates(
+            rows
+              .filter((t: any) => t?.attivo === true)
+              .map((t: any) => ({
+                id: String(t.id || ""),
+                codice: t.codice ?? null,
+                titolo: t.titolo ?? null,
+                tipo: t.tipo ?? null,
+                trigger: t.trigger ?? null,
+                subject_template: t.subject_template ?? null,
+                body_template: t.body_template ?? null,
+                attivo: t.attivo === true,
+              }))
+          );
+        }
+      } catch (err: any) {
+        console.error("Errore runtime useEffect operatori/checklist", err);
       }
     })();
   }, [checklist?.cliente]);
