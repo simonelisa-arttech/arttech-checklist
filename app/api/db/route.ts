@@ -42,7 +42,7 @@ const TABLE_RULES: Record<
   },
   checklist_tasks: {
     ops: ["select", "insert", "update", "delete", "upsert"],
-    filterCols: ["id", "checklist_id", "task_template_id", "updated_by_operatore"],
+    filterCols: ["id", "checklist_id", "task_template_id", "updated_by_operatore", "stato"],
     orderCols: ["created_at", "updated_at", "ordine", "sezione"],
     requiredEqAnyOf: ["id", "checklist_id"],
   },
