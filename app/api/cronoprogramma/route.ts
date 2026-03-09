@@ -180,7 +180,6 @@ export async function POST(request: Request) {
         .from("saas_interventi")
         .select("id, cliente, checklist_id, ticket_no, data, data_tassativa, descrizione, tipo, proforma, stato_intervento, fatturazione_stato")
         .eq("stato_intervento", "APERTO")
-        .or(`data_tassativa.gte.${CUTOFF_DATE},and(data_tassativa.is.null,data.gte.${CUTOFF_DATE})`)
         .order("data", { ascending: true });
       interventi = res.data as any[] | null;
       iErr = res.error;
@@ -190,7 +189,6 @@ export async function POST(request: Request) {
         .from("saas_interventi")
         .select("id, cliente, checklist_id, ticket_no, data, descrizione, tipo, proforma, stato_intervento, fatturazione_stato")
         .eq("stato_intervento", "APERTO")
-        .gte("data", CUTOFF_DATE)
         .order("data", { ascending: true });
       interventi = (res.data as any[] | null)?.map((r) => ({ ...r, data_tassativa: null })) ?? [];
       iErr = res.error;
@@ -200,7 +198,6 @@ export async function POST(request: Request) {
         .from("saas_interventi")
         .select("id, cliente, checklist_id, data, data_tassativa, descrizione, tipo, proforma, stato_intervento, fatturazione_stato")
         .eq("stato_intervento", "APERTO")
-        .or(`data_tassativa.gte.${CUTOFF_DATE},and(data_tassativa.is.null,data.gte.${CUTOFF_DATE})`)
         .order("data", { ascending: true });
       interventi = (res.data as any[] | null)?.map((r) => ({ ...r, ticket_no: null, data_tassativa: r.data_tassativa ?? null })) ?? [];
       iErr = res.error;

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { storageSignedUrl, storageUpload } from "@/lib/clientStorageApi";
 
 type AttachmentRow = {
@@ -45,6 +45,7 @@ export default function AttachmentsPanel({
   const [files, setFiles] = useState<File[]>([]);
   const [linkTitle, setLinkTitle] = useState("");
   const [linkUrl, setLinkUrl] = useState("");
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const canUse = Boolean(entityId);
 
@@ -110,6 +111,7 @@ export default function AttachmentsPanel({
         if (!res.ok) throw new Error(data?.error || "Errore salvataggio allegato");
       }
       setFiles([]);
+      if (fileInputRef.current) fileInputRef.current.value = "";
       await load();
     } catch (e: any) {
       setError(String(e?.message || e));
@@ -211,12 +213,37 @@ export default function AttachmentsPanel({
       {error && <div style={{ color: "#b91c1c", fontSize: 12, marginBottom: 8 }}>{error}</div>}
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 8, marginBottom: 8 }}>
-        <input
-          type="file"
-          multiple={multiple}
-          disabled={!canUse}
-          onChange={(e) => setFiles(e.target.files ? Array.from(e.target.files) : [])}
-        />
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple={multiple}
+            disabled={!canUse}
+            onChange={(e) => setFiles(e.target.files ? Array.from(e.target.files) : [])}
+            style={{ display: "none" }}
+          />
+          <button
+            type="button"
+            disabled={!canUse}
+            onClick={() => fileInputRef.current?.click()}
+            style={{
+              padding: "8px 10px",
+              borderRadius: 8,
+              border: "1px solid #ddd",
+              background: "white",
+              cursor: canUse ? "pointer" : "not-allowed",
+            }}
+          >
+            Seleziona file
+          </button>
+          <div style={{ fontSize: 12, opacity: 0.75 }}>
+            {files.length === 0
+              ? "Nessun file selezionato"
+              : files.length === 1
+                ? files[0].name
+                : `${files.length} file selezionati`}
+          </div>
+        </div>
         <button
           type="button"
           disabled={!canSave}

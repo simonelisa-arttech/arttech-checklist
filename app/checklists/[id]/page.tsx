@@ -5687,7 +5687,12 @@ function buildFormData(c: Checklist): FormData {
             background: "white",
           }}
         >
-          <div style={{ fontWeight: 800, marginBottom: 8 }}>Interventi del progetto</div>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+            <h2 style={{ margin: 0, fontSize: 34, fontWeight: 800 }}>Interventi</h2>
+            <div style={{ fontSize: 12, opacity: 0.8 }}>
+              Progetto: <span style={{ fontWeight: 700 }}>{checklist?.nome_checklist || "—"}</span>
+            </div>
+          </div>
           <div style={{ border: "1px solid #f1f5f9", borderRadius: 10, padding: 10, marginBottom: 10 }}>
             <div style={{ fontWeight: 700, marginBottom: 8 }}>Aggiungi intervento</div>
             <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(140px,1fr))", gap: 8 }}>

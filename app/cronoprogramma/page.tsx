@@ -462,7 +462,6 @@ export default function CronoprogrammaPage() {
 
   const filtered = useMemo(() => {
     const needle = q.trim().toLowerCase();
-    const alwaysVisibleThreshold = "2026-01-01";
     return rows.filter((r) => {
       const rifDate = r.data_tassativa || r.data_prevista;
       const key = getRowKey(r.kind, r.row_ref_id);
@@ -481,8 +480,6 @@ export default function CronoprogrammaPage() {
       // Se chiedo esplicitamente di vedere i "Fatto", li mostro sempre
       // (indipendentemente dal range date) per permettere il reset del flag.
       if (fatto && showFatto) return true;
-      const isAlwaysVisible = !fatto && rifDate > alwaysVisibleThreshold;
-      if (isAlwaysVisible) return true;
       if (fromDate && rifDate < fromDate) return false;
       if (toDate && rifDate > toDate) return false;
       return true;
