@@ -12,6 +12,7 @@ type AlertLogRow = {
   created_at: string | null;
   tipo: string | null;
   riferimento: string | null;
+  destinatario?: string | null;
   to_nome: string | null;
   to_email: string | null;
   trigger: string | null;
@@ -213,7 +214,7 @@ export default function AvvisiClient() {
       setError(null);
       const { data, error: err } = await dbFrom("checklist_alert_log")
         .select(
-          "id, created_at, tipo, riferimento, to_nome, to_email, trigger, subject, inviato_email, checklist_id"
+          "id, created_at, tipo, riferimento, destinatario, to_nome, to_email, trigger, subject, inviato_email, checklist_id"
         )
         .order("created_at", { ascending: false })
         .limit(200);
@@ -340,6 +341,7 @@ export default function AvvisiClient() {
       Tipo: String(r.tipo || "").toUpperCase(),
       Riferimento: r.riferimento ?? "",
       Destinatario: r.to_nome ?? "",
+      Regola: r.destinatario ?? "",
       Email: r.to_email ?? "",
       Trigger: String(r.trigger || "").toUpperCase(),
       Oggetto: r.subject ?? "",
@@ -353,6 +355,7 @@ export default function AvvisiClient() {
       "Tipo",
       "Riferimento",
       "Destinatario",
+      "Regola",
       "Email",
       "Trigger",
       "Oggetto",
@@ -617,6 +620,15 @@ export default function AvvisiClient() {
                         {r.riferimento ?? "—"}
                       </div>
                       <div style={{ marginTop: 4 }}>{r.to_nome ?? "—"}</div>
+                      {r.destinatario ? (
+                        <div
+                          className="truncate max-w-[200px]"
+                          title={r.destinatario}
+                          style={{ marginTop: 4, fontSize: 11, opacity: 0.8 }}
+                        >
+                          {r.destinatario}
+                        </div>
+                      ) : null}
                       <div
                         className="truncate max-w-[200px]"
                         title={r.to_email ?? "—"}

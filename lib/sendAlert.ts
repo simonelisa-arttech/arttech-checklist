@@ -14,6 +14,7 @@ export type SendAlertPayload = {
   to_email?: string | null;
   to_nome?: string | null;
   to_operatore_id?: string | null;
+  destinatario?: string | null;
   from_operatore_id?: string | null;
   cliente?: string | null;
   checklist_id?: string | null;

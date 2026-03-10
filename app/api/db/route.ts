@@ -142,6 +142,12 @@ const TABLE_RULES: Record<
     orderCols: ["created_at"],
     allowNoFilterSelect: true,
   },
+  renewal_alert_rules: {
+    ops: ["select", "insert", "update", "upsert"],
+    filterCols: ["id", "cliente", "stage"],
+    orderCols: ["created_at", "updated_at"],
+    requiredEqAnyOf: ["id", "cliente"],
+  },
   checklist_task_templates: {
     ops: ["select"],
     filterCols: ["id", "target", "attivo", "sezione", "titolo"],

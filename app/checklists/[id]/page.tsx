@@ -7,9 +7,15 @@ import ConfigMancante from "@/components/ConfigMancante";
 import ClientiCombobox from "@/components/ClientiCombobox";
 import AttachmentsPanel from "@/components/AttachmentsPanel";
 import InterventiBlock from "@/components/InterventiBlock";
+import RenewalsAlertModal from "@/components/RenewalsAlertModal";
 import RenewalsBlock from "@/components/RenewalsBlock";
 import Toast from "@/components/Toast";
 import type { InterventoRow } from "@/lib/interventi";
+import {
+  getDefaultRenewalAlertRule,
+  normalizeRenewalAlertRule,
+  type RenewalAlertRuleRow,
+} from "@/lib/renewalAlertRules";
 import { isSupabaseConfigured, supabase } from "@/lib/supabaseClient";
 import { dbFrom } from "@/lib/clientDbBroker";
 import { storageRemove, storageSignedUrl, storageUpload } from "@/lib/clientStorageApi";
@@ -955,6 +961,9 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
   const [projectRinnoviAlertSending, setProjectRinnoviAlertSending] = useState(false);
   const [projectRinnoviAlertErr, setProjectRinnoviAlertErr] = useState<string | null>(null);
   const [projectRinnoviAlertOk, setProjectRinnoviAlertOk] = useState<string | null>(null);
+  const [projectRinnoviAlertRule, setProjectRinnoviAlertRule] = useState<RenewalAlertRuleRow | null>(null);
+  const [projectRinnoviAlertRuleLoading, setProjectRinnoviAlertRuleLoading] = useState(false);
+  const [projectRinnoviAlertRuleSaving, setProjectRinnoviAlertRuleSaving] = useState(false);
   const [cronoOperativiMeta, setCronoOperativiMeta] = useState<CronoOperativiMeta | null>(null);
   const [cronoOperativiForm, setCronoOperativiForm] = useState(EMPTY_CRONO_OPERATIVI);
   const [cronoOperativiSaving, setCronoOperativiSaving] = useState(false);
@@ -2059,6 +2068,7 @@ function buildFormData(c: Checklist): FormData {
     onlyWithin30Days = false,
     listOverride?: ProjectRenewalRow[]
   ) {
+    void loadProjectRinnoviAlertRule(stage);
     const list = listOverride?.length
       ? listOverride
       : getProjectStageList(stage, onlyWithin30Days);
@@ -2071,13 +2081,6 @@ function buildFormData(c: Checklist): FormData {
     setProjectInterventiError(null);
     setProjectRinnoviAlertStage(stage);
     setProjectRinnoviAlertItems(list);
-    setProjectRinnoviAlertTrigger("MANUALE");
-    setProjectRinnoviAlertToArtTech(true);
-    setProjectRinnoviAlertToCliente(false);
-    setProjectRinnoviAlertDestMode("operatore");
-    setProjectRinnoviAlertToOperatoreId("");
-    setProjectRinnoviAlertManualEmail("");
-    setProjectRinnoviAlertManualName("");
     setProjectRinnoviAlertSubject(
       stage === "stage1"
         ? `[Art Tech] Scadenze servizi – ${checklist?.cliente || "—"}`
@@ -2100,7 +2103,62 @@ function buildFormData(c: Checklist): FormData {
     return alertOperatori.filter((o) => o.attivo !== false && String(o.email || "").includes("@"));
   }
 
-  async function sendProjectRinnoviAlert() {
+  async function loadProjectRinnoviAlertRule(stage: "stage1" | "stage2") {
+    const clienteKey = String(checklist?.cliente || "").trim();
+    if (!clienteKey) {
+      setProjectRinnoviAlertRule(getDefaultRenewalAlertRule("", stage));
+      return;
+    }
+    setProjectRinnoviAlertRuleLoading(true);
+    const { data, error } = await dbFrom("renewal_alert_rules")
+      .select("*")
+      .eq("cliente", clienteKey)
+      .eq("stage", stage)
+      .limit(1)
+      .maybeSingle();
+    if (error) {
+      console.error("Errore caricamento renewal_alert_rules checklist", error);
+      setProjectRinnoviAlertRule(getDefaultRenewalAlertRule(clienteKey, stage));
+    } else {
+      setProjectRinnoviAlertRule(normalizeRenewalAlertRule((data as any) || null, clienteKey, stage));
+    }
+    setProjectRinnoviAlertRuleLoading(false);
+  }
+
+  async function saveProjectRinnoviAlertRule(rule: RenewalAlertRuleRow) {
+    const clienteKey = String(checklist?.cliente || "").trim();
+    if (!clienteKey) return;
+    setProjectRinnoviAlertRuleSaving(true);
+    setProjectRinnoviAlertErr(null);
+    setProjectRinnoviAlertOk(null);
+    const payload = normalizeRenewalAlertRule(rule, clienteKey, rule.stage);
+    const { data, error } = await dbFrom("renewal_alert_rules")
+      .upsert(payload, { onConflict: "cliente,stage" })
+      .select("*")
+      .single();
+    if (error) {
+      setProjectRinnoviAlertErr(`Errore salvataggio regola automatica: ${error.message}`);
+      setProjectRinnoviAlertRuleSaving(false);
+      return;
+    }
+    setProjectRinnoviAlertRule(
+      normalizeRenewalAlertRule((data as any) || payload, clienteKey, rule.stage)
+    );
+    setProjectRinnoviAlertOk("✅ Regola automatica salvata.");
+    setProjectRinnoviAlertRuleSaving(false);
+  }
+
+  async function sendProjectRinnoviAlert(payload: {
+    toCliente: boolean;
+    toArtTech: boolean;
+    artTechMode: "operatore" | "email";
+    operatoreId: string;
+    manualEmail: string;
+    manualName: string;
+    subject: string;
+    message: string;
+    sendEmail: boolean;
+  }) {
     if (!id || !checklist) return;
     setProjectRinnoviAlertSending(true);
     setProjectRinnoviAlertErr(null);
@@ -2113,27 +2171,19 @@ function buildFormData(c: Checklist): FormData {
         setProjectRinnoviAlertErr("Seleziona l'Operatore corrente prima di inviare.");
         return;
       }
-      if (!projectRinnoviAlertToArtTech && !projectRinnoviAlertToCliente) {
+      if (!payload.toArtTech && !payload.toCliente) {
         setProjectRinnoviAlertErr("Seleziona almeno un destinatario (Art Tech e/o cliente).");
         return;
       }
-      if (
-        projectRinnoviAlertToArtTech &&
-        projectRinnoviAlertDestMode === "operatore" &&
-        !projectRinnoviAlertToOperatoreId
-      ) {
+      if (payload.toArtTech && payload.artTechMode === "operatore" && !payload.operatoreId) {
         setProjectRinnoviAlertErr("Seleziona un destinatario Art Tech.");
         return;
       }
-      if (
-        projectRinnoviAlertToArtTech &&
-        projectRinnoviAlertDestMode === "email" &&
-        !String(projectRinnoviAlertManualEmail || "").includes("@")
-      ) {
+      if (payload.toArtTech && payload.artTechMode === "email" && !String(payload.manualEmail || "").includes("@")) {
         setProjectRinnoviAlertErr("Inserisci un'email Art Tech valida.");
         return;
       }
-      if (projectRinnoviAlertToCliente && !String(checklistClienteEmail || "").includes("@")) {
+      if (payload.toCliente && !String(checklistClienteEmail || "").includes("@")) {
         setProjectRinnoviAlertErr("Cliente senza email valida in anagrafica.");
         return;
       }
@@ -2145,29 +2195,25 @@ function buildFormData(c: Checklist): FormData {
         return;
       }
       const recipients: Array<{ toEmail: string; toNome: string | null; toOperatoreId: string | null }> = [];
-      if (projectRinnoviAlertToArtTech && projectRinnoviAlertDestMode === "operatore") {
-        const op = alertOperatori.find((o) => o.id === projectRinnoviAlertToOperatoreId) || null;
+      if (payload.toArtTech && payload.artTechMode === "operatore") {
+        const op = alertOperatori.find((o) => o.id === payload.operatoreId) || null;
         const email = String(op?.email || "").trim();
         if (email.includes("@")) {
           recipients.push({
             toEmail: email,
             toNome: op?.nome ?? null,
-            toOperatoreId: projectRinnoviAlertToOperatoreId,
+            toOperatoreId: payload.operatoreId,
           });
         }
       }
-      if (
-        projectRinnoviAlertToArtTech &&
-        projectRinnoviAlertDestMode === "email" &&
-        projectRinnoviAlertManualEmail.trim()
-      ) {
+      if (payload.toArtTech && payload.artTechMode === "email" && payload.manualEmail.trim()) {
         recipients.push({
-          toEmail: projectRinnoviAlertManualEmail.trim(),
-          toNome: projectRinnoviAlertManualName.trim() || null,
+          toEmail: payload.manualEmail.trim(),
+          toNome: payload.manualName.trim() || null,
           toOperatoreId: null,
         });
       }
-      if (projectRinnoviAlertToCliente && checklistClienteEmail) {
+      if (payload.toCliente && checklistClienteEmail) {
         recipients.push({
           toEmail: checklistClienteEmail,
           toNome: "Cliente",
@@ -2187,16 +2233,16 @@ function buildFormData(c: Checklist): FormData {
         return;
       }
       const subject =
-        projectRinnoviAlertSubject ||
+        payload.subject ||
         (projectRinnoviAlertStage === "stage1"
           ? `[Art Tech] Scadenze servizi – ${checklist?.cliente || "—"}`
           : `[Art Tech] Da fatturare – ${checklist?.cliente || "—"}`);
-      const message = (projectRinnoviAlertMsg || "").trim();
+      const message = (payload.message || "").trim();
       const html = `
         <div>
           <h2>${escapeHtml(subject)}</h2>
           <div>${textToHtml(message)}</div>
-          <p style="font-size:12px;color:#6b7280">Messaggio ${projectRinnoviAlertTrigger.toLowerCase()} Art Tech.</p>
+          <p style="font-size:12px;color:#6b7280">Messaggio manuale Art Tech.</p>
         </div>
       `;
       const byItemCanale = (item: ProjectRenewalRow) => {
@@ -2220,8 +2266,8 @@ function buildFormData(c: Checklist): FormData {
       };
       const normalizeRiferimento = (item: ProjectRenewalRow) => {
         const src = String(item.source || "");
-        if (src === "tagliando" || src === "tagliandi") return "TAGLIANDO";
-        if (src === "licenza" || src === "licenze") return "LICENZA";
+        if (src === "tagliando" || src === "tagliandi") return item.riferimento || "TAGLIANDO";
+        if (src === "licenza" || src === "licenze") return item.riferimento || "LICENZA";
         return item.riferimento || null;
       };
 
@@ -2237,6 +2283,7 @@ function buildFormData(c: Checklist): FormData {
             to_email: recipient.toEmail || null,
             to_nome: recipient.toNome,
             to_operatore_id: recipient.toOperatoreId,
+            destinatario: recipient.toNome || recipient.toEmail,
             from_operatore_id: opId,
             checklist_id: id,
             tagliando_id:
@@ -2244,8 +2291,8 @@ function buildFormData(c: Checklist): FormData {
             tipo: normalizeTipo(item),
             riferimento: normalizeRiferimento(item),
             stato: getProjectWorkflowStato(item),
-            trigger: projectRinnoviAlertTrigger,
-            send_email: i === 0 ? projectRinnoviAlertSendEmail : false,
+            trigger: "MANUALE",
+            send_email: i === 0 ? payload.sendEmail : false,
           });
         }
       }
@@ -2275,10 +2322,10 @@ function buildFormData(c: Checklist): FormData {
 
       await load(id);
       setProjectRinnoviAlertOk(
-        projectRinnoviAlertSendEmail ? "✅ Email inviata e log registrato." : "✅ Log avviso registrato."
+        payload.sendEmail ? "✅ Email inviata e log registrato." : "✅ Log avviso registrato."
       );
       setProjectInterventiNotice(
-        projectRinnoviAlertSendEmail ? "✅ Email inviata e stato aggiornato." : "✅ Avviso registrato."
+        payload.sendEmail ? "✅ Email inviata e stato aggiornato." : "✅ Avviso registrato."
       );
       setTimeout(() => setProjectRinnoviAlertOpen(false), 800);
     } catch (e: any) {
@@ -5601,256 +5648,26 @@ function buildFormData(c: Checklist): FormData {
           ) : null}
         </div>
       </div>
-      {projectRinnoviAlertOpen && (
-        <div
-          style={{
-            position: "fixed",
-            inset: 0,
-            background: "rgba(0,0,0,0.45)",
-            zIndex: 1000,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            padding: 16,
-          }}
-          onClick={() => setProjectRinnoviAlertOpen(false)}
-        >
-          <div
-            style={{
-              width: "100%",
-              maxWidth: 780,
-              maxHeight: "90vh",
-              overflow: "auto",
-              background: "white",
-              borderRadius: 12,
-              border: "1px solid #eee",
-              padding: 16,
-              boxShadow: "0 10px 30px rgba(0,0,0,0.2)",
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
-              <div style={{ fontWeight: 800, fontSize: 18 }}>
-                {projectRinnoviAlertStage === "stage1" ? "Invia avviso scadenza" : "Invia avviso fatturazione"}
-              </div>
-              <button
-                type="button"
-                onClick={() => setProjectRinnoviAlertOpen(false)}
-                style={{
-                  marginLeft: "auto",
-                  padding: "6px 10px",
-                  borderRadius: 8,
-                  border: "1px solid #ddd",
-                  background: "white",
-                }}
-              >
-                Chiudi
-              </button>
-            </div>
-
-            <label style={{ display: "block", marginBottom: 10 }}>
-              Modalità invio<br />
-              <select
-                value={projectRinnoviAlertTrigger}
-                onChange={(e) =>
-                  setProjectRinnoviAlertTrigger(
-                    String(e.target.value || "MANUALE").toUpperCase() === "AUTOMATICO"
-                      ? "AUTOMATICO"
-                      : "MANUALE"
-                  )
-                }
-                style={{ width: "100%", padding: 8 }}
-              >
-                <option value="MANUALE">MANUALE</option>
-                <option value="AUTOMATICO">AUTOMATICO</option>
-              </select>
-            </label>
-
-            <div style={{ display: "flex", gap: 12, marginBottom: 10, fontSize: 12, flexWrap: "wrap" }}>
-              <label style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                <input
-                  type="checkbox"
-                  checked={projectRinnoviAlertToArtTech}
-                  onChange={(e) => setProjectRinnoviAlertToArtTech(e.target.checked)}
-                />
-                Art Tech
-              </label>
-              <label style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                <input
-                  type="checkbox"
-                  checked={projectRinnoviAlertToCliente}
-                  onChange={(e) => setProjectRinnoviAlertToCliente(e.target.checked)}
-                />
-                Cliente
-              </label>
-            </div>
-
-            <div
-              style={{
-                display: "flex",
-                gap: 12,
-                marginBottom: 10,
-                fontSize: 12,
-                opacity: projectRinnoviAlertToArtTech ? 1 : 0.55,
-              }}
-            >
-              <label style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                <input
-                  type="radio"
-                  name="project-rinnovi-dest"
-                  checked={projectRinnoviAlertDestMode === "operatore"}
-                  onChange={() => setProjectRinnoviAlertDestMode("operatore")}
-                  disabled={!projectRinnoviAlertToArtTech}
-                />
-                Operatore
-              </label>
-              <label style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                <input
-                  type="radio"
-                  name="project-rinnovi-dest"
-                  checked={projectRinnoviAlertDestMode === "email"}
-                  onChange={() => setProjectRinnoviAlertDestMode("email")}
-                  disabled={!projectRinnoviAlertToArtTech}
-                />
-                Email manuale
-              </label>
-            </div>
-
-            {projectRinnoviAlertTrigger === "AUTOMATICO" && (
-              <div style={{ marginTop: -4, marginBottom: 10, fontSize: 12, opacity: 0.8 }}>
-                Regola collegata: verrà registrato trigger AUTOMATICO nel log avvisi.
-              </div>
-            )}
-            {projectRinnoviAlertToCliente && (
-              <div style={{ marginTop: -4, marginBottom: 10, fontSize: 12, opacity: 0.8 }}>
-                Cliente {checklistClienteEmail ? "selezionato" : "senza email in anagrafica"}
-              </div>
-            )}
-
-            {projectRinnoviAlertToArtTech && (
-              <label style={{ display: "block", marginBottom: 10 }}>
-                Destinatario<br />
-                {projectRinnoviAlertDestMode === "operatore" ? (
-                  <select
-                    value={projectRinnoviAlertToOperatoreId}
-                    onChange={(e) => setProjectRinnoviAlertToOperatoreId(e.target.value)}
-                    style={{ width: "100%", padding: 8 }}
-                  >
-                    <option value="">—</option>
-                    {getProjectAlertRecipients().map((op) => (
-                      <option key={op.id} value={op.id}>
-                        {op.nome ?? "—"}
-                        {op.ruolo ? ` — ${op.ruolo}` : ""}
-                        {op.email ? ` — ${op.email}` : " — (senza email)"}
-                      </option>
-                    ))}
-                  </select>
-                ) : (
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-                    <input
-                      placeholder="Email"
-                      value={projectRinnoviAlertManualEmail}
-                      onChange={(e) => setProjectRinnoviAlertManualEmail(e.target.value)}
-                      style={{ width: "100%", padding: 8 }}
-                    />
-                    <input
-                      placeholder="Nome (opzionale)"
-                      value={projectRinnoviAlertManualName}
-                      onChange={(e) => setProjectRinnoviAlertManualName(e.target.value)}
-                      style={{ width: "100%", padding: 8 }}
-                    />
-                  </div>
-                )}
-              </label>
-            )}
-
-            <label style={{ display: "block", marginBottom: 10 }}>
-              Subject<br />
-              <input
-                value={projectRinnoviAlertSubject}
-                onChange={(e) => setProjectRinnoviAlertSubject(e.target.value)}
-                style={{ width: "100%", padding: 8 }}
-              />
-            </label>
-            <label style={{ display: "block", marginBottom: 10 }}>
-              Messaggio<br />
-              <textarea
-                value={projectRinnoviAlertMsg}
-                onChange={(e) => setProjectRinnoviAlertMsg(e.target.value)}
-                rows={10}
-                style={{ width: "100%", padding: 8 }}
-              />
-            </label>
-            <label style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 6 }}>
-              <input
-                type="checkbox"
-                checked={projectRinnoviAlertSendEmail}
-                onChange={(e) => setProjectRinnoviAlertSendEmail(e.target.checked)}
-              />
-              Invia email
-            </label>
-
-            <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
-              <button
-                type="button"
-                onClick={() => setProjectRinnoviAlertOpen(false)}
-                style={{
-                  padding: "8px 12px",
-                  borderRadius: 8,
-                  border: "1px solid #ddd",
-                  background: "white",
-                }}
-              >
-                Annulla
-              </button>
-              <button
-                type="button"
-                onClick={sendProjectRinnoviAlert}
-                disabled={
-                  projectRinnoviAlertSending ||
-                  (!projectRinnoviAlertToCliente &&
-                    !(
-                      projectRinnoviAlertToArtTech &&
-                      (projectRinnoviAlertDestMode === "operatore"
-                        ? Boolean(projectRinnoviAlertToOperatoreId)
-                        : Boolean(projectRinnoviAlertManualEmail.trim()))
-                    ))
-                }
-                style={{
-                  padding: "8px 12px",
-                  borderRadius: 8,
-                  border: "1px solid #111",
-                  background: "#111",
-                  color: "white",
-                  opacity:
-                    projectRinnoviAlertSending ||
-                    (!projectRinnoviAlertToCliente &&
-                      !(
-                        projectRinnoviAlertToArtTech &&
-                        (projectRinnoviAlertDestMode === "operatore"
-                          ? Boolean(projectRinnoviAlertToOperatoreId)
-                          : Boolean(projectRinnoviAlertManualEmail.trim()))
-                      ))
-                      ? 0.6
-                      : 1,
-                }}
-              >
-                {projectRinnoviAlertSending ? "Invio..." : "Invia"}
-              </button>
-            </div>
-            {projectRinnoviAlertErr && (
-              <div style={{ marginTop: 10, fontSize: 12, color: "#b91c1c" }}>
-                {projectRinnoviAlertErr}
-              </div>
-            )}
-            {projectRinnoviAlertOk && (
-              <div style={{ marginTop: 6, fontSize: 12, color: "#166534" }}>
-                {projectRinnoviAlertOk}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
+      <RenewalsAlertModal
+        open={projectRinnoviAlertOpen}
+        cliente={checklist?.cliente || ""}
+        stage={projectRinnoviAlertStage}
+        title={projectRinnoviAlertStage === "stage1" ? "Invia avviso scadenza" : "Invia avviso fatturazione"}
+        customerEmail={checklistClienteEmail}
+        operators={getProjectAlertRecipients()}
+        defaultOperatorId=""
+        initialSubject={projectRinnoviAlertSubject}
+        initialMessage={projectRinnoviAlertMsg}
+        rule={projectRinnoviAlertRule}
+        loadingRule={projectRinnoviAlertRuleLoading}
+        manualSending={projectRinnoviAlertSending}
+        ruleSaving={projectRinnoviAlertRuleSaving}
+        error={projectRinnoviAlertErr}
+        success={projectRinnoviAlertOk}
+        onClose={() => setProjectRinnoviAlertOpen(false)}
+        onSubmitManual={sendProjectRinnoviAlert}
+        onSaveRule={saveProjectRinnoviAlertRule}
+      />
       <div style={{ marginTop: 12 }}>
         <div
           style={{

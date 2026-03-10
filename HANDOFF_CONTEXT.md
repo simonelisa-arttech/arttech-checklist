@@ -20,6 +20,26 @@ File sorgente di verità: `PROJECT_CONTEXT.md` (root del repo)
   - aggiunto valore `RIENTRATO` nei menu stato progetto (`checklists/[id]`, `checklists/nuova`) e nei filtri dashboard.
   - cronoprogramma: i progetti `IN_CORSO` restano visibili; per i noleggi `CONSEGNATO` viene mostrato un evento su `fine_noleggio`; con stato `RIENTRATO` il progetto non viene più mostrato.
 
+## Aggiornamento rapido (10 marzo 2026)
+
+- Pass unico su popup/rule/log del blocco `Scadenze & Rinnovi`.
+- Source of truth:
+  - stato riga: `rinnovi_servizi` per workflow rinnovi e `licenses` per le licenze
+  - regole automatiche: nuova tabella `renewal_alert_rules`
+  - log avvisi: `checklist_alert_log`
+- Cliente e checklist ora usano lo stesso popup condiviso `components/RenewalsAlertModal.tsx`.
+- Modalità `MANUALE`:
+  - destinatario scelto nel popup
+  - subject e messaggio modificabili
+  - log salvato su `checklist_alert_log`
+  - stato portato a `AVVISATO` dove previsto
+- Modalità `AUTOMATICO`:
+  - non chiede destinatario runtime
+  - mostra e salva una regola per `cliente + stage`
+  - supporta preset `90/60/30/15/7/3/1`, destinatario cliente/Art Tech/entrambi, stop `AT_EXPIRY` / `AFTER_FIRST_SEND` / `ON_STATUS`
+- `app/api/cron/rinnovi-stage1/route.ts` legge `renewal_alert_rules`, logga `trigger: AUTOMATICO` e aggiorna `rinnovi_servizi.stato = AVVISATO`.
+- `app/avvisi/AvvisiClient.tsx` mostra anche `destinatario`/regola salvata nel log; le licenze arrivano con riferimento reale e non più con etichetta generica fissa nel popup condiviso.
+
 ---
 
 ## Cosa è stato fatto (sessione 12 febbraio 2026)

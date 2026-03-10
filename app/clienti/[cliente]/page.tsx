@@ -6,10 +6,16 @@ import { useRouter } from "next/navigation";
 import ConfigMancante from "@/components/ConfigMancante";
 import AttachmentsPanel from "@/components/AttachmentsPanel";
 import InterventiBlock from "@/components/InterventiBlock";
+import RenewalsAlertModal from "@/components/RenewalsAlertModal";
 import RenewalsBlock from "@/components/RenewalsBlock";
 import Toast from "@/components/Toast";
 import type { InterventoRow } from "@/lib/interventi";
 import { calcM2FromDimensioni } from "@/lib/parseDimensioni";
+import {
+  getDefaultRenewalAlertRule,
+  normalizeRenewalAlertRule,
+  type RenewalAlertRuleRow,
+} from "@/lib/renewalAlertRules";
 import { isSupabaseConfigured, supabase } from "@/lib/supabaseClient";
 import { dbFrom } from "@/lib/clientDbBroker";
 import { storageRemove, storageSignedUrl, storageUpload } from "@/lib/clientStorageApi";
@@ -773,6 +779,9 @@ export default function ClientePage({ params }: { params: any }) {
   const [rinnoviAlertSending, setRinnoviAlertSending] = useState(false);
   const [rinnoviAlertErr, setRinnoviAlertErr] = useState<string | null>(null);
   const [rinnoviAlertOk, setRinnoviAlertOk] = useState<string | null>(null);
+  const [rinnoviAlertRule, setRinnoviAlertRule] = useState<RenewalAlertRuleRow | null>(null);
+  const [rinnoviAlertRuleLoading, setRinnoviAlertRuleLoading] = useState(false);
+  const [rinnoviAlertRuleSaving, setRinnoviAlertRuleSaving] = useState(false);
   const [rinnoviNotice, setRinnoviNotice] = useState<string | null>(null);
   const [editScadenzaOpen, setEditScadenzaOpen] = useState(false);
   const [editScadenzaItem, setEditScadenzaItem] = useState<ScadenzaItem | null>(null);
@@ -3266,6 +3275,50 @@ export default function ClientePage({ params }: { params: any }) {
     return `Operatore: ${op.nome ?? op.id}${role}${email}`;
   }
 
+  async function loadRinnoviAlertRule(stage: "stage1" | "stage2") {
+    const clienteKey = String(cliente || "").trim();
+    if (!clienteKey) {
+      setRinnoviAlertRule(getDefaultRenewalAlertRule("", stage));
+      return;
+    }
+    setRinnoviAlertRuleLoading(true);
+    const { data, error } = await dbFrom("renewal_alert_rules")
+      .select("*")
+      .eq("cliente", clienteKey)
+      .eq("stage", stage)
+      .limit(1)
+      .maybeSingle();
+    if (error) {
+      console.error("Errore caricamento renewal_alert_rules", error);
+      setRinnoviAlertRule(getDefaultRenewalAlertRule(clienteKey, stage));
+    } else {
+      setRinnoviAlertRule(normalizeRenewalAlertRule((data as any) || null, clienteKey, stage));
+    }
+    setRinnoviAlertRuleLoading(false);
+  }
+
+  async function saveRinnoviAlertRule(rule: RenewalAlertRuleRow) {
+    const clienteKey = String(cliente || "").trim();
+    if (!clienteKey) return;
+    setRinnoviAlertRuleSaving(true);
+    setRinnoviAlertErr(null);
+    setRinnoviAlertOk(null);
+    const payload = normalizeRenewalAlertRule(rule, clienteKey, rule.stage);
+    const { data, error } = await dbFrom("renewal_alert_rules")
+      .upsert(payload, { onConflict: "cliente,stage" })
+      .select("*")
+      .single();
+    if (error) {
+      setRinnoviAlertErr(`Errore salvataggio regola automatica: ${error.message}`);
+      setRinnoviAlertRuleSaving(false);
+      return;
+    }
+    const saved = normalizeRenewalAlertRule((data as any) || payload, clienteKey, rule.stage);
+    setRinnoviAlertRule(saved);
+    setRinnoviAlertOk("✅ Regola automatica salvata.");
+    setRinnoviAlertRuleSaving(false);
+  }
+
   async function fetchRinnovi(clienteKey: string, checklistIdsInput?: string[]) {
     if (!clienteKey) return [] as RinnovoServizioRow[];
     const checklistIds = (checklistIdsInput || []).filter(Boolean);
@@ -3971,6 +4024,7 @@ export default function ClientePage({ params }: { params: any }) {
     onlyWithin30Days = false,
     listOverride?: ScadenzaItem[] | RinnovoServizioRow[]
   ) {
+    void loadRinnoviAlertRule(stage);
     void ensureAlertTemplatesLoaded();
     void loadAlertOperatori();
     const list = (listOverride
@@ -3993,15 +4047,6 @@ export default function ClientePage({ params }: { params: any }) {
         : `[Art Tech] Da fatturare – ${cliente || "—"}`;
     setRinnoviAlertSubject(defaultSubject);
     setSelectedPresetId("");
-    setRinnoviAlertToOperatoreId(
-      stage === "stage1" ? getDefaultOperatoreIdByRole("SUPERVISORE") : getDefaultOperatoreIdByRole("AMMINISTRAZIONE")
-    );
-    setRinnoviAlertTrigger("MANUALE");
-    setRinnoviAlertToArtTech(true);
-    setRinnoviAlertDestMode("operatore");
-    setRinnoviAlertToCliente(false);
-    setRinnoviAlertManualEmail("");
-    setRinnoviAlertManualName("");
     setRinnoviAlertMsg(
       list.length === 1 ? buildMsgScadenzaSingle(list[0], stage) : buildMsgScadenzaBulk(list, stage)
     );
@@ -4010,12 +4055,66 @@ export default function ClientePage({ params }: { params: any }) {
     setRinnoviAlertOpen(true);
   }
 
-  async function sendRinnoviAlert() {
+  async function sendRinnoviAlert(payload: {
+    toCliente: boolean;
+    toArtTech: boolean;
+    artTechMode: "operatore" | "email";
+    operatoreId: string;
+    manualEmail: string;
+    manualName: string;
+    subject: string;
+    message: string;
+    sendEmail: boolean;
+  }) {
     setRinnoviAlertSending(true);
     setRinnoviAlertErr(null);
     setRinnoviAlertOk(null);
     try {
-    if (isE2EMode) {
+      if (isE2EMode) {
+        const list =
+          rinnoviAlertItems.length > 0
+            ? rinnoviAlertItems
+            : (getRinnoviStageList(rinnoviAlertStage) as ScadenzaItem[]);
+        if (list.length === 0) {
+          setRinnoviAlertErr("Nessun elemento disponibile per l'invio.");
+          return;
+        }
+        for (const r of list) {
+          const mapped = mapRinnovoTipo(String(r.item_tipo || "").toUpperCase());
+          if (mapped.item_tipo) {
+            upsertMockRinnovoState(r.checklist_id, mapped.item_tipo, "AVVISATO");
+          }
+        }
+        setRinnoviAlertOk("✅ E2E mock: invio avviso simulato.");
+        setRinnoviNotice("✅ E2E mock: stato AVVISATO.");
+        setTimeout(() => setRinnoviAlertOpen(false), 300);
+        return;
+      }
+
+      const opId =
+        currentOperatoreId ??
+        (typeof window !== "undefined" ? window.localStorage.getItem("current_operatore_id") : null);
+      if (!opId) {
+        setRinnoviAlertErr("Seleziona l’Operatore corrente (in alto) prima di inviare un alert.");
+        return;
+      }
+      if (!payload.toArtTech && !payload.toCliente) {
+        setRinnoviAlertErr("Seleziona almeno un destinatario (Art Tech e/o cliente).");
+        return;
+      }
+      if (payload.toArtTech && payload.artTechMode === "operatore" && !payload.operatoreId) {
+        setRinnoviAlertErr("Seleziona un destinatario Art Tech.");
+        return;
+      }
+      if (payload.toArtTech && payload.artTechMode === "email" && !payload.manualEmail.trim().includes("@")) {
+        setRinnoviAlertErr("Inserisci un'email valida.");
+        return;
+      }
+      if (payload.toCliente && !String(clienteAnagraficaEmail || "").includes("@")) {
+        setRinnoviAlertErr("Nessuna email valida trovata nell'anagrafica cliente.");
+        return;
+      }
+
       const list =
         rinnoviAlertItems.length > 0
           ? rinnoviAlertItems
@@ -4024,131 +4123,85 @@ export default function ClientePage({ params }: { params: any }) {
         setRinnoviAlertErr("Nessun elemento disponibile per l'invio.");
         return;
       }
-      for (const r of list) {
-        const mapped = mapRinnovoTipo(String(r.item_tipo || "").toUpperCase());
-        if (mapped.item_tipo) {
-          upsertMockRinnovoState(r.checklist_id, mapped.item_tipo, "AVVISATO");
+
+      const recipients: Array<{ toEmail: string; toNome: string | null; toOperatoreId: string | null }> = [];
+      if (payload.toArtTech && payload.artTechMode === "operatore" && payload.operatoreId) {
+        const op = alertOperatori.find((o) => o.id === payload.operatoreId) || null;
+        const email = String(op?.email || "").trim();
+        if (!email.includes("@")) {
+          setRinnoviAlertErr("Operatore selezionato senza email valida.");
+          return;
         }
+        recipients.push({
+          toEmail: email,
+          toNome: op?.nome ?? null,
+          toOperatoreId: payload.operatoreId,
+        });
       }
-      setRinnoviAlertOk("✅ E2E mock: invio avviso simulato.");
-      setRinnoviNotice("✅ E2E mock: stato AVVISATO.");
-      setTimeout(() => setRinnoviAlertOpen(false), 300);
-      return;
-    }
-    const opId =
-      currentOperatoreId ??
-      (typeof window !== "undefined" ? window.localStorage.getItem("current_operatore_id") : null);
-    if (!opId) {
-      setRinnoviAlertErr("Seleziona l’Operatore corrente (in alto) prima di inviare un alert.");
-      return;
-    }
-    if (!rinnoviAlertToArtTech && !rinnoviAlertToCliente) {
-      setRinnoviAlertErr("Seleziona almeno un destinatario (Art Tech e/o cliente).");
-      return;
-    }
-    if (rinnoviAlertToArtTech && rinnoviAlertDestMode === "operatore" && !rinnoviAlertToOperatoreId) {
-      setRinnoviAlertErr("Seleziona un destinatario Art Tech.");
-      return;
-    }
-    if (rinnoviAlertToArtTech && rinnoviAlertDestMode === "email") {
-      const mail = rinnoviAlertManualEmail.trim();
-      if (!mail.includes("@")) {
-        setRinnoviAlertErr("Inserisci un'email valida.");
+      if (payload.toArtTech && payload.artTechMode === "email" && payload.manualEmail.trim()) {
+        recipients.push({
+          toEmail: payload.manualEmail.trim(),
+          toNome: payload.manualName.trim() || null,
+          toOperatoreId: null,
+        });
+      }
+      if (payload.toCliente && clienteAnagraficaEmail) {
+        recipients.push({
+          toEmail: clienteAnagraficaEmail,
+          toNome: "Cliente",
+          toOperatoreId: null,
+        });
+      }
+      const dedupMap = new Map<string, { toEmail: string; toNome: string | null; toOperatoreId: string | null }>();
+      for (const recipient of recipients) {
+        dedupMap.set(
+          `${String(recipient.toOperatoreId || "")}::${String(recipient.toEmail || "").toLowerCase()}`,
+          recipient
+        );
+      }
+      const finalRecipients = Array.from(dedupMap.values()).filter((recipient) => recipient.toEmail.includes("@"));
+      if (finalRecipients.length === 0) {
+        setRinnoviAlertErr("Nessun destinatario valido selezionato.");
         return;
       }
-    }
-    if (rinnoviAlertToCliente && !String(clienteAnagraficaEmail || "").includes("@")) {
-      setRinnoviAlertErr("Nessuna email valida trovata nell'anagrafica cliente.");
-      return;
-    }
-    const list =
-      rinnoviAlertItems.length > 0
-        ? rinnoviAlertItems
-        : (getRinnoviStageList(rinnoviAlertStage) as ScadenzaItem[]);
-    if (list.length === 0) {
-      setRinnoviAlertErr("Nessun elemento disponibile per l'invio.");
-      return;
-    }
-    const recipients: Array<{ toEmail: string; toNome: string | null; toOperatoreId: string | null }> = [];
-    if (rinnoviAlertToArtTech && rinnoviAlertDestMode === "operatore" && rinnoviAlertToOperatoreId) {
-      const op = alertOperatori.find((o) => o.id === rinnoviAlertToOperatoreId) || null;
-      const email = String(op?.email || "").trim();
-      if (!email.includes("@")) {
-        setRinnoviAlertErr("Operatore selezionato senza email valida.");
-        return;
-      }
-      recipients.push({
-        toEmail: email,
-        toNome: op?.nome ?? null,
-        toOperatoreId: rinnoviAlertToOperatoreId,
-      });
-    }
-    if (rinnoviAlertToArtTech && rinnoviAlertDestMode === "email" && rinnoviAlertManualEmail.trim()) {
-      recipients.push({
-        toEmail: rinnoviAlertManualEmail.trim(),
-        toNome: rinnoviAlertManualName.trim() || null,
-        toOperatoreId: null,
-      });
-    }
-    if (rinnoviAlertToCliente && clienteAnagraficaEmail) {
-      recipients.push({
-        toEmail: clienteAnagraficaEmail,
-        toNome: "Cliente",
-        toOperatoreId: null,
-      });
-    }
-    const dedupMap = new Map<string, { toEmail: string; toNome: string | null; toOperatoreId: string | null }>();
-    for (const r of recipients) {
-      const key = `${String(r.toOperatoreId || "")}::${String(r.toEmail || "").toLowerCase()}`;
-      dedupMap.set(key, r);
-    }
-    const finalRecipients = Array.from(dedupMap.values()).filter((r) => r.toEmail.includes("@"));
-    if (finalRecipients.length === 0) {
-      setRinnoviAlertErr("Nessun destinatario valido selezionato.");
-      return;
-    }
-    const subject =
-      rinnoviAlertSubject ||
-      (rinnoviAlertStage === "stage1"
-        ? `[Art Tech] Scadenze servizi – ${cliente || "—"}`
-        : `[Art Tech] Da fatturare – ${cliente || "—"}`);
-    const html = `
-      <div>
-        <h2>${escapeHtml(subject)}</h2>
-        <div>${textToHtml(rinnoviAlertMsg || "")}</div>
-        <p style="font-size:12px;color:#6b7280">Messaggio manuale Art Tech.</p>
-      </div>
-    `;
-    const message = (rinnoviAlertMsg || "").trim() || rinnoviAlertMsg || "";
-    const byItemCanale = (item: ScadenzaItem) => {
-      const src = String(item.source || "");
-      const isTag = src === "tagliandi";
-      const isLic = src === "licenze";
-      if (rinnoviAlertStage === "stage1") {
-        if (isTag) return "tagliando_stage1";
-        if (isLic) return "licenza_stage1";
-        return "rinnovo_stage1";
-      }
-      if (isTag) return "tagliando_stage2";
-      if (isLic) return "licenza_stage2";
-      return "rinnovo_stage2";
-    };
-    const normalizeTipo = (item: ScadenzaItem) => {
-      if (item.source === "tagliandi") return "TAGLIANDO";
-      if (item.source === "licenze") return "LICENZA";
-      return String(item.item_tipo || "RINNOVO").toUpperCase();
-    };
-    const normalizeRiferimento = (item: ScadenzaItem) => {
-      if (item.source === "tagliandi") return "TAGLIANDO";
-      if (item.source === "licenze") return "LICENZA";
-      return item.riferimento ?? null;
-    };
-    try {
-      console.debug("send-alert payload (rinnovi)", {
-        subject,
-        message,
-        recipients: finalRecipients.map((r) => ({ to_email: r.toEmail, to_operatore_id: r.toOperatoreId })),
-      });
+
+      const subject =
+        payload.subject ||
+        (rinnoviAlertStage === "stage1"
+          ? `[Art Tech] Scadenze servizi – ${cliente || "—"}`
+          : `[Art Tech] Da fatturare – ${cliente || "—"}`);
+      const message = (payload.message || "").trim() || payload.message || "";
+      const html = `
+        <div>
+          <h2>${escapeHtml(subject)}</h2>
+          <div>${textToHtml(message)}</div>
+          <p style="font-size:12px;color:#6b7280">Messaggio manuale Art Tech.</p>
+        </div>
+      `;
+      const byItemCanale = (item: ScadenzaItem) => {
+        const src = String(item.source || "");
+        const isTag = src === "tagliandi";
+        const isLic = src === "licenze";
+        if (rinnoviAlertStage === "stage1") {
+          if (isTag) return "tagliando_stage1";
+          if (isLic) return "licenza_stage1";
+          return "rinnovo_stage1";
+        }
+        if (isTag) return "tagliando_stage2";
+        if (isLic) return "licenza_stage2";
+        return "rinnovo_stage2";
+      };
+      const normalizeTipo = (item: ScadenzaItem) => {
+        if (item.source === "tagliandi") return "TAGLIANDO";
+        if (item.source === "licenze") return "LICENZA";
+        return String(item.item_tipo || "RINNOVO").toUpperCase();
+      };
+      const normalizeRiferimento = (item: ScadenzaItem) => {
+        if (item.source === "tagliandi") return item.riferimento || "TAGLIANDO";
+        if (item.source === "licenze") return item.riferimento || "LICENZA";
+        return item.riferimento ?? null;
+      };
+
       const updatedTagliandiIds: string[] = [];
       for (const recipient of finalRecipients) {
         for (let i = 0; i < list.length; i += 1) {
@@ -4157,20 +4210,20 @@ export default function ClientePage({ params }: { params: any }) {
             canale: byItemCanale(item),
             subject,
             message,
-            text: rinnoviAlertMsg,
+            text: message,
             html,
             to_email: recipient.toEmail || null,
             to_nome: recipient.toNome,
             to_operatore_id: recipient.toOperatoreId,
+            destinatario: recipient.toNome || recipient.toEmail,
             from_operatore_id: opId,
             checklist_id: item.checklist_id ?? null,
-            tagliando_id:
-              item.source === "tagliandi" ? item.tagliando_id ?? item.id ?? null : null,
+            tagliando_id: item.source === "tagliandi" ? item.tagliando_id ?? item.id ?? null : null,
             tipo: normalizeTipo(item),
             riferimento: normalizeRiferimento(item),
             stato: getWorkflowStato(item),
-            trigger: rinnoviAlertTrigger,
-            send_email: i === 0 ? rinnoviAlertSendEmail : false,
+            trigger: "MANUALE",
+            send_email: i === 0 ? payload.sendEmail : false,
           });
           if (res?.updated?.id) updatedTagliandiIds.push(String(res.updated.id));
         }
@@ -4189,142 +4242,127 @@ export default function ClientePage({ params }: { params: any }) {
           )
         );
       }
-    } catch (err) {
-      console.error("Errore invio alert rinnovi", err);
-      showToast(`❌ Invio fallito: ${briefError(err)}`, "error");
-      return;
-    }
-    const nowIso = new Date().toISOString();
-    if (rinnoviAlertStage === "stage1") {
-      const pairs = new Map<string, { checklistId: string; itemTipo: string }>();
-      for (const r of list) {
-        if (!r.checklist_id) continue;
-        const tipoRaw = String(r.item_tipo || "").toUpperCase();
-        const mapped = mapRinnovoTipo(tipoRaw);
-        const itemTipo = String(mapped.item_tipo || "").toUpperCase();
-        if (!itemTipo) continue;
-        const key = `${r.checklist_id}::${itemTipo}`;
-        pairs.set(key, { checklistId: r.checklist_id, itemTipo });
+
+      const nowIso = new Date().toISOString();
+      const recipientOperatorId = payload.artTechMode === "operatore" ? payload.operatoreId : null;
+      if (rinnoviAlertStage === "stage1") {
+        const pairs = new Map<string, { checklistId: string; itemTipo: string }>();
+        for (const row of list) {
+          if (!row.checklist_id) continue;
+          const tipoRaw = String(row.item_tipo || "").toUpperCase();
+          const mapped = mapRinnovoTipo(tipoRaw);
+          const itemTipo = String(mapped.item_tipo || "").toUpperCase();
+          if (!itemTipo) continue;
+          pairs.set(`${row.checklist_id}::${itemTipo}`, { checklistId: row.checklist_id, itemTipo });
+        }
+        const byTipo = new Map<string, string[]>();
+        for (const { checklistId, itemTipo } of pairs.values()) {
+          byTipo.set(itemTipo, Array.from(new Set([...(byTipo.get(itemTipo) || []), checklistId])));
+        }
+        for (const [itemTipo, checklistIds] of byTipo.entries()) {
+          await dbFrom("rinnovi_servizi")
+            .update({ stato: "AVVISATO", updated_at: nowIso })
+            .eq("item_tipo", itemTipo)
+            .in("checklist_id", checklistIds);
+        }
+        setRinnovi((prev) =>
+          prev.map((row) => {
+            const itemTipo = String(row.item_tipo || "").toUpperCase();
+            const checklistIds = byTipo.get(itemTipo);
+            if (!checklistIds || !checklistIds.includes(String(row.checklist_id || ""))) return row;
+            return {
+              ...row,
+              stato: "AVVISATO",
+              notify_stage1_sent_at: nowIso,
+              notify_stage1_to_operatore_id: recipientOperatorId,
+            };
+          })
+        );
       }
-      const byTipo = new Map<string, string[]>();
-      for (const { checklistId, itemTipo } of pairs.values()) {
-        const prev = byTipo.get(itemTipo) || [];
-        prev.push(checklistId);
-        byTipo.set(itemTipo, Array.from(new Set(prev)));
-      }
-      for (const [itemTipo, checklistIds] of byTipo.entries()) {
-        await dbFrom("rinnovi_servizi")
-          .update({ stato: "AVVISATO", updated_at: nowIso })
-          .eq("item_tipo", itemTipo)
-          .in("checklist_id", checklistIds);
-      }
-      setRinnovi((prev) =>
-        prev.map((row) => {
-          const itemTipo = String(row.item_tipo || "").toUpperCase();
-          const checklistIds = byTipo.get(itemTipo);
-          if (!checklistIds) return row;
-          if (!checklistIds.includes(String(row.checklist_id || ""))) return row;
-          return {
-            ...row,
-            stato: "AVVISATO",
-            notify_stage1_sent_at: nowIso,
-            notify_stage1_to_operatore_id:
-              rinnoviAlertDestMode === "operatore" ? rinnoviAlertToOperatoreId : null,
-          };
-        })
-      );
-    }
-    const rinnoviIds = list.filter((r) => r.source === "rinnovi").map((r) => r.id);
-    const licenzeIds = list.filter((r) => r.source === "licenze").map((r) => r.id);
-    // Righe SAAS/SAAS_ULTRA/GARANZIA: assicura record rinnovi_servizi e aggiorna stato
-    const workflowItems = list.filter((r) =>
-      ["saas", "saas_contratto", "garanzie"].includes(r.source)
-    );
-    for (const r of workflowItems) {
-      const rinnovo = await ensureRinnovoForItem(r);
-      if (rinnovo) {
-        const updPayload: Record<string, any> =
+
+      const rinnoviIds = list.filter((row) => row.source === "rinnovi").map((row) => row.id);
+      const licenzeIds = list.filter((row) => row.source === "licenze").map((row) => row.id);
+      const workflowItems = list.filter((row) => ["saas", "saas_contratto", "garanzie"].includes(row.source));
+      for (const row of workflowItems) {
+        const rinnovo = await ensureRinnovoForItem(row);
+        if (!rinnovo) continue;
+        await updateRinnovo(
+          rinnovo.id,
           rinnoviAlertStage === "stage1"
             ? {
                 stato: "AVVISATO",
                 notify_stage1_sent_at: nowIso,
-                notify_stage1_to_operatore_id:
-                  rinnoviAlertDestMode === "operatore" ? rinnoviAlertToOperatoreId : null,
+                notify_stage1_to_operatore_id: recipientOperatorId,
               }
             : {
                 billing_notified_at: nowIso,
                 billing_stage2_sent_at: nowIso,
-                billing_stage2_to_operatore_id:
-                  rinnoviAlertDestMode === "operatore" ? rinnoviAlertToOperatoreId : null,
-              };
-        await updateRinnovo(rinnovo.id, updPayload);
-      }
-    }
-    if (rinnoviAlertStage === "stage1") {
-      if (rinnoviIds.length > 0) {
-        await updateRinnovi(rinnoviIds, {
-          stato: "AVVISATO",
-          notify_stage1_sent_at: nowIso,
-          notify_stage1_to_operatore_id:
-            rinnoviAlertDestMode === "operatore" ? rinnoviAlertToOperatoreId : null,
-        });
-      }
-      if (licenzeIds.length > 0) {
-        await Promise.allSettled(
-          licenzeIds.map((id) =>
-            fetch("/api/licenses/action", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                action: "SEND_ALERT",
-                licenseId: id,
-                status: "AVVISATO",
-                alertTo: finalRecipients[0]?.toOperatoreId ?? finalRecipients[0]?.toEmail ?? null,
-                alertNote: rinnoviAlertMsg,
-                updatedByOperatoreId: opId,
-              }),
-            })
-          )
+                billing_stage2_to_operatore_id: recipientOperatorId,
+              }
         );
       }
-    } else {
-      if (rinnoviIds.length > 0) {
-        await updateRinnovi(rinnoviIds, {
-          billing_notified_at: nowIso,
-          billing_stage2_sent_at: nowIso,
-          billing_stage2_to_operatore_id:
-            rinnoviAlertDestMode === "operatore" ? rinnoviAlertToOperatoreId : null,
-        });
+
+      if (rinnoviAlertStage === "stage1") {
+        if (rinnoviIds.length > 0) {
+          await updateRinnovi(rinnoviIds, {
+            stato: "AVVISATO",
+            notify_stage1_sent_at: nowIso,
+            notify_stage1_to_operatore_id: recipientOperatorId,
+          });
+        }
+        if (licenzeIds.length > 0) {
+          await Promise.allSettled(
+            licenzeIds.map((licenseId) =>
+              fetch("/api/licenses/action", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  action: "SEND_ALERT",
+                  licenseId,
+                  status: "AVVISATO",
+                  alertTo: finalRecipients[0]?.toOperatoreId ?? finalRecipients[0]?.toEmail ?? null,
+                  alertNote: message,
+                  updatedByOperatoreId: opId,
+                }),
+              })
+            )
+          );
+        }
+      } else {
+        if (rinnoviIds.length > 0) {
+          await updateRinnovi(rinnoviIds, {
+            billing_notified_at: nowIso,
+            billing_stage2_sent_at: nowIso,
+            billing_stage2_to_operatore_id: recipientOperatorId,
+          });
+        }
+        if (licenzeIds.length > 0) {
+          await Promise.allSettled(
+            licenzeIds.map((licenseId) =>
+              fetch("/api/licenses/action", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  action: "SEND_ALERT",
+                  licenseId,
+                  alertTo: finalRecipients[0]?.toOperatoreId ?? finalRecipients[0]?.toEmail ?? null,
+                  alertNote: message,
+                  updatedByOperatoreId: opId,
+                }),
+              })
+            )
+          );
+        }
       }
-      if (licenzeIds.length > 0) {
-        await Promise.allSettled(
-          licenzeIds.map((id) =>
-            fetch("/api/licenses/action", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                action: "SEND_ALERT",
-                licenseId: id,
-                alertTo: finalRecipients[0]?.toOperatoreId ?? finalRecipients[0]?.toEmail ?? null,
-                alertNote: rinnoviAlertMsg,
-                updatedByOperatoreId: opId,
-              }),
-            })
-          )
-        );
-      }
-    }
-    const recipientLabel =
-      finalRecipients.length > 0
-        ? `Destinatari: ${finalRecipients.map((r) => r.toNome || r.toEmail).join(", ")}`
-        : getRinnoviRecipientLabel();
-    const esitoLabel = rinnoviAlertSendEmail ? "✅ Email inviata" : "✅ Avviso registrato";
-    showToast(esitoLabel, "success");
-    setRinnoviNotice(`${esitoLabel} — ${recipientLabel}`);
-    setTimeout(() => setRinnoviAlertOpen(false), 800);
-    setRinnoviAlertSendEmail(true);
-    await fetchRinnovi((cliente || "").trim());
-    await fetchTagliandi((cliente || "").trim());
+
+      const recipientLabel = `Destinatari: ${finalRecipients.map((recipient) => recipient.toNome || recipient.toEmail).join(", ")}`;
+      const esitoLabel = payload.sendEmail ? "✅ Email inviata" : "✅ Avviso registrato";
+      showToast(esitoLabel, "success");
+      setRinnoviNotice(`${esitoLabel} — ${recipientLabel}`);
+      setRinnoviAlertOk(payload.sendEmail ? "✅ Email inviata e log registrato." : "✅ Log avviso registrato.");
+      setTimeout(() => setRinnoviAlertOpen(false), 800);
+      await fetchRinnovi((cliente || "").trim());
+      await fetchTagliandi((cliente || "").trim());
     } finally {
       setRinnoviAlertSending(false);
     }
@@ -6840,293 +6878,30 @@ ${rinnovi30ggBreakdown.debugSample
         </div>
       )}
 
-      {rinnoviAlertOpen && (
-        <div
-          style={{
-            position: "fixed",
-            inset: 0,
-            background: "rgba(0,0,0,0.35)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            padding: 16,
-            zIndex: 50,
-          }}
-          onClick={() => setRinnoviAlertOpen(false)}
-        >
-          <div
-            style={{
-              width: "100%",
-              maxWidth: 680,
-              background: "white",
-              borderRadius: 12,
-              padding: 16,
-              boxShadow: "0 10px 30px rgba(0,0,0,0.15)",
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-              <div style={{ fontWeight: 800, fontSize: 18 }}>
-                {rinnoviAlertStage === "stage1"
-                  ? "Invia avviso rinnovi"
-                  : "Invia alert fatturazione rinnovi"}
-              </div>
-              <button
-                type="button"
-                onClick={() => setRinnoviAlertOpen(false)}
-                style={{
-                  marginLeft: "auto",
-                  padding: "6px 10px",
-                  borderRadius: 8,
-                  border: "1px solid #ddd",
-                  background: "white",
-                }}
-              >
-                Chiudi
-              </button>
-            </div>
-
-            <div style={{ marginTop: 10 }}>
-              <div style={{ marginBottom: 10, fontSize: 12 }}>
-                <Link href="/impostazioni/operatori" style={{ color: "#2563eb", textDecoration: "underline" }}>
-                  ⚙ Regole invio automatico
-                </Link>
-              </div>
-              {(() => {
-                const hasTagliandi = rinnoviAlertItems.some((r) => r.source === "tagliandi");
-                const hasLicenze = rinnoviAlertItems.some((r) => r.source === "licenze");
-                const currentTipo = hasTagliandi && !hasLicenze ? "TAGLIANDO" : hasLicenze ? "LICENZA" : "GENERICO";
-                const presets = alertTemplates.filter((t) => {
-                  if (t.attivo !== true) return false;
-                  if (String(t.trigger || "") !== "MANUALE") return false;
-                  const tipo = String(t.tipo || "");
-                  return tipo === currentTipo || tipo === "GENERICO";
-                });
-                if (presets.length === 0) return null;
-                return (
-                  <label style={{ display: "block", marginBottom: 10 }}>
-                    Preset<br />
-                    <select
-                      value={selectedPresetId}
-                      onChange={(e) => {
-                        const value = e.target.value;
-                        setSelectedPresetId(value);
-                        const tpl = presets.find(
-                          (t) => String(t.id) === value || String(t.codice || "") === value
-                        );
-                        if (!tpl) return;
-                        const ctx = getTemplateContext(rinnoviAlertItems);
-                        const subject = applyTemplate(tpl.subject_template || "", ctx);
-                        const body = applyTemplate(tpl.body_template || "", ctx);
-                        if (subject.trim()) setRinnoviAlertSubject(subject);
-                        if (body.trim()) setRinnoviAlertMsg(body);
-                      }}
-                      style={{ width: "100%", padding: 8 }}
-                    >
-                      <option value="">— Seleziona —</option>
-                      {presets.map((t) => (
-                        <option key={t.id} value={t.id}>
-                          {t.titolo || t.codice || t.id}
-                        </option>
-                      ))}
-                    </select>
-                    <div style={{ fontSize: 11, opacity: 0.6, marginTop: 4 }}>
-                      Seleziona un preset per precompilare il messaggio
-                    </div>
-                  </label>
-                );
-              })()}
-              <label style={{ display: "block", marginBottom: 10 }}>
-                Modalità invio<br />
-                <select
-                  value={rinnoviAlertTrigger}
-                  onChange={(e) =>
-                    setRinnoviAlertTrigger(
-                      String(e.target.value || "MANUALE").toUpperCase() === "AUTOMATICO"
-                        ? "AUTOMATICO"
-                        : "MANUALE"
-                    )
-                  }
-                  style={{ width: "100%", padding: 8 }}
-                >
-                  <option value="MANUALE">MANUALE</option>
-                  <option value="AUTOMATICO">AUTOMATICO</option>
-                </select>
-              </label>
-              <div style={{ display: "flex", gap: 12, marginBottom: 10, fontSize: 12, flexWrap: "wrap" }}>
-                <label style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                  <input
-                    type="checkbox"
-                    checked={rinnoviAlertToArtTech}
-                    onChange={(e) => setRinnoviAlertToArtTech(e.target.checked)}
-                  />
-                  Art Tech
-                </label>
-                <label style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                  <input
-                    type="checkbox"
-                    checked={rinnoviAlertToCliente}
-                    onChange={(e) => setRinnoviAlertToCliente(e.target.checked)}
-                  />
-                  Cliente
-                </label>
-              </div>
-              <div style={{ display: "flex", gap: 12, marginBottom: 10, fontSize: 12, opacity: rinnoviAlertToArtTech ? 1 : 0.55 }}>
-                <label style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                  <input
-                    type="radio"
-                    name="rinnovi-dest"
-                    checked={rinnoviAlertDestMode === "operatore"}
-                    onChange={() => setRinnoviAlertDestMode("operatore")}
-                    disabled={!rinnoviAlertToArtTech}
-                  />
-                  Operatore
-                </label>
-                <label style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                  <input
-                    type="radio"
-                    name="rinnovi-dest"
-                    checked={rinnoviAlertDestMode === "email"}
-                    onChange={() => setRinnoviAlertDestMode("email")}
-                    disabled={!rinnoviAlertToArtTech}
-                  />
-                  Email manuale
-                </label>
-              </div>
-              {rinnoviAlertTrigger === "AUTOMATICO" && (
-                <div style={{ marginTop: -4, marginBottom: 10, fontSize: 12, opacity: 0.8 }}>
-                  Regola collegata: verrà registrato trigger AUTOMATICO nel log avvisi.
-                </div>
-              )}
-              {rinnoviAlertToCliente && (
-                <div style={{ marginTop: -4, marginBottom: 10, fontSize: 12, opacity: 0.8 }}>
-                  Cliente {clienteAnagraficaEmail ? "selezionato" : "senza email in anagrafica"}
-                </div>
-              )}
-              {rinnoviAlertToArtTech && (
-              <label style={{ display: "block", marginBottom: 10 }}>
-                Destinatario<br />
-                {rinnoviAlertDestMode === "operatore" ? (
-                  <select
-                    value={rinnoviAlertToOperatoreId}
-                    onChange={(e) => setRinnoviAlertToOperatoreId(e.target.value)}
-                    style={{ width: "100%", padding: 8 }}
-                  >
-                    <option value="">—</option>
-                    {getAlertRecipients().map((op) => (
-                        <option key={op.id} value={op.id}>
-                          {op.nome ?? "—"}
-                          {op.ruolo ? ` — ${op.ruolo}` : ""}
-                          {op.email ? ` — ${op.email}` : " — (senza email)"}
-                        </option>
-                      ))}
-                  </select>
-                ) : (
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-                    <input
-                      placeholder="Email"
-                      value={rinnoviAlertManualEmail}
-                      onChange={(e) => setRinnoviAlertManualEmail(e.target.value)}
-                      style={{ width: "100%", padding: 8 }}
-                    />
-                    <input
-                      placeholder="Nome (opzionale)"
-                      value={rinnoviAlertManualName}
-                      onChange={(e) => setRinnoviAlertManualName(e.target.value)}
-                      style={{ width: "100%", padding: 8 }}
-                    />
-                  </div>
-                )}
-              </label>
-              )}
-              <label style={{ display: "block", marginBottom: 10 }}>
-                Subject<br />
-                <input
-                  value={rinnoviAlertSubject}
-                  onChange={(e) => setRinnoviAlertSubject(e.target.value)}
-                  style={{ width: "100%", padding: 8 }}
-                />
-              </label>
-              <label style={{ display: "block", marginBottom: 10 }}>
-                Messaggio<br />
-                <textarea
-                  value={rinnoviAlertMsg}
-                  onChange={(e) => setRinnoviAlertMsg(e.target.value)}
-                  rows={10}
-                  style={{ width: "100%", padding: 8 }}
-                />
-              </label>
-              <label style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 6 }}>
-                <input
-                  type="checkbox"
-                  checked={rinnoviAlertSendEmail}
-                  onChange={(e) => setRinnoviAlertSendEmail(e.target.checked)}
-                />
-                Invia email
-              </label>
-            </div>
-
-            <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
-              <button
-                type="button"
-                onClick={() => setRinnoviAlertOpen(false)}
-                style={{
-                  padding: "8px 12px",
-                  borderRadius: 8,
-                  border: "1px solid #ddd",
-                  background: "white",
-                }}
-              >
-                Annulla
-              </button>
-              <button
-                type="button"
-                onClick={sendRinnoviAlert}
-                disabled={
-                  rinnoviAlertSending ||
-                  (!rinnoviAlertToCliente &&
-                    !(
-                      rinnoviAlertToArtTech &&
-                      (rinnoviAlertDestMode === "operatore"
-                        ? Boolean(rinnoviAlertToOperatoreId)
-                        : Boolean(rinnoviAlertManualEmail.trim()))
-                    ))
-                }
-                style={{
-                  padding: "8px 12px",
-                  borderRadius: 8,
-                  border: "1px solid #111",
-                  background: "#111",
-                  color: "white",
-                  opacity:
-                    rinnoviAlertSending ||
-                    (!rinnoviAlertToCliente &&
-                      !(
-                        rinnoviAlertToArtTech &&
-                        (rinnoviAlertDestMode === "operatore"
-                          ? Boolean(rinnoviAlertToOperatoreId)
-                          : Boolean(rinnoviAlertManualEmail.trim()))
-                      ))
-                      ? 0.6
-                      : 1,
-                }}
-              >
-                {rinnoviAlertSending ? "Invio..." : "Invia"}
-              </button>
-            </div>
-            {rinnoviAlertErr && (
-              <div style={{ marginTop: 10, fontSize: 12, color: "#b91c1c" }}>
-                {rinnoviAlertErr}
-              </div>
-            )}
-            {rinnoviAlertOk && (
-              <div style={{ marginTop: 6, fontSize: 12, color: "#166534" }}>
-                {rinnoviAlertOk}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
+      <RenewalsAlertModal
+        open={rinnoviAlertOpen}
+        cliente={cliente || ""}
+        stage={rinnoviAlertStage}
+        title={rinnoviAlertStage === "stage1" ? "Invia avviso scadenza" : "Invia alert fatturazione rinnovi"}
+        customerEmail={clienteAnagraficaEmail}
+        operators={getAlertRecipients()}
+        defaultOperatorId={
+          rinnoviAlertStage === "stage1"
+            ? getDefaultOperatoreIdByRole("SUPERVISORE")
+            : getDefaultOperatoreIdByRole("AMMINISTRAZIONE")
+        }
+        initialSubject={rinnoviAlertSubject}
+        initialMessage={rinnoviAlertMsg}
+        rule={rinnoviAlertRule}
+        loadingRule={rinnoviAlertRuleLoading}
+        manualSending={rinnoviAlertSending}
+        ruleSaving={rinnoviAlertRuleSaving}
+        error={rinnoviAlertErr}
+        success={rinnoviAlertOk}
+        onClose={() => setRinnoviAlertOpen(false)}
+        onSubmitManual={sendRinnoviAlert}
+        onSaveRule={saveRinnoviAlertRule}
+      />
 
       <div style={{ marginTop: 18 }}>
         <h2 style={{ margin: 0 }}>PROGETTO del cliente</h2>

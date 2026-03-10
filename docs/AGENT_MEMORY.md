@@ -60,6 +60,19 @@
 ## Obiettivo aperto specifico
 1. Verifica manuale su cliente e checklist del flusso Interventi completo: create, edit, close, reopen, alert singolo, alert bulk, allegati, link.
 
+## Snapshot 2026-03-10 - Popup avvisi/rinnovi unificato
+- Creato `components/RenewalsAlertModal.tsx` come popup condiviso per `Invia avviso scadenza`.
+- Nuova source of truth per regole automatiche: `renewal_alert_rules`.
+- Source of truth confermate:
+  - stato workflow: `rinnovi_servizi` / `licenses`
+  - log avvisi: `checklist_alert_log`
+  - regole automatiche: `renewal_alert_rules`
+- `MANUALE` e `AUTOMATICO` ora sono separati chiaramente:
+  - `MANUALE`: scelta destinatario nel popup
+  - `AUTOMATICO`: visualizzazione/salvataggio regola, non scelta destinatario runtime
+- `app/api/cron/rinnovi-stage1/route.ts` usa la regola automatica stage1 per cliente e aggiorna `AVVISATO`.
+- Storico avvisi mostra anche il campo `destinatario`/regola; le licenze vengono loggate con riferimento reale.
+
 ## Query rapide di controllo (manuali)
 ```sql
 -- Tagliandi cliente con progetto associato
