@@ -4746,6 +4746,368 @@ function buildFormData(c: Checklist): FormData {
     );
   }
 
+  const projectInterventiBlock = (
+    <InterventiBlock
+      checklists={
+        checklist
+          ? [
+              {
+                id: checklist.id,
+                nome_checklist: checklist.nome_checklist,
+                proforma: checklist.proforma,
+                magazzino_importazione: splitMagazzinoFields(
+                  checklist.magazzino_importazione,
+                  checklist.magazzino_drive_url
+                ).codice,
+              },
+            ]
+          : []
+      }
+      interventi={projectInterventi}
+      interventiInfo={projectInterventiNotice}
+      interventiError={projectInterventiError}
+      alertNotice={null}
+      setInterventiNotice={setProjectInterventiNotice}
+      includedUsed={interventiInclusiUsati}
+      includedTotal={contrattoUltra?.illimitati ? null : contrattoUltra?.interventi_annui ?? null}
+      includedResidual={
+        contrattoUltra?.illimitati
+          ? null
+          : contrattoUltra?.interventi_annui != null
+          ? Math.max(0, contrattoUltra.interventi_annui - interventiInclusiUsati)
+          : null
+      }
+      includedSummaryOverride={!contrattoUltra ? " / Totale inclusi: —" : null}
+      attachmentCounts={projectInterventoAttachmentCounts}
+      getOperatoreNome={(value) => operatoriMap.get(String(value || "")) || String(value || "—")}
+      currentOperatoreRole={alertOperatori.find((row) => row.id === currentOperatoreId)?.ruolo ?? null}
+      currentProjectLabel={checklist?.nome_checklist || "—"}
+      newIntervento={{
+        data: newProjectIntervento.data,
+        dataTassativa: newProjectIntervento.data_tassativa,
+        descrizione: newProjectIntervento.descrizione,
+        ticketNo: newProjectIntervento.ticket_no,
+        incluso: newProjectIntervento.incluso,
+        checklistId: id || "",
+        proforma: newProjectIntervento.proforma,
+        codiceMagazzino: newProjectIntervento.codice_magazzino,
+        fatturazioneStato: newProjectIntervento.fatturazione_stato,
+        statoIntervento: newProjectIntervento.stato_intervento,
+        esitoFatturazione: "",
+        numeroFattura: "",
+        fatturatoIl: "",
+        note: newProjectIntervento.note,
+        noteTecniche: "",
+      }}
+      setNewIntervento={(value) =>
+        setNewProjectIntervento((prev) => ({
+          ...prev,
+          data: value.data,
+          data_tassativa: value.dataTassativa,
+          descrizione: value.descrizione,
+          ticket_no: value.ticketNo,
+          incluso: value.incluso,
+          proforma: value.proforma,
+          codice_magazzino: value.codiceMagazzino,
+          fatturazione_stato: value.fatturazioneStato,
+          stato_intervento: value.statoIntervento,
+          note: value.note,
+        }))
+      }
+      newInterventoFiles={projectInterventoFiles}
+      setNewInterventoFiles={setProjectInterventoFiles}
+      addIntervento={addInterventoRow}
+      editInterventoId={projectInterventoEditId}
+      setEditInterventoId={setProjectInterventoEditId}
+      editIntervento={{
+        data: projectInterventoEditForm?.data || "",
+        dataTassativa: projectInterventoEditForm?.data_tassativa || "",
+        descrizione: projectInterventoEditForm?.descrizione || "",
+        ticketNo: projectInterventoEditForm?.ticket_no || "",
+        incluso: projectInterventoEditForm?.incluso ?? true,
+        checklistId: id || "",
+        proforma: projectInterventoEditForm?.proforma || "",
+        codiceMagazzino: projectInterventoEditForm?.codice_magazzino || "",
+        fatturazioneStato: projectInterventoEditForm?.fatturazione_stato || "DA_FATTURARE",
+        statoIntervento: projectInterventoEditForm?.stato_intervento || "APERTO",
+        esitoFatturazione: "",
+        numeroFattura: "",
+        fatturatoIl: "",
+        note: projectInterventoEditForm?.note || "",
+        noteTecniche: "",
+      }}
+      setEditIntervento={(value) =>
+        setProjectInterventoEditForm((prev) =>
+          prev
+            ? {
+                ...prev,
+                data: value.data,
+                data_tassativa: value.dataTassativa,
+                descrizione: value.descrizione,
+                ticket_no: value.ticketNo,
+                incluso: value.incluso,
+                proforma: value.proforma,
+                codice_magazzino: value.codiceMagazzino,
+                fatturazione_stato: value.fatturazioneStato,
+                stato_intervento: value.statoIntervento,
+                note: value.note,
+              }
+            : prev
+        )
+      }
+      startEditIntervento={(row) => startEditInterventoRow(row as InterventoRow)}
+      saveEditIntervento={saveInterventoRow}
+      expandedInterventoId={projectInterventiExpandedId}
+      setExpandedInterventoId={setProjectInterventiExpandedId}
+      deleteIntervento={deleteInterventoRow}
+      closeInterventoId={projectCloseInterventoId}
+      setCloseInterventoId={setProjectCloseInterventoId}
+      closeEsito={projectCloseEsito}
+      setCloseEsito={setProjectCloseEsito}
+      closeNote={projectCloseNote}
+      setCloseNote={setProjectCloseNote}
+      closeError={projectCloseError}
+      setCloseError={setProjectCloseError}
+      confirmCloseIntervento={confirmProjectCloseIntervento}
+      alertInterventoId={projectInterventoAlertId}
+      setAlertInterventoId={setProjectInterventoAlertId}
+      alertDestinatarioId={projectInterventoAlertToOperatoreId}
+      setAlertDestinatarioId={setProjectInterventoAlertToOperatoreId}
+      alertMessaggio={projectInterventoAlertMsg}
+      setAlertMessaggio={setProjectInterventoAlertMsg}
+      alertSendEmail={projectInterventoAlertSendEmail}
+      setAlertSendEmail={setProjectInterventoAlertSendEmail}
+      sending={projectInterventoAlertSending}
+      sendErr={projectInterventoAlertErr}
+      sendOk={projectInterventoAlertOk}
+      sendInterventoAlert={sendProjectInterventoAlert}
+      openAlertModal={(row) => openProjectInterventoAlertModal(row as InterventoRow)}
+      getAlertRecipients={getProjectInterventoAlertRecipients}
+      bulkOpen={projectInterventoBulkOpen}
+      setBulkOpen={setProjectInterventoBulkOpen}
+      bulkToOperatoreId={projectInterventoBulkToOperatoreId}
+      setBulkToOperatoreId={setProjectInterventoBulkToOperatoreId}
+      bulkMsg={projectInterventoBulkMsg}
+      setBulkMsg={setProjectInterventoBulkMsg}
+      bulkSendEmail={projectInterventoBulkSendEmail}
+      setBulkSendEmail={setProjectInterventoBulkSendEmail}
+      bulkSending={projectInterventoBulkSending}
+      bulkErr={projectInterventoBulkErr}
+      bulkOk={projectInterventoBulkOk}
+      sendBulkFatturaAlert={sendProjectBulkFatturaAlert}
+      getFatturaAlertRecipients={getProjectFatturaAlertRecipients}
+      bulkLastSentAt={projectInterventoBulkLastSentAt}
+      bulkLastToOperatoreId={projectInterventoBulkLastToOperatoreId}
+      bulkLastMessage={projectInterventoBulkLastMessage}
+      bulkPreviewOpen={projectInterventoBulkPreviewOpen}
+      setBulkPreviewOpen={setProjectInterventoBulkPreviewOpen}
+      openBulkAlertModal={openProjectBulkInterventoAlertModal}
+      reopenIntervento={reopenInterventoRow}
+    />
+  );
+
+  const accessoriRicambiBlock = (
+    <>
+      <h2 style={{ marginTop: 22 }}>Accessori / Ricambi</h2>
+      <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 10 }}>
+        Accessori/Extra (no TEC, no SAAS)
+      </div>
+
+      {itemsError && (
+        <div style={{ color: "crimson", marginBottom: 10 }}>{itemsError}</div>
+      )}
+
+      {editMode && (
+        <div style={{ marginBottom: 10 }}>
+          <button type="button" onClick={addRow} style={{ padding: "8px 12px" }}>
+            + Aggiungi riga
+          </button>
+        </div>
+      )}
+
+      {!editMode ? (
+        rows.length === 0 ? (
+          <div>Nessuna riga inserita</div>
+        ) : (
+          <div style={{ border: "1px solid #eee", borderRadius: 12, overflow: "hidden" }}>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "160px 1fr 120px 1fr",
+                gap: 0,
+                padding: 10,
+                fontWeight: 700,
+                borderBottom: "1px solid #eee",
+              }}
+            >
+              <div>Codice</div>
+              <div>Descrizione</div>
+              <div>Q.tà</div>
+              <div>Note</div>
+            </div>
+
+            {rows.map((r) => (
+              <div
+                key={r.id ?? r.client_id}
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "160px 1fr 120px 1fr",
+                  gap: 0,
+                  padding: 10,
+                  borderBottom: "1px solid #f1f1f1",
+                }}
+              >
+                <div>{normalizeCustomCode(r.codice) || "—"}</div>
+                <div>
+                  {isCustomCode(r.codice) ? r.descrizione_custom || "—" : r.descrizione || "—"}
+                </div>
+                <div>{r.quantita || "—"}</div>
+                <div>{r.note || "—"}</div>
+              </div>
+            ))}
+          </div>
+        )
+      ) : rows.length === 0 ? (
+        <div>Nessuna riga inserita</div>
+      ) : (
+        <div style={{ display: "grid", gap: 10 }}>
+          {rows.map((r, idx) => (
+            <div
+              key={r.id ?? r.client_id}
+              style={{
+                border: "1px solid #eee",
+                borderRadius: 12,
+                padding: 12,
+              }}
+            >
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "160px 1fr 120px 1fr 120px",
+                  gap: 10,
+                  alignItems: "center",
+                }}
+              >
+                <label>
+                  Codice<br />
+                  <input
+                    value={normalizeCustomCode(r.codice)}
+                    disabled
+                    style={{ width: "100%", padding: 10 }}
+                  />
+                </label>
+
+                <label>
+                  Descrizione<br />
+                  <input
+                    type="text"
+                    placeholder="Cerca per codice o descrizione (extra/accessori)"
+                    value={r.search ?? ""}
+                    onChange={(e) => updateRowFields(idx, { search: e.target.value })}
+                    style={{ width: "100%", padding: 10, marginBottom: 8 }}
+                  />
+                  <select
+                    value={isCustomCode(r.codice) ? "__CUSTOM__" : r.descrizione}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      if (value === "__CUSTOM__") {
+                        updateRowFields(idx, {
+                          descrizione: "Altro / Fuori catalogo",
+                          codice: "CUSTOM",
+                          descrizione_custom: "",
+                        });
+                        return;
+                      }
+                      const selected = vociProdottiOptions.find(
+                        (c) => c.descrizione === value
+                      );
+                      updateRowFields(idx, {
+                        descrizione: selected?.descrizione ?? "",
+                        codice: selected?.codice ?? "",
+                        descrizione_custom: "",
+                      });
+                    }}
+                    style={{ width: "100%", padding: 10 }}
+                  >
+                    <option value="">— seleziona prodotto / servizio —</option>
+                    <option value="__CUSTOM__">Altro / Fuori catalogo</option>
+                    {vociProdottiOptions
+                      .filter((item) => {
+                        const s = (r.search ?? "").trim().toLowerCase();
+                        if (!s) return true;
+                        const descr = (item.descrizione ?? "").toLowerCase();
+                        const code = (item.codice ?? "").toLowerCase();
+                        return `${code} ${descr}`.includes(s);
+                      })
+                      .slice(0, 200)
+                      .map((item) => (
+                        <option
+                          key={`${item.codice ?? "NO_CODE"}__${item.descrizione ?? ""}`}
+                          value={item.descrizione ?? ""}
+                        >
+                          {item.codice ?? "—"} — {item.descrizione ?? "—"}
+                        </option>
+                      ))}
+                  </select>
+
+                  {isCustomCode(r.codice) && (
+                    <div style={{ marginTop: 8 }}>
+                      <label
+                        style={{ display: "block", fontWeight: 600, marginBottom: 4 }}
+                      >
+                        Descrizione (fuori catalogo)
+                      </label>
+                      <input
+                        type="text"
+                        value={r.descrizione_custom ?? ""}
+                        onChange={(e) =>
+                          updateRowFields(idx, {
+                            descrizione_custom: e.target.value,
+                          })
+                        }
+                        placeholder="Es: Schermo P2.6 3x2m + struttura speciale..."
+                        style={{ width: "100%", padding: 10 }}
+                      />
+                    </div>
+                  )}
+                </label>
+
+                <label>
+                  Q.tà<br />
+                  <input
+                    type="number"
+                    value={r.quantita}
+                    onChange={(e) => updateRowFields(idx, { quantita: e.target.value })}
+                    style={{ width: "100%", padding: 10 }}
+                  />
+                </label>
+
+                <label>
+                  Note<br />
+                  <input
+                    value={r.note}
+                    onChange={(e) => updateRowFields(idx, { note: e.target.value })}
+                    style={{ width: "100%", padding: 10 }}
+                  />
+                </label>
+
+                <div>
+                  <button
+                    type="button"
+                    onClick={() => removeRow(idx)}
+                    style={{ padding: "8px 12px" }}
+                  >
+                    Rimuovi
+                  </button>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </>
+  );
+
   return (
     <div style={{ maxWidth: 1100, margin: "40px auto", padding: 16 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
@@ -5674,6 +6036,7 @@ function buildFormData(c: Checklist): FormData {
           </div>
         </div>
       </div>
+      <div style={{ marginTop: 22 }}>{accessoriRicambiBlock}</div>
       {serialUsageOpen && (
         <div
           onClick={() => setSerialUsageOpen(null)}
@@ -6137,163 +6500,6 @@ function buildFormData(c: Checklist): FormData {
           />
         </div>
       </div>
-      <InterventiBlock
-        checklists={
-          checklist
-            ? [
-                {
-                  id: checklist.id,
-                  nome_checklist: checklist.nome_checklist,
-                  proforma: checklist.proforma,
-                  magazzino_importazione: splitMagazzinoFields(
-                    checklist.magazzino_importazione,
-                    checklist.magazzino_drive_url
-                  ).codice,
-                },
-              ]
-            : []
-        }
-        interventi={projectInterventi}
-        interventiInfo={projectInterventiNotice}
-        interventiError={projectInterventiError}
-        alertNotice={null}
-        setInterventiNotice={setProjectInterventiNotice}
-        includedUsed={interventiInclusiUsati}
-        includedTotal={contrattoUltra?.illimitati ? null : contrattoUltra?.interventi_annui ?? null}
-        includedResidual={
-          contrattoUltra?.illimitati
-            ? null
-            : contrattoUltra?.interventi_annui != null
-            ? Math.max(0, contrattoUltra.interventi_annui - interventiInclusiUsati)
-            : null
-        }
-        includedSummaryOverride={!contrattoUltra ? " / Totale inclusi: —" : null}
-        attachmentCounts={projectInterventoAttachmentCounts}
-        getOperatoreNome={(value) => operatoriMap.get(String(value || "")) || String(value || "—")}
-        currentOperatoreRole={alertOperatori.find((row) => row.id === currentOperatoreId)?.ruolo ?? null}
-        currentProjectLabel={checklist?.nome_checklist || "—"}
-        newIntervento={{
-          data: newProjectIntervento.data,
-          dataTassativa: newProjectIntervento.data_tassativa,
-          descrizione: newProjectIntervento.descrizione,
-          ticketNo: newProjectIntervento.ticket_no,
-          incluso: newProjectIntervento.incluso,
-          checklistId: id || "",
-          proforma: newProjectIntervento.proforma,
-          codiceMagazzino: newProjectIntervento.codice_magazzino,
-          fatturazioneStato: newProjectIntervento.fatturazione_stato,
-          statoIntervento: newProjectIntervento.stato_intervento,
-          esitoFatturazione: "",
-          numeroFattura: "",
-          fatturatoIl: "",
-          note: newProjectIntervento.note,
-          noteTecniche: "",
-        }}
-        setNewIntervento={(value) =>
-          setNewProjectIntervento((prev) => ({
-            ...prev,
-            data: value.data,
-            data_tassativa: value.dataTassativa,
-            descrizione: value.descrizione,
-            ticket_no: value.ticketNo,
-            incluso: value.incluso,
-            proforma: value.proforma,
-            codice_magazzino: value.codiceMagazzino,
-            fatturazione_stato: value.fatturazioneStato,
-            stato_intervento: value.statoIntervento,
-            note: value.note,
-          }))
-        }
-        newInterventoFiles={projectInterventoFiles}
-        setNewInterventoFiles={setProjectInterventoFiles}
-        addIntervento={addInterventoRow}
-        editInterventoId={projectInterventoEditId}
-        setEditInterventoId={setProjectInterventoEditId}
-        editIntervento={{
-          data: projectInterventoEditForm?.data || "",
-          dataTassativa: projectInterventoEditForm?.data_tassativa || "",
-          descrizione: projectInterventoEditForm?.descrizione || "",
-          ticketNo: projectInterventoEditForm?.ticket_no || "",
-          incluso: projectInterventoEditForm?.incluso ?? true,
-          checklistId: id || "",
-          proforma: projectInterventoEditForm?.proforma || "",
-          codiceMagazzino: projectInterventoEditForm?.codice_magazzino || "",
-          fatturazioneStato: projectInterventoEditForm?.fatturazione_stato || "DA_FATTURARE",
-          statoIntervento: projectInterventoEditForm?.stato_intervento || "APERTO",
-          esitoFatturazione: "",
-          numeroFattura: "",
-          fatturatoIl: "",
-          note: projectInterventoEditForm?.note || "",
-          noteTecniche: "",
-        }}
-        setEditIntervento={(value) =>
-          setProjectInterventoEditForm((prev) =>
-            prev
-              ? {
-                  ...prev,
-                  data: value.data,
-                  data_tassativa: value.dataTassativa,
-                  descrizione: value.descrizione,
-                  ticket_no: value.ticketNo,
-                  incluso: value.incluso,
-                  proforma: value.proforma,
-                  codice_magazzino: value.codiceMagazzino,
-                  fatturazione_stato: value.fatturazioneStato,
-                  stato_intervento: value.statoIntervento,
-                  note: value.note,
-                }
-              : prev
-          )
-        }
-        startEditIntervento={(row) => startEditInterventoRow(row as InterventoRow)}
-        saveEditIntervento={saveInterventoRow}
-        expandedInterventoId={projectInterventiExpandedId}
-        setExpandedInterventoId={setProjectInterventiExpandedId}
-        deleteIntervento={deleteInterventoRow}
-        closeInterventoId={projectCloseInterventoId}
-        setCloseInterventoId={setProjectCloseInterventoId}
-        closeEsito={projectCloseEsito}
-        setCloseEsito={setProjectCloseEsito}
-        closeNote={projectCloseNote}
-        setCloseNote={setProjectCloseNote}
-        closeError={projectCloseError}
-        setCloseError={setProjectCloseError}
-        confirmCloseIntervento={confirmProjectCloseIntervento}
-        alertInterventoId={projectInterventoAlertId}
-        setAlertInterventoId={setProjectInterventoAlertId}
-        alertDestinatarioId={projectInterventoAlertToOperatoreId}
-        setAlertDestinatarioId={setProjectInterventoAlertToOperatoreId}
-        alertMessaggio={projectInterventoAlertMsg}
-        setAlertMessaggio={setProjectInterventoAlertMsg}
-        alertSendEmail={projectInterventoAlertSendEmail}
-        setAlertSendEmail={setProjectInterventoAlertSendEmail}
-        sending={projectInterventoAlertSending}
-        sendErr={projectInterventoAlertErr}
-        sendOk={projectInterventoAlertOk}
-        sendInterventoAlert={sendProjectInterventoAlert}
-        openAlertModal={(row) => openProjectInterventoAlertModal(row as InterventoRow)}
-        getAlertRecipients={getProjectInterventoAlertRecipients}
-        bulkOpen={projectInterventoBulkOpen}
-        setBulkOpen={setProjectInterventoBulkOpen}
-        bulkToOperatoreId={projectInterventoBulkToOperatoreId}
-        setBulkToOperatoreId={setProjectInterventoBulkToOperatoreId}
-        bulkMsg={projectInterventoBulkMsg}
-        setBulkMsg={setProjectInterventoBulkMsg}
-        bulkSendEmail={projectInterventoBulkSendEmail}
-        setBulkSendEmail={setProjectInterventoBulkSendEmail}
-        bulkSending={projectInterventoBulkSending}
-        bulkErr={projectInterventoBulkErr}
-        bulkOk={projectInterventoBulkOk}
-        sendBulkFatturaAlert={sendProjectBulkFatturaAlert}
-        getFatturaAlertRecipients={getProjectFatturaAlertRecipients}
-        bulkLastSentAt={projectInterventoBulkLastSentAt}
-        bulkLastToOperatoreId={projectInterventoBulkLastToOperatoreId}
-        bulkLastMessage={projectInterventoBulkLastMessage}
-        bulkPreviewOpen={projectInterventoBulkPreviewOpen}
-        setBulkPreviewOpen={setProjectInterventoBulkPreviewOpen}
-        openBulkAlertModal={openProjectBulkInterventoAlertModal}
-        reopenIntervento={reopenInterventoRow}
-      />
       <div style={{ marginTop: 22 }}>
         <h2 style={{ marginTop: 0 }}>SERVIZI</h2>
 
@@ -6914,205 +7120,10 @@ function buildFormData(c: Checklist): FormData {
               </div>
             </div>
           </div>
+
+          <div style={{ marginTop: 12 }}>{projectInterventiBlock}</div>
         </div>
       </div>
-      <h2 style={{ marginTop: 22 }}>Accessori / Ricambi</h2>
-      <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 10 }}>
-        Accessori/Extra (no TEC, no SAAS)
-      </div>
-
-      {itemsError && (
-        <div style={{ color: "crimson", marginBottom: 10 }}>{itemsError}</div>
-      )}
-
-      {editMode && (
-        <div style={{ marginBottom: 10 }}>
-          <button type="button" onClick={addRow} style={{ padding: "8px 12px" }}>
-            + Aggiungi riga
-          </button>
-        </div>
-      )}
-
-      {!editMode ? (
-        rows.length === 0 ? (
-          <div>Nessuna riga inserita</div>
-        ) : (
-          <div style={{ border: "1px solid #eee", borderRadius: 12, overflow: "hidden" }}>
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "160px 1fr 120px 1fr",
-                gap: 0,
-                padding: 10,
-                fontWeight: 700,
-                borderBottom: "1px solid #eee",
-              }}
-            >
-              <div>Codice</div>
-              <div>Descrizione</div>
-              <div>Q.tà</div>
-              <div>Note</div>
-            </div>
-
-            {rows.map((r) => (
-              <div
-                key={r.id ?? r.client_id}
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "160px 1fr 120px 1fr",
-                  gap: 0,
-                  padding: 10,
-                  borderBottom: "1px solid #f1f1f1",
-                }}
-              >
-                <div>{normalizeCustomCode(r.codice) || "—"}</div>
-                <div>
-                  {isCustomCode(r.codice) ? r.descrizione_custom || "—" : r.descrizione || "—"}
-                </div>
-                <div>{r.quantita || "—"}</div>
-                <div>{r.note || "—"}</div>
-              </div>
-            ))}
-          </div>
-        )
-      ) : rows.length === 0 ? (
-        <div>Nessuna riga inserita</div>
-      ) : (
-        <div style={{ display: "grid", gap: 10 }}>
-          {rows.map((r, idx) => (
-            <div
-              key={r.id ?? r.client_id}
-              style={{
-                border: "1px solid #eee",
-                borderRadius: 12,
-                padding: 12,
-              }}
-            >
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "160px 1fr 120px 1fr 120px",
-                  gap: 10,
-                  alignItems: "center",
-                }}
-              >
-                <label>
-                  Codice<br />
-                  <input
-                    value={normalizeCustomCode(r.codice)}
-                    disabled
-                    style={{ width: "100%", padding: 10 }}
-                  />
-                </label>
-
-                <label>
-                  Descrizione<br />
-                  <input
-                    type="text"
-                    placeholder="Cerca per codice o descrizione (extra/accessori)"
-                    value={r.search ?? ""}
-                    onChange={(e) => updateRowFields(idx, { search: e.target.value })}
-                    style={{ width: "100%", padding: 10, marginBottom: 8 }}
-                  />
-                  <select
-                    value={isCustomCode(r.codice) ? "__CUSTOM__" : r.descrizione}
-                    onChange={(e) => {
-                      const value = e.target.value;
-                      if (value === "__CUSTOM__") {
-                        updateRowFields(idx, {
-                          descrizione: "Altro / Fuori catalogo",
-                          codice: "CUSTOM",
-                          descrizione_custom: "",
-                        });
-                        return;
-                      }
-                      const selected = vociProdottiOptions.find(
-                        (c) => c.descrizione === value
-                      );
-                      updateRowFields(idx, {
-                        descrizione: selected?.descrizione ?? "",
-                        codice: selected?.codice ?? "",
-                        descrizione_custom: "",
-                      });
-                    }}
-                    style={{ width: "100%", padding: 10 }}
-                  >
-                    <option value="">— seleziona prodotto / servizio —</option>
-                    <option value="__CUSTOM__">Altro / Fuori catalogo</option>
-                    {vociProdottiOptions
-                      .filter((item) => {
-                        const s = (r.search ?? "").trim().toLowerCase();
-                        if (!s) return true;
-                        const descr = (item.descrizione ?? "").toLowerCase();
-                        const code = (item.codice ?? "").toLowerCase();
-                        return `${code} ${descr}`.includes(s);
-                      })
-                      .slice(0, 200)
-                      .map((item) => (
-                        <option
-                          key={`${item.codice ?? "NO_CODE"}__${item.descrizione ?? ""}`}
-                          value={item.descrizione ?? ""}
-                        >
-                          {item.codice ?? "—"} — {item.descrizione ?? "—"}
-                        </option>
-                      ))}
-                  </select>
-
-                  {isCustomCode(r.codice) && (
-                    <div style={{ marginTop: 8 }}>
-                      <label
-                        style={{ display: "block", fontWeight: 600, marginBottom: 4 }}
-                      >
-                        Descrizione (fuori catalogo)
-                      </label>
-                      <input
-                        type="text"
-                        value={r.descrizione_custom ?? ""}
-                        onChange={(e) =>
-                          updateRowFields(idx, {
-                            descrizione_custom: e.target.value,
-                          })
-                        }
-                        placeholder="Es: Schermo P2.6 3x2m + struttura speciale..."
-                        style={{ width: "100%", padding: 10 }}
-                      />
-                    </div>
-                  )}
-                </label>
-
-                <label>
-                  Q.tà<br />
-                  <input
-                    type="number"
-                    value={r.quantita}
-                    onChange={(e) => updateRowFields(idx, { quantita: e.target.value })}
-                    style={{ width: "100%", padding: 10 }}
-                  />
-                </label>
-
-                <label>
-                  Note<br />
-                  <input
-                    value={r.note}
-                    onChange={(e) => updateRowFields(idx, { note: e.target.value })}
-                    style={{ width: "100%", padding: 10 }}
-                  />
-                </label>
-
-                <div>
-                  <button
-                    type="button"
-                    onClick={() => removeRow(idx)}
-                    style={{ padding: "8px 12px" }}
-                  >
-                    Rimuovi
-                  </button>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
 
       <div style={{ marginTop: 22 }}>
         <h2 style={{ marginTop: 0 }}>Foto / Video</h2>
