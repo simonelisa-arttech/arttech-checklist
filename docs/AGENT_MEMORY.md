@@ -73,6 +73,11 @@
 - `app/api/cron/rinnovi-stage1/route.ts` usa la regola automatica stage1 per cliente e aggiorna `AVVISATO`.
 - Storico avvisi mostra anche il campo `destinatario`/regola; le licenze vengono loggate con riferimento reale.
 
+## Snapshot 2026-03-10 - Note checklist operativa
+- La checklist operativa usa ora note per task con persistenza in `cronoprogramma_comments`.
+- `row_kind` esteso a `CHECKLIST_TASK` per riusare la stessa struttura autore/data/commento del cronoprogramma.
+- In tabella viene mostrata l'ultima nota; il pulsante `+` apre storico completo e form di inserimento.
+
 ## Query rapide di controllo (manuali)
 ```sql
 -- Tagliandi cliente con progetto associato

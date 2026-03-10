@@ -4,7 +4,8 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 
-type RowRef = { row_kind: "INSTALLAZIONE" | "INTERVENTO"; row_ref_id: string };
+type RowKind = "INSTALLAZIONE" | "INTERVENTO" | "CHECKLIST_TASK";
+type RowRef = { row_kind: RowKind; row_ref_id: string };
 type OperativiInput = {
   personale_previsto?: string | null;
   mezzi?: string | null;
@@ -30,6 +31,10 @@ function getAccessTokenFromCookieHeader(cookieHeader: string | null) {
 
 function rowKey(rowKind: string, rowRefId: string) {
   return `${rowKind}:${rowRefId}`;
+}
+
+function isValidRowKind(value: string): value is RowKind {
+  return value === "INSTALLAZIONE" || value === "INTERVENTO" || value === "CHECKLIST_TASK";
 }
 
 function toIsoDay(value?: string | null) {
@@ -287,7 +292,7 @@ export async function POST(request: Request) {
         row_kind: String(r?.row_kind || "").toUpperCase(),
         row_ref_id: String(r?.row_ref_id || "").trim(),
       }))
-      .filter((r) => (r.row_kind === "INSTALLAZIONE" || r.row_kind === "INTERVENTO") && r.row_ref_id);
+      .filter((r) => isValidRowKind(r.row_kind) && r.row_ref_id);
 
     if (normalizedRows.length === 0) {
       return NextResponse.json({ ok: true, meta: {}, comments: {} });
@@ -351,6 +356,7 @@ export async function POST(request: Request) {
     normalizedRows = normalizedRows.filter((r) => {
       if (r.row_kind === "INSTALLAZIONE") return allowedInstallazioni.has(r.row_ref_id);
       if (r.row_kind === "INTERVENTO") return allowedInterventi.has(r.row_ref_id);
+      if (r.row_kind === "CHECKLIST_TASK") return true;
       return false;
     });
 
@@ -525,7 +531,7 @@ export async function POST(request: Request) {
     const rowKind = String(body?.row_kind || "").trim().toUpperCase();
     const rowRefId = String(body?.row_ref_id || "").trim();
     const commento = String(body?.commento || "").trim();
-    if (!(rowKind === "INSTALLAZIONE" || rowKind === "INTERVENTO") || !rowRefId) {
+    if (!isValidRowKind(rowKind) || !rowRefId) {
       return NextResponse.json({ error: "row_kind/row_ref_id non validi" }, { status: 400 });
     }
     if (!commento) {

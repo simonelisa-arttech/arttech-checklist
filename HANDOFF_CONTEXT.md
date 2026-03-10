@@ -40,6 +40,12 @@ File sorgente di verità: `PROJECT_CONTEXT.md` (root del repo)
 - `app/api/cron/rinnovi-stage1/route.ts` legge `renewal_alert_rules`, logga `trigger: AUTOMATICO` e aggiorna `rinnovi_servizi.stato = AVVISATO`.
 - `app/avvisi/AvvisiClient.tsx` mostra anche `destinatario`/regola salvata nel log; le licenze arrivano con riferimento reale e non più con etichetta generica fissa nel popup condiviso.
 
+- Checklist operativa:
+  - aggiunta colonna `Note` per i task in `app/checklists/[id]/page.tsx`
+  - source di persistenza riusata: `cronoprogramma_comments` con `row_kind = 'CHECKLIST_TASK'`
+  - vista compatta: ultima nota in tabella
+  - storico completo + inserimento nuova nota da modale dedicata
+
 ---
 
 ## Cosa è stato fatto (sessione 12 febbraio 2026)

@@ -346,6 +346,14 @@ type AlertStats = {
   total_recipients: number;
 };
 
+type TaskComment = {
+  id: string;
+  commento: string;
+  created_at: string | null;
+  created_by_operatore: string | null;
+  created_by_nome: string | null;
+};
+
 function toDateInput(value?: string | null) {
   if (!value) return "";
   const raw = String(value).trim();
@@ -613,6 +621,12 @@ function renderModalitaBadge(value?: string | null) {
   );
 }
 
+function truncateTaskNote(value?: string | null, max = 64) {
+  const text = String(value || "").trim();
+  if (!text) return "—";
+  return text.length > max ? `${text.slice(0, max - 1)}…` : text;
+}
+
 function alertKey(tipo?: string | null, checklistId?: string | null, riferimento?: string | null) {
   const t = String(tipo || "NULL").toUpperCase();
   const c = checklistId || "NULL";
@@ -877,6 +891,12 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
   const [documents, setDocuments] = useState<ChecklistDocument[]>([]);
   const [taskDocuments, setTaskDocuments] = useState<ChecklistTaskDocument[]>([]);
   const [taskFilesTask, setTaskFilesTask] = useState<ChecklistTask | null>(null);
+  const [taskNotesTask, setTaskNotesTask] = useState<ChecklistTask | null>(null);
+  const [taskCommentsById, setTaskCommentsById] = useState<Record<string, TaskComment[]>>({});
+  const [taskNoteDraftById, setTaskNoteDraftById] = useState<Record<string, string>>({});
+  const [taskNotesLoading, setTaskNotesLoading] = useState(false);
+  const [taskNoteSavingTaskId, setTaskNoteSavingTaskId] = useState<string | null>(null);
+  const [taskNotesError, setTaskNotesError] = useState<string | null>(null);
   const [taskDocFile, setTaskDocFile] = useState<File | null>(null);
   const [taskDocError, setTaskDocError] = useState<string | null>(null);
   const [docType, setDocType] = useState("");
@@ -2148,6 +2168,81 @@ function buildFormData(c: Checklist): FormData {
     setProjectRinnoviAlertRuleSaving(false);
   }
 
+  async function loadTaskComments(taskIds: string[]) {
+    const ids = Array.from(new Set(taskIds.filter(Boolean)));
+    if (ids.length === 0) {
+      setTaskCommentsById({});
+      return;
+    }
+    setTaskNotesLoading(true);
+    setTaskNotesError(null);
+    try {
+      const res = await fetch("/api/cronoprogramma", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "load",
+          rows: ids.map((taskId) => ({ row_kind: "CHECKLIST_TASK", row_ref_id: taskId })),
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(String(data?.error || "Errore caricamento note task"));
+      }
+      const raw = (data?.comments || {}) as Record<string, TaskComment[]>;
+      const next: Record<string, TaskComment[]> = {};
+      for (const taskId of ids) {
+        next[taskId] = Array.isArray(raw[`CHECKLIST_TASK:${taskId}`])
+          ? raw[`CHECKLIST_TASK:${taskId}`]
+          : [];
+      }
+      setTaskCommentsById(next);
+    } catch (e: any) {
+      setTaskNotesError(String(e?.message || "Errore caricamento note task"));
+      setTaskCommentsById({});
+    } finally {
+      setTaskNotesLoading(false);
+    }
+  }
+
+  async function addTaskComment(task: ChecklistTask) {
+    const taskId = String(task.id || "").trim();
+    const commento = String(taskNoteDraftById[taskId] || "").trim();
+    if (!taskId || !commento) return;
+    setTaskNoteSavingTaskId(taskId);
+    setTaskNotesError(null);
+    try {
+      const res = await fetch("/api/cronoprogramma", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "add_comment",
+          row_kind: "CHECKLIST_TASK",
+          row_ref_id: taskId,
+          commento,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(String(data?.error || "Errore salvataggio nota task"));
+      }
+      const comment = data?.comment as TaskComment | undefined;
+      if (comment?.id) {
+        setTaskCommentsById((prev) => ({
+          ...prev,
+          [taskId]: [comment, ...(prev[taskId] || [])],
+        }));
+      }
+      setTaskNoteDraftById((prev) => ({ ...prev, [taskId]: "" }));
+      showToast("Nota task aggiunta", "success");
+    } catch (e: any) {
+      setTaskNotesError(String(e?.message || "Errore salvataggio nota task"));
+      showToast(`❌ ${String(e?.message || "Errore salvataggio nota task")}`, "error");
+    } finally {
+      setTaskNoteSavingTaskId(null);
+    }
+  }
+
   async function sendProjectRinnoviAlert(payload: {
     toCliente: boolean;
     toArtTech: boolean;
@@ -2793,6 +2888,7 @@ function buildFormData(c: Checklist): FormData {
     setRows(mappedRows);
     setOriginalRowIds((items || []).map((r) => r.id));
     setTasks((tasks || []) as unknown as ChecklistTask[]);
+    await loadTaskComments(((tasks || []) as any[]).map((task: any) => String(task.id || "")));
     setLicenze((licenzeData || []) as Licenza[]);
     setProjectTagliandi((tagliandiData || []) as Tagliando[]);
     setProjectRinnovi(rinnoviData);
@@ -7076,7 +7172,7 @@ function buildFormData(c: Checklist): FormData {
               <div
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "1fr 160px 180px 220px",
+                  gridTemplateColumns: "1fr 160px 180px minmax(220px, 1.2fr) 220px",
                   gap: 12,
                   fontSize: 12,
                   opacity: 0.6,
@@ -7086,6 +7182,7 @@ function buildFormData(c: Checklist): FormData {
                 <div></div>
                 <div>Stato</div>
                 <div>Azioni</div>
+                <div>Note</div>
                 <div style={{ textAlign: "right" }}>Ultima modifica da</div>
               </div>
 
@@ -7108,7 +7205,7 @@ function buildFormData(c: Checklist): FormData {
                     key={t.id}
                     style={{
                       display: "grid",
-                      gridTemplateColumns: "1fr 160px 180px 220px",
+                      gridTemplateColumns: "1fr 160px 180px minmax(220px, 1.2fr) 220px",
                       gap: 12,
                       padding: "6px 0",
                       alignItems: "center",
@@ -7235,6 +7332,56 @@ function buildFormData(c: Checklist): FormData {
                         </div>
                       )}
                     </div>
+                    <div>
+                      {(() => {
+                        const comments = taskCommentsById[t.id] || [];
+                        const latest = comments[0] || null;
+                        return (
+                          <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setTaskNotesTask(t);
+                                setTaskNotesError(null);
+                              }}
+                              style={{
+                                width: 28,
+                                height: 28,
+                                borderRadius: 999,
+                                border: "1px solid #d1d5db",
+                                background: "white",
+                                cursor: "pointer",
+                                fontWeight: 700,
+                                lineHeight: "26px",
+                                flex: "0 0 auto",
+                              }}
+                              title="Apri storico note"
+                            >
+                              +
+                            </button>
+                            <div style={{ minWidth: 0 }}>
+                              <div
+                                title={latest?.commento || "Nessuna nota"}
+                                style={{ fontSize: 12, lineHeight: 1.35, color: "#111827" }}
+                              >
+                                {truncateTaskNote(latest?.commento)}
+                              </div>
+                              {latest ? (
+                                <div style={{ marginTop: 4, fontSize: 11, opacity: 0.7 }}>
+                                  {latest.created_by_nome || operatoriMap.get(latest.created_by_operatore || "") || "—"}
+                                  {" · "}
+                                  {latest.created_at ? new Date(latest.created_at).toLocaleString("it-IT") : "—"}
+                                </div>
+                              ) : (
+                                <div style={{ marginTop: 4, fontSize: 11, opacity: 0.55 }}>
+                                  Nessuna nota
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })()}
+                    </div>
                     <div
                       style={{
                         justifySelf: "end",
@@ -7259,7 +7406,131 @@ function buildFormData(c: Checklist): FormData {
                   })()
                 ))}
             </div>
-          ))}
+      ))}
+        </div>
+      )}
+
+      {taskNotesTask && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.25)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 55,
+            padding: 16,
+          }}
+          onClick={() => setTaskNotesTask(null)}
+        >
+          <div
+            style={{
+              background: "white",
+              borderRadius: 12,
+              padding: 16,
+              width: "100%",
+              maxWidth: 760,
+              maxHeight: "85vh",
+              overflow: "auto",
+              boxShadow: "0 10px 30px rgba(0,0,0,0.15)",
+            }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
+              <div style={{ fontWeight: 700 }}>Storico note task</div>
+              <div style={{ fontSize: 12, opacity: 0.75 }}>Task: {taskNotesTask.titolo}</div>
+              <button
+                type="button"
+                onClick={() => setTaskNotesTask(null)}
+                style={{
+                  marginLeft: "auto",
+                  padding: "6px 10px",
+                  borderRadius: 8,
+                  border: "1px solid #ddd",
+                  background: "white",
+                }}
+              >
+                Chiudi
+              </button>
+            </div>
+
+            {taskNotesError && (
+              <div style={{ color: "#b91c1c", fontSize: 12, marginBottom: 10 }}>{taskNotesError}</div>
+            )}
+
+            <div
+              style={{
+                marginBottom: 14,
+                padding: 12,
+                border: "1px solid #eee",
+                borderRadius: 12,
+                background: "#fafafa",
+              }}
+            >
+              <div style={{ fontSize: 12, marginBottom: 6, fontWeight: 600 }}>Nuova nota</div>
+              <textarea
+                value={taskNoteDraftById[taskNotesTask.id] || ""}
+                onChange={(e) =>
+                  setTaskNoteDraftById((prev) => ({ ...prev, [taskNotesTask.id]: e.target.value }))
+                }
+                rows={4}
+                placeholder="Scrivi una nota per questo task"
+                style={{ width: "100%", padding: 8 }}
+              />
+              <div style={{ display: "flex", justifyContent: "flex-end", marginTop: 8 }}>
+                <button
+                  type="button"
+                  onClick={() => addTaskComment(taskNotesTask)}
+                  disabled={
+                    taskNoteSavingTaskId === taskNotesTask.id ||
+                    !String(taskNoteDraftById[taskNotesTask.id] || "").trim()
+                  }
+                  style={{
+                    padding: "8px 12px",
+                    borderRadius: 8,
+                    border: "1px solid #111",
+                    background: "#111",
+                    color: "white",
+                    opacity:
+                      taskNoteSavingTaskId === taskNotesTask.id ||
+                      !String(taskNoteDraftById[taskNotesTask.id] || "").trim()
+                        ? 0.6
+                        : 1,
+                  }}
+                >
+                  {taskNoteSavingTaskId === taskNotesTask.id ? "Salvataggio..." : "Aggiungi nota"}
+                </button>
+              </div>
+            </div>
+
+            {taskNotesLoading ? (
+              <div style={{ fontSize: 12, opacity: 0.7 }}>Caricamento note...</div>
+            ) : (taskCommentsById[taskNotesTask.id] || []).length === 0 ? (
+              <div style={{ fontSize: 12, opacity: 0.7 }}>Nessuna nota inserita per questo task.</div>
+            ) : (
+              <div style={{ display: "grid", gap: 10 }}>
+                {(taskCommentsById[taskNotesTask.id] || []).map((comment) => (
+                  <div
+                    key={comment.id}
+                    style={{
+                      border: "1px solid #eee",
+                      borderRadius: 12,
+                      padding: 12,
+                      background: "white",
+                    }}
+                  >
+                    <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 6 }}>
+                      {comment.created_by_nome || operatoriMap.get(comment.created_by_operatore || "") || "—"}
+                      {" · "}
+                      {comment.created_at ? new Date(comment.created_at).toLocaleString("it-IT") : "—"}
+                    </div>
+                    <div style={{ whiteSpace: "pre-wrap", fontSize: 13 }}>{comment.commento}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       )}
 
