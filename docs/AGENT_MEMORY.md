@@ -86,6 +86,9 @@
   - `stato` iniziale sempre `DA_FARE`
   - `sezione` e `ordine` copiati dal template
   - nessuna modifica alle task gia presenti
+- Fix successivo:
+  - le checklist legacy con task create senza `task_template_id` vengono riallineate al template per match `titolo + sezione + ordine`
+  - recovery retroattivo automatico per la task ordine `75` `schemi dati ed elettrici + Pixel Map`
 
 ## Query rapide di controllo (manuali)
 ```sql

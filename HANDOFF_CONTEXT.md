@@ -50,6 +50,9 @@ File sorgente di verità: `PROJECT_CONTEXT.md` (root del repo)
     - conserva `sezione` / `ordine`
     - imposta `stato = DA_FARE`
     - non modifica le task già presenti
+  - fix ulteriore sul backfill task template:
+    - i task legacy senza `task_template_id` vengono riconosciuti per `titolo + sezione + ordine` e riallineati al template senza duplicazione
+    - aggiunto recovery retroattivo mirato per la task ordine `75` `schemi dati ed elettrici + Pixel Map`
 
 ---
 

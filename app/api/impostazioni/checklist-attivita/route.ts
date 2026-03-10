@@ -78,6 +78,13 @@ function normalizeTarget(input: unknown) {
   return raw;
 }
 
+function normalizeTemplateTitle(input: unknown) {
+  return String(input || "")
+    .trim()
+    .replace(/\s+/g, " ")
+    .toLowerCase();
+}
+
 function mapSezioneToInt(raw: string | number | null | undefined) {
   if (typeof raw === "number" && Number.isFinite(raw)) return raw;
   const value = String(raw || "")
@@ -132,21 +139,76 @@ async function backfillTemplateToExistingChecklists(
   if (checklistIds.length === 0) return;
 
   const existingChecklistIds = new Set<string>();
+  const legacyTaskRows: Array<{
+    id: string;
+    checklist_id: string;
+    task_template_id: string | null;
+    titolo: string | null;
+    sezione: number | null;
+    ordine: number | null;
+  }> = [];
+  const templateSezione = mapSezioneToInt(template.sezione);
+  const templateOrdine = template.ordine != null ? Number(template.ordine) : null;
+  const templateTitle = normalizeTemplateTitle(template.titolo);
   const pageSize = 1000;
   for (let from = 0; ; from += pageSize) {
     const to = from + pageSize - 1;
     const { data, error } = await supabase
       .from("checklist_tasks")
-      .select("checklist_id")
-      .eq("task_template_id", template.id)
+      .select("id, checklist_id, task_template_id, titolo, sezione, ordine")
       .range(from, to);
     if (error) throw error;
-    const rows = (data || []) as Array<{ checklist_id: string | null }>;
+    const rows = (data || []) as Array<{
+      id: string | null;
+      checklist_id: string | null;
+      task_template_id: string | null;
+      titolo: string | null;
+      sezione: number | null;
+      ordine: number | null;
+    }>;
     for (const row of rows) {
       const checklistId = String(row.checklist_id || "").trim();
-      if (checklistId) existingChecklistIds.add(checklistId);
+      if (!checklistId) continue;
+      const taskTemplateId = String(row.task_template_id || "").trim();
+      if (taskTemplateId === template.id) {
+        existingChecklistIds.add(checklistId);
+        continue;
+      }
+      const sameLegacyTask =
+        !taskTemplateId &&
+        normalizeTemplateTitle(row.titolo) === templateTitle &&
+        Number(row.sezione ?? 0) === templateSezione &&
+        (row.ordine == null ? null : Number(row.ordine)) === templateOrdine;
+      if (sameLegacyTask && row.id) {
+        legacyTaskRows.push({
+          id: String(row.id),
+          checklist_id: checklistId,
+          task_template_id: null,
+          titolo: row.titolo ?? null,
+          sezione: row.sezione ?? null,
+          ordine: row.ordine ?? null,
+        });
+        existingChecklistIds.add(checklistId);
+      }
     }
     if (rows.length < pageSize) break;
+  }
+
+  for (const row of legacyTaskRows) {
+    let { error } = await supabase
+      .from("checklist_tasks")
+      .update({
+        task_template_id: template.id,
+        target: normalizeTarget(template.target),
+      })
+      .eq("id", row.id);
+    if (error && String(error.message || "").toLowerCase().includes("target")) {
+      ({ error } = await supabase
+        .from("checklist_tasks")
+        .update({ task_template_id: template.id })
+        .eq("id", row.id));
+    }
+    if (error) throw error;
   }
 
   const missingChecklistIds = checklistIds.filter((id) => !existingChecklistIds.has(id));
@@ -172,6 +234,15 @@ async function backfillTemplateToExistingChecklists(
     }
     if (error) throw error;
   }
+}
+
+function isRetroactiveRecoveryTemplate(row: any) {
+  const ordine = Number(row?.ordine);
+  const title = normalizeTemplateTitle(row?.titolo);
+  return (
+    ordine === 75 &&
+    title === normalizeTemplateTitle("schemi dati ed elettrici + Pixel Map")
+  );
 }
 
 async function fetchRows(supabase: any) {
@@ -211,6 +282,24 @@ export async function GET(request: Request) {
   const rowsRes = await fetchRows(supabase);
   if (rowsRes.error) {
     return NextResponse.json({ error: rowsRes.error.message }, { status: 500 });
+  }
+
+  const recoveryTemplates = (rowsRes.data || []).filter((row: any) => isRetroactiveRecoveryTemplate(row));
+  for (const row of recoveryTemplates) {
+    try {
+      await backfillTemplateToExistingChecklists(supabase, {
+        id: String(row.id),
+        sezione: row.sezione ?? null,
+        ordine: row.ordine ?? null,
+        titolo: row.titolo ?? null,
+        target: row.target ?? null,
+      });
+    } catch (error: any) {
+      return NextResponse.json(
+        { error: error?.message || "Errore recovery checklist_tasks per task 75" },
+        { status: 500 }
+      );
+    }
   }
 
   const baseTargets = ["GENERICA", "MAGAZZINO", "TECNICO_SW"];
@@ -269,6 +358,20 @@ export async function POST(request: Request) {
       ({ error } = await supabase.from("checklist_task_templates").update(fallbackPayload).eq("id", body.id));
     }
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    try {
+      await backfillTemplateToExistingChecklists(supabase, {
+        id: String(body.id),
+        sezione: payload.sezione,
+        ordine: payload.ordine,
+        titolo: payload.titolo,
+        target: payload.target,
+      });
+    } catch (backfillError: any) {
+      return NextResponse.json(
+        { error: backfillError?.message || "Errore backfill checklist_tasks" },
+        { status: 500 }
+      );
+    }
   } else {
     let data: any = null;
     let error: any = null;
