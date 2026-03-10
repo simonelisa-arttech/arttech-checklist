@@ -5523,47 +5523,49 @@ function buildFormData(c: Checklist): FormData {
               />
             </div>
             <div>
-              <div style={{ fontSize: 12, marginBottom: 4 }}>Nome referente cliente</div>
-              <input
-                value={cronoOperativiForm.referente_cliente_nome}
-                onChange={(e) =>
-                  setCronoOperativiForm((prev) => ({ ...prev, referente_cliente_nome: e.target.value }))
-                }
-                style={{ width: "100%", padding: 8 }}
-              />
+              <div style={{ fontSize: 12, marginBottom: 4 }}>Referente cliente</div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                <input
+                  value={cronoOperativiForm.referente_cliente_nome}
+                  onChange={(e) =>
+                    setCronoOperativiForm((prev) => ({ ...prev, referente_cliente_nome: e.target.value }))
+                  }
+                  placeholder="Nome"
+                  style={{ width: "100%", padding: 8 }}
+                />
+                <input
+                  value={cronoOperativiForm.referente_cliente_contatto}
+                  onChange={(e) =>
+                    setCronoOperativiForm((prev) => ({ ...prev, referente_cliente_contatto: e.target.value }))
+                  }
+                  placeholder="Contatto"
+                  style={{ width: "100%", padding: 8 }}
+                />
+              </div>
             </div>
             <div>
-              <div style={{ fontSize: 12, marginBottom: 4 }}>Contatto referente cliente</div>
-              <input
-                value={cronoOperativiForm.referente_cliente_contatto}
-                onChange={(e) =>
-                  setCronoOperativiForm((prev) => ({ ...prev, referente_cliente_contatto: e.target.value }))
-                }
-                style={{ width: "100%", padding: 8 }}
-              />
-            </div>
-            <div>
-              <div style={{ fontSize: 12, marginBottom: 4 }}>Nome commerciale Art Tech</div>
-              <input
-                value={cronoOperativiForm.commerciale_art_tech_nome}
-                onChange={(e) =>
-                  setCronoOperativiForm((prev) => ({ ...prev, commerciale_art_tech_nome: e.target.value }))
-                }
-                style={{ width: "100%", padding: 8 }}
-              />
-            </div>
-            <div>
-              <div style={{ fontSize: 12, marginBottom: 4 }}>Contatto commerciale Art Tech</div>
-              <input
-                value={cronoOperativiForm.commerciale_art_tech_contatto}
-                onChange={(e) =>
-                  setCronoOperativiForm((prev) => ({
-                    ...prev,
-                    commerciale_art_tech_contatto: e.target.value,
-                  }))
-                }
-                style={{ width: "100%", padding: 8 }}
-              />
+              <div style={{ fontSize: 12, marginBottom: 4 }}>Commerciale Art Tech</div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                <input
+                  value={cronoOperativiForm.commerciale_art_tech_nome}
+                  onChange={(e) =>
+                    setCronoOperativiForm((prev) => ({ ...prev, commerciale_art_tech_nome: e.target.value }))
+                  }
+                  placeholder="Nome"
+                  style={{ width: "100%", padding: 8 }}
+                />
+                <input
+                  value={cronoOperativiForm.commerciale_art_tech_contatto}
+                  onChange={(e) =>
+                    setCronoOperativiForm((prev) => ({
+                      ...prev,
+                      commerciale_art_tech_contatto: e.target.value,
+                    }))
+                  }
+                  placeholder="Contatto"
+                  style={{ width: "100%", padding: 8 }}
+                />
+              </div>
             </div>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10 }}>
