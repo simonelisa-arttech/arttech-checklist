@@ -908,6 +908,7 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
   >([]);
   const [documents, setDocuments] = useState<ChecklistDocument[]>([]);
   const [taskDocuments, setTaskDocuments] = useState<ChecklistTaskDocument[]>([]);
+  const [taskAttachmentCounts, setTaskAttachmentCounts] = useState<Map<string, number>>(new Map());
   const [taskFilesTask, setTaskFilesTask] = useState<ChecklistTask | null>(null);
   const [taskNotesTask, setTaskNotesTask] = useState<ChecklistTask | null>(null);
   const [taskCommentsById, setTaskCommentsById] = useState<Record<string, TaskComment[]>>({});
@@ -1403,6 +1404,29 @@ function buildFormData(c: Checklist): FormData {
       counts.set(key, (counts.get(key) || 0) + 1);
     }
     setProjectInterventoAttachmentCounts(counts);
+  }
+
+  async function loadTaskAttachmentCounts(taskIds: string[]) {
+    const ids = Array.from(new Set(taskIds.filter(Boolean)));
+    if (ids.length === 0) {
+      setTaskAttachmentCounts(new Map());
+      return;
+    }
+    const { data, error } = await dbFrom("attachments")
+      .select("entity_id")
+      .eq("entity_type", "CHECKLIST_TASK")
+      .in("entity_id", ids);
+    if (error) {
+      console.error("Errore caricamento conteggio allegati task", error);
+      return;
+    }
+    const counts = new Map<string, number>();
+    for (const row of (data || []) as Array<{ entity_id: string | null }>) {
+      const key = String(row.entity_id || "");
+      if (!key) continue;
+      counts.set(key, (counts.get(key) || 0) + 1);
+    }
+    setTaskAttachmentCounts(counts);
   }
 
   async function addInterventoRow() {
@@ -2919,6 +2943,7 @@ function buildFormData(c: Checklist): FormData {
     setRows(mappedRows);
     setOriginalRowIds((items || []).map((r) => r.id));
     setTasks((tasks || []) as unknown as ChecklistTask[]);
+    await loadTaskAttachmentCounts(((tasks || []) as any[]).map((task: any) => String(task.id || "")));
     await loadTaskComments(((tasks || []) as any[]).map((task: any) => String(task.id || "")));
     setLicenze((licenzeData || []) as Licenza[]);
     setProjectTagliandi((tagliandiData || []) as Tagliando[]);
@@ -3995,6 +4020,7 @@ function buildFormData(c: Checklist): FormData {
     setTaskFilesTask(null);
     setTaskDocFile(null);
     setTaskDocError(null);
+    void loadTaskAttachmentCounts(tasks.map((task) => String(task.id || "")));
   }
 
   async function uploadTaskDocument() {
@@ -6890,173 +6916,6 @@ function buildFormData(c: Checklist): FormData {
           </div>
         </div>
       </div>
-      <div style={{ marginTop: 22 }}>
-        <h2 style={{ marginTop: 0 }}>Documenti checklist</h2>
-        <div style={{ marginBottom: 12 }}>
-          <AttachmentsPanel
-            title="Allegati checklist (upload + link Drive)"
-            entityType="CHECKLIST"
-            entityId={id}
-            multiple
-            storagePrefix="checklist"
-          />
-        </div>
-
-        {false && (
-          <>
-            {docError && (
-              <div style={{ color: "crimson", marginBottom: 10 }}>{docError}</div>
-            )}
-
-            <div
-              style={{
-                marginBottom: 12,
-                padding: 12,
-                border: "1px solid #eee",
-                borderRadius: 12,
-                background: "white",
-              }}
-            >
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "200px 1fr 140px",
-                  gap: 10,
-                  alignItems: "end",
-                }}
-              >
-                <label>
-                  Tipo documento<br />
-                  <select
-                    value={docType}
-                    onChange={(e) => setDocType(e.target.value)}
-                    style={{ width: "100%", padding: 10 }}
-                  >
-                    <option value="">—</option>
-                    <option value="FATTURA_PROFORMA">FATTURA PROFORMA</option>
-                    <option value="DDT">DDT</option>
-                    <option value="FOTO">FOTO</option>
-                    <option value="ALTRO">ALTRO</option>
-                  </select>
-                </label>
-                <label>
-                  File<br />
-                  <input
-                    type="file"
-                    onChange={(e) => setDocFile(e.target.files?.[0] ?? null)}
-                    style={{ width: "100%", padding: 8 }}
-                  />
-                </label>
-                <button
-                  type="button"
-                  onClick={uploadDocument}
-                  style={{
-                    padding: "10px 12px",
-                    borderRadius: 10,
-                    border: "1px solid #111",
-                    background: "#111",
-                    color: "white",
-                    cursor: "pointer",
-                  }}
-                >
-                  Carica documento
-                </button>
-              </div>
-            </div>
-
-            {documents.length === 0 ? (
-              <div style={{ opacity: 0.7 }}>Nessun documento caricato</div>
-            ) : (
-              <div style={{ border: "1px solid #eee", borderRadius: 12, overflow: "hidden" }}>
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "2fr 1fr 1fr 1fr 200px",
-                    gap: 0,
-                    padding: "10px 12px",
-                    fontWeight: 700,
-                    borderBottom: "1px solid #eee",
-                    background: "#fafafa",
-                  }}
-                >
-                  <div>Nome file</div>
-                  <div>Tipo</div>
-                  <div>Data upload</div>
-                  <div>Caricato da</div>
-                  <div>Azioni</div>
-                </div>
-
-                {documents.map((d) => (
-                  <div
-                    key={d.id}
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: "2fr 1fr 1fr 1fr 200px",
-                      gap: 0,
-                      padding: "10px 12px",
-                      borderBottom: "1px solid #f5f5f5",
-                      alignItems: "center",
-                      fontSize: 13,
-                    }}
-                  >
-                    <div>{d.filename}</div>
-                    <div>{d.tipo ?? "—"}</div>
-                    <div>{d.uploaded_at ? new Date(d.uploaded_at).toLocaleString() : "—"}</div>
-                    <div>
-                      {d.uploaded_by_operatore
-                        ? operatoriMap.get(d.uploaded_by_operatore) ?? "—"
-                        : "—"}
-                    </div>
-                    <div style={{ display: "flex", gap: 8 }}>
-                      <button
-                        type="button"
-                        onClick={() => openDocument(d, false)}
-                        style={{
-                          padding: "6px 10px",
-                          borderRadius: 8,
-                          border: "1px solid #ddd",
-                          background: "white",
-                          cursor: "pointer",
-                        }}
-                      >
-                        Apri
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => openDocument(d, true)}
-                        style={{
-                          padding: "6px 10px",
-                          borderRadius: 8,
-                          border: "1px solid #ddd",
-                          background: "white",
-                          cursor: "pointer",
-                        }}
-                      >
-                        Scarica
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => deleteDocument(d)}
-                        style={{
-                          padding: "6px 10px",
-                          borderRadius: 8,
-                          border: "1px solid #dc2626",
-                          background: "white",
-                          color: "#dc2626",
-                          cursor: "pointer",
-                        }}
-                      >
-                        Elimina
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </>
-        )}
-      </div>
-
       <h2 style={{ marginTop: 22 }}>Accessori / Ricambi</h2>
       <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 10 }}>
         Accessori/Extra (no TEC, no SAAS)
@@ -7255,6 +7114,22 @@ function buildFormData(c: Checklist): FormData {
         </div>
       )}
 
+      <div style={{ marginTop: 22 }}>
+        <h2 style={{ marginTop: 0 }}>Foto / Video</h2>
+        <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 10 }}>
+          Media di progetto separati dagli allegati delle task operative.
+        </div>
+        <div style={{ marginBottom: 12 }}>
+          <AttachmentsPanel
+            title="Foto / Video progetto (upload file + link)"
+            entityType="CHECKLIST"
+            entityId={id}
+            multiple
+            storagePrefix="checklist"
+          />
+        </div>
+      </div>
+
       {tasks.length > 0 && (
         <div style={{ marginTop: 24 }}>
           <h3>Checklist operativa</h3>
@@ -7307,7 +7182,9 @@ function buildFormData(c: Checklist): FormData {
                 })
                 .map((t) => (
                   (() => {
-                    const taskDocsCount = taskDocuments.filter((d) => d.task_id === t.id).length;
+                    const legacyTaskDocsCount = taskDocuments.filter((d) => d.task_id === t.id).length;
+                    const attachmentCount = taskAttachmentCounts.get(t.id) || 0;
+                    const totalAttachments = legacyTaskDocsCount + attachmentCount;
                     return (
                   <div
                     key={t.id}
@@ -7319,7 +7196,32 @@ function buildFormData(c: Checklist): FormData {
                       alignItems: "center",
                     }}
                   >
-                    <div>{t.titolo}</div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
+                      <span style={{ minWidth: 0 }}>{t.titolo}</span>
+                      <span
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 4,
+                          padding: "2px 8px",
+                          borderRadius: 999,
+                          fontSize: 11,
+                          fontWeight: 700,
+                          border:
+                            totalAttachments > 0 ? "1px solid #16a34a" : "1px solid #d1d5db",
+                          background: totalAttachments > 0 ? "#ecfdf5" : "#f8fafc",
+                          color: totalAttachments > 0 ? "#166534" : "#6b7280",
+                          whiteSpace: "nowrap",
+                        }}
+                        title={
+                          totalAttachments > 0
+                            ? `${totalAttachments} allegati/link presenti`
+                            : "Nessun allegato o link"
+                        }
+                      >
+                        📎 {totalAttachments > 0 ? `${totalAttachments}` : "0"}
+                      </span>
+                    </div>
 
                     <div>
                       <select
@@ -7410,21 +7312,22 @@ function buildFormData(c: Checklist): FormData {
                           style={{
                             padding: "6px 8px",
                             borderRadius: 8,
-                            border: taskDocsCount > 0 ? "1px solid #16a34a" : "1px solid #d1d5db",
-                            background: taskDocsCount > 0 ? "#ecfdf5" : "#f8fafc",
-                            color: taskDocsCount > 0 ? "#166534" : "#111827",
+                            border:
+                              totalAttachments > 0 ? "1px solid #16a34a" : "1px solid #d1d5db",
+                            background: totalAttachments > 0 ? "#ecfdf5" : "#f8fafc",
+                            color: totalAttachments > 0 ? "#166534" : "#111827",
                             cursor: "pointer",
                             fontSize: 12,
                             fontWeight: 600,
                             minWidth: 34,
                           }}
                           title={
-                            taskDocsCount > 0
-                              ? `${taskDocsCount} file caricati`
-                              : "Nessun file caricato"
+                            totalAttachments > 0
+                              ? `${totalAttachments} allegati/link presenti`
+                              : "Nessun allegato o link"
                           }
                         >
-                          📎{taskDocsCount > 0 ? ` ${taskDocsCount}` : ""}
+                          📎{totalAttachments > 0 ? ` ${totalAttachments}` : ""}
                         </button>
                       </div>
                       {lastAlertByTask.has(t.id) && (
