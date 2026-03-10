@@ -15,10 +15,23 @@ type ChecklistRow = {
 
 type RuleRow = {
   id: string;
+  checklist_id: string | null;
+  task_template_id: string | null;
   task_title: string | null;
   target: string | null;
   recipients: any;
   only_future: boolean | null;
+  enabled: boolean | null;
+  mode: string | null;
+  send_on_create: boolean | null;
+};
+
+type TaskRow = {
+  id: string;
+  titolo: string | null;
+  stato: string | null;
+  target: string | null;
+  task_template_id: string | null;
 };
 
 type OperatoreRow = {
@@ -125,6 +138,33 @@ function buildPayloadHash(sentOn: string, checklistId: string, target: string, r
     .digest("hex");
 }
 
+function normalizeTaskKey(title: string | null | undefined, target: string | null | undefined) {
+  return `${String(title || "").trim().toLowerCase()}::${normalizeTarget(target)}`;
+}
+
+function shouldSendOnChecklistCreate(rule: RuleRow) {
+  if (rule.enabled === false) return false;
+  if (normalizeTarget(rule.target) === "AMMINISTRAZIONE") return true;
+  return rule.send_on_create === true;
+}
+
+function getMatchingRuleForTask(task: TaskRow, checklistId: string, rules: RuleRow[]) {
+  const key = normalizeTaskKey(task.titolo, task.target);
+  const templateId = String(task.task_template_id || "").trim();
+  const matching = rules.filter((rule) => {
+    if (normalizeTaskKey(rule.task_title, rule.target) !== key) return false;
+    const ruleTemplateId = String(rule.task_template_id || "").trim();
+    if (ruleTemplateId && templateId) return ruleTemplateId === templateId;
+    return true;
+  });
+  if (!matching.length) return null;
+
+  const overrideRule =
+    matching.find((rule) => String(rule.checklist_id || "").trim() === checklistId) || null;
+  if (overrideRule) return overrideRule;
+  return matching.find((rule) => !String(rule.checklist_id || "").trim()) || null;
+}
+
 async function authAdminClient(request: Request) {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
   const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -194,11 +234,11 @@ export async function POST(request: Request) {
 
   let { data: rulesRaw, error: rulesErr } = await adminClient
     .from("notification_rules")
-    .select("id, task_title, target, recipients, only_future, send_on_create")
-    .is("checklist_id", null)
+    .select(
+      "id, checklist_id, task_template_id, task_title, target, recipients, only_future, enabled, mode, send_on_create"
+    )
     .eq("enabled", true)
-    .eq("send_on_create", true)
-    .or("mode.eq.AUTOMATICA,target.eq.AMMINISTRAZIONE");
+    .or(`checklist_id.is.null,checklist_id.eq.${checklistId}`);
   if (rulesErr && String(rulesErr.message || "").toLowerCase().includes("send_on_create")) {
     return NextResponse.json({ ok: true, sent: 0, skipped: "missing_send_on_create_column" });
   }
@@ -206,7 +246,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: rulesErr.message }, { status: 500 });
   }
 
-  const rules = (rulesRaw || []) as RuleRow[];
+  const rules = ((rulesRaw || []) as RuleRow[]).filter(shouldSendOnChecklistCreate);
   if (!rules.length) {
     return NextResponse.json({ ok: true, sent: 0, skipped: "no_matching_rules" });
   }
@@ -221,32 +261,41 @@ export async function POST(request: Request) {
   const CLOSED = new Set(["OK", "NON_NECESSARIO"]);
   const baseUrl = getBaseUrl(request);
 
-  const byTarget = new Map<
+  const { data: tasksRaw, error: tasksErr } = await adminClient
+    .from("checklist_tasks")
+    .select("id, titolo, stato, target, task_template_id")
+    .eq("checklist_id", checklistId);
+  if (tasksErr) {
+    return NextResponse.json({ error: tasksErr.message }, { status: 500 });
+  }
+
+  const openTasks = ((tasksRaw || []) as TaskRow[]).filter(
+    (task) => !CLOSED.has(String(task.stato || "").trim().toUpperCase())
+  );
+  if (!openTasks.length) {
+    return NextResponse.json({ ok: true, sent: 0, skipped: "no_open_tasks" });
+  }
+
+  const byRecipientAndTarget = new Map<
     string,
-    { recipients: Set<string>; ruleItems: Array<{ rule: RuleRow; taskTitles: string[] }> }
+    { recipient: string; target: string; taskTitles: Set<string>; ruleIds: Set<string> }
   >();
   let locksAcquired = 0;
 
-  for (const rule of rules) {
-    if (rule.only_future === false) continue;
-    const target = String(rule.target || "").trim().toUpperCase();
-    const taskTitle = String(rule.task_title || "").trim();
+  for (const task of openTasks) {
+    const effectiveRule = getMatchingRuleForTask(task, checklistId, rules);
+    if (!effectiveRule) continue;
+    if (effectiveRule.only_future === false) continue;
+    const target = normalizeTarget(effectiveRule.target || task.target);
+    const taskTitle = String(task.titolo || effectiveRule.task_title || "Attività").trim();
     if (!target || !taskTitle) continue;
 
-    const { data: tasks, error: taskErr } = await adminClient
-      .from("checklist_tasks")
-      .select("titolo, stato")
-      .eq("checklist_id", checklistId)
-      .eq("titolo", taskTitle)
-      .eq("target", target);
-    if (taskErr) return NextResponse.json({ error: taskErr.message }, { status: 500 });
-
-    const openTaskTitles = (tasks || [])
-      .filter((t: any) => !CLOSED.has(String(t.stato || "").trim().toUpperCase()))
-      .map((t: any) => String(t.titolo || "—"));
-    if (!openTaskTitles.length) continue;
-
-    const payloadHash = buildPayloadHash(todayRome, checklistId, target, String(rule.id || taskTitle));
+    const payloadHash = buildPayloadHash(
+      todayRome,
+      checklistId,
+      target,
+      `${String(effectiveRule.id || taskTitle)}::${String(task.id || taskTitle)}`
+    );
     const { error: lockErr } = await adminClient.from("notification_log").insert({
       sent_on: todayRome,
       checklist_id: checklistId,
@@ -260,29 +309,35 @@ export async function POST(request: Request) {
     }
     locksAcquired += 1;
 
-    const extraRecipients = parseRecipients(rule.recipients);
+    const extraRecipients = parseRecipients(effectiveRule.recipients);
     const autoRecipients = getAutoRecipients(target, operatori);
     const recipients = Array.from(new Set([...autoRecipients, ...extraRecipients]));
-    if (!byTarget.has(target)) {
-      byTarget.set(target, { recipients: new Set<string>(), ruleItems: [] });
+    for (const recipient of recipients) {
+      const bucketKey = `${recipient}::${target}`;
+      const bucket = byRecipientAndTarget.get(bucketKey) || {
+        recipient,
+        target,
+        taskTitles: new Set<string>(),
+        ruleIds: new Set<string>(),
+      };
+      bucket.taskTitles.add(taskTitle);
+      bucket.ruleIds.add(String(effectiveRule.id || taskTitle));
+      byRecipientAndTarget.set(bucketKey, bucket);
     }
-    const bucket = byTarget.get(target)!;
-    recipients.forEach((r) => bucket.recipients.add(r));
-    bucket.ruleItems.push({ rule, taskTitles: openTaskTitles });
   }
 
   let emailsSent = 0;
-  for (const [target, bucket] of byTarget.entries()) {
-    const recipients = Array.from(bucket.recipients);
-    if (!recipients.length) continue;
-    const subject = `AT SYSTEM - Promemoria ${target} - ${checklist.nome_checklist || checklist.id}`;
+  for (const bucket of byRecipientAndTarget.values()) {
+    const taskTitles = Array.from(bucket.taskTitles);
+    if (!taskTitles.length) continue;
+    const subject = `AT SYSTEM - Promemoria ${bucket.target} - ${checklist.nome_checklist || checklist.id}`;
     const lines: string[] = [
       `Cliente: ${checklist.cliente || "—"}`,
       `Checklist: ${checklist.nome_checklist || checklist.id}`,
       `Data installazione: ${installDate}`,
       `Link: ${baseUrl}/checklists/${checklistId}`,
       "",
-      "Task pendenti:",
+      "Task pendenti di pertinenza:",
     ];
     let html = `<div><p><strong>Cliente:</strong> ${escapeHtml(
       checklist.cliente || "—"
@@ -291,31 +346,31 @@ export async function POST(request: Request) {
     )}<br/><strong>Data installazione:</strong> ${escapeHtml(
       installDate
     )}<br/><a href="${escapeHtml(baseUrl + `/checklists/${checklistId}`)}">Apri checklist</a></p><ul>`;
-    for (const item of bucket.ruleItems) {
-      lines.push(`- ${item.rule.task_title || "Attività"}`);
-      html += `<li>${escapeHtml(item.rule.task_title || "Attività")}</li>`;
+    for (const taskTitle of taskTitles) {
+      lines.push(`- ${taskTitle}`);
+      html += `<li>${escapeHtml(taskTitle)}</li>`;
     }
     html += "</ul></div>";
 
-    const sends = await Promise.allSettled(
-      recipients.map((to) =>
-        sendEmail({
-          to,
-          subject,
-          text: lines.join("\n"),
-          html,
-        })
-      )
-    );
-    const sentNow = sends.filter((s) => s.status === "fulfilled").length;
+    const sendResult = await Promise.allSettled([
+      sendEmail({
+        to: bucket.recipient,
+        subject,
+        text: lines.join("\n"),
+        html,
+      }),
+    ]);
+    const sentNow = sendResult.filter((s) => s.status === "fulfilled").length;
     emailsSent += sentNow;
     if (sentNow > 0) {
       await Promise.all(
-        bucket.ruleItems.map((x) =>
+        Array.from(bucket.ruleIds)
+          .filter((ruleId) => ruleId && !ruleId.includes("::"))
+          .map((ruleId) =>
           adminClient
             .from("notification_rules")
             .update({ last_sent_on: todayRome })
-            .eq("id", x.rule.id)
+            .eq("id", ruleId)
         )
       );
     }
@@ -325,6 +380,6 @@ export async function POST(request: Request) {
     ok: true,
     sent: emailsSent,
     rules_locked: locksAcquired,
-    targets: Array.from(byTarget.keys()),
+    targets: Array.from(new Set(Array.from(byRecipientAndTarget.values()).map((bucket) => bucket.target))),
   });
 }

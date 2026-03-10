@@ -8064,6 +8064,12 @@ function buildFormData(c: Checklist): FormData {
                   Target: <strong>{ruleDraft.target}</strong>
                   <br />
                   Regola effettiva: <strong>{ruleOverride ? "OVERRIDE PROGETTO" : ruleGlobal ? "GLOBALE" : "DEFAULT"}</strong>
+                  <br />
+                  {ruleOverride
+                    ? "L'override progetto sostituisce la regola globale per questa task: non parte un secondo invio dalla globale."
+                    : ruleGlobal
+                    ? "Nessun override locale: questa task usa la regola globale del template."
+                    : "Nessuna regola salvata: vale il default di sistema."}
                 </>
               ) : null}
             </div>
