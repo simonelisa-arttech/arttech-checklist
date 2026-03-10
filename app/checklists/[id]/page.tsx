@@ -370,6 +370,28 @@ function asText(value: unknown): string {
   return String(value);
 }
 
+function isHttpUrl(value?: string | null) {
+  const raw = String(value || "").trim();
+  if (!raw) return false;
+  try {
+    const parsed = new URL(raw);
+    return parsed.protocol === "http:" || parsed.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+function renderTextOrLink(value?: string | null) {
+  const raw = String(value || "").trim();
+  if (!raw) return "—";
+  if (!isHttpUrl(raw)) return raw;
+  return (
+    <a href={raw} target="_blank" rel="noreferrer" style={{ color: "#2563eb" }}>
+      {raw}
+    </a>
+  );
+}
+
 function normalizeRuleTargetValue(value?: string | null): string {
   const raw = String(value || "")
     .trim()
@@ -5239,7 +5261,7 @@ function buildFormData(c: Checklist): FormData {
             />
             <FieldRow
               label="Magazzino importazione"
-              view={checklist.magazzino_importazione || "—"}
+              view={renderTextOrLink(checklist.magazzino_importazione)}
               edit={
                 isEdit ? (
                   <input
@@ -5247,6 +5269,7 @@ function buildFormData(c: Checklist): FormData {
                     onChange={(e) =>
                       setFormData({ ...formData, magazzino_importazione: e.target.value })
                     }
+                    placeholder="Codice magazzino o link Google Drive"
                     style={{ width: "100%", padding: 10 }}
                   />
                 ) : undefined

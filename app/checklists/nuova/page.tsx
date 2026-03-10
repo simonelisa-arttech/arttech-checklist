@@ -1105,6 +1105,7 @@ export default function NuovaChecklistPage() {
             <input
               value={magazzinoImportazione}
               onChange={(e) => setMagazzinoImportazione(e.target.value)}
+              placeholder="Codice magazzino o link Google Drive"
               style={{ width: "100%", padding: 10 }}
             />
           </label>
