@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import ConfigMancante from "@/components/ConfigMancante";
 import AttachmentsPanel from "@/components/AttachmentsPanel";
+import InterventiBlock from "@/components/InterventiBlock";
 import RenewalsBlock from "@/components/RenewalsBlock";
 import Toast from "@/components/Toast";
 import { calcM2FromDimensioni } from "@/lib/parseDimensioni";
@@ -3193,6 +3194,26 @@ export default function ClientePage({ params }: { params: any }) {
     return parts.join(" — ");
   }
 
+  function openInterventoAlertModal(i: InterventoRow) {
+    setAlertInterventoId(i.id);
+    setAlertDestinatarioId("");
+    setAlertMessaggio(buildAlertMessage(i));
+    setAlertNotice(null);
+  }
+
+  function openBulkInterventoAlertModal() {
+    const list = getFattureDaEmettereList();
+    if (list.length === 0) {
+      setInterventiInfo("Nessuna fattura da emettere.");
+      return;
+    }
+    setBulkErr(null);
+    setBulkOk(null);
+    setBulkToOperatoreId("");
+    setBulkMsg(buildBulkFattureMessage(list));
+    setBulkOpen(true);
+  }
+
   async function confirmCloseIntervento() {
     if (!closeInterventoId) return;
     if (!closeEsito) {
@@ -6374,1255 +6395,130 @@ ${rinnovi30ggBreakdown.debugSample
         </div>
       </div>
 
-      <div style={{ marginTop: 18 }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-          <h2 style={{ margin: 0, fontSize: 34, fontWeight: 800 }}>Interventi</h2>
-          <div style={{ fontSize: 12, opacity: 0.8 }}>
-            Inclusi usati: {interventiInclusiUsati}
-            {!contratto ? (
-              <> / Totale inclusi: —</>
-            ) : interventiTotali == null ? (
-              <> / Totale inclusi: ∞ (illimitato)</>
-            ) : (
-              <>
-                {" "}
-                / Totale inclusi: {interventiTotali} / Residui: {interventiResidui}
-              </>
-            )}
-            {interventiResidui != null && interventiResidui <= 0 && (
-              <span
-                style={{
-                  marginLeft: 8,
-                  padding: "2px 6px",
-                  borderRadius: 999,
-                  background: "#fee2e2",
-                  color: "#991b1b",
-                  fontWeight: 700,
-                }}
-              >
-                Inclusi finiti
-              </span>
-            )}
-          </div>
-        </div>
-
-        {interventiInfo && (
-          <div style={{ marginTop: 6, color: "#166534", fontSize: 12 }}>
-            {interventiInfo}
-          </div>
-        )}
-
-        {interventiError && (
-          <div style={{ marginTop: 6, color: "crimson", fontSize: 12 }}>
-            {interventiError}
-          </div>
-        )}
-        {alertNotice && (
-          <div style={{ marginTop: 6, color: "#555", fontSize: 12 }}>
-            {alertNotice}
-          </div>
-        )}
-        {bulkLastSentAt && (
-          <div style={{ marginTop: 6, fontSize: 12, color: "#166534", fontWeight: 600 }}>
-            ✅ Ultimo alert fatturazione (bulk):{" "}
-            {new Date(bulkLastSentAt).toLocaleString()}
-            {(() => {
-              const op = alertOperatori.find((o) => o.id === bulkLastToOperatoreId);
-              if (!op) return bulkLastToOperatoreId ? ` — a ${bulkLastToOperatoreId}` : "";
-              const email = op.email ? ` (${op.email})` : "";
-              return ` — a ${op.nome ?? op.id}${email}`;
-            })()}
-          </div>
-        )}
-        {bulkLastMessage && (
-          <div style={{ marginTop: 4 }}>
-            <button
-              type="button"
-              onClick={() => setBulkPreviewOpen(true)}
-              style={{
-                padding: 0,
-                border: "none",
-                background: "transparent",
-                color: "#2563eb",
-                fontSize: 12,
-                cursor: "pointer",
-                textDecoration: "underline",
-              }}
-            >
-              Mostra recap
-            </button>
-          </div>
-        )}
-
-        <div
-          id="add-intervento"
-          style={{
-            marginTop: 10,
-            border: "1px solid #eee",
-            borderRadius: 12,
-            padding: 12,
-            background: "white",
-          }}
-        >
-          <div style={{ fontWeight: 700, marginBottom: 8 }}>Aggiungi intervento</div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10 }}>
-            <label>
-              Data<br />
-              <input
-                type="date"
-                value={newIntervento.data}
-                onChange={(e) => setNewIntervento({ ...newIntervento, data: e.target.value })}
-                style={{ width: "100%", padding: 8 }}
-              />
-            </label>
-            <label>
-              Data tassativa<br />
-              <input
-                type="date"
-                value={newIntervento.dataTassativa}
-                onChange={(e) => setNewIntervento({ ...newIntervento, dataTassativa: e.target.value })}
-                style={{ width: "100%", padding: 8 }}
-              />
-            </label>
-
-            <label>
-              Descrizione<br />
-              <input
-                value={newIntervento.tipo}
-                onChange={(e) => setNewIntervento({ ...newIntervento, tipo: e.target.value })}
-                style={{ width: "100%", padding: 8 }}
-                placeholder="Assistenza, aggiornamento..."
-              />
-            </label>
-
-            <label>
-              Ticket n°<br />
-              <input
-                value={newIntervento.ticketNo}
-                onChange={(e) => setNewIntervento({ ...newIntervento, ticketNo: e.target.value })}
-                style={{ width: "100%", padding: 8 }}
-                placeholder="es. 1234"
-              />
-            </label>
-
-            <label>
-              Incluso / Extra<br />
-              <select
-                value={newIntervento.incluso ? "INCLUSO" : "EXTRA"}
-                onChange={(e) =>
-                  setNewIntervento({ ...newIntervento, incluso: e.target.value === "INCLUSO" })
-                }
-                style={{ width: "100%", padding: 8 }}
-              >
-                <option value="INCLUSO">INCLUSO</option>
-                <option value="EXTRA">EXTRA</option>
-              </select>
-            </label>
-
-            <label>
-              PROGETTO<br />
-              <select
-                value={newIntervento.checklistId}
-                onChange={(e) => {
-                  const checklistId = e.target.value;
-                  const defaults = getInterventoDefaultsFromChecklist(checklistId);
-                  setNewIntervento({
-                    ...newIntervento,
-                    checklistId,
-                    proforma: defaults.proforma,
-                    codiceMagazzino: defaults.codiceMagazzino,
-                  });
-                }}
-                style={{ width: "100%", padding: 8 }}
-              >
-                <option value="">—</option>
-                {checklists.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.nome_checklist ?? c.id}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <label>
-              Proforma<br />
-              <input
-                value={newIntervento.proforma}
-                onChange={(e) => setNewIntervento({ ...newIntervento, proforma: e.target.value })}
-                style={{ width: "100%", padding: 8 }}
-              />
-            </label>
-
-            <label>
-              Cod. magazzino<br />
-              <input
-                value={newIntervento.codiceMagazzino}
-                onChange={(e) =>
-                  setNewIntervento({ ...newIntervento, codiceMagazzino: e.target.value })
-                }
-                style={{ width: "100%", padding: 8 }}
-              />
-            </label>
-
-            <label>
-              Fatturazione<br />
-              <select
-                value={newIntervento.fatturazioneStato}
-                onChange={(e) => {
-                  const next = e.target.value;
-                  setNewIntervento({
-                    ...newIntervento,
-                    fatturazioneStato: next,
-                    fatturatoIl:
-                      next === "FATTURATO" && !newIntervento.fatturatoIl
-                        ? new Date().toISOString().slice(0, 10)
-                        : newIntervento.fatturatoIl,
-                  });
-                }}
-                style={{ width: "100%", padding: 8 }}
-              >
-                {FATTURAZIONE_MENU_OPTIONS.map((opt) => (
-                  <option key={opt} value={opt}>
-                    {opt}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            {newIntervento.statoIntervento === "CHIUSO" &&
-              newIntervento.fatturazioneStato === "FATTURATO" && (
-              <>
-                <label>
-                  Numero fattura<br />
-                  <input
-                    value={newIntervento.numeroFattura}
-                    onChange={(e) =>
-                      setNewIntervento({ ...newIntervento, numeroFattura: e.target.value })
-                    }
-                    style={{ width: "100%", padding: 8 }}
-                  />
-                </label>
-                <label>
-                  Fatturato il<br />
-                  <input
-                    type="date"
-                    value={newIntervento.fatturatoIl}
-                    onChange={(e) =>
-                      setNewIntervento({ ...newIntervento, fatturatoIl: e.target.value })
-                    }
-                    style={{ width: "100%", padding: 8 }}
-                  />
-                </label>
-              </>
-            )}
-          </div>
-
-          <div style={{ marginTop: 10 }}>
-            <label>
-              Dettaglio intervento<br />
-              <textarea
-                value={newIntervento.note}
-                onChange={(e) => setNewIntervento({ ...newIntervento, note: e.target.value })}
-                rows={4}
-                style={{ width: "100%", padding: 8 }}
-              />
-            </label>
-          </div>
-
-          <div style={{ marginTop: 10 }}>
-            <label>
-              Allegati (opzionale)<br />
-              <input
-                type="file"
-                multiple
-                onChange={(e) => setNewInterventoFiles(e.target.files ? Array.from(e.target.files) : [])}
-              />
-            </label>
-          </div>
-
-          <div style={{ marginTop: 10 }}>
-            <button
-              type="button"
-              onClick={addIntervento}
-              style={{
-                padding: "8px 12px",
-                borderRadius: 10,
-                border: "1px solid #111",
-                background: "#111",
-                color: "white",
-                cursor: "pointer",
-              }}
-            >
-              Aggiungi intervento
-            </button>
-          </div>
-        </div>
-
-        {interventi.length === 0 ? (
-          <div style={{ opacity: 0.7, marginTop: 8 }}>Nessun intervento trovato</div>
-        ) : (
-          <>
-            <div
-              style={{
-                marginTop: 10,
-                border: "1px solid #eee",
-                borderRadius: 12,
-                padding: 12,
-                background: "#fafafa",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "space-between",
-                gap: 12,
-                flexWrap: "wrap",
-              }}
-            >
-              <div>
-                <div style={{ fontWeight: 700 }}>Fatture da emettere</div>
-                <div style={{ fontSize: 12, opacity: 0.7 }}>
-                  {interventi.filter((i) => isFatturaDaEmettere(i)).length} interventi
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => {
-                  console.log("CLICK BULK ALERT");
-                  const list = getFattureDaEmettereList();
-                  console.log(
-                    "BULK LIST",
-                    list.length,
-                    list.map((x) => x.id)
-                  );
-                  if (list.length === 0) {
-                    setInterventiInfo("Nessuna fattura da emettere.");
-                    return;
-                  }
-                  setBulkErr(null);
-                  setBulkOk(null);
-                  setBulkToOperatoreId("");
-                  setBulkMsg(buildBulkFattureMessage(list));
-                  setBulkOpen(true);
-                }}
-                disabled={bulkSending}
-                style={{
-                  padding: "6px 10px",
-                  borderRadius: 8,
-                  border: "1px solid #111",
-                  background: "white",
-                  cursor: "pointer",
-                  whiteSpace: "nowrap",
-                  opacity: bulkSending ? 0.6 : 1,
-                }}
-              >
-                Invia alert ora (fatturazione)
-              </button>
-            </div>
-            <div
-              style={{
-                marginTop: 10,
-                border: "1px solid #eee",
-                borderRadius: 12,
-                overflowX: "auto",
-                width: "100%",
-                background: "white",
-              }}
-            >
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns:
-                  "90px minmax(180px,1fr) minmax(240px,1.5fr) 110px 90px 120px 150px 150px 130px 150px",
-                columnGap: 8,
-                padding: "6px 8px",
-                fontWeight: 800,
-                background: "#fafafa",
-                borderBottom: "1px solid #eee",
-                fontSize: 12,
-                minWidth: 1410,
-                tableLayout: "fixed",
-              }}
-            >
-              <div style={{ whiteSpace: "nowrap" }}>Data</div>
-              <div style={{ whiteSpace: "nowrap" }}>PROGETTO</div>
-              <div>Descrizione</div>
-              <div style={{ whiteSpace: "nowrap" }}>Ticket n°</div>
-              <div style={{ whiteSpace: "nowrap" }}>Tipo</div>
-              <div style={{ whiteSpace: "nowrap" }}>Stato</div>
-              <div style={{ whiteSpace: "nowrap" }}>Proforma</div>
-              <div style={{ whiteSpace: "nowrap" }}>Codice</div>
-              <div style={{ whiteSpace: "nowrap" }}>Fatturazione</div>
-              <div style={{ whiteSpace: "nowrap" }}>AZIONI</div>
-            </div>
-            {interventi.map((i) => (
-              <div key={i.id} style={{ borderBottom: "1px solid #f3f4f6" }}>
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns:
-                      "90px minmax(180px,1fr) minmax(240px,1.5fr) 110px 90px 120px 150px 150px 130px 150px",
-                    columnGap: 8,
-                    padding: "6px 8px",
-                    alignItems: "center",
-                    fontSize: 12,
-                    minWidth: 1410,
-                    tableLayout: "fixed",
-                  }}
-                >
-                  <div style={{ whiteSpace: "nowrap" }}>
-                    {i.data ? new Date(i.data).toLocaleDateString() : "—"}
-                  </div>
-                  <div style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                    {i.checklist?.nome_checklist
-                      ? i.checklist.nome_checklist
-                      : i.checklist_id
-                      ? i.checklist_id.slice(0, 8)
-                      : "—"}
-                  </div>
-                  <div style={{ whiteSpace: "normal", overflowWrap: "anywhere" }}>{i.descrizione}</div>
-                  <div style={{ whiteSpace: "nowrap" }}>{i.ticket_no || "—"}</div>
-                  <div
-                    style={{
-                      display: "flex",
-                      flexDirection: "column",
-                      gap: 6,
-                      alignItems: "flex-start",
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                      {renderInterventoBadge(i.incluso ? "INCLUSO" : "EXTRA")}
-                    </div>
-                  </div>
-                  <div style={{ whiteSpace: "nowrap" }}>
-                    {renderStatoInterventoBadge(getInterventoStato(i))}
-                  </div>
-                  <div style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                    {i.proforma || i.checklist?.proforma || "—"}
-                  </div>
-                  <div style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                    {i.codice_magazzino || i.checklist?.magazzino_importazione || "—"}
-                  </div>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 6, whiteSpace: "nowrap" }}>
-                    {getInterventoStato(i) === "APERTO" ? (
-                      <>
-                        <div>—</div>
-                        <div style={{ fontSize: 12, opacity: 0.7 }}>da chiudere</div>
-                      </>
-                    ) : (
-                      <>
-                        {renderFatturazioneBadge(getEsitoFatturazione(i) || "—")}
-                      </>
-                    )}
-                  </div>
-                  <div
-                    style={{
-                      display: "flex",
-                      flexDirection: "column",
-                      gap: 6,
-                      alignItems: "stretch",
-                      whiteSpace: "nowrap",
-                      minWidth: 0,
-                    }}
-                  >
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setExpandedInterventoId(expandedInterventoId === i.id ? null : i.id)
-                    }
-                      style={{
-                        padding: "3px 6px",
-                        borderRadius: 6,
-                        border: "1px solid #d1d5db",
-                        background: "#f8fafc",
-                        cursor: "pointer",
-                        width: "100%",
-                        whiteSpace: "nowrap",
-                        fontSize: 12,
-                      }}
-                    title="Apri allegati intervento"
-                  >
-                    📎 File ({(interventoFilesById.get(i.id) || []).length})
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setExpandedInterventoId(expandedInterventoId === i.id ? null : i.id)
-                    }
-                      style={{
-                        padding: "3px 6px",
-                        borderRadius: 6,
-                        border: "1px solid #ddd",
-                        background: "white",
-                        cursor: "pointer",
-                        width: "100%",
-                        whiteSpace: "nowrap",
-                        fontSize: 12,
-                      }}
-                  >
-                    Dettagli
-                  </button>
-                  {getInterventoStato(i) === "APERTO" && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setCloseInterventoId(i.id);
-                        setCloseEsito("DA_FATTURARE");
-                        setCloseNote("");
-                        setCloseError(null);
-                      }}
-                      style={{
-                        padding: "3px 6px",
-                        borderRadius: 6,
-                        border: "1px solid #111",
-                        background: "white",
-                        cursor: "pointer",
-                        width: "100%",
-                        whiteSpace: "nowrap",
-                        fontSize: 12,
-                      }}
-                    >
-                      Chiudi
-                    </button>
-                  )}
-                  {getInterventoStato(i) === "CHIUSO" &&
-                    getEsitoFatturazione(i) === "DA_FATTURARE" && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setAlertInterventoId(i.id);
-                        setAlertDestinatarioId("");
-                        setAlertMessaggio(buildAlertMessage(i));
-                        setAlertNotice(null);
-                      }}
-                      style={{
-                        padding: "3px 6px",
-                        borderRadius: 6,
-                        border: "1px solid #111",
-                        background: "white",
-                        cursor: "pointer",
-                        width: "100%",
-                        whiteSpace: "nowrap",
-                        fontSize: 12,
-                      }}
-                    >
-                      Invia alert fattura
-                    </button>
-                  )}
-                    <button
-                      type="button"
-                      onClick={() => startEditIntervento(i)}
-                      style={{
-                        padding: "3px 6px",
-                        borderRadius: 6,
-                        border: "1px solid #ddd",
-                        background: "white",
-                        cursor: "pointer",
-                        width: "100%",
-                        whiteSpace: "nowrap",
-                        fontSize: 12,
-                      }}
-                    >
-                      Modifica
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => deleteIntervento(i.id)}
-                      style={{
-                        padding: "3px 6px",
-                        borderRadius: 6,
-                        border: "1px solid #ddd",
-                        background: "white",
-                        cursor: "pointer",
-                        width: "100%",
-                        whiteSpace: "nowrap",
-                        fontSize: 12,
-                      }}
-                    >
-                      Elimina
-                    </button>
-                  </div>
-                </div>
-                {lastAlertByIntervento.get(i.id) && (
-                  <div style={{ padding: "0 12px 10px", fontSize: 12, opacity: 0.7 }}>
-                    Ultimo alert:{" "}
-                    {lastAlertByIntervento.get(i.id)!.toNome ??
-                      lastAlertByIntervento.get(i.id)!.toOperatoreId ??
-                      "—"}{" "}
-                    —{" "}
-                    {new Date(lastAlertByIntervento.get(i.id)!.createdAt).toLocaleString()}
-                  </div>
-                )}
-                {editInterventoId === i.id && (
-                  <div
-                    style={{
-                      padding: "10px 12px 14px",
-                      background: "#fafafa",
-                      borderTop: "1px solid #eee",
-                    }}
-                  >
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-                      <div style={{ fontSize: 12, opacity: 0.7 }}>Stato intervento</div>
-                      {renderStatoInterventoBadge(getInterventoStato(i))}
-                      {getInterventoStato(i) === "CHIUSO" &&
-                        canReopenIntervento(
-                          alertOperatori.find((o) => o.id === currentOperatoreId)?.ruolo ?? null
-                        ) && (
-                          <button
-                            type="button"
-                            onClick={() => reopenIntervento(i.id)}
-                            style={{
-                              marginLeft: "auto",
-                              padding: "6px 10px",
-                              borderRadius: 8,
-                              border: "1px solid #111",
-                              background: "white",
-                              cursor: "pointer",
-                            }}
-                          >
-                            Riapri
-                          </button>
-                        )}
-                    </div>
-                    {getInterventoStato(i) === "CHIUSO" && (
-                      <div style={{ display: "flex", gap: 12, alignItems: "center", marginBottom: 8 }}>
-                        <div style={{ fontSize: 12, opacity: 0.7 }}>Esito fatturazione</div>
-                        {renderFatturazioneBadge(getEsitoFatturazione(i) || "—")}
-                        <div style={{ fontSize: 12, opacity: 0.7, marginLeft: 8 }}>Chiuso da</div>
-                        <div style={{ fontSize: 12 }}>
-                          {getOperatoreNome(i.chiuso_da_operatore)}
-                        </div>
-                        <div style={{ fontSize: 12, opacity: 0.7 }}>Chiuso il</div>
-                        <div style={{ fontSize: 12 }}>
-                          {i.chiuso_il ? new Date(i.chiuso_il).toLocaleDateString() : "—"}
-                        </div>
-                      </div>
-                    )}
-                    <div
-                      style={{
-                        display: "grid",
-                        gridTemplateColumns: "1fr 1fr 140px 1fr 1fr 1fr",
-                        gap: 10,
-                      }}
-                    >
-                      <label>
-                        Data<br />
-                        <input
-                          type="date"
-                          value={editIntervento.data}
-                          onChange={(e) =>
-                            setEditIntervento({ ...editIntervento, data: e.target.value })
-                          }
-                          style={{ width: "100%", padding: 8 }}
-                        />
-                      </label>
-                      <label>
-                        Data tassativa<br />
-                        <input
-                          type="date"
-                          value={editIntervento.dataTassativa}
-                          onChange={(e) =>
-                            setEditIntervento({ ...editIntervento, dataTassativa: e.target.value })
-                          }
-                          style={{ width: "100%", padding: 8 }}
-                        />
-                      </label>
-                      <label>
-                        Descrizione<br />
-                        <input
-                          value={editIntervento.descrizione}
-                          onChange={(e) =>
-                            setEditIntervento({ ...editIntervento, descrizione: e.target.value })
-                          }
-                          style={{ width: "100%", padding: 8 }}
-                        />
-                      </label>
-                      <label>
-                        Tipo<br />
-                        <select
-                          value={editIntervento.incluso ? "INCLUSO" : "EXTRA"}
-                          onChange={(e) =>
-                            setEditIntervento({
-                              ...editIntervento,
-                              incluso: e.target.value === "INCLUSO",
-                            })
-                          }
-                          disabled={editIntervento.noteTecniche.includes("Auto-EXTRA")}
-                          style={{ width: "100%", padding: 8 }}
-                        >
-                          <option value="INCLUSO">INCLUSO</option>
-                          <option value="EXTRA">EXTRA</option>
-                        </select>
-                      </label>
-                      <label>
-                        Ticket n°<br />
-                        <input
-                          value={editIntervento.ticketNo}
-                          onChange={(e) =>
-                            setEditIntervento({ ...editIntervento, ticketNo: e.target.value })
-                          }
-                          style={{ width: "100%", padding: 8 }}
-                        />
-                      </label>
-                      <label>
-                        Proforma<br />
-                        <input
-                          value={editIntervento.proforma}
-                          onChange={(e) =>
-                            setEditIntervento({ ...editIntervento, proforma: e.target.value })
-                          }
-                          style={{ width: "100%", padding: 8 }}
-                        />
-                      </label>
-                      <label>
-                        Cod. magazzino<br />
-                        <input
-                          value={editIntervento.codiceMagazzino}
-                          onChange={(e) =>
-                            setEditIntervento({
-                              ...editIntervento,
-                              codiceMagazzino: e.target.value,
-                            })
-                          }
-                          style={{ width: "100%", padding: 8 }}
-                        />
-                      </label>
-                    </div>
-
-                    <div
-                      style={{
-                        display: "grid",
-                        gridTemplateColumns: "1fr 1fr 1fr 1fr",
-                        gap: 10,
-                        marginTop: 10,
-                      }}
-                    >
-                      <label>
-                        Stato fatturazione<br />
-                        <select
-                          value={editIntervento.fatturazioneStato}
-                          onChange={(e) =>
-                            setEditIntervento({
-                              ...editIntervento,
-                              fatturazioneStato: e.target.value,
-                            })
-                          }
-                          style={{ width: "100%", padding: 8 }}
-                        >
-                          {FATTURAZIONE_MENU_OPTIONS.map((opt) => (
-                            <option key={opt} value={opt}>
-                              {opt}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                      <label>
-                        Numero fattura<br />
-                        <input
-                          value={editIntervento.numeroFattura}
-                          onChange={(e) =>
-                            setEditIntervento({
-                              ...editIntervento,
-                              numeroFattura: e.target.value,
-                            })
-                          }
-                          disabled={editIntervento.fatturazioneStato !== "FATTURATO"}
-                          style={{ width: "100%", padding: 8 }}
-                        />
-                      </label>
-                      <label>
-                        Fatturato il<br />
-                        <input
-                          type="date"
-                          value={editIntervento.fatturatoIl}
-                          onChange={(e) =>
-                            setEditIntervento({
-                              ...editIntervento,
-                              fatturatoIl: e.target.value,
-                            })
-                          }
-                          disabled={editIntervento.fatturazioneStato !== "FATTURATO"}
-                          style={{ width: "100%", padding: 8 }}
-                        />
-                      </label>
-                      {editIntervento.statoIntervento !== "CHIUSO" && (
-                        <div style={{ gridColumn: "1 / span 3", fontSize: 12, opacity: 0.7 }}>
-                          Intervento aperto: la fatturazione verrà completata alla chiusura.
-                        </div>
-                      )}
-                      <label>
-                        Dettaglio intervento<br />
-                        <textarea
-                          value={editIntervento.note}
-                          onChange={(e) =>
-                            setEditIntervento({ ...editIntervento, note: e.target.value })
-                          }
-                          rows={3}
-                          style={{ width: "100%", padding: 8 }}
-                        />
-                      </label>
-                    </div>
-
-                    <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 10 }}>
-                      <button
-                        type="button"
-                        onClick={() => setEditInterventoId(null)}
-                        style={{
-                          padding: "8px 12px",
-                          borderRadius: 8,
-                          border: "1px solid #ddd",
-                          background: "white",
-                        }}
-                      >
-                        Annulla
-                      </button>
-                      <button
-                        type="button"
-                        onClick={saveEditIntervento}
-                        style={{
-                          padding: "8px 12px",
-                          borderRadius: 8,
-                          border: "1px solid #111",
-                          background: "#111",
-                          color: "white",
-                        }}
-                      >
-                        Salva modifiche
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-              </div>
-            ))}
-          </div>
-          </>
-        )}
-      </div>
-
-      {expandedInterventoId && (
-        <div
-          style={{
-            position: "fixed",
-            inset: 0,
-            background: "rgba(0,0,0,0.35)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            padding: 16,
-            zIndex: 50,
-          }}
-          onClick={() => setExpandedInterventoId(null)}
-        >
-          <div
-            style={{
-              width: "100%",
-              maxWidth: 900,
-              background: "white",
-              borderRadius: 12,
-              padding: 16,
-              boxShadow: "0 10px 30px rgba(0,0,0,0.15)",
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            {(() => {
-              const i = interventi.find((x) => x.id === expandedInterventoId);
-              if (!i) return null;
-              const interventoId = i.id;
-              const files = interventoFilesById.get(i.id) || [];
-              return (
-                <>
-                  <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                    <div>
-                      <div style={{ fontWeight: 800, fontSize: 18 }}>Dettaglio intervento</div>
-                      <div style={{ fontSize: 12, opacity: 0.7 }}>
-                        {i.data ? new Date(i.data).toLocaleDateString() : "—"} ·{" "}
-                        {i.checklist?.nome_checklist ?? i.checklist_id?.slice(0, 8) ?? "—"}
-                      </div>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => setExpandedInterventoId(null)}
-                      style={{
-                        marginLeft: "auto",
-                        padding: "6px 10px",
-                        borderRadius: 8,
-                        border: "1px solid #ddd",
-                        background: "white",
-                      }}
-                    >
-                      Chiudi
-                    </button>
-                  </div>
-
-                  <div style={{ marginTop: 12 }}>
-                    <div style={{ fontWeight: 700, marginBottom: 6 }}>Descrizione</div>
-                    <div>{i.descrizione}</div>
-                  </div>
-
-                  <div style={{ marginTop: 12 }}>
-                    <div style={{ fontWeight: 700, marginBottom: 6 }}>Dettaglio</div>
-                    <div style={{ whiteSpace: "pre-wrap" }}>{i.note || "—"}</div>
-                    {i.note_tecniche && (
-                      <div style={{ marginTop: 6, fontSize: 12, opacity: 0.7 }}>
-                        Note tecniche: {i.note_tecniche}
-                      </div>
-                    )}
-                  </div>
-
-                  <div style={{ marginTop: 12 }}>
-                    <div style={{ fontWeight: 700, marginBottom: 6 }}>Allegati</div>
-                    <div style={{ marginBottom: 12 }}>
-                      <AttachmentsPanel
-                        title="Allegati intervento (upload + link Drive)"
-                        entityType="INTERVENTO"
-                        entityId={interventoId}
-                        multiple
-                        storagePrefix="intervento"
-                      />
-                    </div>
-                    {false && (
-                      <>
-                        <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-                          <input
-                            type="file"
-                            multiple
-                            onChange={(e) =>
-                              setInterventoUploadFiles((prev) => ({
-                                ...prev,
-                                [interventoId]: e.target.files ? Array.from(e.target.files) : [],
-                              }))
-                            }
-                          />
-                          <button
-                            type="button"
-                            onClick={() => uploadInterventoFiles(interventoId)}
-                            style={{
-                              padding: "6px 10px",
-                              borderRadius: 8,
-                              border: "1px solid #111",
-                              background: "#111",
-                              color: "white",
-                              cursor: "pointer",
-                            }}
-                          >
-                            Carica file
-                          </button>
-                        </div>
-
-                        {files.length ? (
-                          <div style={{ marginTop: 10, display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(120px, 1fr))", gap: 10 }}>
-                            {files.map((f) => (
-                              <div
-                                key={f.id}
-                                style={{
-                                  border: "1px solid #eee",
-                                  borderRadius: 10,
-                                  padding: 8,
-                                  fontSize: 12,
-                                }}
-                              >
-                                {isImageFile(f.filename) && interventoFileUrls[f.id] ? (
-                                  <img
-                                    src={interventoFileUrls[f.id]}
-                                    alt={f.filename}
-                                    style={{ width: "100%", height: 90, objectFit: "cover", borderRadius: 6 }}
-                                  />
-                                ) : (
-                                  <div
-                                    style={{
-                                      height: 90,
-                                      display: "flex",
-                                      alignItems: "center",
-                                      justifyContent: "center",
-                                      background: "#f3f4f6",
-                                      borderRadius: 6,
-                                    }}
-                                  >
-                                    FILE
-                                  </div>
-                                )}
-                                <div style={{ marginTop: 6, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                                  {f.filename}
-                                </div>
-                                <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
-                                  <button
-                                    type="button"
-                                    onClick={() => openInterventoFile(f)}
-                                    style={{
-                                      padding: "4px 8px",
-                                      borderRadius: 6,
-                                      border: "1px solid #ddd",
-                                      background: "white",
-                                    }}
-                                  >
-                                    Apri
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => deleteInterventoFile(f)}
-                                    style={{
-                                      padding: "4px 8px",
-                                      borderRadius: 6,
-                                      border: "1px solid #dc2626",
-                                      background: "white",
-                                      color: "#dc2626",
-                                    }}
-                                  >
-                                    Elimina
-                                  </button>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        ) : (
-                          <div style={{ marginTop: 6, fontSize: 12, opacity: 0.7 }}>
-                            Nessun allegato
-                          </div>
-                        )}
-                      </>
-                    )}
-                  </div>
-                </>
-              );
-            })()}
-          </div>
-        </div>
-      )}
-
-      {closeInterventoId && (
-        <div
-          style={{
-            position: "fixed",
-            inset: 0,
-            background: "rgba(0,0,0,0.35)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            padding: 16,
-            zIndex: 50,
-          }}
-          onClick={() => setCloseInterventoId(null)}
-        >
-          <div
-            style={{
-              width: "100%",
-              maxWidth: 520,
-              background: "white",
-              borderRadius: 12,
-              padding: 16,
-              boxShadow: "0 10px 30px rgba(0,0,0,0.15)",
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-              <div style={{ fontWeight: 800, fontSize: 18 }}>Chiudi intervento</div>
-              <button
-                type="button"
-                onClick={() => setCloseInterventoId(null)}
-                style={{
-                  marginLeft: "auto",
-                  padding: "6px 10px",
-                  borderRadius: 8,
-                  border: "1px solid #ddd",
-                  background: "white",
-                }}
-              >
-                Chiudi
-              </button>
-            </div>
-
-            {closeError && (
-              <div style={{ marginTop: 8, color: "crimson", fontSize: 12 }}>{closeError}</div>
-            )}
-
-            <div style={{ marginTop: 10 }}>
-              <label style={{ display: "block", marginBottom: 10 }}>
-                Esito fatturazione<br />
-                <select
-                  value={closeEsito}
-                  onChange={(e) => setCloseEsito(e.target.value)}
-                  style={{ width: "100%", padding: 8 }}
-                >
-                  <option value="">—</option>
-                  {FATTURAZIONE_MENU_OPTIONS.filter((opt) => opt !== "FATTURATO").map((opt) => (
-                    <option key={opt} value={opt}>
-                      {opt}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label style={{ display: "block", marginBottom: 10 }}>
-                Note (opzionale)<br />
-                <textarea
-                  value={closeNote}
-                  onChange={(e) => setCloseNote(e.target.value)}
-                  rows={3}
-                  style={{ width: "100%", padding: 8 }}
-                />
-              </label>
-            </div>
-
-            <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
-              <button
-                type="button"
-                onClick={() => setCloseInterventoId(null)}
-                style={{
-                  padding: "8px 12px",
-                  borderRadius: 8,
-                  border: "1px solid #ddd",
-                  background: "white",
-                }}
-              >
-                Annulla
-              </button>
-              <button
-                type="button"
-                onClick={confirmCloseIntervento}
-                style={{
-                  padding: "8px 12px",
-                  borderRadius: 8,
-                  border: "1px solid #111",
-                  background: "#111",
-                  color: "white",
-                }}
-              >
-                Conferma chiusura
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {alertInterventoId && (
-        <div
-          style={{
-            position: "fixed",
-            inset: 0,
-            background: "rgba(0,0,0,0.35)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            padding: 16,
-            zIndex: 50,
-          }}
-          onClick={() => setAlertInterventoId(null)}
-        >
-          <div
-            style={{
-              width: "100%",
-              maxWidth: 560,
-              background: "white",
-              borderRadius: 12,
-              padding: 16,
-              boxShadow: "0 10px 30px rgba(0,0,0,0.15)",
-            }}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-              <div style={{ fontWeight: 800, fontSize: 18 }}>Invia alert fattura</div>
-              <button
-                type="button"
-                onClick={() => setAlertInterventoId(null)}
-                style={{
-                  marginLeft: "auto",
-                  padding: "6px 10px",
-                  borderRadius: 8,
-                  border: "1px solid #ddd",
-                  background: "white",
-                }}
-              >
-                Chiudi
-              </button>
-            </div>
-
-            <div style={{ marginTop: 10 }}>
-              <div style={{ marginBottom: 10, fontSize: 12 }}>
-                <Link href="/impostazioni/operatori" style={{ color: "#2563eb", textDecoration: "underline" }}>
-                  ⚙ Regole invio automatico
-                </Link>
-              </div>
-              <label style={{ display: "block", marginBottom: 10 }}>
-                Destinatario<br />
-                <select
-                  value={alertDestinatarioId}
-                  onChange={(e) => setAlertDestinatarioId(e.target.value)}
-                  style={{ width: "100%", padding: 8 }}
-                >
-                  <option value="">—</option>
-                  {getAlertRecipients().map((op) => (
-                    <option key={op.id} value={op.id}>
-                      {op.nome ?? "—"}
-                      {op.ruolo ? ` — ${op.ruolo}` : ""}
-                      {op.email ? ` — ${op.email}` : ""}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              {getAlertRecipients().length === 0 && (
-                <div style={{ marginTop: -6, marginBottom: 10, fontSize: 12, color: "#b91c1c" }}>
-                  Nessun operatore attivo disponibile
-                </div>
-              )}
-              <label style={{ display: "block", marginBottom: 10 }}>
-                Messaggio (opzionale)<br />
-                <textarea
-                  value={alertMessaggio}
-                  onChange={(e) => setAlertMessaggio(e.target.value)}
-                  rows={4}
-                  style={{ width: "100%", padding: 8 }}
-                />
-              </label>
-              <label style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 6 }}>
-                <input
-                  type="checkbox"
-                  checked={alertSendEmail}
-                  onChange={(e) => setAlertSendEmail(e.target.checked)}
-                />
-                Invia email
-              </label>
-            </div>
-
-            <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
-              <button
-                type="button"
-                onClick={() => setAlertInterventoId(null)}
-                style={{
-                  padding: "8px 12px",
-                  borderRadius: 8,
-                  border: "1px solid #ddd",
-                  background: "white",
-                }}
-              >
-                Annulla
-              </button>
-              <button
-                type="button"
-                onClick={sendInterventoAlert}
-                disabled={sending || !alertDestinatarioId}
-                style={{
-                  padding: "8px 12px",
-                  borderRadius: 8,
-                  border: "1px solid #111",
-                  background: "#111",
-                  color: "white",
-                  opacity: sending || !alertDestinatarioId ? 0.6 : 1,
-                }}
-              >
-                {sending ? "Invio..." : "Invia"}
-              </button>
-            </div>
-            {sendErr && (
-              <div style={{ marginTop: 10, fontSize: 12, color: "#b91c1c" }}>
-                {sendErr}
-              </div>
-            )}
-            {sendOk && (
-              <div style={{ marginTop: 6, fontSize: 12, color: "#166534" }}>
-                {sendOk}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
+      <InterventiBlock
+        checklists={checklists}
+        interventi={interventi}
+        interventiInfo={interventiInfo}
+        interventiError={interventiError}
+        alertNotice={alertNotice}
+        setInterventiNotice={setInterventiInfo}
+        includedUsed={interventiInclusiUsati}
+        includedTotal={contratto ? interventiTotali : null}
+        includedResidual={contratto ? interventiResidui : null}
+        includedSummaryOverride={!contratto ? " / Totale inclusi: —" : null}
+        attachmentCounts={new Map(Array.from(interventoFilesById.entries()).map(([id, files]) => [id, files.length]))}
+        getOperatoreNome={getOperatoreNome}
+        currentOperatoreRole={alertOperatori.find((o) => o.id === currentOperatoreId)?.ruolo ?? null}
+        newIntervento={{
+          data: newIntervento.data,
+          dataTassativa: newIntervento.dataTassativa,
+          descrizione: newIntervento.tipo,
+          ticketNo: newIntervento.ticketNo,
+          incluso: newIntervento.incluso,
+          checklistId: newIntervento.checklistId,
+          proforma: newIntervento.proforma,
+          codiceMagazzino: newIntervento.codiceMagazzino,
+          fatturazioneStato: newIntervento.fatturazioneStato,
+          statoIntervento: newIntervento.statoIntervento,
+          esitoFatturazione: "",
+          numeroFattura: newIntervento.numeroFattura,
+          fatturatoIl: newIntervento.fatturatoIl,
+          note: newIntervento.note,
+          noteTecniche: "",
+        }}
+        setNewIntervento={(value) => {
+          setNewIntervento({
+            data: value.data,
+            dataTassativa: value.dataTassativa,
+            tipo: value.descrizione,
+            ticketNo: value.ticketNo,
+            incluso: value.incluso,
+            note: value.note,
+            checklistId: value.checklistId,
+            proforma: value.proforma,
+            codiceMagazzino: value.codiceMagazzino,
+            fatturazioneStato: value.fatturazioneStato,
+            numeroFattura: value.numeroFattura,
+            fatturatoIl: value.fatturatoIl,
+            statoIntervento: value.statoIntervento,
+          });
+        }}
+        newInterventoFiles={newInterventoFiles}
+        setNewInterventoFiles={setNewInterventoFiles}
+        addIntervento={addIntervento}
+        editInterventoId={editInterventoId}
+        setEditInterventoId={setEditInterventoId}
+        editIntervento={{
+          ...editIntervento,
+          checklistId: "",
+        }}
+        setEditIntervento={(value) =>
+          setEditIntervento({
+            data: value.data,
+            dataTassativa: value.dataTassativa,
+            descrizione: value.descrizione,
+            ticketNo: value.ticketNo,
+            incluso: value.incluso,
+            proforma: value.proforma,
+            codiceMagazzino: value.codiceMagazzino,
+            fatturazioneStato: value.fatturazioneStato,
+            statoIntervento: value.statoIntervento,
+            esitoFatturazione: value.esitoFatturazione,
+            numeroFattura: value.numeroFattura,
+            fatturatoIl: value.fatturatoIl,
+            note: value.note,
+            noteTecniche: value.noteTecniche,
+          })
+        }
+        startEditIntervento={startEditIntervento}
+        saveEditIntervento={saveEditIntervento}
+        expandedInterventoId={expandedInterventoId}
+        setExpandedInterventoId={setExpandedInterventoId}
+        deleteIntervento={deleteIntervento}
+        closeInterventoId={closeInterventoId}
+        setCloseInterventoId={setCloseInterventoId}
+        closeEsito={closeEsito}
+        setCloseEsito={setCloseEsito}
+        closeNote={closeNote}
+        setCloseNote={setCloseNote}
+        closeError={closeError}
+        setCloseError={setCloseError}
+        confirmCloseIntervento={confirmCloseIntervento}
+        alertInterventoId={alertInterventoId}
+        setAlertInterventoId={setAlertInterventoId}
+        alertDestinatarioId={alertDestinatarioId}
+        setAlertDestinatarioId={setAlertDestinatarioId}
+        alertMessaggio={alertMessaggio}
+        setAlertMessaggio={setAlertMessaggio}
+        alertSendEmail={alertSendEmail}
+        setAlertSendEmail={setAlertSendEmail}
+        sending={sending}
+        sendErr={sendErr}
+        sendOk={sendOk}
+        sendInterventoAlert={sendInterventoAlert}
+        openAlertModal={openInterventoAlertModal}
+        getAlertRecipients={getAlertRecipients}
+        bulkOpen={bulkOpen}
+        setBulkOpen={setBulkOpen}
+        bulkToOperatoreId={bulkToOperatoreId}
+        setBulkToOperatoreId={setBulkToOperatoreId}
+        bulkMsg={bulkMsg}
+        setBulkMsg={setBulkMsg}
+        bulkSendEmail={bulkSendEmail}
+        setBulkSendEmail={setBulkSendEmail}
+        bulkSending={bulkSending}
+        bulkErr={bulkErr}
+        bulkOk={bulkOk}
+        sendBulkFatturaAlert={sendBulkFatturaAlert}
+        getFatturaAlertRecipients={getFatturaAlertRecipients}
+        bulkLastSentAt={bulkLastSentAt}
+        bulkLastToOperatoreId={bulkLastToOperatoreId}
+        bulkLastMessage={bulkLastMessage}
+        bulkPreviewOpen={bulkPreviewOpen}
+        setBulkPreviewOpen={setBulkPreviewOpen}
+        openBulkAlertModal={openBulkInterventoAlertModal}
+        reopenIntervento={reopenIntervento}
+      />
 
       {licenseAlertOpen && (
         <div

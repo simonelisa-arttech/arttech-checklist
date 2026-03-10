@@ -48,6 +48,18 @@
 - Ruoli e confini operativi ufficiali in `docs/AGENT_OPERATING_MODEL.md`.
 - Regola: ogni modifica cross-dominio richiede aggiornamento di questo file (snapshot operativo).
 
+## Snapshot 2026-03-10 - Interventi shared block
+- Creato `components/InterventiBlock.tsx` come blocco condiviso 1:1 per Interventi.
+- `app/clienti/[cliente]/page.tsx` resta source of truth funzionale ma renderizza tramite componente condiviso.
+- `app/checklists/[id]/page.tsx` renderizza lo stesso componente condiviso e limita i record a `checklist_id = id`.
+- Flow allegati/link unificato:
+  - create con upload file post-insert
+  - apertura automatica edit/dettaglio per aggiungere link Drive o altri allegati
+  - edit con `AttachmentsPanel` inline nello stesso flow
+
+## Obiettivo aperto specifico
+1. Verifica manuale su cliente e checklist del flusso Interventi completo: create, edit, close, reopen, alert singolo, alert bulk, allegati, link.
+
 ## Query rapide di controllo (manuali)
 ```sql
 -- Tagliandi cliente con progetto associato

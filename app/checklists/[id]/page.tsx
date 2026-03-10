@@ -6,6 +6,7 @@ import Link from "next/link";
 import ConfigMancante from "@/components/ConfigMancante";
 import ClientiCombobox from "@/components/ClientiCombobox";
 import AttachmentsPanel from "@/components/AttachmentsPanel";
+import InterventiBlock from "@/components/InterventiBlock";
 import RenewalsBlock from "@/components/RenewalsBlock";
 import Toast from "@/components/Toast";
 import { isSupabaseConfigured, supabase } from "@/lib/supabaseClient";
@@ -986,6 +987,30 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
   const [projectInterventiExpandedId, setProjectInterventiExpandedId] = useState<string | null>(null);
   const [projectInterventoEditId, setProjectInterventoEditId] = useState<string | null>(null);
   const [projectInterventoEditForm, setProjectInterventoEditForm] = useState<ProjectInterventoForm | null>(null);
+  const [projectInterventoAttachmentCounts, setProjectInterventoAttachmentCounts] = useState<Map<string, number>>(new Map());
+  const [projectInterventoFiles, setProjectInterventoFiles] = useState<File[]>([]);
+  const [projectInterventoAlertId, setProjectInterventoAlertId] = useState<string | null>(null);
+  const [projectInterventoAlertToOperatoreId, setProjectInterventoAlertToOperatoreId] = useState("");
+  const [projectInterventoAlertMsg, setProjectInterventoAlertMsg] = useState("");
+  const [projectInterventoAlertSendEmail, setProjectInterventoAlertSendEmail] = useState(true);
+  const [projectInterventoAlertSending, setProjectInterventoAlertSending] = useState(false);
+  const [projectInterventoAlertErr, setProjectInterventoAlertErr] = useState<string | null>(null);
+  const [projectInterventoAlertOk, setProjectInterventoAlertOk] = useState<string | null>(null);
+  const [projectInterventoBulkOpen, setProjectInterventoBulkOpen] = useState(false);
+  const [projectInterventoBulkToOperatoreId, setProjectInterventoBulkToOperatoreId] = useState("");
+  const [projectInterventoBulkMsg, setProjectInterventoBulkMsg] = useState("");
+  const [projectInterventoBulkSendEmail, setProjectInterventoBulkSendEmail] = useState(true);
+  const [projectInterventoBulkSending, setProjectInterventoBulkSending] = useState(false);
+  const [projectInterventoBulkErr, setProjectInterventoBulkErr] = useState<string | null>(null);
+  const [projectInterventoBulkOk, setProjectInterventoBulkOk] = useState<string | null>(null);
+  const [projectInterventoBulkLastSentAt, setProjectInterventoBulkLastSentAt] = useState<string | null>(null);
+  const [projectInterventoBulkLastToOperatoreId, setProjectInterventoBulkLastToOperatoreId] = useState<string | null>(null);
+  const [projectInterventoBulkLastMessage, setProjectInterventoBulkLastMessage] = useState<string | null>(null);
+  const [projectInterventoBulkPreviewOpen, setProjectInterventoBulkPreviewOpen] = useState(false);
+  const [projectCloseInterventoId, setProjectCloseInterventoId] = useState<string | null>(null);
+  const [projectCloseEsito, setProjectCloseEsito] = useState("");
+  const [projectCloseNote, setProjectCloseNote] = useState("");
+  const [projectCloseError, setProjectCloseError] = useState<string | null>(null);
   const [newProjectIntervento, setNewProjectIntervento] = useState<ProjectInterventoForm>({
     data: "",
     data_tassativa: "",
@@ -1326,6 +1351,29 @@ function buildFormData(c: Checklist): FormData {
     );
   }
 
+  async function loadProjectInterventoAttachmentCounts(rows: ProjectIntervento[]) {
+    const ids = rows.map((row) => row.id).filter(Boolean);
+    if (ids.length === 0) {
+      setProjectInterventoAttachmentCounts(new Map());
+      return;
+    }
+    const { data, error } = await dbFrom("attachments")
+      .select("entity_id")
+      .eq("entity_type", "INTERVENTO")
+      .in("entity_id", ids);
+    if (error) {
+      console.error("Errore caricamento conteggio allegati interventi", error);
+      return;
+    }
+    const counts = new Map<string, number>();
+    for (const row of (data || []) as Array<{ entity_id: string | null }>) {
+      const key = String(row.entity_id || "");
+      if (!key) continue;
+      counts.set(key, (counts.get(key) || 0) + 1);
+    }
+    setProjectInterventoAttachmentCounts(counts);
+  }
+
   async function addProjectIntervento() {
     if (!id || !checklist) return;
     const descrizione = newProjectIntervento.descrizione.trim();
@@ -1349,18 +1397,28 @@ function buildFormData(c: Checklist): FormData {
       stato_intervento: newProjectIntervento.stato_intervento || "APERTO",
       note: newProjectIntervento.note.trim() || null,
     };
-    let insRes = await dbFrom("saas_interventi").insert(payload);
+    let inserted: { id: string } | null = null;
+    let insRes = await dbFrom("saas_interventi").insert(payload).select("id").single();
     if (insRes.error && String(insRes.error.message || "").toLowerCase().includes("data_tassativa")) {
       const { data_tassativa: _skip, ...payloadNoTassativa } = payload;
-      insRes = await dbFrom("saas_interventi").insert(payloadNoTassativa);
+      insRes = await dbFrom("saas_interventi").insert(payloadNoTassativa).select("id").single();
+    }
+    if (insRes.error && String(insRes.error.message || "").toLowerCase().includes("ticket_no")) {
+      const { ticket_no: _skip, ...payloadNoTicket } = payload;
+      insRes = await dbFrom("saas_interventi").insert(payloadNoTicket).select("id").single();
     }
     if (insRes.error) {
       const insErr = insRes.error;
       setProjectInterventiError(insErr.message);
       return;
     }
+    inserted = (insRes.data as { id: string } | null) ?? null;
+    if (inserted?.id && projectInterventoFiles.length > 0) {
+      await uploadProjectInterventoFilesList(inserted.id, projectInterventoFiles);
+    }
     const list = await loadProjectInterventi(id);
     setProjectInterventi(list);
+    await loadProjectInterventoAttachmentCounts(list);
     setProjectInterventiNotice("Intervento aggiunto.");
     setNewProjectIntervento({
       data: "",
@@ -1374,6 +1432,15 @@ function buildFormData(c: Checklist): FormData {
       stato_intervento: "APERTO",
       note: "",
     });
+    setProjectInterventoFiles([]);
+    if (inserted?.id) {
+      const created = list.find((row) => row.id === inserted?.id) || null;
+      if (created) {
+        setProjectInterventoEditId(created.id);
+        setProjectInterventoEditForm(buildProjectInterventoForm(created));
+        setProjectInterventiExpandedId(created.id);
+      }
+    }
   }
 
   function startEditProjectIntervento(it: ProjectIntervento) {
@@ -1414,9 +1481,352 @@ function buildFormData(c: Checklist): FormData {
     if (!id) return;
     const list = await loadProjectInterventi(id);
     setProjectInterventi(list);
+    await loadProjectInterventoAttachmentCounts(list);
     setProjectInterventoEditId(null);
     setProjectInterventoEditForm(null);
     setProjectInterventiNotice("Intervento aggiornato.");
+  }
+
+  function getProjectInterventoStato(row: ProjectIntervento) {
+    const raw = String(row.stato_intervento || "").toUpperCase();
+    if (raw === "APERTO" || raw === "CHIUSO") return raw;
+    if (row.fatturazione_stato) return "CHIUSO";
+    return "APERTO";
+  }
+
+  function getProjectEsitoFatturazione(row: ProjectIntervento) {
+    const raw = String(row.esito_fatturazione || "").toUpperCase();
+    if (raw === "DA_FATTURARE" || raw === "NON_FATTURARE" || raw === "INCLUSO_DA_CONSUNTIVO") {
+      return raw;
+    }
+    const fallback = String(row.fatturazione_stato || "").toUpperCase();
+    if (fallback === "DA_FATTURARE" || fallback === "NON_FATTURARE" || fallback === "INCLUSO_DA_CONSUNTIVO") {
+      return fallback;
+    }
+    return null;
+  }
+
+  function getProjectInterventoAlertRecipients() {
+    return alertOperatori.filter((o) => o.attivo !== false);
+  }
+
+  function getProjectFatturaAlertRecipients() {
+    return alertOperatori.filter((o) => {
+      const ruolo = String(o.ruolo || "").toUpperCase();
+      return o.attivo !== false && (ruolo === "AMMINISTRAZIONE" || normalizeAlertTasks(o.alert_tasks).all_task_status_change);
+    });
+  }
+
+  function getProjectFattureDaEmettereList() {
+    return projectInterventi.filter(
+      (row) => getProjectInterventoStato(row) === "CHIUSO" && getProjectEsitoFatturazione(row) === "DA_FATTURARE"
+    );
+  }
+
+  function buildProjectBulkFattureMessage(list: ProjectIntervento[]) {
+    const checklistLabel = checklist?.nome_checklist || checklist?.id || "—";
+    const lines = list.map((row) => {
+      const tipo = row.incluso ? "INCLUSO" : "EXTRA";
+      const auto = row.note_tecniche && row.note_tecniche.includes("Auto-EXTRA") ? " AUTO" : "";
+      const note = row.note ? ` | Note: ${row.note}` : "";
+      return `${row.data ? new Date(row.data).toLocaleDateString("it-IT") : "—"} | ${tipo}${auto} | ${row.descrizione || "—"}${note}`;
+    });
+    return [
+      `FATTURE DA EMETTERE — Cliente: ${checklist?.cliente || "—"}`,
+      `PROGETTO: ${checklistLabel}`,
+      `Totale interventi: ${list.length}`,
+      `Link: /checklists/${id}`,
+      "",
+      ...lines,
+    ].join("\n");
+  }
+
+  function buildProjectInterventoAlertMessage(row: ProjectIntervento) {
+    return [
+      "Intervento EXTRA da fatturare",
+      `Cliente: ${checklist?.cliente || "—"}`,
+      `PROGETTO: ${checklist?.nome_checklist || checklist?.id || "—"}`,
+      `Proforma: ${row.proforma || checklist?.proforma || "—"}`,
+      `CodMag: ${row.codice_magazzino || checklist?.magazzino_importazione || "—"}`,
+      `Data: ${row.data ? new Date(row.data).toLocaleDateString("it-IT") : "—"}`,
+      `Descrizione: ${row.descrizione || "—"}`,
+    ].join(" — ");
+  }
+
+  function openProjectInterventoAlertModal(row: ProjectIntervento) {
+    setProjectInterventoAlertId(row.id);
+    setProjectInterventoAlertToOperatoreId("");
+    setProjectInterventoAlertMsg(buildProjectInterventoAlertMessage(row));
+    setProjectInterventoAlertErr(null);
+    setProjectInterventoAlertOk(null);
+  }
+
+  function openProjectBulkInterventoAlertModal() {
+    const list = getProjectFattureDaEmettereList();
+    if (list.length === 0) {
+      setProjectInterventiNotice("Nessuna fattura da emettere.");
+      return;
+    }
+    setProjectInterventoBulkErr(null);
+    setProjectInterventoBulkOk(null);
+    setProjectInterventoBulkToOperatoreId("");
+    setProjectInterventoBulkMsg(buildProjectBulkFattureMessage(list));
+    setProjectInterventoBulkOpen(true);
+  }
+
+  async function fetchProjectInterventoBulkLastAlert() {
+    if (!id) return;
+    const { data, error } = await dbFrom("checklist_alert_log")
+      .select("created_at, to_operatore_id, messaggio")
+      .eq("canale", "fatturazione_bulk")
+      .eq("checklist_id", id)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (error) {
+      console.error("Errore lettura ultimo alert bulk checklist", error);
+      return;
+    }
+    setProjectInterventoBulkLastSentAt(data?.created_at ?? null);
+    setProjectInterventoBulkLastToOperatoreId(data?.to_operatore_id ?? null);
+    setProjectInterventoBulkLastMessage(data?.messaggio ?? null);
+  }
+
+  async function uploadProjectInterventoFilesList(interventoId: string, files: File[]) {
+    for (const file of files) {
+      const safeName = file.name.replace(/\s+/g, "_");
+      const path = `intervento/${interventoId}/${Date.now()}_${safeName}`;
+      const { error: uploadError } = await storageUpload(path, file);
+      if (uploadError) {
+        setProjectInterventiError("Errore upload file intervento: " + uploadError.message);
+        return;
+      }
+      const res = await fetch("/api/attachments", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          source: "UPLOAD",
+          entity_type: "INTERVENTO",
+          entity_id: interventoId,
+          title: file.name,
+          storage_path: path,
+          mime_type: file.type || null,
+          size_bytes: file.size,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setProjectInterventiError(String(data?.error || "Errore salvataggio allegato"));
+        return;
+      }
+    }
+  }
+
+  async function confirmProjectCloseIntervento() {
+    if (!projectCloseInterventoId) return;
+    if (!projectCloseEsito) {
+      setProjectCloseError("Seleziona un esito di fatturazione.");
+      return;
+    }
+    const current = projectInterventi.find((row) => row.id === projectCloseInterventoId);
+    const noteTrim = projectCloseNote.trim();
+    let noteTecniche = current?.note_tecniche ?? "";
+    if (noteTrim) {
+      noteTecniche = noteTecniche ? `${noteTecniche}\nChiusura: ${noteTrim}` : `Chiusura: ${noteTrim}`;
+    }
+    const { error } = await dbFrom("saas_interventi")
+      .update({
+        stato_intervento: "CHIUSO",
+        esito_fatturazione: projectCloseEsito,
+        chiuso_il: new Date().toISOString(),
+        chiuso_da_operatore: currentOperatoreId || null,
+        note_tecniche: noteTecniche || null,
+      })
+      .eq("id", projectCloseInterventoId);
+    if (error) {
+      setProjectCloseError("Errore chiusura intervento: " + error.message);
+      return;
+    }
+    if (!id) return;
+    const list = await loadProjectInterventi(id);
+    setProjectInterventi(list);
+    await loadProjectInterventoAttachmentCounts(list);
+    setProjectCloseInterventoId(null);
+    setProjectCloseEsito("");
+    setProjectCloseNote("");
+    setProjectCloseError(null);
+  }
+
+  async function reopenProjectIntervento(interventoId: string) {
+    if (!currentOperatoreId) {
+      setProjectInterventiError("Seleziona un operatore corrente prima di riaprire.");
+      return;
+    }
+    const operatore = alertOperatori.find((row) => row.id === currentOperatoreId) || null;
+    const role = operatore?.ruolo ?? null;
+    if (!["SUPERVISORE", "PM"].includes(String(role || "").toUpperCase())) {
+      setProjectInterventiError("Solo SUPERVISORE o PM possono riaprire l'intervento.");
+      return;
+    }
+    const { error } = await dbFrom("saas_interventi")
+      .update({
+        stato_intervento: "APERTO",
+        esito_fatturazione: null,
+        chiuso_il: null,
+        chiuso_da_operatore: null,
+      })
+      .eq("id", interventoId);
+    if (error) {
+      setProjectInterventiError("Errore riapertura intervento: " + error.message);
+      return;
+    }
+    try {
+      await sendAlert({
+        canale: "manual",
+        subject: "Intervento riaperto",
+        message: `Intervento riaperto da ${operatore?.nome ?? operatore?.id ?? "—"}`,
+        text: `Intervento riaperto da ${operatore?.nome ?? operatore?.id ?? "—"}`,
+        html: `<div><strong>Intervento riaperto</strong><br/>${escapeHtml(`Intervento riaperto da ${operatore?.nome ?? operatore?.id ?? "—"}`)}</div>`,
+        to_email: operatore?.email ?? null,
+        to_nome: operatore?.nome ?? null,
+        to_operatore_id: currentOperatoreId,
+        from_operatore_id: currentOperatoreId,
+        checklist_id: id,
+        intervento_id: interventoId,
+        send_email: false,
+      });
+    } catch (err) {
+      console.error("Errore log riapertura intervento checklist", err);
+    }
+    if (!id) return;
+    const list = await loadProjectInterventi(id);
+    setProjectInterventi(list);
+    await loadProjectInterventoAttachmentCounts(list);
+  }
+
+  async function sendProjectInterventoAlert() {
+    if (!projectInterventoAlertId || !id || !checklist) return;
+    setProjectInterventoAlertSending(true);
+    setProjectInterventoAlertErr(null);
+    setProjectInterventoAlertOk(null);
+    const opId =
+      currentOperatoreId ??
+      (typeof window !== "undefined" ? window.localStorage.getItem("current_operatore_id") : null);
+    if (!opId) {
+      setProjectInterventoAlertErr("Seleziona l’Operatore corrente prima di inviare un alert.");
+      setProjectInterventoAlertSending(false);
+      return;
+    }
+    if (!projectInterventoAlertToOperatoreId) {
+      setProjectInterventoAlertErr("Seleziona un destinatario per l'alert.");
+      setProjectInterventoAlertSending(false);
+      return;
+    }
+    const intervento = projectInterventi.find((row) => row.id === projectInterventoAlertId) || null;
+    const destinatario = alertOperatori.find((row) => row.id === projectInterventoAlertToOperatoreId) || null;
+    const toEmail = destinatario?.email ?? "";
+    if (projectInterventoAlertSendEmail && !toEmail.includes("@")) {
+      setProjectInterventoAlertErr("Destinatario senza email valida.");
+      setProjectInterventoAlertSending(false);
+      return;
+    }
+    const subject = `[Art Tech] Alert fatturazione – ${checklist.cliente || "—"}`;
+    const dettagli = [
+      `Cliente: ${checklist.cliente || "—"}`,
+      intervento?.descrizione ? `Intervento: ${intervento.descrizione}` : "",
+      intervento?.proforma ? `Proforma: ${intervento.proforma}` : "",
+      intervento?.codice_magazzino ? `CodMag: ${intervento.codice_magazzino}` : "",
+      projectInterventoAlertMsg.trim() ? `Messaggio: ${projectInterventoAlertMsg.trim()}` : "",
+    ]
+      .filter(Boolean)
+      .join("\n");
+    try {
+      await sendAlert({
+        canale: "fatturazione_row",
+        subject,
+        message: projectInterventoAlertMsg.trim() || dettagli,
+        text: dettagli,
+        html: `<div><h2>${escapeHtml(subject)}</h2><div>${textToHtml(dettagli)}</div><p style="font-size:12px;color:#6b7280">Messaggio manuale Art Tech.</p></div>`,
+        to_email: toEmail || null,
+        to_nome: destinatario?.nome ?? null,
+        to_operatore_id: projectInterventoAlertToOperatoreId,
+        from_operatore_id: opId,
+        checklist_id: id,
+        intervento_id: projectInterventoAlertId,
+        tipo: "GENERICO",
+        trigger: "MANUALE",
+        send_email: projectInterventoAlertSendEmail,
+      });
+    } catch (err) {
+      console.error("Errore invio alert intervento checklist", err);
+      showToast(`❌ Invio fallito: ${briefError(err)}`, "error");
+      setProjectInterventoAlertSending(false);
+      return;
+    }
+    const esito = projectInterventoAlertSendEmail ? "✅ Email inviata" : "✅ Avviso registrato";
+    setProjectInterventiNotice(esito);
+    setProjectInterventoAlertSending(false);
+    setProjectInterventoAlertToOperatoreId("");
+    setProjectInterventoAlertMsg("");
+    setProjectInterventoAlertSendEmail(true);
+    setProjectInterventoAlertOk(esito);
+    setTimeout(() => setProjectInterventoAlertId(null), 800);
+  }
+
+  async function sendProjectBulkFatturaAlert() {
+    if (!id || !checklist) return;
+    setProjectInterventoBulkSending(true);
+    setProjectInterventoBulkErr(null);
+    setProjectInterventoBulkOk(null);
+    const opId =
+      currentOperatoreId ??
+      (typeof window !== "undefined" ? window.localStorage.getItem("current_operatore_id") : null);
+    if (!opId) {
+      setProjectInterventoBulkErr("Operatore corrente non trovato.");
+      setProjectInterventoBulkSending(false);
+      return;
+    }
+    if (!projectInterventoBulkToOperatoreId) {
+      setProjectInterventoBulkErr("Seleziona un destinatario.");
+      setProjectInterventoBulkSending(false);
+      return;
+    }
+    const destinatario = alertOperatori.find((row) => row.id === projectInterventoBulkToOperatoreId) || null;
+    const toEmail = destinatario?.email ?? "";
+    if (projectInterventoBulkSendEmail && !toEmail.includes("@")) {
+      setProjectInterventoBulkErr("Destinatario senza email valida.");
+      setProjectInterventoBulkSending(false);
+      return;
+    }
+    try {
+      await sendAlert({
+        canale: "fatturazione_bulk",
+        subject: `[Art Tech] Da fatturare – ${checklist.cliente || "—"}`,
+        message: projectInterventoBulkMsg.trim() || projectInterventoBulkMsg,
+        text: projectInterventoBulkMsg,
+        html: `<div><h2>${escapeHtml(`[Art Tech] Da fatturare – ${checklist.cliente || "—"}`)}</h2><div>${textToHtml(projectInterventoBulkMsg || "")}</div><p style="font-size:12px;color:#6b7280">Messaggio manuale Art Tech.</p></div>`,
+        to_email: toEmail || null,
+        to_nome: destinatario?.nome ?? null,
+        to_operatore_id: projectInterventoBulkToOperatoreId,
+        from_operatore_id: opId,
+        checklist_id: id,
+        tipo: "GENERICO",
+        trigger: "MANUALE",
+        send_email: projectInterventoBulkSendEmail,
+      });
+    } catch (err) {
+      console.error("Errore invio alert bulk checklist", err);
+      showToast(`❌ Invio fallito: ${briefError(err)}`, "error");
+      setProjectInterventoBulkSending(false);
+      return;
+    }
+    const esito = projectInterventoBulkSendEmail ? "✅ Email inviata" : "✅ Avviso registrato";
+    setProjectInterventoBulkSending(false);
+    setProjectInterventoBulkOk(esito);
+    setProjectInterventoBulkOpen(false);
+    setProjectInterventoBulkSendEmail(true);
+    setProjectInterventiNotice(`${esito} (${getProjectFattureDaEmettereList().length} interventi).`);
+    await fetchProjectInterventoBulkLastAlert();
   }
 
   async function addProjectTagliandoPeriodico() {
@@ -1911,6 +2321,7 @@ function buildFormData(c: Checklist): FormData {
     if (!id) return;
     const list = await loadProjectInterventi(id);
     setProjectInterventi(list);
+    await loadProjectInterventoAttachmentCounts(list);
     setProjectInterventiNotice("Intervento eliminato.");
   }
 
@@ -2348,6 +2759,8 @@ function buildFormData(c: Checklist): FormData {
     setContrattoUltra(activeContratto);
     setContrattoUltraNome(ultraNome);
     setProjectInterventi(interventiData);
+    await loadProjectInterventoAttachmentCounts(interventiData);
+    await fetchProjectInterventoBulkLastAlert();
     setProjectInterventiError(null);
     setProjectInterventiNotice(null);
     setChecklist(headChecklist);
@@ -5699,455 +6112,160 @@ function buildFormData(c: Checklist): FormData {
           />
         </div>
       </div>
-      <div style={{ marginTop: 12 }}>
-        <div
-          style={{
-            border: "1px solid #eee",
-            borderRadius: 12,
-            padding: 12,
-            background: "white",
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
-            <h2 style={{ margin: 0, fontSize: 34, fontWeight: 800 }}>Interventi</h2>
-            <div style={{ fontSize: 12, opacity: 0.8 }}>
-              Progetto: <span style={{ fontWeight: 700 }}>{checklist?.nome_checklist || "—"}</span>
-            </div>
-          </div>
-          <div style={{ border: "1px solid #f1f5f9", borderRadius: 10, padding: 10, marginBottom: 10 }}>
-            <div style={{ fontWeight: 700, marginBottom: 8 }}>Aggiungi intervento</div>
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(140px,1fr))", gap: 8 }}>
-              <label>
-                Data
-                <input
-                  type="date"
-                  value={newProjectIntervento.data}
-                  onChange={(e) =>
-                    setNewProjectIntervento((p) => ({ ...p, data: e.target.value }))
-                  }
-                  style={{ width: "100%", padding: 8 }}
-                />
-              </label>
-              <label>
-                Data tassativa
-                <input
-                  type="date"
-                  value={newProjectIntervento.data_tassativa}
-                  onChange={(e) =>
-                    setNewProjectIntervento((p) => ({ ...p, data_tassativa: e.target.value }))
-                  }
-                  style={{ width: "100%", padding: 8 }}
-                />
-              </label>
-              <label>
-                Ticket n°
-                <input
-                  value={newProjectIntervento.ticket_no}
-                  onChange={(e) =>
-                    setNewProjectIntervento((p) => ({ ...p, ticket_no: e.target.value }))
-                  }
-                  style={{ width: "100%", padding: 8 }}
-                  placeholder="es. 1234"
-                />
-              </label>
-              <label>
-                Incluso / Extra
-                <select
-                  value={newProjectIntervento.incluso ? "INCLUSO" : "EXTRA"}
-                  onChange={(e) =>
-                    setNewProjectIntervento((p) => ({ ...p, incluso: e.target.value === "INCLUSO" }))
-                  }
-                  style={{ width: "100%", padding: 8 }}
-                >
-                  <option value="INCLUSO">INCLUSO</option>
-                  <option value="EXTRA">EXTRA</option>
-                </select>
-              </label>
-              <label style={{ gridColumn: "span 2" }}>
-                Descrizione
-                <input
-                  value={newProjectIntervento.descrizione}
-                  onChange={(e) =>
-                    setNewProjectIntervento((p) => ({ ...p, descrizione: e.target.value }))
-                  }
-                  style={{ width: "100%", padding: 8 }}
-                />
-              </label>
-              <label>
-                Proforma
-                <input
-                  value={newProjectIntervento.proforma}
-                  onChange={(e) =>
-                    setNewProjectIntervento((p) => ({ ...p, proforma: e.target.value }))
-                  }
-                  style={{ width: "100%", padding: 8 }}
-                />
-              </label>
-              <label>
-                Cod. magazzino
-                <input
-                  value={newProjectIntervento.codice_magazzino}
-                  onChange={(e) =>
-                    setNewProjectIntervento((p) => ({ ...p, codice_magazzino: e.target.value }))
-                  }
-                  style={{ width: "100%", padding: 8 }}
-                />
-              </label>
-              <label>
-                Fatturazione
-                <select
-                  value={newProjectIntervento.fatturazione_stato}
-                  onChange={(e) =>
-                    setNewProjectIntervento((p) => ({ ...p, fatturazione_stato: e.target.value }))
-                  }
-                  style={{ width: "100%", padding: 8 }}
-                >
-                  <option value="DA_FATTURARE">DA_FATTURARE</option>
-                  <option value="NON_FATTURARE">NON_FATTURARE</option>
-                  <option value="FATTURATO">FATTURATO</option>
-                </select>
-              </label>
-              <label>
-                Stato
-                <select
-                  value={newProjectIntervento.stato_intervento}
-                  onChange={(e) =>
-                    setNewProjectIntervento((p) => ({ ...p, stato_intervento: e.target.value }))
-                  }
-                  style={{ width: "100%", padding: 8 }}
-                >
-                  <option value="APERTO">APERTO</option>
-                  <option value="CHIUSO">CHIUSO</option>
-                </select>
-              </label>
-              <label style={{ gridColumn: "span 3" }}>
-                Note
-                <input
-                  value={newProjectIntervento.note}
-                  onChange={(e) =>
-                    setNewProjectIntervento((p) => ({ ...p, note: e.target.value }))
-                  }
-                  style={{ width: "100%", padding: 8 }}
-                />
-              </label>
-              <div style={{ display: "flex", alignItems: "end" }}>
-                <button
-                  type="button"
-                  onClick={addProjectIntervento}
-                  style={{
-                    width: "100%",
-                    padding: "8px 10px",
-                    borderRadius: 8,
-                    border: "1px solid #111",
-                    background: "#111",
-                    color: "white",
-                    cursor: "pointer",
-                  }}
-                >
-                  Aggiungi intervento
-                </button>
-              </div>
-            </div>
-            <div style={{ marginTop: 8, fontSize: 12, opacity: 0.75 }}>
-              Allegati/link intervento: disponibili subito dopo il salvataggio, nel pannello
-              "Dettagli" della riga.
-            </div>
-            {projectInterventiError && (
-              <div style={{ color: "crimson", marginTop: 8, fontSize: 12 }}>{projectInterventiError}</div>
-            )}
-            {projectInterventiNotice && (
-              <div style={{ color: "#166534", marginTop: 8, fontSize: 12 }}>{projectInterventiNotice}</div>
-            )}
-          </div>
-          {projectInterventi.length === 0 ? (
-            <div style={{ opacity: 0.7 }}>Nessun intervento registrato</div>
-          ) : (
-            <div
-              style={{
-                border: "1px solid #eee",
-                borderRadius: 12,
-                overflowX: "auto",
-                width: "100%",
-                background: "white",
-              }}
-            >
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns:
-                    "90px minmax(180px,1fr) minmax(240px,1.5fr) 110px 90px 120px 150px 150px 130px 150px",
-                  gap: 8,
-                  padding: "6px 8px",
-                  fontWeight: 800,
-                  background: "#fafafa",
-                  borderBottom: "1px solid #eee",
-                  fontSize: 12,
-                  minWidth: 1410,
-                }}
-              >
-                <div>Data</div>
-                <div>PROGETTO</div>
-                <div>Descrizione</div>
-                <div>Ticket n°</div>
-                <div>Tipo</div>
-                <div>Stato</div>
-                <div>Proforma</div>
-                <div>Codice</div>
-                <div>Fatturazione</div>
-                <div>AZIONI</div>
-              </div>
-              {projectInterventi.map((it) => {
-                const expanded = projectInterventiExpandedId === it.id;
-                const editing = projectInterventoEditId === it.id && projectInterventoEditForm;
-                return (
-                  <div key={it.id} style={{ borderBottom: "1px solid #f3f4f6" }}>
-                    <div
-                      style={{
-                        display: "grid",
-                        gridTemplateColumns:
-                          "90px minmax(180px,1fr) minmax(240px,1.5fr) 110px 90px 120px 150px 150px 130px 150px",
-                        gap: 8,
-                        padding: "6px 8px",
-                        alignItems: "center",
-                        fontSize: 12,
-                        minWidth: 1410,
-                      }}
-                    >
-                      <div>{it.data ? new Date(it.data).toLocaleDateString("it-IT") : "—"}</div>
-                      <div style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                        {checklist?.nome_checklist || "—"}
-                      </div>
-                      <div style={{ whiteSpace: "normal", overflowWrap: "anywhere" }}>{it.descrizione || "—"}</div>
-                      <div style={{ whiteSpace: "nowrap" }}>{it.ticket_no || "—"}</div>
-                      <div style={{ whiteSpace: "nowrap" }}>{it.incluso ? "INCLUSO" : "EXTRA"}</div>
-                      <div style={{ whiteSpace: "nowrap" }}>{String(it.stato_intervento || "—").toUpperCase()}</div>
-                      <div style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                        {it.proforma || "—"}
-                      </div>
-                      <div style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                        {it.codice_magazzino || "—"}
-                      </div>
-                      <div style={{ whiteSpace: "nowrap" }}>
-                        {String(it.fatturazione_stato || "—").toUpperCase()}
-                      </div>
-                      <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setProjectInterventiExpandedId((prev) => (prev === it.id ? null : it.id))
-                          }
-                          style={{ padding: "3px 6px", borderRadius: 6, border: "1px solid #d1d5db", background: "#f8fafc", cursor: "pointer", fontSize: 12 }}
-                        >
-                          📎 File
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setProjectInterventiExpandedId((prev) => (prev === it.id ? null : it.id))
-                          }
-                          style={{ padding: "3px 6px", borderRadius: 6, border: "1px solid #ddd", background: "white", cursor: "pointer", fontSize: 12 }}
-                        >
-                          Dettagli
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => startEditProjectIntervento(it)}
-                          style={{ padding: "3px 6px", borderRadius: 6, border: "1px solid #ddd", background: "white", cursor: "pointer", fontSize: 12 }}
-                        >
-                          Modifica
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => deleteProjectIntervento(it.id)}
-                          style={{ padding: "3px 6px", borderRadius: 6, border: "1px solid #ddd", background: "white", cursor: "pointer", fontSize: 12 }}
-                        >
-                          Elimina
-                        </button>
-                      </div>
-                    </div>
-                    {(expanded || editing) && (
-                      <div style={{ background: "#fafafa", padding: 10, borderTop: "1px solid #eef2f7" }}>
-                        {editing ? (
-                          <div style={{ display: "grid", gridTemplateColumns: "repeat(4,minmax(130px,1fr))", gap: 8 }}>
-                            <label>
-                              Data
-                              <input
-                                type="date"
-                                value={projectInterventoEditForm.data}
-                                onChange={(e) =>
-                                  setProjectInterventoEditForm((p) =>
-                                    p ? { ...p, data: e.target.value } : p
-                                  )
-                                }
-                                style={{ width: "100%", padding: 8 }}
-                              />
-                            </label>
-                            <label>
-                              Tassativa
-                              <input
-                                type="date"
-                                value={projectInterventoEditForm.data_tassativa}
-                                onChange={(e) =>
-                                  setProjectInterventoEditForm((p) =>
-                                    p ? { ...p, data_tassativa: e.target.value } : p
-                                  )
-                                }
-                                style={{ width: "100%", padding: 8 }}
-                              />
-                            </label>
-                            <label>
-                              Ticket
-                              <input
-                                value={projectInterventoEditForm.ticket_no}
-                                onChange={(e) =>
-                                  setProjectInterventoEditForm((p) =>
-                                    p ? { ...p, ticket_no: e.target.value } : p
-                                  )
-                                }
-                                style={{ width: "100%", padding: 8 }}
-                              />
-                            </label>
-                            <label>
-                              Incluso/Extra
-                              <select
-                                value={projectInterventoEditForm.incluso ? "INCLUSO" : "EXTRA"}
-                                onChange={(e) =>
-                                  setProjectInterventoEditForm((p) =>
-                                    p ? { ...p, incluso: e.target.value === "INCLUSO" } : p
-                                  )
-                                }
-                                style={{ width: "100%", padding: 8 }}
-                              >
-                                <option value="INCLUSO">INCLUSO</option>
-                                <option value="EXTRA">EXTRA</option>
-                              </select>
-                            </label>
-                            <label style={{ gridColumn: "span 2" }}>
-                              Descrizione
-                              <input
-                                value={projectInterventoEditForm.descrizione}
-                                onChange={(e) =>
-                                  setProjectInterventoEditForm((p) =>
-                                    p ? { ...p, descrizione: e.target.value } : p
-                                  )
-                                }
-                                style={{ width: "100%", padding: 8 }}
-                              />
-                            </label>
-                            <label>
-                              Proforma
-                              <input
-                                value={projectInterventoEditForm.proforma}
-                                onChange={(e) =>
-                                  setProjectInterventoEditForm((p) =>
-                                    p ? { ...p, proforma: e.target.value } : p
-                                  )
-                                }
-                                style={{ width: "100%", padding: 8 }}
-                              />
-                            </label>
-                            <label>
-                              Cod. magazzino
-                              <input
-                                value={projectInterventoEditForm.codice_magazzino}
-                                onChange={(e) =>
-                                  setProjectInterventoEditForm((p) =>
-                                    p ? { ...p, codice_magazzino: e.target.value } : p
-                                  )
-                                }
-                                style={{ width: "100%", padding: 8 }}
-                              />
-                            </label>
-                            <label>
-                              Fatturazione
-                              <select
-                                value={projectInterventoEditForm.fatturazione_stato}
-                                onChange={(e) =>
-                                  setProjectInterventoEditForm((p) =>
-                                    p ? { ...p, fatturazione_stato: e.target.value } : p
-                                  )
-                                }
-                                style={{ width: "100%", padding: 8 }}
-                              >
-                                <option value="DA_FATTURARE">DA_FATTURARE</option>
-                                <option value="NON_FATTURARE">NON_FATTURARE</option>
-                                <option value="FATTURATO">FATTURATO</option>
-                              </select>
-                            </label>
-                            <label>
-                              Stato
-                              <select
-                                value={projectInterventoEditForm.stato_intervento}
-                                onChange={(e) =>
-                                  setProjectInterventoEditForm((p) =>
-                                    p ? { ...p, stato_intervento: e.target.value } : p
-                                  )
-                                }
-                                style={{ width: "100%", padding: 8 }}
-                              >
-                                <option value="APERTO">APERTO</option>
-                                <option value="CHIUSO">CHIUSO</option>
-                              </select>
-                            </label>
-                            <label style={{ gridColumn: "span 3" }}>
-                              Note
-                              <input
-                                value={projectInterventoEditForm.note}
-                                onChange={(e) =>
-                                  setProjectInterventoEditForm((p) =>
-                                    p ? { ...p, note: e.target.value } : p
-                                  )
-                                }
-                                style={{ width: "100%", padding: 8 }}
-                              />
-                            </label>
-                            <div style={{ display: "flex", alignItems: "end", gap: 8 }}>
-                              <button
-                                type="button"
-                                onClick={saveProjectIntervento}
-                                style={{ padding: "8px 10px", borderRadius: 8, border: "1px solid #111", background: "#111", color: "white", cursor: "pointer" }}
-                              >
-                                Salva
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  setProjectInterventoEditId(null);
-                                  setProjectInterventoEditForm(null);
-                                }}
-                                style={{ padding: "8px 10px", borderRadius: 8, border: "1px solid #ddd", background: "white", cursor: "pointer" }}
-                              >
-                                Annulla
-                              </button>
-                            </div>
-                          </div>
-                        ) : (
-                          <div style={{ fontSize: 12, display: "grid", gap: 6 }}>
-                            <div><strong>Descrizione:</strong> {it.descrizione || "—"}</div>
-                            <div><strong>Ticket:</strong> {it.ticket_no || "—"}</div>
-                            <div><strong>Proforma:</strong> {it.proforma || "—"} · <strong>Cod.mag:</strong> {it.codice_magazzino || "—"}</div>
-                            <div><strong>Stato:</strong> {String(it.stato_intervento || "—").toUpperCase()} · <strong>Fatturazione:</strong> {String(it.fatturazione_stato || "—").toUpperCase()}</div>
-                            <div><strong>Note:</strong> {it.note || "—"}</div>
-                          </div>
-                        )}
-                        <div style={{ marginTop: 10 }}>
-                          <AttachmentsPanel
-                            title="Allegati intervento (upload + link Drive)"
-                            entityType="INTERVENTO"
-                            entityId={it.id}
-                            multiple
-                            storagePrefix="intervento"
-                          />
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      </div>
+      <InterventiBlock
+        checklists={
+          checklist
+            ? [
+                {
+                  id: checklist.id,
+                  nome_checklist: checklist.nome_checklist,
+                  proforma: checklist.proforma,
+                  magazzino_importazione: checklist.magazzino_importazione,
+                },
+              ]
+            : []
+        }
+        interventi={projectInterventi}
+        interventiInfo={projectInterventiNotice}
+        interventiError={projectInterventiError}
+        alertNotice={null}
+        setInterventiNotice={setProjectInterventiNotice}
+        includedUsed={interventiInclusiUsati}
+        includedTotal={contrattoUltra?.illimitati ? null : contrattoUltra?.interventi_annui ?? null}
+        includedResidual={
+          contrattoUltra?.illimitati
+            ? null
+            : contrattoUltra?.interventi_annui != null
+            ? Math.max(0, contrattoUltra.interventi_annui - interventiInclusiUsati)
+            : null
+        }
+        includedSummaryOverride={!contrattoUltra ? " / Totale inclusi: —" : null}
+        attachmentCounts={projectInterventoAttachmentCounts}
+        getOperatoreNome={(value) => operatoriMap.get(String(value || "")) || String(value || "—")}
+        currentOperatoreRole={alertOperatori.find((row) => row.id === currentOperatoreId)?.ruolo ?? null}
+        currentProjectLabel={checklist?.nome_checklist || "—"}
+        newIntervento={{
+          data: newProjectIntervento.data,
+          dataTassativa: newProjectIntervento.data_tassativa,
+          descrizione: newProjectIntervento.descrizione,
+          ticketNo: newProjectIntervento.ticket_no,
+          incluso: newProjectIntervento.incluso,
+          checklistId: id || "",
+          proforma: newProjectIntervento.proforma,
+          codiceMagazzino: newProjectIntervento.codice_magazzino,
+          fatturazioneStato: newProjectIntervento.fatturazione_stato,
+          statoIntervento: newProjectIntervento.stato_intervento,
+          esitoFatturazione: "",
+          numeroFattura: "",
+          fatturatoIl: "",
+          note: newProjectIntervento.note,
+          noteTecniche: "",
+        }}
+        setNewIntervento={(value) =>
+          setNewProjectIntervento((prev) => ({
+            ...prev,
+            data: value.data,
+            data_tassativa: value.dataTassativa,
+            descrizione: value.descrizione,
+            ticket_no: value.ticketNo,
+            incluso: value.incluso,
+            proforma: value.proforma,
+            codice_magazzino: value.codiceMagazzino,
+            fatturazione_stato: value.fatturazioneStato,
+            stato_intervento: value.statoIntervento,
+            note: value.note,
+          }))
+        }
+        newInterventoFiles={projectInterventoFiles}
+        setNewInterventoFiles={setProjectInterventoFiles}
+        addIntervento={addProjectIntervento}
+        editInterventoId={projectInterventoEditId}
+        setEditInterventoId={setProjectInterventoEditId}
+        editIntervento={{
+          data: projectInterventoEditForm?.data || "",
+          dataTassativa: projectInterventoEditForm?.data_tassativa || "",
+          descrizione: projectInterventoEditForm?.descrizione || "",
+          ticketNo: projectInterventoEditForm?.ticket_no || "",
+          incluso: projectInterventoEditForm?.incluso ?? true,
+          checklistId: id || "",
+          proforma: projectInterventoEditForm?.proforma || "",
+          codiceMagazzino: projectInterventoEditForm?.codice_magazzino || "",
+          fatturazioneStato: projectInterventoEditForm?.fatturazione_stato || "DA_FATTURARE",
+          statoIntervento: projectInterventoEditForm?.stato_intervento || "APERTO",
+          esitoFatturazione: "",
+          numeroFattura: "",
+          fatturatoIl: "",
+          note: projectInterventoEditForm?.note || "",
+          noteTecniche: "",
+        }}
+        setEditIntervento={(value) =>
+          setProjectInterventoEditForm((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  data: value.data,
+                  data_tassativa: value.dataTassativa,
+                  descrizione: value.descrizione,
+                  ticket_no: value.ticketNo,
+                  incluso: value.incluso,
+                  proforma: value.proforma,
+                  codice_magazzino: value.codiceMagazzino,
+                  fatturazione_stato: value.fatturazioneStato,
+                  stato_intervento: value.statoIntervento,
+                  note: value.note,
+                }
+              : prev
+          )
+        }
+        startEditIntervento={(row) => startEditProjectIntervento(row as ProjectIntervento)}
+        saveEditIntervento={saveProjectIntervento}
+        expandedInterventoId={projectInterventiExpandedId}
+        setExpandedInterventoId={setProjectInterventiExpandedId}
+        deleteIntervento={deleteProjectIntervento}
+        closeInterventoId={projectCloseInterventoId}
+        setCloseInterventoId={setProjectCloseInterventoId}
+        closeEsito={projectCloseEsito}
+        setCloseEsito={setProjectCloseEsito}
+        closeNote={projectCloseNote}
+        setCloseNote={setProjectCloseNote}
+        closeError={projectCloseError}
+        setCloseError={setProjectCloseError}
+        confirmCloseIntervento={confirmProjectCloseIntervento}
+        alertInterventoId={projectInterventoAlertId}
+        setAlertInterventoId={setProjectInterventoAlertId}
+        alertDestinatarioId={projectInterventoAlertToOperatoreId}
+        setAlertDestinatarioId={setProjectInterventoAlertToOperatoreId}
+        alertMessaggio={projectInterventoAlertMsg}
+        setAlertMessaggio={setProjectInterventoAlertMsg}
+        alertSendEmail={projectInterventoAlertSendEmail}
+        setAlertSendEmail={setProjectInterventoAlertSendEmail}
+        sending={projectInterventoAlertSending}
+        sendErr={projectInterventoAlertErr}
+        sendOk={projectInterventoAlertOk}
+        sendInterventoAlert={sendProjectInterventoAlert}
+        openAlertModal={(row) => openProjectInterventoAlertModal(row as ProjectIntervento)}
+        getAlertRecipients={getProjectInterventoAlertRecipients}
+        bulkOpen={projectInterventoBulkOpen}
+        setBulkOpen={setProjectInterventoBulkOpen}
+        bulkToOperatoreId={projectInterventoBulkToOperatoreId}
+        setBulkToOperatoreId={setProjectInterventoBulkToOperatoreId}
+        bulkMsg={projectInterventoBulkMsg}
+        setBulkMsg={setProjectInterventoBulkMsg}
+        bulkSendEmail={projectInterventoBulkSendEmail}
+        setBulkSendEmail={setProjectInterventoBulkSendEmail}
+        bulkSending={projectInterventoBulkSending}
+        bulkErr={projectInterventoBulkErr}
+        bulkOk={projectInterventoBulkOk}
+        sendBulkFatturaAlert={sendProjectBulkFatturaAlert}
+        getFatturaAlertRecipients={getProjectFatturaAlertRecipients}
+        bulkLastSentAt={projectInterventoBulkLastSentAt}
+        bulkLastToOperatoreId={projectInterventoBulkLastToOperatoreId}
+        bulkLastMessage={projectInterventoBulkLastMessage}
+        bulkPreviewOpen={projectInterventoBulkPreviewOpen}
+        setBulkPreviewOpen={setProjectInterventoBulkPreviewOpen}
+        openBulkAlertModal={openProjectBulkInterventoAlertModal}
+        reopenIntervento={reopenProjectIntervento}
+      />
       <div style={{ marginTop: 22 }}>
         <h2 style={{ marginTop: 0 }}>SERVIZI</h2>
 

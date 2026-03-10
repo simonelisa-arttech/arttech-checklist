@@ -7,6 +7,21 @@ File sorgente di verità: `PROJECT_CONTEXT.md` (root del repo)
 
 ---
 
+## Aggiornamento rapido (3 marzo 2026)
+
+- `fix: cronoprogramma` già pushato con commit `c06234b`:
+  - `app/api/cronoprogramma/route.ts` filtra lato API i row refs per stato/data (`IN_CORSO`, `APERTO`, cutoff `2026-01-01`) prima di leggere meta/commenti.
+- Patch client aggiuntiva in corso su `app/cronoprogramma/page.tsx` per coerenza eventi timeline/export:
+  - query `checklists` con `.eq("stato_progetto", "IN_CORSO")`
+  - query `saas_interventi` con `.eq("stato_intervento", "APERTO")` + cutoff `2026-01-01`
+  - filtro difensivo installazioni su `(data_tassativa || data_prevista) >= 2026-01-01`
+  - esclusione interventi collegati a checklist non presenti nel set `IN_CORSO`.
+- Aggiornamento stato progetto e cronoprogramma noleggi:
+  - aggiunto valore `RIENTRATO` nei menu stato progetto (`checklists/[id]`, `checklists/nuova`) e nei filtri dashboard.
+  - cronoprogramma: i progetti `IN_CORSO` restano visibili; per i noleggi `CONSEGNATO` viene mostrato un evento su `fine_noleggio`; con stato `RIENTRATO` il progetto non viene più mostrato.
+
+---
+
 ## Cosa è stato fatto (sessione 12 febbraio 2026)
 
 ### Commit già pushati in precedenza (7 commit)
@@ -123,3 +138,18 @@ git pull origin main && git push origin main
 ```
 
 Dopo il push, Vercel farà auto-deploy e i fix saranno in produzione.
+
+---
+
+## Update 2026-03-10 - InterventiBlock condiviso cliente/checklist
+
+- Estratto `components/InterventiBlock.tsx` prendendo `app/clienti/[cliente]/page.tsx` come source of truth del blocco Interventi.
+- `app/checklists/[id]/page.tsx` ora usa lo stesso componente condiviso, filtrando i dati solo su `checklist_id = id`.
+- Uniformati markup/UI/overflow/azioni/pulsanti del blocco Interventi tra cliente e checklist.
+- Checklist ora supporta anche:
+  - chiusura/riapertura intervento
+  - alert fatturazione singolo e bulk
+  - allegati e link Drive nello stesso flow del componente condiviso
+- Create/edit allegati/link:
+  - create: upload file selezionati dopo insert intervento, poi apertura automatica del dettaglio/edit per aggiungere link/altri allegati
+  - edit: `AttachmentsPanel` inline nello stesso flow del form modifica
