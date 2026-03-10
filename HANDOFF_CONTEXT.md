@@ -45,6 +45,11 @@ File sorgente di verità: `PROJECT_CONTEXT.md` (root del repo)
   - source di persistenza riusata: `cronoprogramma_comments` con `row_kind = 'CHECKLIST_TASK'`
   - vista compatta: ultima nota in tabella
   - storico completo + inserimento nuova nota da modale dedicata
+  - creazione nuova task template in `Impostazioni > Checklist attività` ora esegue backfill su tutte le checklist esistenti:
+    - inserisce una `checklist_task` per ogni checklist che non ha già quella `task_template_id`
+    - conserva `sezione` / `ordine`
+    - imposta `stato = DA_FARE`
+    - non modifica le task già presenti
 
 ---
 

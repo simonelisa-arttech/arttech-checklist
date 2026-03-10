@@ -78,6 +78,15 @@
 - `row_kind` esteso a `CHECKLIST_TASK` per riusare la stessa struttura autore/data/commento del cronoprogramma.
 - In tabella viene mostrata l'ultima nota; il pulsante `+` apre storico completo e form di inserimento.
 
+## Snapshot 2026-03-10 - Backfill task template checklist
+- La creazione di una nuova riga in `Impostazioni > Checklist attivita` propaga ora la task a tutte le checklist esistenti.
+- Implementazione server-side in `app/api/impostazioni/checklist-attivita/route.ts`.
+- Regole:
+  - nessun duplicato per `checklist_id + task_template_id`
+  - `stato` iniziale sempre `DA_FARE`
+  - `sezione` e `ordine` copiati dal template
+  - nessuna modifica alle task gia presenti
+
 ## Query rapide di controllo (manuali)
 ```sql
 -- Tagliandi cliente con progetto associato
