@@ -180,6 +180,15 @@ type ChecklistTaskDocument = {
   uploaded_by_operatore: string | null;
 };
 
+type ChecklistTaskAttachment = {
+  id: string;
+  entity_id: string | null;
+  source: "UPLOAD" | "LINK" | string;
+  title: string | null;
+  url: string | null;
+  storage_path: string | null;
+};
+
 type AssetSerial = {
   id: string;
   checklist_id: string;
@@ -908,7 +917,9 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
   >([]);
   const [documents, setDocuments] = useState<ChecklistDocument[]>([]);
   const [taskDocuments, setTaskDocuments] = useState<ChecklistTaskDocument[]>([]);
-  const [taskAttachmentCounts, setTaskAttachmentCounts] = useState<Map<string, number>>(new Map());
+  const [taskAttachmentsById, setTaskAttachmentsById] = useState<
+    Map<string, ChecklistTaskAttachment[]>
+  >(new Map());
   const [taskFilesTask, setTaskFilesTask] = useState<ChecklistTask | null>(null);
   const [taskNotesTask, setTaskNotesTask] = useState<ChecklistTask | null>(null);
   const [taskCommentsById, setTaskCommentsById] = useState<Record<string, TaskComment[]>>({});
@@ -1409,34 +1420,60 @@ function buildFormData(c: Checklist): FormData {
   async function loadTaskAttachmentCounts(taskIds: string[]) {
     const ids = Array.from(new Set(taskIds.filter(Boolean)));
     if (ids.length === 0) {
-      setTaskAttachmentCounts(new Map());
+      setTaskAttachmentsById(new Map());
       return;
     }
     const { data, error } = await dbFrom("attachments")
-      .select("entity_id")
+      .select("id, entity_id, source, title, url, storage_path")
       .eq("entity_type", "CHECKLIST_TASK")
       .in("entity_id", ids);
     if (error) {
       console.error("Errore caricamento conteggio allegati task", error);
       return;
     }
-    const counts = new Map<string, number>();
-    for (const row of (data || []) as Array<{ entity_id: string | null }>) {
+    const rowsByTaskId = new Map<string, ChecklistTaskAttachment[]>();
+    for (const row of (data || []) as ChecklistTaskAttachment[]) {
       const key = String(row.entity_id || "");
       if (!key) continue;
-      counts.set(key, (counts.get(key) || 0) + 1);
+      const bucket = rowsByTaskId.get(key) || [];
+      bucket.push(row);
+      rowsByTaskId.set(key, bucket);
     }
-    setTaskAttachmentCounts(counts);
+    setTaskAttachmentsById(rowsByTaskId);
+  }
+
+  function buildChecklistTaskAttachmentKey(
+    item:
+      | ChecklistTaskAttachment
+      | ChecklistTaskDocument
+      | { url?: string | null; title?: string | null; storage_path?: string | null; filename?: string | null }
+  ) {
+    const normalize = (value: string | null | undefined) => String(value || "").trim().toLowerCase();
+    const storagePath = normalize("storage_path" in item ? item.storage_path : null);
+    if (storagePath) return `upload:${storagePath}`;
+    const url = normalize("url" in item ? item.url : null);
+    if (url) return `link:${url}`;
+    const title = normalize("title" in item ? item.title : "filename" in item ? item.filename : null);
+    if (title) return `title:${title}`;
+    return "";
   }
 
   function getChecklistTaskAttachmentCount(taskId: string) {
-    const modernCount = taskAttachmentCounts.get(taskId) || 0;
-    const legacyCount = taskDocuments.filter((row) => row.task_id === taskId).length;
+    const uniqueKeys = new Set<string>();
+    const modernRows = taskAttachmentsById.get(taskId) || [];
+    const legacyRows = taskDocuments.filter((row) => row.task_id === taskId);
 
-    // During the transition from legacy task documents to attachments,
-    // the same task resources can be represented in both stores.
-    // Prefer the richer source when present and avoid summing duplicates.
-    return Math.max(modernCount, legacyCount);
+    for (const row of modernRows) {
+      const key = buildChecklistTaskAttachmentKey(row);
+      if (key) uniqueKeys.add(key);
+    }
+
+    for (const row of legacyRows) {
+      const key = buildChecklistTaskAttachmentKey(row);
+      if (key) uniqueKeys.add(key);
+    }
+
+    return uniqueKeys.size;
   }
 
   async function addInterventoRow() {
