@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import ConfigMancante from "@/components/ConfigMancante";
@@ -857,6 +857,20 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
   if (!isSupabaseConfigured) {
     return <ConfigMancante />;
   }
+  const mainSectionStyle: CSSProperties = {
+    marginTop: 22,
+    border: "1px solid #eee",
+    borderRadius: 12,
+    padding: 16,
+    background: "white",
+  };
+  const mainSectionTitleStyle: CSSProperties = {
+    margin: 0,
+    marginBottom: 10,
+    fontSize: 30,
+    fontWeight: 900,
+    letterSpacing: 0.2,
+  };
   const router = useRouter();
   const [id, setId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -4954,15 +4968,8 @@ function buildFormData(c: Checklist): FormData {
   );
 
   const accessoriRicambiBlock = (
-    <div
-      style={{
-        border: "1px solid #eee",
-        borderRadius: 12,
-        padding: 12,
-        background: "white",
-      }}
-    >
-      <div style={{ fontWeight: 800, marginBottom: 6 }}>Accessori / Ricambi</div>
+    <div style={mainSectionStyle}>
+      <div style={mainSectionTitleStyle}>Accessori / Ricambi</div>
       <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 10 }}>
         Accessori/Extra (no TEC, no SAAS)
       </div>
@@ -6090,7 +6097,7 @@ function buildFormData(c: Checklist): FormData {
           </div>
         </div>
       </div>
-      <div style={{ marginTop: 22 }}>{accessoriRicambiBlock}</div>
+      {accessoriRicambiBlock}
       {serialUsageOpen && (
         <div
           onClick={() => setSerialUsageOpen(null)}
@@ -6150,16 +6157,8 @@ function buildFormData(c: Checklist): FormData {
           </div>
         </div>
       )}
-      <div style={{ marginTop: 12 }}>
-        <div
-          style={{
-            border: "1px solid #eee",
-            borderRadius: 12,
-            padding: 12,
-            background: "white",
-          }}
-        >
-          <div style={{ fontWeight: 800, marginBottom: 6 }}>Dati operativi / cronoprogramma</div>
+      <div style={mainSectionStyle}>
+        <div style={mainSectionTitleStyle}>Dati operativi / cronoprogramma</div>
           <div
             style={{
               display: "grid",
@@ -6290,7 +6289,6 @@ function buildFormData(c: Checklist): FormData {
           {cronoOperativiNotice ? (
             <div style={{ marginTop: 8, fontSize: 12, color: "#166534" }}>{cronoOperativiNotice}</div>
           ) : null}
-        </div>
       </div>
       <RenewalsAlertModal
         open={projectRinnoviAlertOpen}
@@ -6554,8 +6552,8 @@ function buildFormData(c: Checklist): FormData {
           />
         </div>
       </div>
-      <div style={{ marginTop: 22 }}>
-        <h2 style={{ marginTop: 0 }}>SERVIZI</h2>
+      <div style={mainSectionStyle}>
+        <h2 style={mainSectionTitleStyle}>Servizi</h2>
 
         <ServiziBox title="SERVIZI">
           <ServiceRow
@@ -6722,6 +6720,7 @@ function buildFormData(c: Checklist): FormData {
         </ServiziBox>
 
         <div style={{ marginTop: 12 }}>
+          <h2 style={mainSectionTitleStyle}>Licenze</h2>
           <div style={{ marginBottom: 10, fontSize: 12, opacity: 0.7 }}>
             Licenze dettaglio (dashboard):{" "}
             {licenze.length === 0
@@ -7179,8 +7178,8 @@ function buildFormData(c: Checklist): FormData {
         </div>
       </div>
 
-      <div style={{ marginTop: 22 }}>
-        <h2 style={{ marginTop: 0 }}>Foto / Video</h2>
+      <div style={mainSectionStyle}>
+        <h2 style={mainSectionTitleStyle}>Foto / Video</h2>
         <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 10 }}>
           Media di progetto separati dagli allegati delle task operative.
         </div>
@@ -7196,10 +7195,10 @@ function buildFormData(c: Checklist): FormData {
       </div>
 
       {tasks.length > 0 && (
-        <div style={{ marginTop: 24 }}>
-          <h3>Checklist operativa</h3>
+        <div style={{ ...mainSectionStyle, marginTop: 24 }}>
+          <h2 style={mainSectionTitleStyle}>Checklist operativa</h2>
           {alertNotice && (
-            <div style={{ marginTop: 8, fontSize: 12, color: "#166534" }}>
+            <div style={{ marginTop: 8, marginBottom: 10, fontSize: 12, color: "#166534" }}>
               {alertNotice}
             </div>
           )}
