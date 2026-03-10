@@ -1429,6 +1429,16 @@ function buildFormData(c: Checklist): FormData {
     setTaskAttachmentCounts(counts);
   }
 
+  function getChecklistTaskAttachmentCount(taskId: string) {
+    const modernCount = taskAttachmentCounts.get(taskId) || 0;
+    const legacyCount = taskDocuments.filter((row) => row.task_id === taskId).length;
+
+    // During the transition from legacy task documents to attachments,
+    // the same task resources can be represented in both stores.
+    // Prefer the richer source when present and avoid summing duplicates.
+    return Math.max(modernCount, legacyCount);
+  }
+
   async function addInterventoRow() {
     if (!id || !checklist) return;
     const descrizione = newProjectIntervento.descrizione.trim();
@@ -7200,9 +7210,7 @@ function buildFormData(c: Checklist): FormData {
                 })
                 .map((t) => (
                   (() => {
-                    const legacyTaskDocsCount = taskDocuments.filter((d) => d.task_id === t.id).length;
-                    const attachmentCount = taskAttachmentCounts.get(t.id) || 0;
-                    const totalAttachments = legacyTaskDocsCount + attachmentCount;
+                    const totalAttachments = getChecklistTaskAttachmentCount(t.id);
                     return (
                   <div
                     key={t.id}
@@ -7216,29 +7224,6 @@ function buildFormData(c: Checklist): FormData {
                   >
                     <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
                       <span style={{ minWidth: 0 }}>{t.titolo}</span>
-                      <span
-                        style={{
-                          display: "inline-flex",
-                          alignItems: "center",
-                          gap: 4,
-                          padding: "2px 8px",
-                          borderRadius: 999,
-                          fontSize: 11,
-                          fontWeight: 700,
-                          border:
-                            totalAttachments > 0 ? "1px solid #16a34a" : "1px solid #d1d5db",
-                          background: totalAttachments > 0 ? "#ecfdf5" : "#f8fafc",
-                          color: totalAttachments > 0 ? "#166534" : "#6b7280",
-                          whiteSpace: "nowrap",
-                        }}
-                        title={
-                          totalAttachments > 0
-                            ? `${totalAttachments} allegati/link presenti`
-                            : "Nessun allegato o link"
-                        }
-                      >
-                        📎 {totalAttachments > 0 ? `${totalAttachments}` : "0"}
-                      </span>
                     </div>
 
                     <div>
