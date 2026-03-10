@@ -21,6 +21,7 @@ import { dbFrom } from "@/lib/clientDbBroker";
 import { storageRemove, storageSignedUrl, storageUpload } from "@/lib/clientStorageApi";
 import { sendAlert } from "@/lib/sendAlert";
 import { calcM2FromDimensioni } from "@/lib/parseDimensioni";
+import { isHttpUrl, splitMagazzinoFields } from "@/lib/magazzino";
 
 type Checklist = {
   id: string;
@@ -29,6 +30,7 @@ type Checklist = {
   nome_checklist: string;
   proforma: string | null;
   magazzino_importazione: string | null;
+  magazzino_drive_url: string | null;
   tipo_saas: string | null;
   saas_tipo: string | null;
   saas_piano: string | null;
@@ -233,6 +235,7 @@ type FormData = {
   nome_checklist: string;
   proforma: string;
   magazzino_importazione: string;
+  magazzino_drive_url: string;
   saas_tipo: string | null;
   saas_piano: string | null;
   saas_scadenza: string;
@@ -368,17 +371,6 @@ function toDateInput(value?: string | null) {
 function asText(value: unknown): string {
   if (value === null || value === undefined) return "";
   return String(value);
-}
-
-function isHttpUrl(value?: string | null) {
-  const raw = String(value || "").trim();
-  if (!raw) return false;
-  try {
-    const parsed = new URL(raw);
-    return parsed.protocol === "http:" || parsed.protocol === "https:";
-  } catch {
-    return false;
-  }
 }
 
 function renderTextOrLink(value?: string | null) {
@@ -1288,12 +1280,17 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
   }
 
 function buildFormData(c: Checklist): FormData {
+    const magazzino = splitMagazzinoFields(
+      c.magazzino_importazione,
+      c.magazzino_drive_url
+    );
     return {
       cliente: asText(c.cliente),
       cliente_id: asText(c.cliente_id),
       nome_checklist: asText(c.nome_checklist),
       proforma: asText(c.proforma),
-      magazzino_importazione: asText(c.magazzino_importazione),
+      magazzino_importazione: magazzino.codice,
+      magazzino_drive_url: magazzino.driveUrl,
       saas_tipo: asText(c.saas_tipo),
       saas_piano: asText(c.saas_piano),
       saas_scadenza: toDateInput(c.saas_scadenza),
@@ -1407,6 +1404,10 @@ function buildFormData(c: Checklist): FormData {
   async function addInterventoRow() {
     if (!id || !checklist) return;
     const descrizione = newProjectIntervento.descrizione.trim();
+    const magazzino = splitMagazzinoFields(
+      checklist.magazzino_importazione,
+      checklist.magazzino_drive_url
+    );
     if (!descrizione) {
       setProjectInterventiError("Inserisci descrizione intervento.");
       return;
@@ -1457,7 +1458,7 @@ function buildFormData(c: Checklist): FormData {
       ticket_no: "",
       incluso: true,
       proforma: checklist.proforma || "",
-      codice_magazzino: checklist.magazzino_importazione || "",
+      codice_magazzino: magazzino.codice || "",
       fatturazione_stato: "DA_FATTURARE",
       stato_intervento: "APERTO",
       note: "",
@@ -1572,12 +1573,16 @@ function buildFormData(c: Checklist): FormData {
   }
 
   function buildProjectInterventoAlertMessage(row: InterventoRow) {
+    const magazzino = splitMagazzinoFields(
+      checklist?.magazzino_importazione,
+      checklist?.magazzino_drive_url
+    );
     return [
       "Intervento EXTRA da fatturare",
       `Cliente: ${checklist?.cliente || "—"}`,
       `PROGETTO: ${checklist?.nome_checklist || checklist?.id || "—"}`,
       `Proforma: ${row.proforma || checklist?.proforma || "—"}`,
-      `CodMag: ${row.codice_magazzino || checklist?.magazzino_importazione || "—"}`,
+      `CodMag: ${row.codice_magazzino || magazzino.codice || "—"}`,
       `Data: ${row.data ? new Date(row.data).toLocaleDateString("it-IT") : "—"}`,
       `Descrizione: ${row.descrizione || "—"}`,
     ].join(" — ");
@@ -2949,7 +2954,10 @@ function buildFormData(c: Checklist): FormData {
       ticket_no: "",
       incluso: true,
       proforma: headChecklist.proforma || "",
-      codice_magazzino: headChecklist.magazzino_importazione || "",
+      codice_magazzino: splitMagazzinoFields(
+        headChecklist.magazzino_importazione,
+        headChecklist.magazzino_drive_url
+      ).codice,
       fatturazione_stato: "DA_FATTURARE",
       stato_intervento: "APERTO",
       note: "",
@@ -4147,6 +4155,9 @@ function buildFormData(c: Checklist): FormData {
       magazzino_importazione: formData.magazzino_importazione.trim()
         ? formData.magazzino_importazione.trim()
         : null,
+      magazzino_drive_url: formData.magazzino_drive_url.trim()
+        ? formData.magazzino_drive_url.trim()
+        : null,
       saas_tipo: (formData.saas_tipo ?? "").trim() ? (formData.saas_tipo ?? "").trim() : null,
       saas_piano: (formData.saas_piano ?? "").trim() ? (formData.saas_piano ?? "").trim() : null,
       saas_scadenza: formData.saas_scadenza.trim()
@@ -5260,8 +5271,13 @@ function buildFormData(c: Checklist): FormData {
               isEdit={isEdit}
             />
             <FieldRow
-              label="Magazzino importazione"
-              view={renderTextOrLink(checklist.magazzino_importazione)}
+              label="Codice magazzino"
+              view={
+                splitMagazzinoFields(
+                  checklist.magazzino_importazione,
+                  checklist.magazzino_drive_url
+                ).codice || "—"
+              }
               edit={
                 isEdit ? (
                   <input
@@ -5269,7 +5285,29 @@ function buildFormData(c: Checklist): FormData {
                     onChange={(e) =>
                       setFormData({ ...formData, magazzino_importazione: e.target.value })
                     }
-                    placeholder="Codice magazzino o link Google Drive"
+                    placeholder="Codice o testo magazzino"
+                    style={{ width: "100%", padding: 10 }}
+                  />
+                ) : undefined
+              }
+              isEdit={isEdit}
+            />
+            <FieldRow
+              label="Link Drive magazzino"
+              view={renderTextOrLink(
+                splitMagazzinoFields(
+                  checklist.magazzino_importazione,
+                  checklist.magazzino_drive_url
+                ).driveUrl
+              )}
+              edit={
+                isEdit ? (
+                  <input
+                    value={formData.magazzino_drive_url}
+                    onChange={(e) =>
+                      setFormData({ ...formData, magazzino_drive_url: e.target.value })
+                    }
+                    placeholder="https://drive.google.com/..."
                     style={{ width: "100%", padding: 10 }}
                   />
                 ) : undefined
@@ -6037,7 +6075,10 @@ function buildFormData(c: Checklist): FormData {
                   id: checklist.id,
                   nome_checklist: checklist.nome_checklist,
                   proforma: checklist.proforma,
-                  magazzino_importazione: checklist.magazzino_importazione,
+                  magazzino_importazione: splitMagazzinoFields(
+                    checklist.magazzino_importazione,
+                    checklist.magazzino_drive_url
+                  ).codice,
                 },
               ]
             : []

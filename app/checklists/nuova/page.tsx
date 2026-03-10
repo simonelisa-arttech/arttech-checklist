@@ -11,6 +11,7 @@ import { isSupabaseConfigured, supabase } from "@/lib/supabaseClient";
 import { dbFrom } from "@/lib/clientDbBroker";
 import { sendAlert } from "@/lib/sendAlert";
 import { calcM2FromDimensioni } from "@/lib/parseDimensioni";
+import { splitMagazzinoFields } from "@/lib/magazzino";
 
 type ChecklistItem = {
   codice: string;
@@ -193,6 +194,7 @@ export default function NuovaChecklistPage() {
   const [nomeChecklist, setNomeChecklist] = useState("");
   const [proforma, setProforma] = useState("");
   const [magazzinoImportazione, setMagazzinoImportazione] = useState("");
+  const [magazzinoDriveUrl, setMagazzinoDriveUrl] = useState("");
   const [saasPiano, setSaasPiano] = useState<string>("");
   const [saasTipo, setSaasTipo] = useState<string>("");
   const [saasScadenza, setSaasScadenza] = useState("");
@@ -515,14 +517,18 @@ export default function NuovaChecklistPage() {
         return;
       }
 
+      const magazzinoFields = splitMagazzinoFields(
+        magazzinoImportazione,
+        magazzinoDriveUrl
+      );
+
       const payloadChecklist = {
         cliente: cliente.trim(),
         cliente_id: clienteId,
         nome_checklist: nomeChecklist.trim(),
         proforma: proforma.trim() ? proforma.trim() : null,
-        magazzino_importazione: magazzinoImportazione.trim()
-          ? magazzinoImportazione.trim()
-          : null,
+        magazzino_importazione: magazzinoFields.codice || null,
+        magazzino_drive_url: magazzinoFields.driveUrl || null,
         created_by_operatore: operatoreId,
         updated_by_operatore: operatoreId,
         saas_piano: saasPiano || null,
@@ -1101,11 +1107,21 @@ export default function NuovaChecklistPage() {
           </label>
 
           <label>
-            Magazzino importazione<br />
+            Codice magazzino<br />
             <input
               value={magazzinoImportazione}
               onChange={(e) => setMagazzinoImportazione(e.target.value)}
-              placeholder="Codice magazzino o link Google Drive"
+              placeholder="Codice o testo magazzino"
+              style={{ width: "100%", padding: 10 }}
+            />
+          </label>
+
+          <label>
+            Link Drive magazzino<br />
+            <input
+              value={magazzinoDriveUrl}
+              onChange={(e) => setMagazzinoDriveUrl(e.target.value)}
+              placeholder="https://drive.google.com/..."
               style={{ width: "100%", padding: 10 }}
             />
           </label>
