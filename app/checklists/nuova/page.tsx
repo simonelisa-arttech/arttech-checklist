@@ -135,6 +135,17 @@ function isChecklistDuplicateError(error: any) {
   );
 }
 
+function isMissingNotificationJobsError(error: any) {
+  const code = String(error?.code || "").toLowerCase();
+  const message = String(error?.message || "").toLowerCase();
+  const details = String(error?.details || "").toLowerCase();
+  return (
+    code === "pgrst205" ||
+    message.includes("notification_jobs") ||
+    details.includes("notification_jobs")
+  );
+}
+
 function isFiniteNumberString(v: string) {
   if (v.trim() === "") return false;
   const n = Number(v);
@@ -975,7 +986,14 @@ export default function NuovaChecklistPage() {
         }));
         const { error: jobErr } = await dbFrom("notification_jobs").insert(jobPayload);
         if (jobErr) {
-          console.error("Errore inserimento notification_jobs", jobErr);
+          if (isMissingNotificationJobsError(jobErr)) {
+            console.warn(
+              "notification_jobs non disponibile: salto la schedulazione reminder checklist",
+              jobErr
+            );
+          } else {
+            console.error("Errore inserimento notification_jobs", jobErr);
+          }
         }
 
         const { data: ops } = await dbFrom("operatori")

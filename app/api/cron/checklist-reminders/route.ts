@@ -27,6 +27,17 @@ type OperatoreRow = {
   email: string | null;
 };
 
+function isMissingNotificationJobsError(error: any) {
+  const code = String(error?.code || "").toLowerCase();
+  const message = String(error?.message || "").toLowerCase();
+  const details = String(error?.details || "").toLowerCase();
+  return (
+    code === "pgrst205" ||
+    message.includes("notification_jobs") ||
+    details.includes("notification_jobs")
+  );
+}
+
 function getBaseUrl(req: Request) {
   const env =
     process.env.APP_URL ||
@@ -68,6 +79,15 @@ export async function GET(req: Request) {
     .eq("stato", "PENDING");
 
   if (jobsErr) {
+    if (isMissingNotificationJobsError(jobsErr)) {
+      return NextResponse.json({
+        ok: true,
+        sent: 0,
+        skipped: 0,
+        disabled: true,
+        reason: "notification_jobs_missing",
+      });
+    }
     return NextResponse.json({ error: jobsErr.message }, { status: 500 });
   }
 
