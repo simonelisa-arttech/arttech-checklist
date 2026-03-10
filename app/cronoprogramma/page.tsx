@@ -99,6 +99,20 @@ function getRowKey(rowKind: "INSTALLAZIONE" | "INTERVENTO", rowRefId: string) {
   return `${rowKind}:${rowRefId}`;
 }
 
+function normalizePersonaleText(value?: string | null) {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function extractPersonaleNames(value?: string | null) {
+  return String(value || "")
+    .split(/[,+;/]+/)
+    .map((part) => part.replace(/\([^)]*\)/g, "").trim())
+    .filter(Boolean);
+}
+
 function downloadCsv(
   filename: string,
   rows: TimelineRow[],
@@ -180,6 +194,7 @@ export default function CronoprogrammaPage() {
   const [showFatto, setShowFatto] = useState(false);
   const [showHidden, setShowHidden] = useState(false);
   const [q, setQ] = useState("");
+  const [personaleFilter, setPersonaleFilter] = useState("");
   const [sortBy, setSortBy] = useState<"data_prevista" | "data_tassativa">("data_tassativa");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [metaByKey, setMetaByKey] = useState<Record<string, CronoMeta>>({});
@@ -446,6 +461,16 @@ export default function CronoprogrammaPage() {
     );
   }, [rows]);
 
+  const personaleOptions = useMemo(() => {
+    const names = new Set<string>();
+    for (const meta of Object.values(metaByKey)) {
+      for (const name of extractPersonaleNames(meta?.personale_previsto)) {
+        names.add(name);
+      }
+    }
+    return Array.from(names).sort((a, b) => a.localeCompare(b, "it", { sensitivity: "base" }));
+  }, [metaByKey]);
+
   function onTopScroll(e: UIEvent<HTMLDivElement>) {
     if (syncingScrollRef.current === "bottom") return;
     syncingScrollRef.current = "top";
@@ -462,15 +487,23 @@ export default function CronoprogrammaPage() {
 
   const filtered = useMemo(() => {
     const needle = q.trim().toLowerCase();
+    const personaleNeedle = normalizePersonaleText(personaleFilter);
     return rows.filter((r) => {
       const rifDate = r.data_tassativa || r.data_prevista;
       const key = getRowKey(r.kind, r.row_ref_id);
       const fatto = Boolean(metaByKey[key]?.fatto ?? r.fatto);
       const hidden = Boolean(metaByKey[key]?.hidden);
+      const personalePrevisto = extractOperativi(metaByKey[key] || null).personale_previsto;
       if (hidden && !showHidden) return false;
       if (fatto && !showFatto) return false;
       if (clienteFilter !== "TUTTI" && r.cliente !== clienteFilter) return false;
       if (kindFilter !== "TUTTI" && r.kind !== kindFilter) return false;
+      if (
+        personaleNeedle &&
+        !normalizePersonaleText(personalePrevisto).includes(personaleNeedle)
+      ) {
+        return false;
+      }
       if (needle) {
         const matchesSearch = `${r.cliente} ${r.progetto} ${r.ticket_no || ""} ${r.descrizione} ${r.stato}`
           .toLowerCase()
@@ -484,7 +517,18 @@ export default function CronoprogrammaPage() {
       if (toDate && rifDate > toDate) return false;
       return true;
     });
-  }, [rows, fromDate, toDate, clienteFilter, kindFilter, q, metaByKey, showFatto, showHidden]);
+  }, [
+    rows,
+    fromDate,
+    toDate,
+    clienteFilter,
+    kindFilter,
+    q,
+    personaleFilter,
+    metaByKey,
+    showFatto,
+    showHidden,
+  ]);
 
   const filteredSorted = useMemo(() => {
     const sorted = [...filtered];
@@ -643,6 +687,22 @@ export default function CronoprogrammaPage() {
             placeholder="cliente/progetto/ticket/descrizione"
             style={{ width: "100%", padding: 8 }}
           />
+        </label>
+        <label>
+          Personale previsto
+          <br />
+          <input
+            value={personaleFilter}
+            onChange={(e) => setPersonaleFilter(e.target.value)}
+            list="cronoprogramma-personale-options"
+            placeholder="Nome o incarico"
+            style={{ width: "100%", padding: 8 }}
+          />
+          <datalist id="cronoprogramma-personale-options">
+            {personaleOptions.map((name) => (
+              <option key={name} value={name} />
+            ))}
+          </datalist>
         </label>
       </div>
       <label style={{ display: "inline-flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
