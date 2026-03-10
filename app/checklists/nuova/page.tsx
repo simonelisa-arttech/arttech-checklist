@@ -11,7 +11,7 @@ import { isSupabaseConfigured, supabase } from "@/lib/supabaseClient";
 import { dbFrom } from "@/lib/clientDbBroker";
 import { sendAlert } from "@/lib/sendAlert";
 import { calcM2FromDimensioni } from "@/lib/parseDimensioni";
-import { splitMagazzinoFields } from "@/lib/magazzino";
+import { isMissingMagazzinoDriveColumnError, splitMagazzinoFields } from "@/lib/magazzino";
 
 type ChecklistItem = {
   codice: string;
@@ -598,18 +598,33 @@ export default function NuovaChecklistPage() {
           .single();
       };
 
+      let driveFallbackUsed = false;
       let { data: created, error: errCreate } = await tryInsert(payloadChecklist);
 
+      if (errCreate && isMissingMagazzinoDriveColumnError(errCreate)) {
+        const { magazzino_drive_url, ...legacyPayload } = payloadChecklist;
+        driveFallbackUsed = true;
+        ({ data: created, error: errCreate } = await tryInsert(legacyPayload));
+      }
       if (errCreate && isClienteIdMissing(errCreate)) {
-        const { cliente_id, ...legacyPayload } = payloadChecklist;
+        const sourcePayload = driveFallbackUsed
+          ? (({ magazzino_drive_url: _skip, ...rest }) => rest)(payloadChecklist)
+          : payloadChecklist;
+        const { cliente_id, ...legacyPayload } = sourcePayload;
         ({ data: created, error: errCreate } = await tryInsert(legacyPayload));
       }
       if (errCreate && isImpiantoQuantitaMissing(errCreate)) {
-        const { impianto_quantita, ...legacyPayload } = payloadChecklist;
+        const sourcePayload = driveFallbackUsed
+          ? (({ magazzino_drive_url: _skip, ...rest }) => rest)(payloadChecklist)
+          : payloadChecklist;
+        const { impianto_quantita, ...legacyPayload } = sourcePayload;
         ({ data: created, error: errCreate } = await tryInsert(legacyPayload));
       }
       if (errCreate && isOperatoreFkError(errCreate)) {
-        const { created_by_operatore, updated_by_operatore, ...legacyPayload } = payloadChecklist;
+        const sourcePayload = driveFallbackUsed
+          ? (({ magazzino_drive_url: _skip, ...rest }) => rest)(payloadChecklist)
+          : payloadChecklist;
+        const { created_by_operatore, updated_by_operatore, ...legacyPayload } = sourcePayload;
         ({ data: created, error: errCreate } = await tryInsert(legacyPayload));
       }
 
@@ -623,6 +638,11 @@ export default function NuovaChecklistPage() {
         return;
       }
       const checklistId = created.id as string;
+      if (driveFallbackUsed && magazzinoFields.driveUrl) {
+        alert(
+          "Checklist creata. Il link Drive magazzino non e' stato salvato: colonna non disponibile nello schema cache / ambiente non migrato."
+        );
+      }
 
       const { data: existingTasksData, error: existingTasksErr } = await dbFrom("checklist_tasks")
         .select("id")
@@ -1106,25 +1126,34 @@ export default function NuovaChecklistPage() {
             />
           </label>
 
-          <label>
-            Codice magazzino<br />
-            <input
-              value={magazzinoImportazione}
-              onChange={(e) => setMagazzinoImportazione(e.target.value)}
-              placeholder="Codice o testo magazzino"
-              style={{ width: "100%", padding: 10 }}
-            />
-          </label>
+          <div
+            style={{
+              gridColumn: "1 / -1",
+              display: "grid",
+              gridTemplateColumns: "1fr 1fr",
+              gap: 12,
+            }}
+          >
+            <label>
+              Codice magazzino<br />
+              <input
+                value={magazzinoImportazione}
+                onChange={(e) => setMagazzinoImportazione(e.target.value)}
+                placeholder="Codice o testo magazzino"
+                style={{ width: "100%", padding: 10 }}
+              />
+            </label>
 
-          <label>
-            Link Drive magazzino<br />
-            <input
-              value={magazzinoDriveUrl}
-              onChange={(e) => setMagazzinoDriveUrl(e.target.value)}
-              placeholder="https://drive.google.com/..."
-              style={{ width: "100%", padding: 10 }}
-            />
-          </label>
+            <label>
+              Link Drive magazzino<br />
+              <input
+                value={magazzinoDriveUrl}
+                onChange={(e) => setMagazzinoDriveUrl(e.target.value)}
+                placeholder="https://drive.google.com/..."
+                style={{ width: "100%", padding: 10 }}
+              />
+            </label>
+          </div>
 
           <div
             style={{

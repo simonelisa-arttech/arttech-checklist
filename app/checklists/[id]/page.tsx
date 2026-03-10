@@ -21,7 +21,11 @@ import { dbFrom } from "@/lib/clientDbBroker";
 import { storageRemove, storageSignedUrl, storageUpload } from "@/lib/clientStorageApi";
 import { sendAlert } from "@/lib/sendAlert";
 import { calcM2FromDimensioni } from "@/lib/parseDimensioni";
-import { isHttpUrl, splitMagazzinoFields } from "@/lib/magazzino";
+import {
+  isHttpUrl,
+  isMissingMagazzinoDriveColumnError,
+  splitMagazzinoFields,
+} from "@/lib/magazzino";
 
 type Checklist = {
   id: string;
@@ -4255,18 +4259,33 @@ function buildFormData(c: Checklist): FormData {
       return dbFrom("checklists").update(payloadUpdate).eq("id", id);
     };
 
+    let driveFallbackUsed = false;
     let { error: errUpdate } = await tryUpdate(payload);
 
+    if (errUpdate && isMissingMagazzinoDriveColumnError(errUpdate)) {
+      const { magazzino_drive_url, ...legacyPayload } = payload;
+      driveFallbackUsed = true;
+      ({ error: errUpdate } = await tryUpdate(legacyPayload));
+    }
     if (errUpdate && isClienteIdMissing(errUpdate)) {
-      const { cliente_id, ...legacyPayload } = payload;
+      const sourcePayload = driveFallbackUsed
+        ? (({ magazzino_drive_url: _skip, ...rest }) => rest)(payload)
+        : payload;
+      const { cliente_id, ...legacyPayload } = sourcePayload;
       ({ error: errUpdate } = await tryUpdate(legacyPayload));
     }
     if (errUpdate && isImpiantoQuantitaMissing(errUpdate)) {
-      const { impianto_quantita, ...legacyPayload } = payload;
+      const sourcePayload = driveFallbackUsed
+        ? (({ magazzino_drive_url: _skip, ...rest }) => rest)(payload)
+        : payload;
+      const { impianto_quantita, ...legacyPayload } = sourcePayload;
       ({ error: errUpdate } = await tryUpdate(legacyPayload));
     }
     if (errUpdate && isOperatoreFkError(errUpdate)) {
-      const { updated_by_operatore, ...legacyPayload } = payload;
+      const sourcePayload = driveFallbackUsed
+        ? (({ magazzino_drive_url: _skip, ...rest }) => rest)(payload)
+        : payload;
+      const { updated_by_operatore, ...legacyPayload } = sourcePayload;
       ({ error: errUpdate } = await tryUpdate(legacyPayload));
     }
 
@@ -4274,6 +4293,11 @@ function buildFormData(c: Checklist): FormData {
       const info = logSupabaseError("update checklist", errUpdate);
       alert("Errore salvataggio: " + (info || errUpdate.message));
       return;
+    }
+    if (driveFallbackUsed && formData.magazzino_drive_url.trim()) {
+      alert(
+        "Checklist salvata. Il link Drive magazzino non e' stato salvato: colonna non disponibile nello schema cache / ambiente non migrato."
+      );
     }
 
     const normalizedRows = rows
@@ -5271,45 +5295,65 @@ function buildFormData(c: Checklist): FormData {
               isEdit={isEdit}
             />
             <FieldRow
-              label="Codice magazzino"
+              label="Magazzino"
               view={
-                splitMagazzinoFields(
-                  checklist.magazzino_importazione,
-                  checklist.magazzino_drive_url
-                ).codice || "—"
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                  <div>
+                    <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 4 }}>
+                      Codice magazzino
+                    </div>
+                    <div>
+                      {splitMagazzinoFields(
+                        checklist.magazzino_importazione,
+                        checklist.magazzino_drive_url
+                      ).codice || "—"}
+                    </div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 4 }}>
+                      Link Drive magazzino
+                    </div>
+                    <div>
+                      {renderTextOrLink(
+                        splitMagazzinoFields(
+                          checklist.magazzino_importazione,
+                          checklist.magazzino_drive_url
+                        ).driveUrl
+                      )}
+                    </div>
+                  </div>
+                </div>
               }
               edit={
                 isEdit ? (
-                  <input
-                    value={formData.magazzino_importazione}
-                    onChange={(e) =>
-                      setFormData({ ...formData, magazzino_importazione: e.target.value })
-                    }
-                    placeholder="Codice o testo magazzino"
-                    style={{ width: "100%", padding: 10 }}
-                  />
-                ) : undefined
-              }
-              isEdit={isEdit}
-            />
-            <FieldRow
-              label="Link Drive magazzino"
-              view={renderTextOrLink(
-                splitMagazzinoFields(
-                  checklist.magazzino_importazione,
-                  checklist.magazzino_drive_url
-                ).driveUrl
-              )}
-              edit={
-                isEdit ? (
-                  <input
-                    value={formData.magazzino_drive_url}
-                    onChange={(e) =>
-                      setFormData({ ...formData, magazzino_drive_url: e.target.value })
-                    }
-                    placeholder="https://drive.google.com/..."
-                    style={{ width: "100%", padding: 10 }}
-                  />
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+                    <div>
+                      <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 4 }}>
+                        Codice magazzino
+                      </div>
+                      <input
+                        value={formData.magazzino_importazione}
+                        onChange={(e) =>
+                          setFormData({ ...formData, magazzino_importazione: e.target.value })
+                        }
+                        placeholder="Codice o testo magazzino"
+                        style={{ width: "100%", padding: 10 }}
+                      />
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 4 }}>
+                        Link Drive magazzino
+                      </div>
+                      <input
+                        value={formData.magazzino_drive_url}
+                        onChange={(e) =>
+                          setFormData({ ...formData, magazzino_drive_url: e.target.value })
+                        }
+                        placeholder="https://drive.google.com/..."
+                        style={{ width: "100%", padding: 10 }}
+                      />
+                    </div>
+                  </div>
                 ) : undefined
               }
               isEdit={isEdit}
