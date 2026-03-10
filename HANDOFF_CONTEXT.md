@@ -53,6 +53,12 @@ File sorgente di verità: `PROJECT_CONTEXT.md` (root del repo)
   - fix ulteriore sul backfill task template:
     - i task legacy senza `task_template_id` vengono riconosciuti per `titolo + sezione + ordine` e riallineati al template senza duplicazione
     - aggiunto recovery retroattivo mirato per la task ordine `75` `schemi dati ed elettrici + Pixel Map`
+- Checklist:
+  - aggiunta migration `scripts/20260310_enforce_checklists_cliente_nome_unique.sql`
+  - deduplica storica per `(cliente_id, nome_checklist)` mantenendo la checklist piu recente invariata
+  - le checklist duplicate piu vecchie vengono rinominate con suffisso `[DUPLICATO <id>]`
+  - aggiunto vincolo DB `UNIQUE(cliente_id, nome_checklist)`
+  - UI create checklist/progetto intercetta `23505` e mostra messaggio chiaro sul duplicato
 
 ---
 

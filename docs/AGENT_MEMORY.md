@@ -90,6 +90,11 @@
   - le checklist legacy con task create senza `task_template_id` vengono riallineate al template per match `titolo + sezione + ordine`
   - recovery retroattivo automatico per la task ordine `75` `schemi dati ed elettrici + Pixel Map`
 
+## Snapshot 2026-03-10 - Vincolo univoco checklist
+- Aggiunta migration per enforcement `UNIQUE(cliente_id, nome_checklist)` su `checklists`.
+- Prima dell'enforcement, i duplicati storici mantengono invariata la checklist piu recente; le altre vengono rinominate come duplicate.
+- UI create checklist/progetto mostra messaggio chiaro quando il DB risponde con violazione del vincolo univoco.
+
 ## Query rapide di controllo (manuali)
 ```sql
 -- Tagliandi cliente con progetto associato

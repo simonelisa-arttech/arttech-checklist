@@ -192,6 +192,18 @@ function logSupabaseError(error: any) {
   return parts.join(" | ");
 }
 
+function isChecklistDuplicateError(error: any) {
+  const code = String(error?.code || "").toLowerCase();
+  const message = String(error?.message || "").toLowerCase();
+  const details = String(error?.details || "").toLowerCase();
+  return (
+    code === "23505" &&
+    (message.includes("checklists_cliente_id_nome_checklist_key") ||
+      details.includes("cliente_id") ||
+      details.includes("nome_checklist"))
+  );
+}
+
 type Checklist = {
   id: string;
   cliente: string;
@@ -996,6 +1008,10 @@ export default function Page() {
       .single();
 
     if (errCreate) {
+      if (isChecklistDuplicateError(errCreate)) {
+        alert("Esiste gia' un progetto con questo cliente e questo nome checklist.");
+        return;
+      }
       const info = logSupabaseError(errCreate);
       alert("Errore insert PROGETTO: " + (info || errCreate.message));
       return;

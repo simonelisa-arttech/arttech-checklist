@@ -123,6 +123,18 @@ function logSupabaseError(error: any) {
   return parts.join(" | ");
 }
 
+function isChecklistDuplicateError(error: any) {
+  const code = String(error?.code || "").toLowerCase();
+  const message = String(error?.message || "").toLowerCase();
+  const details = String(error?.details || "").toLowerCase();
+  return (
+    code === "23505" &&
+    (message.includes("checklists_cliente_id_nome_checklist_key") ||
+      details.includes("cliente_id") ||
+      details.includes("nome_checklist"))
+  );
+}
+
 function isFiniteNumberString(v: string) {
   if (v.trim() === "") return false;
   const n = Number(v);
@@ -629,6 +641,10 @@ export default function NuovaChecklistPage() {
       }
 
       if (errCreate) {
+        if (isChecklistDuplicateError(errCreate)) {
+          alert("Esiste gia' una checklist/progetto con questo cliente e questo nome checklist.");
+          return;
+        }
         const info = logSupabaseError(errCreate);
         alert("Errore insert checklist: " + (info || errCreate.message));
         return;
