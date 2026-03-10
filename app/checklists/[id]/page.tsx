@@ -4907,8 +4907,15 @@ function buildFormData(c: Checklist): FormData {
   );
 
   const accessoriRicambiBlock = (
-    <>
-      <h2 style={{ marginTop: 22 }}>Accessori / Ricambi</h2>
+    <div
+      style={{
+        border: "1px solid #eee",
+        borderRadius: 12,
+        padding: 12,
+        background: "white",
+      }}
+    >
+      <div style={{ fontWeight: 800, marginBottom: 6 }}>Accessori / Ricambi</div>
       <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 10 }}>
         Accessori/Extra (no TEC, no SAAS)
       </div>
@@ -5105,7 +5112,7 @@ function buildFormData(c: Checklist): FormData {
           ))}
         </div>
       )}
-    </>
+    </div>
   );
 
   return (
