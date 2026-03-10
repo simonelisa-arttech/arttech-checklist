@@ -2,15 +2,16 @@ import { isSupabaseConfigured } from "@/lib/supabaseClient";
 import ConfigMancante from "@/components/ConfigMancante";
 import LoginForm from "./LoginForm";
 
-export default function LoginPage({
+export default async function LoginPage({
   searchParams,
 }: {
-  searchParams?: { redirect?: string };
+  searchParams?: Promise<{ redirect?: string }>;
 }) {
   if (!isSupabaseConfigured) {
     return <ConfigMancante />;
   }
 
-  const redirectTo = searchParams?.redirect || "/";
+  const resolvedSearchParams = await searchParams;
+  const redirectTo = resolvedSearchParams?.redirect || "/";
   return <LoginForm redirectTo={redirectTo} />;
 }

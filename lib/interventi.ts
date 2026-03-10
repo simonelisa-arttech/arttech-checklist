@@ -1,0 +1,31 @@
+export type InterventoRow = {
+  id: string;
+  cliente?: string | null;
+  checklist_id?: string | null;
+  contratto_id?: string | null;
+  ticket_no?: string | null;
+  data?: string | null;
+  data_tassativa?: string | null;
+  descrizione?: string | null;
+  incluso?: boolean | null;
+  proforma?: string | null;
+  codice_magazzino?: string | null;
+  fatturazione_stato?: string | null;
+  stato_intervento?: string | null;
+  esito_fatturazione?: string | null;
+  chiuso_il?: string | null;
+  chiuso_da_operatore?: string | null;
+  alert_fattura_last_sent_at?: string | null;
+  alert_fattura_last_sent_by?: string | null;
+  numero_fattura?: string | null;
+  fatturato_il?: string | null;
+  note?: string | null;
+  note_tecniche?: string | null;
+  created_at?: string | null;
+  checklist?: {
+    id: string;
+    nome_checklist: string | null;
+    proforma: string | null;
+    magazzino_importazione: string | null;
+  } | null;
+};

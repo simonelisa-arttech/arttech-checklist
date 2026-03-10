@@ -9,6 +9,7 @@ import AttachmentsPanel from "@/components/AttachmentsPanel";
 import InterventiBlock from "@/components/InterventiBlock";
 import RenewalsBlock from "@/components/RenewalsBlock";
 import Toast from "@/components/Toast";
+import type { InterventoRow } from "@/lib/interventi";
 import { isSupabaseConfigured, supabase } from "@/lib/supabaseClient";
 import { dbFrom } from "@/lib/clientDbBroker";
 import { storageRemove, storageSignedUrl, storageUpload } from "@/lib/clientStorageApi";
@@ -205,28 +206,6 @@ type ContrattoRow = {
   interventi_annui: number | null;
   illimitati: boolean | null;
   created_at: string | null;
-};
-
-type ProjectIntervento = {
-  id: string;
-  cliente?: string | null;
-  checklist_id?: string | null;
-  data: string | null;
-  data_tassativa?: string | null;
-  ticket_no?: string | null;
-  descrizione: string | null;
-  incluso?: boolean | null;
-  note?: string | null;
-  note_tecniche?: string | null;
-  proforma: string | null;
-  codice_magazzino?: string | null;
-  tipo?: string | null;
-  stato_intervento: string | null;
-  esito_fatturazione?: string | null;
-  fatturazione_stato?: string | null;
-  numero_fattura?: string | null;
-  fatturato_il?: string | null;
-  created_at?: string | null;
 };
 
 type ProjectInterventoForm = {
@@ -935,7 +914,7 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
   const [contrattoUltra, setContrattoUltra] = useState<ContrattoRow | null>(null);
   const [contrattoUltraNome, setContrattoUltraNome] = useState<string | null>(null);
   const [interventiInclusiUsati, setInterventiInclusiUsati] = useState<number>(0);
-  const [projectInterventi, setProjectInterventi] = useState<ProjectIntervento[]>([]);
+  const [projectInterventi, setProjectInterventi] = useState<InterventoRow[]>([]);
   const [projectTagliando, setProjectTagliando] = useState<{
     scadenza: string;
     fatturazione: string;
@@ -1294,7 +1273,7 @@ function buildFormData(c: Checklist): FormData {
     };
   }
 
-  function buildProjectInterventoForm(it: ProjectIntervento): ProjectInterventoForm {
+  function buildProjectInterventoForm(it: InterventoRow): ProjectInterventoForm {
     return {
       data: toDateInput(it.data),
       data_tassativa: toDateInput(it.data_tassativa),
@@ -1346,12 +1325,12 @@ function buildFormData(c: Checklist): FormData {
       }
     }
     if (res.error) throw new Error(res.error.message || "Errore caricamento interventi progetto");
-    return ((res.data || []) as ProjectIntervento[]).filter(
+    return ((res.data || []) as InterventoRow[]).filter(
       (row) => String(row?.checklist_id || "") === String(checklistId)
     );
   }
 
-  async function loadProjectInterventoAttachmentCounts(rows: ProjectIntervento[]) {
+  async function loadInterventoRowAttachmentCounts(rows: InterventoRow[]) {
     const ids = rows.map((row) => row.id).filter(Boolean);
     if (ids.length === 0) {
       setProjectInterventoAttachmentCounts(new Map());
@@ -1374,7 +1353,7 @@ function buildFormData(c: Checklist): FormData {
     setProjectInterventoAttachmentCounts(counts);
   }
 
-  async function addProjectIntervento() {
+  async function addInterventoRow() {
     if (!id || !checklist) return;
     const descrizione = newProjectIntervento.descrizione.trim();
     if (!descrizione) {
@@ -1414,11 +1393,11 @@ function buildFormData(c: Checklist): FormData {
     }
     inserted = (insRes.data as { id: string } | null) ?? null;
     if (inserted?.id && projectInterventoFiles.length > 0) {
-      await uploadProjectInterventoFilesList(inserted.id, projectInterventoFiles);
+      await uploadInterventoRowFilesList(inserted.id, projectInterventoFiles);
     }
     const list = await loadProjectInterventi(id);
     setProjectInterventi(list);
-    await loadProjectInterventoAttachmentCounts(list);
+    await loadInterventoRowAttachmentCounts(list);
     setProjectInterventiNotice("Intervento aggiunto.");
     setNewProjectIntervento({
       data: "",
@@ -1443,12 +1422,12 @@ function buildFormData(c: Checklist): FormData {
     }
   }
 
-  function startEditProjectIntervento(it: ProjectIntervento) {
+  function startEditInterventoRow(it: InterventoRow) {
     setProjectInterventoEditId(it.id);
     setProjectInterventoEditForm(buildProjectInterventoForm(it));
   }
 
-  async function saveProjectIntervento() {
+  async function saveInterventoRow() {
     if (!projectInterventoEditId || !projectInterventoEditForm) return;
     setProjectInterventiError(null);
     const payload = {
@@ -1481,20 +1460,20 @@ function buildFormData(c: Checklist): FormData {
     if (!id) return;
     const list = await loadProjectInterventi(id);
     setProjectInterventi(list);
-    await loadProjectInterventoAttachmentCounts(list);
+    await loadInterventoRowAttachmentCounts(list);
     setProjectInterventoEditId(null);
     setProjectInterventoEditForm(null);
     setProjectInterventiNotice("Intervento aggiornato.");
   }
 
-  function getProjectInterventoStato(row: ProjectIntervento) {
+  function getInterventoRowStato(row: InterventoRow) {
     const raw = String(row.stato_intervento || "").toUpperCase();
     if (raw === "APERTO" || raw === "CHIUSO") return raw;
     if (row.fatturazione_stato) return "CHIUSO";
     return "APERTO";
   }
 
-  function getProjectEsitoFatturazione(row: ProjectIntervento) {
+  function getProjectEsitoFatturazione(row: InterventoRow) {
     const raw = String(row.esito_fatturazione || "").toUpperCase();
     if (raw === "DA_FATTURARE" || raw === "NON_FATTURARE" || raw === "INCLUSO_DA_CONSUNTIVO") {
       return raw;
@@ -1519,11 +1498,11 @@ function buildFormData(c: Checklist): FormData {
 
   function getProjectFattureDaEmettereList() {
     return projectInterventi.filter(
-      (row) => getProjectInterventoStato(row) === "CHIUSO" && getProjectEsitoFatturazione(row) === "DA_FATTURARE"
+      (row) => getInterventoRowStato(row) === "CHIUSO" && getProjectEsitoFatturazione(row) === "DA_FATTURARE"
     );
   }
 
-  function buildProjectBulkFattureMessage(list: ProjectIntervento[]) {
+  function buildProjectBulkFattureMessage(list: InterventoRow[]) {
     const checklistLabel = checklist?.nome_checklist || checklist?.id || "—";
     const lines = list.map((row) => {
       const tipo = row.incluso ? "INCLUSO" : "EXTRA";
@@ -1541,7 +1520,7 @@ function buildFormData(c: Checklist): FormData {
     ].join("\n");
   }
 
-  function buildProjectInterventoAlertMessage(row: ProjectIntervento) {
+  function buildProjectInterventoAlertMessage(row: InterventoRow) {
     return [
       "Intervento EXTRA da fatturare",
       `Cliente: ${checklist?.cliente || "—"}`,
@@ -1553,7 +1532,7 @@ function buildFormData(c: Checklist): FormData {
     ].join(" — ");
   }
 
-  function openProjectInterventoAlertModal(row: ProjectIntervento) {
+  function openProjectInterventoAlertModal(row: InterventoRow) {
     setProjectInterventoAlertId(row.id);
     setProjectInterventoAlertToOperatoreId("");
     setProjectInterventoAlertMsg(buildProjectInterventoAlertMessage(row));
@@ -1574,7 +1553,7 @@ function buildFormData(c: Checklist): FormData {
     setProjectInterventoBulkOpen(true);
   }
 
-  async function fetchProjectInterventoBulkLastAlert() {
+  async function fetchInterventoRowBulkLastAlert() {
     if (!id) return;
     const { data, error } = await dbFrom("checklist_alert_log")
       .select("created_at, to_operatore_id, messaggio")
@@ -1592,7 +1571,7 @@ function buildFormData(c: Checklist): FormData {
     setProjectInterventoBulkLastMessage(data?.messaggio ?? null);
   }
 
-  async function uploadProjectInterventoFilesList(interventoId: string, files: File[]) {
+  async function uploadInterventoRowFilesList(interventoId: string, files: File[]) {
     for (const file of files) {
       const safeName = file.name.replace(/\s+/g, "_");
       const path = `intervento/${interventoId}/${Date.now()}_${safeName}`;
@@ -1650,14 +1629,14 @@ function buildFormData(c: Checklist): FormData {
     if (!id) return;
     const list = await loadProjectInterventi(id);
     setProjectInterventi(list);
-    await loadProjectInterventoAttachmentCounts(list);
+    await loadInterventoRowAttachmentCounts(list);
     setProjectCloseInterventoId(null);
     setProjectCloseEsito("");
     setProjectCloseNote("");
     setProjectCloseError(null);
   }
 
-  async function reopenProjectIntervento(interventoId: string) {
+  async function reopenInterventoRow(interventoId: string) {
     if (!currentOperatoreId) {
       setProjectInterventiError("Seleziona un operatore corrente prima di riaprire.");
       return;
@@ -1701,7 +1680,7 @@ function buildFormData(c: Checklist): FormData {
     if (!id) return;
     const list = await loadProjectInterventi(id);
     setProjectInterventi(list);
-    await loadProjectInterventoAttachmentCounts(list);
+    await loadInterventoRowAttachmentCounts(list);
   }
 
   async function sendProjectInterventoAlert() {
@@ -1826,7 +1805,7 @@ function buildFormData(c: Checklist): FormData {
     setProjectInterventoBulkOpen(false);
     setProjectInterventoBulkSendEmail(true);
     setProjectInterventiNotice(`${esito} (${getProjectFattureDaEmettereList().length} interventi).`);
-    await fetchProjectInterventoBulkLastAlert();
+    await fetchInterventoRowBulkLastAlert();
   }
 
   async function addProjectTagliandoPeriodico() {
@@ -2309,7 +2288,7 @@ function buildFormData(c: Checklist): FormData {
     }
   }
 
-  async function deleteProjectIntervento(idToDelete: string) {
+  async function deleteInterventoRow(idToDelete: string) {
     if (!idToDelete) return;
     const ok = typeof window === "undefined" ? true : window.confirm("Eliminare questo intervento?");
     if (!ok) return;
@@ -2321,7 +2300,7 @@ function buildFormData(c: Checklist): FormData {
     if (!id) return;
     const list = await loadProjectInterventi(id);
     setProjectInterventi(list);
-    await loadProjectInterventoAttachmentCounts(list);
+    await loadInterventoRowAttachmentCounts(list);
     setProjectInterventiNotice("Intervento eliminato.");
   }
 
@@ -2746,7 +2725,7 @@ function buildFormData(c: Checklist): FormData {
       }
     }
 
-    let interventiData: ProjectIntervento[] = [];
+    let interventiData: InterventoRow[] = [];
     try {
       interventiData = await loadProjectInterventi(id);
     } catch (e) {
@@ -2759,8 +2738,8 @@ function buildFormData(c: Checklist): FormData {
     setContrattoUltra(activeContratto);
     setContrattoUltraNome(ultraNome);
     setProjectInterventi(interventiData);
-    await loadProjectInterventoAttachmentCounts(interventiData);
-    await fetchProjectInterventoBulkLastAlert();
+    await loadInterventoRowAttachmentCounts(interventiData);
+    await fetchInterventoRowBulkLastAlert();
     setProjectInterventiError(null);
     setProjectInterventiNotice(null);
     setChecklist(headChecklist);
@@ -6178,7 +6157,7 @@ function buildFormData(c: Checklist): FormData {
         }
         newInterventoFiles={projectInterventoFiles}
         setNewInterventoFiles={setProjectInterventoFiles}
-        addIntervento={addProjectIntervento}
+        addIntervento={addInterventoRow}
         editInterventoId={projectInterventoEditId}
         setEditInterventoId={setProjectInterventoEditId}
         editIntervento={{
@@ -6217,11 +6196,11 @@ function buildFormData(c: Checklist): FormData {
               : prev
           )
         }
-        startEditIntervento={(row) => startEditProjectIntervento(row as ProjectIntervento)}
-        saveEditIntervento={saveProjectIntervento}
+        startEditIntervento={(row) => startEditInterventoRow(row as InterventoRow)}
+        saveEditIntervento={saveInterventoRow}
         expandedInterventoId={projectInterventiExpandedId}
         setExpandedInterventoId={setProjectInterventiExpandedId}
-        deleteIntervento={deleteProjectIntervento}
+        deleteIntervento={deleteInterventoRow}
         closeInterventoId={projectCloseInterventoId}
         setCloseInterventoId={setProjectCloseInterventoId}
         closeEsito={projectCloseEsito}
@@ -6243,7 +6222,7 @@ function buildFormData(c: Checklist): FormData {
         sendErr={projectInterventoAlertErr}
         sendOk={projectInterventoAlertOk}
         sendInterventoAlert={sendProjectInterventoAlert}
-        openAlertModal={(row) => openProjectInterventoAlertModal(row as ProjectIntervento)}
+        openAlertModal={(row) => openProjectInterventoAlertModal(row as InterventoRow)}
         getAlertRecipients={getProjectInterventoAlertRecipients}
         bulkOpen={projectInterventoBulkOpen}
         setBulkOpen={setProjectInterventoBulkOpen}
@@ -6264,7 +6243,7 @@ function buildFormData(c: Checklist): FormData {
         bulkPreviewOpen={projectInterventoBulkPreviewOpen}
         setBulkPreviewOpen={setProjectInterventoBulkPreviewOpen}
         openBulkAlertModal={openProjectBulkInterventoAlertModal}
-        reopenIntervento={reopenProjectIntervento}
+        reopenIntervento={reopenInterventoRow}
       />
       <div style={{ marginTop: 22 }}>
         <h2 style={{ marginTop: 0 }}>SERVIZI</h2>

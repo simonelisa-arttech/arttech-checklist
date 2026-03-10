@@ -33,9 +33,9 @@ async function assertAuthenticated(request: Request) {
 
 export async function GET(
   request: Request,
-  context: { params: Promise<{ id: string }> | { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
-  const params = await Promise.resolve(context.params);
+  const params = await context.params;
   const checklistId = String(params?.id || "").trim();
   if (!checklistId) {
     return NextResponse.json({ error: "Checklist id mancante" }, { status: 400 });

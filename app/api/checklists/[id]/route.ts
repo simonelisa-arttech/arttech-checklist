@@ -33,10 +33,10 @@ async function assertAuthenticated(request: Request) {
 
 export async function GET(
   request: Request,
-  context: { params: Promise<{ id: string }> | { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   const debug = new URL(request.url).searchParams.get("debug") === "1";
-  const params = await Promise.resolve(context.params);
+  const params = await context.params;
   const checklistId = String(params?.id || "").trim();
   if (!checklistId) {
     return NextResponse.json({ error: "Id checklist mancante" }, { status: 400 });

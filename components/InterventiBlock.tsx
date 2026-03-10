@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import AttachmentsPanel from "@/components/AttachmentsPanel";
+import type { InterventoRow } from "@/lib/interventi";
 
 export type InterventiChecklistOption = {
   id: string;
@@ -16,33 +17,6 @@ export type InterventiOperatore = {
   ruolo?: string | null;
   email?: string | null;
   attivo?: boolean | null;
-};
-
-export type InterventiRow = {
-  id: string;
-  checklist_id?: string | null;
-  data?: string | null;
-  data_tassativa?: string | null;
-  descrizione?: string | null;
-  ticket_no?: string | null;
-  incluso?: boolean | null;
-  proforma?: string | null;
-  codice_magazzino?: string | null;
-  fatturazione_stato?: string | null;
-  stato_intervento?: string | null;
-  esito_fatturazione?: string | null;
-  numero_fattura?: string | null;
-  fatturato_il?: string | null;
-  note?: string | null;
-  note_tecniche?: string | null;
-  chiuso_il?: string | null;
-  chiuso_da_operatore?: string | null;
-  checklist?: {
-    id: string;
-    nome_checklist: string | null;
-    proforma: string | null;
-    magazzino_importazione: string | null;
-  } | null;
 };
 
 export type InterventoFormState = {
@@ -65,7 +39,7 @@ export type InterventoFormState = {
 
 type Props = {
   checklists: InterventiChecklistOption[];
-  interventi: InterventiRow[];
+  interventi: InterventoRow[];
   interventiInfo: string | null;
   interventiError: string | null;
   alertNotice: string | null;
@@ -86,7 +60,7 @@ type Props = {
   setEditInterventoId: (value: string | null) => void;
   editIntervento: InterventoFormState;
   setEditIntervento: (value: InterventoFormState) => void;
-  startEditIntervento: (row: InterventiRow) => void;
+  startEditIntervento: (row: InterventoRow) => void;
   saveEditIntervento: () => void;
   expandedInterventoId: string | null;
   setExpandedInterventoId: (value: string | null) => void;
@@ -112,7 +86,7 @@ type Props = {
   sendErr: string | null;
   sendOk: string | null;
   sendInterventoAlert: () => void;
-  openAlertModal: (row: InterventiRow) => void;
+  openAlertModal: (row: InterventoRow) => void;
   getAlertRecipients: () => InterventiOperatore[];
   bulkOpen: boolean;
   setBulkOpen: (value: boolean) => void;
@@ -224,14 +198,14 @@ function renderStatoInterventoBadge(label: string) {
   );
 }
 
-function getInterventoStato(i: InterventiRow): "APERTO" | "CHIUSO" {
+function getInterventoStato(i: InterventoRow): "APERTO" | "CHIUSO" {
   const raw = String(i.stato_intervento || "").toUpperCase();
   if (raw === "APERTO" || raw === "CHIUSO") return raw;
   if (i.fatturazione_stato) return "CHIUSO";
   return "APERTO";
 }
 
-function getEsitoFatturazione(i: InterventiRow): string | null {
+function getEsitoFatturazione(i: InterventoRow): string | null {
   const raw = String(i.esito_fatturazione || "").toUpperCase();
   if (raw === "DA_FATTURARE" || raw === "NON_FATTURARE" || raw === "INCLUSO_DA_CONSUNTIVO") {
     return raw;
@@ -248,11 +222,11 @@ function canReopenIntervento(currentRole: string | null) {
   return role === "SUPERVISORE" || role === "PM";
 }
 
-function isFatturaDaEmettere(i: InterventiRow) {
+function isFatturaDaEmettere(i: InterventoRow) {
   return getInterventoStato(i) === "CHIUSO" && getEsitoFatturazione(i) === "DA_FATTURARE";
 }
 
-function getChecklistMeta(row: InterventiRow, checklists: InterventiChecklistOption[]) {
+function getChecklistMeta(row: InterventoRow, checklists: InterventiChecklistOption[]) {
   if (row.checklist) {
     return {
       id: row.checklist.id,
