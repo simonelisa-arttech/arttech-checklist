@@ -16,7 +16,7 @@ test("Invio avviso aggiorna stato a AVVISATO (E2E seed)", async ({ page }) => {
   await saasRow.getByTestId("send-alert-btn").click();
 
   const alertModalTitle = page
-    .getByText(/Invia avviso rinnovi|Invia alert fatturazione rinnovi/i)
+    .getByText(/^Invia avviso scadenza$/i)
     .first();
   await expect(alertModalTitle).toBeVisible();
 

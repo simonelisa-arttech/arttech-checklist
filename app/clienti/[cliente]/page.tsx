@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { use, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import ConfigMancante from "@/components/ConfigMancante";
@@ -724,10 +724,15 @@ function inferUltraInterventiInclusiFromCode(codeRaw?: string | null) {
   return Number.isFinite(n) && n > 0 ? n : null;
 }
 
-export default function ClientePage({ params }: { params: any }) {
+export default function ClientePage({
+  params,
+}: {
+  params: Promise<{ cliente: string }>;
+}) {
   if (!isSupabaseConfigured) {
     return <ConfigMancante />;
   }
+  const resolvedParams = use(params);
   const router = useRouter();
   const isE2EMode = process.env.NEXT_PUBLIC_E2E === "1";
   const [cliente, setCliente] = useState<string>("");
@@ -1275,8 +1280,7 @@ export default function ClientePage({ params }: { params: any }) {
         console.time(`[perf][cliente][mount#${mountRun}] total`);
         console.info(`[perf][cliente] mount start`, { mountRun });
       }
-      const resolved = await Promise.resolve(params);
-      const raw = (resolved?.cliente as string) || "";
+      const raw = resolvedParams?.cliente || "";
       const decoded = decodeURIComponent(raw);
       if (!alive) return;
 
@@ -1479,7 +1483,7 @@ export default function ClientePage({ params }: { params: any }) {
     return () => {
       alive = false;
     };
-  }, [params?.cliente]);
+  }, [resolvedParams]);
 
   useEffect(() => {
     if (loading) return;
