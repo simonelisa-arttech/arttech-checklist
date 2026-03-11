@@ -220,3 +220,17 @@ Dopo il push, Vercel farà auto-deploy e i fix saranno in produzione.
   - checklist esistenti vengono riallineate retroattivamente al template attivo
   - checklist nuove continuano a essere materializzate via `materializeChecklistTasks(checklistId)`
 - La sync resta non distruttiva sui dati operativi: non sovrascrive stato, note, allegati, log o override notifiche.
+
+## Update 2026-03-11 - Sync checklist_tasks: recovery non bloccante e dedupe reale
+
+- Il recovery globale non gira piu sul semplice `GET` bloccante di `Checklist attivita`.
+- La pagina `app/impostazioni/checklist-attivita/page.tsx` carica subito i template e avvia il recovery retroattivo in background con `?recovery=1`.
+- La route server deduplica il recovery con cooldown di 5 minuti per evitare lavoro pesante a ogni apertura pagina.
+- `lib/checklist/syncChecklistTemplate.ts` ora riconcilia per checklist con questo criterio:
+  - match principale: `task_template_id`
+  - fallback legacy: titolo normalizzato / overlap titolo, con riallineamento finale di `titolo`, `sezione`, `ordine`, `target`
+- Risolti i casi reali:
+  - `Elettronica di controllo: schemi dati ed elettrici` viene riallineata al titolo template `Elettronica di controllo`
+  - `Preparazione / riserva disponibilita / ordine merce` viene mantenuta come singola riga e spostata alla posizione template corretta (`DOCUMENTI`, ordine `74`)
+- Se esistono doppioni della stessa task template, la sync tiene una sola riga canonica, migra allegati/documenti/commenti/meta/job collegati e cancella il duplicato.
+- Dati operativi preservati: `stato`, note, allegati, log, override notifiche.

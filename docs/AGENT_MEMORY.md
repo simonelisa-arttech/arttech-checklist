@@ -118,6 +118,21 @@
   - le righe legacy esistenti vengono collegate a `task_template_id` per match `titolo + sezione + ordine`
   - nessun tocco a `stato`, note, allegati, log, override notifiche.
 
+## Snapshot 2026-03-11 - Recovery checklist non bloccante + cleanup doppioni
+- Il recovery globale non viene piu eseguito nel `GET` bloccante della pagina `Checklist attivita`.
+- La pagina avvia invece un fetch background su `?recovery=1`; la route server deduplica il recovery con cooldown.
+- La sync `template -> checklist_tasks` ora fa riconciliazione vera:
+  - prioritario `task_template_id`
+  - fallback legacy per titolo normalizzato/compatibile
+  - riallineamento di `titolo`, `sezione`, `ordine`, `target`
+- Se ci sono doppioni della stessa task template in una checklist:
+  - sceglie una riga canonica in base a collegamento template + dati operativi disponibili
+  - migra allegati, documenti task, commenti cronoprogramma, meta e notification_jobs
+  - elimina il duplicato solo dopo il merge
+- Questo copre anche i due casi reali emersi:
+  - titolo canonico `Elettronica di controllo`
+  - spostamento canonico di `Preparazione / riserva disponibilita / ordine merce` in `DOCUMENTI` ordine `74`.
+
 ## Query rapide di controllo (manuali)
 ```sql
 -- Tagliandi cliente con progetto associato

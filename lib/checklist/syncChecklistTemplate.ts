@@ -15,6 +15,8 @@ type ChecklistTaskRow = {
   sezione: number | null;
   ordine: number | null;
   target: string | null;
+  stato: string | null;
+  updated_at: string | null;
 };
 
 type SyncResult = {
@@ -22,6 +24,16 @@ type SyncResult = {
   updated: number;
   linkedLegacy: number;
   preservedInactive: number;
+  reconciled: number;
+  cleanedDuplicates: number;
+};
+
+type TaskOperationalStats = {
+  attachments: number;
+  documents: number;
+  comments: number;
+  hasMeta: boolean;
+  jobs: number;
 };
 
 function isMissingColumn(error: any, column: string) {
@@ -75,6 +87,27 @@ export function mapChecklistTaskSezioneToInt(raw: string | number | null | undef
 
 function normalizeTemplateTitle(input: unknown) {
   return String(input || "").trim().replace(/\s+/g, " ").toLowerCase();
+}
+
+function normalizeTaskMatchTitle(input: unknown) {
+  const value = normalizeTemplateTitle(input);
+  if (value.startsWith("elettronica di controllo")) {
+    return "elettronica di controllo";
+  }
+  return value;
+}
+
+function titlesOverlap(a: unknown, b: unknown) {
+  const left = normalizeTaskMatchTitle(a);
+  const right = normalizeTaskMatchTitle(b);
+  if (!left || !right) return false;
+  return left === right || left.includes(right) || right.includes(left);
+}
+
+function isRecoverableMissingRelationError(error: any, relation: string) {
+  const msg = String(error?.message || "").toLowerCase();
+  const details = String(error?.details || "").toLowerCase();
+  return msg.includes(relation.toLowerCase()) || details.includes(relation.toLowerCase());
 }
 
 async function fetchAllChecklistIds(supabase: any) {
@@ -148,12 +181,12 @@ async function fetchChecklistTaskRows(supabase: any, checklistIds: string[]) {
     const chunk = checklistIds.slice(index, index + chunkSize);
     let { data, error } = await supabase
       .from("checklist_tasks")
-      .select("id, checklist_id, task_template_id, titolo, sezione, ordine, target")
+      .select("id, checklist_id, task_template_id, titolo, sezione, ordine, target, stato, updated_at")
       .in("checklist_id", chunk);
     if (error && isMissingColumn(error, "target")) {
       const retry = await supabase
         .from("checklist_tasks")
-        .select("id, checklist_id, task_template_id, titolo, sezione, ordine")
+        .select("id, checklist_id, task_template_id, titolo, sezione, ordine, stato, updated_at")
         .in("checklist_id", chunk);
       data = (retry.data || []).map((row: any) => ({ ...row, target: null }));
       error = retry.error;
@@ -161,7 +194,7 @@ async function fetchChecklistTaskRows(supabase: any, checklistIds: string[]) {
     if (error && isMissingColumn(error, "task_template_id")) {
       const retry = await supabase
         .from("checklist_tasks")
-        .select("id, checklist_id, titolo, sezione, ordine, target")
+        .select("id, checklist_id, titolo, sezione, ordine, target, stato, updated_at")
         .in("checklist_id", chunk);
       data = (retry.data || []).map((row: any) => ({ ...row, task_template_id: null }));
       error = retry.error;
@@ -178,6 +211,8 @@ async function fetchChecklistTaskRows(supabase: any, checklistIds: string[]) {
             sezione: row.sezione == null ? null : Number(row.sezione),
             ordine: row.ordine == null ? null : Number(row.ordine),
             target: row.target ?? null,
+            stato: row.stato ?? null,
+            updated_at: row.updated_at ?? null,
           }) satisfies ChecklistTaskRow
       )
     );
@@ -216,6 +251,95 @@ async function insertChecklistTasks(supabase: any, rows: Record<string, any>[]) 
   if (error) throw error;
 }
 
+async function fetchTaskOperationalStats(supabase: any, taskIds: string[]) {
+  const stats = new Map<string, TaskOperationalStats>();
+  const ensure = (taskId: string) => {
+    const existing = stats.get(taskId);
+    if (existing) return existing;
+    const next = { attachments: 0, documents: 0, comments: 0, hasMeta: false, jobs: 0 };
+    stats.set(taskId, next);
+    return next;
+  };
+
+  for (const taskId of taskIds) ensure(taskId);
+  if (!taskIds.length) return stats;
+
+  const { data: attachments, error: attachmentsErr } = await supabase
+    .from("attachments")
+    .select("entity_id")
+    .eq("entity_type", "CHECKLIST_TASK")
+    .in("entity_id", taskIds);
+  if (!attachmentsErr) {
+    for (const row of attachments || []) {
+      const taskId = String((row as any)?.entity_id || "");
+      if (!taskId) continue;
+      ensure(taskId).attachments += 1;
+    }
+  } else if (!isRecoverableMissingRelationError(attachmentsErr, "attachments")) {
+    throw attachmentsErr;
+  }
+
+  const { data: documents, error: documentsErr } = await supabase
+    .from("checklist_task_documents")
+    .select("task_id")
+    .in("task_id", taskIds);
+  if (!documentsErr) {
+    for (const row of documents || []) {
+      const taskId = String((row as any)?.task_id || "");
+      if (!taskId) continue;
+      ensure(taskId).documents += 1;
+    }
+  } else if (!isRecoverableMissingRelationError(documentsErr, "checklist_task_documents")) {
+    throw documentsErr;
+  }
+
+  const { data: comments, error: commentsErr } = await supabase
+    .from("cronoprogramma_comments")
+    .select("row_ref_id")
+    .eq("row_kind", "CHECKLIST_TASK")
+    .in("row_ref_id", taskIds);
+  if (!commentsErr) {
+    for (const row of comments || []) {
+      const taskId = String((row as any)?.row_ref_id || "");
+      if (!taskId) continue;
+      ensure(taskId).comments += 1;
+    }
+  } else if (!isRecoverableMissingRelationError(commentsErr, "cronoprogramma_comments")) {
+    throw commentsErr;
+  }
+
+  const { data: metaRows, error: metaErr } = await supabase
+    .from("cronoprogramma_meta")
+    .select("row_ref_id")
+    .eq("row_kind", "CHECKLIST_TASK")
+    .in("row_ref_id", taskIds);
+  if (!metaErr) {
+    for (const row of metaRows || []) {
+      const taskId = String((row as any)?.row_ref_id || "");
+      if (!taskId) continue;
+      ensure(taskId).hasMeta = true;
+    }
+  } else if (!isRecoverableMissingRelationError(metaErr, "cronoprogramma_meta")) {
+    throw metaErr;
+  }
+
+  const { data: jobs, error: jobsErr } = await supabase
+    .from("notification_jobs")
+    .select("task_id")
+    .in("task_id", taskIds);
+  if (!jobsErr) {
+    for (const row of jobs || []) {
+      const taskId = String((row as any)?.task_id || "");
+      if (!taskId) continue;
+      ensure(taskId).jobs += 1;
+    }
+  } else if (!isRecoverableMissingRelationError(jobsErr, "notification_jobs")) {
+    throw jobsErr;
+  }
+
+  return stats;
+}
+
 function buildTemplatePayload(template: TemplateTaskRow) {
   return {
     task_template_id: template.id,
@@ -237,24 +361,179 @@ function needsStructuralUpdate(task: ChecklistTaskRow, template: TemplateTaskRow
   );
 }
 
-function findMatchingChecklistTask(tasks: ChecklistTaskRow[], template: TemplateTaskRow) {
-  const byTemplateId =
-    tasks.find((task) => String(task.task_template_id || "") === String(template.id)) || null;
-  if (byTemplateId) return byTemplateId;
+function isLegacyTemplateMatch(task: ChecklistTaskRow, template: TemplateTaskRow) {
+  if (task.task_template_id) return false;
+  const templateSezione = mapChecklistTaskSezioneToInt(template.sezione);
+  const templateOrdine = template.ordine == null ? null : Number(template.ordine);
+  const exactLegacy =
+    normalizeTaskMatchTitle(task.titolo) === normalizeTaskMatchTitle(template.titolo) &&
+    Number(task.sezione ?? 0) === templateSezione &&
+    (task.ordine == null ? null : Number(task.ordine)) === templateOrdine;
+  if (exactLegacy) return true;
 
-  const legacyTitle = normalizeTemplateTitle(template.titolo);
-  const legacySezione = mapChecklistTaskSezioneToInt(template.sezione);
-  const legacyOrdine = template.ordine == null ? null : Number(template.ordine);
-  return (
-    tasks.find((task) => {
-      if (task.task_template_id) return false;
-      return (
-        normalizeTemplateTitle(task.titolo) === legacyTitle &&
-        Number(task.sezione ?? 0) === legacySezione &&
-        (task.ordine == null ? null : Number(task.ordine)) === legacyOrdine
-      );
-    }) || null
-  );
+  const exactTitle = normalizeTaskMatchTitle(task.titolo) === normalizeTaskMatchTitle(template.titolo);
+  if (exactTitle) return true;
+
+  return titlesOverlap(task.titolo, template.titolo);
+}
+
+function getTaskOperationalScore(task: ChecklistTaskRow, stats: TaskOperationalStats | undefined) {
+  const stato = String(task.stato || "").trim().toUpperCase();
+  let score = 0;
+  if (stato && stato !== "DA_FARE") score += 300;
+  if (stats?.hasMeta) score += 120;
+  score += (stats?.attachments || 0) * 40;
+  score += (stats?.documents || 0) * 40;
+  score += (stats?.comments || 0) * 40;
+  score += (stats?.jobs || 0) * 20;
+  if (task.updated_at) score += 10;
+  return score;
+}
+
+function getTaskMatchScore(
+  task: ChecklistTaskRow,
+  template: TemplateTaskRow,
+  stats: TaskOperationalStats | undefined
+) {
+  const templateSezione = mapChecklistTaskSezioneToInt(template.sezione);
+  const templateOrdine = template.ordine == null ? null : Number(template.ordine);
+  const templateTitle = normalizeTaskMatchTitle(template.titolo);
+  const taskTitle = normalizeTaskMatchTitle(task.titolo);
+  let score = getTaskOperationalScore(task, stats);
+
+  if (String(task.task_template_id || "") === String(template.id)) score += 500;
+  if (taskTitle === templateTitle) score += 350;
+  if (
+    taskTitle === templateTitle &&
+    Number(task.sezione ?? 0) === templateSezione &&
+    (task.ordine == null ? null : Number(task.ordine)) === templateOrdine
+  ) {
+    score += 250;
+  }
+  if (titlesOverlap(task.titolo, template.titolo)) score += 120;
+  if (Number(task.sezione ?? 0) === templateSezione) score += 40;
+  if ((task.ordine == null ? null : Number(task.ordine)) === templateOrdine) score += 20;
+  if (inferChecklistTaskTarget(task.titolo, task.target) === inferChecklistTaskTarget(template.titolo, template.target)) {
+    score += 30;
+  }
+  return score;
+}
+
+function findCandidateChecklistTasks(
+  tasks: ChecklistTaskRow[],
+  template: TemplateTaskRow,
+  assignedTaskIds: Set<string>
+) {
+  return tasks.filter((task) => {
+    if (assignedTaskIds.has(task.id)) return false;
+    if (String(task.task_template_id || "") === String(template.id)) return true;
+    return isLegacyTemplateMatch(task, template);
+  });
+}
+
+function chooseCanonicalChecklistTask(
+  tasks: ChecklistTaskRow[],
+  template: TemplateTaskRow,
+  statsByTaskId: Map<string, TaskOperationalStats>
+) {
+  return [...tasks].sort((left, right) => {
+    const scoreDiff =
+      getTaskMatchScore(right, template, statsByTaskId.get(right.id)) -
+      getTaskMatchScore(left, template, statsByTaskId.get(left.id));
+    if (scoreDiff !== 0) return scoreDiff;
+    return String(left.id).localeCompare(String(right.id));
+  })[0];
+}
+
+async function mergeChecklistTaskMeta(supabase: any, keepTaskId: string, dropTaskId: string) {
+  const { data, error } = await supabase
+    .from("cronoprogramma_meta")
+    .select("row_ref_id, fatto, hidden, updated_at, updated_by_operatore, updated_by_nome")
+    .eq("row_kind", "CHECKLIST_TASK")
+    .in("row_ref_id", [keepTaskId, dropTaskId]);
+  if (error) {
+    if (isRecoverableMissingRelationError(error, "cronoprogramma_meta")) return;
+    throw error;
+  }
+  const rows = (data || []) as any[];
+  const keepRow = rows.find((row) => String(row.row_ref_id) === keepTaskId) || null;
+  const dropRow = rows.find((row) => String(row.row_ref_id) === dropTaskId) || null;
+  if (!dropRow) return;
+
+  if (!keepRow) {
+    const { error: updateErr } = await supabase
+      .from("cronoprogramma_meta")
+      .update({ row_ref_id: keepTaskId })
+      .eq("row_kind", "CHECKLIST_TASK")
+      .eq("row_ref_id", dropTaskId);
+    if (updateErr && !isRecoverableMissingRelationError(updateErr, "cronoprogramma_meta")) throw updateErr;
+    return;
+  }
+
+  const mergedPayload: Record<string, any> = {};
+  if (keepRow.fatto !== true && dropRow.fatto === true) mergedPayload.fatto = true;
+  if (keepRow.hidden !== true && dropRow.hidden === true) mergedPayload.hidden = true;
+  if (!keepRow.updated_at && dropRow.updated_at) {
+    mergedPayload.updated_at = dropRow.updated_at;
+    mergedPayload.updated_by_operatore = dropRow.updated_by_operatore ?? null;
+    mergedPayload.updated_by_nome = dropRow.updated_by_nome ?? null;
+  }
+
+  if (Object.keys(mergedPayload).length > 0) {
+    const { error: mergeErr } = await supabase
+      .from("cronoprogramma_meta")
+      .update(mergedPayload)
+      .eq("row_kind", "CHECKLIST_TASK")
+      .eq("row_ref_id", keepTaskId);
+    if (mergeErr && !isRecoverableMissingRelationError(mergeErr, "cronoprogramma_meta")) throw mergeErr;
+  }
+
+  const { error: deleteErr } = await supabase
+    .from("cronoprogramma_meta")
+    .delete()
+    .eq("row_kind", "CHECKLIST_TASK")
+    .eq("row_ref_id", dropTaskId);
+  if (deleteErr && !isRecoverableMissingRelationError(deleteErr, "cronoprogramma_meta")) throw deleteErr;
+}
+
+async function mergeChecklistTaskData(supabase: any, keepTaskId: string, dropTaskId: string) {
+  const moveConfigs = [
+    { table: "attachments", match: { entity_type: "CHECKLIST_TASK", entity_id: dropTaskId }, update: { entity_id: keepTaskId } },
+    { table: "checklist_task_documents", match: { task_id: dropTaskId }, update: { task_id: keepTaskId } },
+    { table: "cronoprogramma_comments", match: { row_kind: "CHECKLIST_TASK", row_ref_id: dropTaskId }, update: { row_ref_id: keepTaskId } },
+  ];
+
+  for (const config of moveConfigs) {
+    let query = supabase.from(config.table).update(config.update);
+    for (const [key, value] of Object.entries(config.match)) {
+      query = query.eq(key, value as any);
+    }
+    const { error } = await query;
+    if (error && !isRecoverableMissingRelationError(error, config.table)) throw error;
+  }
+
+  await mergeChecklistTaskMeta(supabase, keepTaskId, dropTaskId);
+
+  const { error: jobsErr } = await supabase
+    .from("notification_jobs")
+    .update({ task_id: keepTaskId })
+    .eq("task_id", dropTaskId);
+  if (jobsErr) {
+    if (String((jobsErr as any)?.code || "") === "23505") {
+      const { error: deleteJobsErr } = await supabase
+        .from("notification_jobs")
+        .delete()
+        .eq("task_id", dropTaskId);
+      if (deleteJobsErr && !isRecoverableMissingRelationError(deleteJobsErr, "notification_jobs")) {
+        throw deleteJobsErr;
+      }
+    } else if (!isRecoverableMissingRelationError(jobsErr, "notification_jobs")) {
+      throw jobsErr;
+    }
+  }
+
+  const { error: deleteTaskErr } = await supabase.from("checklist_tasks").delete().eq("id", dropTaskId);
+  if (deleteTaskErr) throw deleteTaskErr;
 }
 
 async function syncTemplatesToChecklistIds(
@@ -263,6 +542,10 @@ async function syncTemplatesToChecklistIds(
   templates: TemplateTaskRow[]
 ) {
   const existingTasks = await fetchChecklistTaskRows(supabase, checklistIds);
+  const statsByTaskId = await fetchTaskOperationalStats(
+    supabase,
+    existingTasks.map((task) => task.id)
+  );
   const tasksByChecklistId = new Map<string, ChecklistTaskRow[]>();
   for (const row of existingTasks) {
     const bucket = tasksByChecklistId.get(row.checklist_id) || [];
@@ -275,29 +558,52 @@ async function syncTemplatesToChecklistIds(
     updated: 0,
     linkedLegacy: 0,
     preservedInactive: 0,
+    reconciled: 0,
+    cleanedDuplicates: 0,
   };
   const inserts: Record<string, any>[] = [];
 
   for (const checklistId of checklistIds) {
     const checklistTasks = tasksByChecklistId.get(checklistId) || [];
+    const assignedTaskIds = new Set<string>();
     for (const template of templates) {
-      const existing = findMatchingChecklistTask(checklistTasks, template);
+      const candidates = findCandidateChecklistTasks(checklistTasks, template, assignedTaskIds);
+      const existing =
+        candidates.length > 0
+          ? chooseCanonicalChecklistTask(candidates, template, statsByTaskId)
+          : null;
       if (!template.attivo) {
-        if (existing) result.preservedInactive += 1;
+        if (existing) {
+          result.preservedInactive += 1;
+          assignedTaskIds.add(existing.id);
+        }
         continue;
       }
 
       if (existing) {
+        assignedTaskIds.add(existing.id);
         if (needsStructuralUpdate(existing, template)) {
           await updateChecklistTaskStructural(supabase, existing.id, buildTemplatePayload(template));
           result.updated += 1;
         }
-        if (!existing.task_template_id) result.linkedLegacy += 1;
+        if (!existing.task_template_id) {
+          result.linkedLegacy += 1;
+          result.reconciled += 1;
+        }
         existing.task_template_id = template.id;
         existing.sezione = mapChecklistTaskSezioneToInt(template.sezione);
         existing.ordine = template.ordine == null ? null : Number(template.ordine);
         existing.titolo = template.titolo?.trim() || null;
         existing.target = inferChecklistTaskTarget(template.titolo, template.target);
+
+        for (const duplicate of candidates) {
+          if (duplicate.id === existing.id) continue;
+          await mergeChecklistTaskData(supabase, existing.id, duplicate.id);
+          const idx = checklistTasks.findIndex((task) => task.id === duplicate.id);
+          if (idx >= 0) checklistTasks.splice(idx, 1);
+          statsByTaskId.delete(duplicate.id);
+          result.cleanedDuplicates += 1;
+        }
         continue;
       }
 
@@ -310,6 +616,8 @@ async function syncTemplatesToChecklistIds(
         id: `pending:${checklistId}:${template.id}`,
         checklist_id: checklistId,
         ...buildTemplatePayload(template),
+        stato: "DA_FARE",
+        updated_at: null,
       });
       result.created += 1;
     }
@@ -326,7 +634,14 @@ async function syncTemplatesToChecklistIds(
 export async function materializeChecklistTasks(supabase: any, checklistId: string) {
   const normalizedChecklistId = String(checklistId || "").trim();
   if (!normalizedChecklistId) {
-    return { created: 0, updated: 0, linkedLegacy: 0, preservedInactive: 0 };
+    return {
+      created: 0,
+      updated: 0,
+      linkedLegacy: 0,
+      preservedInactive: 0,
+      reconciled: 0,
+      cleanedDuplicates: 0,
+    };
   }
   const templates = await fetchTemplateRows(supabase, { activeOnly: true });
   return syncTemplatesToChecklistIds(supabase, [normalizedChecklistId], templates);
@@ -335,14 +650,28 @@ export async function materializeChecklistTasks(supabase: any, checklistId: stri
 export async function syncChecklistTemplate(supabase: any, templateId: string) {
   const normalizedTemplateId = String(templateId || "").trim();
   if (!normalizedTemplateId) {
-    return { created: 0, updated: 0, linkedLegacy: 0, preservedInactive: 0 };
+    return {
+      created: 0,
+      updated: 0,
+      linkedLegacy: 0,
+      preservedInactive: 0,
+      reconciled: 0,
+      cleanedDuplicates: 0,
+    };
   }
   const templates = await fetchTemplateRows(supabase, {
     templateIds: [normalizedTemplateId],
     activeOnly: false,
   });
   if (!templates.length) {
-    return { created: 0, updated: 0, linkedLegacy: 0, preservedInactive: 0 };
+    return {
+      created: 0,
+      updated: 0,
+      linkedLegacy: 0,
+      preservedInactive: 0,
+      reconciled: 0,
+      cleanedDuplicates: 0,
+    };
   }
   const checklistIds = await fetchAllChecklistIds(supabase);
   return syncTemplatesToChecklistIds(supabase, checklistIds, templates);

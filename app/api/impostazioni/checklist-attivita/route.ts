@@ -18,6 +18,8 @@ type Payload = {
 
 type RateLimitEntry = { count: number; resetAt: number };
 const rateLimitMap = new Map<string, RateLimitEntry>();
+let recoveryPromise: Promise<any> | null = null;
+let lastRecoveryAt = 0;
 
 function getClientIp(request: Request) {
   const xfwd = request.headers.get("x-forwarded-for");
@@ -116,13 +118,33 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Missing SUPABASE_SERVICE_ROLE_KEY" }, { status: 500 });
   }
 
-  try {
-    await syncAllChecklistTemplates(supabase);
-  } catch (syncError: any) {
-    return NextResponse.json(
-      { error: syncError?.message || "Errore recovery checklist_tasks" },
-      { status: 500 }
-    );
+  const wantsRecovery = new URL(request.url).searchParams.get("recovery") === "1";
+  if (wantsRecovery) {
+    const now = Date.now();
+    if (!recoveryPromise && now - lastRecoveryAt > 5 * 60_000) {
+      recoveryPromise = syncAllChecklistTemplates(supabase)
+        .then((result) => {
+          lastRecoveryAt = Date.now();
+          return result;
+        })
+        .finally(() => {
+          recoveryPromise = null;
+        });
+    }
+
+    if (recoveryPromise) {
+      try {
+        const result = await recoveryPromise;
+        return NextResponse.json({ ok: true, recovery: result });
+      } catch (syncError: any) {
+        return NextResponse.json(
+          { error: syncError?.message || "Errore recovery checklist_tasks" },
+          { status: 500 }
+        );
+      }
+    }
+
+    return NextResponse.json({ ok: true, skipped: true, reason: "recent_recovery" });
   }
 
   const rowsRes = await fetchRows(supabase);
