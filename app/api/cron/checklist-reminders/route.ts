@@ -102,12 +102,14 @@ export async function GET(req: Request) {
     );
   }
 
-  if (!jobs || jobs.length === 0) {
+  const safeJobs = (jobs ?? []) as JobRow[];
+
+  if (safeJobs.length === 0) {
     return NextResponse.json({ ok: true, sent: 0, skipped: 0 });
   }
 
   const byChecklist = new Map<string, JobRow[]>();
-  for (const j of jobs as JobRow[]) {
+  for (const j of safeJobs) {
     const list = byChecklist.get(j.checklist_id) || [];
     list.push(j);
     byChecklist.set(j.checklist_id, list);
