@@ -3587,6 +3587,25 @@ function buildFormData(c: Checklist): FormData {
       .filter(Boolean);
   }
 
+  function buildFallbackRuleDraft(task: ChecklistTask) {
+    const target = normalizeRuleTargetValue((task as any)?.target);
+    return {
+      checklist_id: id ?? null,
+      task_template_id: task.task_template_id || null,
+      enabled: true,
+      mode: target === "MAGAZZINO" || target === "TECNICO_SW" ? "AUTOMATICA" : "MANUALE",
+      task_title: task.titolo,
+      target,
+      recipients: [],
+      frequency: "DAILY" as const,
+      send_time: "07:30",
+      timezone: "Europe/Rome",
+      day_of_week: null,
+      send_on_create: false,
+      only_future: true,
+    } satisfies NotificationRule;
+  }
+
   async function openRuleSettings(task: ChecklistTask) {
     setRuleTask(task);
     setRuleError(null);
@@ -3640,22 +3659,7 @@ function buildFormData(c: Checklist): FormData {
             send_on_create: row.send_on_create === true,
             only_future: row.only_future !== false,
           }
-        : {
-            checklist_id: id ?? null,
-            task_template_id: task.task_template_id || null,
-            enabled: true,
-            mode:
-              target === "MAGAZZINO" || target === "TECNICO_SW" ? "AUTOMATICA" : "MANUALE",
-            task_title: task.titolo,
-            target,
-            recipients: [],
-            frequency: "DAILY",
-            send_time: "07:30",
-            timezone: "Europe/Rome",
-            day_of_week: null,
-            send_on_create: false,
-            only_future: true,
-          };
+        : buildFallbackRuleDraft(task);
       setRuleDraft(nextDraft);
       setRuleGlobal(
         globalRule
@@ -3693,8 +3697,15 @@ function buildFormData(c: Checklist): FormData {
           : []
       );
     } catch (err: any) {
-      setRuleError(err?.message || "Errore caricamento regola.");
-      setRuleDraft(null);
+      setRuleError(
+        err?.message || "Nessuna regola disponibile per questa task. Puoi chiudere il popup o salvare un override progetto."
+      );
+      setRuleDraft(buildFallbackRuleDraft(task));
+      setRuleGlobal(null);
+      setRuleOverride(null);
+      setRuleRecipientsInput("");
+      setRuleAutoRecipients([]);
+      setRuleEffectiveRecipients([]);
     } finally {
       setRuleLoading(false);
     }
@@ -3712,6 +3723,17 @@ function buildFormData(c: Checklist): FormData {
     setRuleGlobal(null);
     setRuleOverride(null);
   }
+
+  useEffect(() => {
+    if (!ruleTask) return;
+    function onKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        closeRuleSettings();
+      }
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [ruleTask]);
 
   async function saveRuleSettings() {
     if (!ruleDraft) return;
@@ -8032,6 +8054,7 @@ function buildFormData(c: Checklist): FormData {
       )}
       {ruleTask && (
         <div
+          onClick={closeRuleSettings}
           style={{
             position: "fixed",
             inset: 0,
@@ -8044,6 +8067,7 @@ function buildFormData(c: Checklist): FormData {
           }}
         >
           <div
+            onClick={(e) => e.stopPropagation()}
             style={{
               background: "white",
               borderRadius: 12,
@@ -8063,11 +8087,11 @@ function buildFormData(c: Checklist): FormData {
                   <br />
                   Regola effettiva: <strong>{ruleOverride ? "OVERRIDE PROGETTO" : ruleGlobal ? "GLOBALE" : "DEFAULT"}</strong>
                   <br />
-                  {ruleOverride
-                    ? "L'override progetto sostituisce la regola globale per questa task: non parte un secondo invio dalla globale."
-                    : ruleGlobal
-                    ? "Nessun override locale: questa task usa la regola globale del template."
-                    : "Nessuna regola salvata: vale il default di sistema."}
+                {ruleOverride
+                  ? "L'override progetto sostituisce la regola globale per questa task: non parte un secondo invio dalla globale."
+                  : ruleGlobal
+                  ? "Nessun override locale: questa task usa la regola globale del template."
+                  : "Nessuna regola salvata: vale il default di sistema."}
                 </>
               ) : null}
             </div>
