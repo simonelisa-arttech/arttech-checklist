@@ -16,6 +16,7 @@ type ChecklistTaskRow = {
   ordine: number | null;
   target: string | null;
   stato: string | null;
+  note: string | null;
   updated_at: string | null;
 };
 
@@ -86,22 +87,31 @@ export function mapChecklistTaskSezioneToInt(raw: string | number | null | undef
 }
 
 function normalizeTemplateTitle(input: unknown) {
-  return String(input || "").trim().replace(/\s+/g, " ").toLowerCase();
+  return String(input || "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/\s+/g, " ");
 }
 
-function normalizeTaskMatchTitle(input: unknown) {
-  const value = normalizeTemplateTitle(input);
-  if (value.startsWith("elettronica di controllo")) {
-    return "elettronica di controllo";
+const LEGACY_TITLE_ALIASES: Array<{ canonical: string; aliases: string[] }> = [
+  {
+    canonical: "elettronica di controllo",
+    aliases: ["elettronica di controllo", "elettronica di controllo: schemi dati ed elettrici"],
+  },
+  {
+    canonical: "preparazione / riserva disponibilita / ordine merce",
+    aliases: ["preparazione / riserva disponibilita / ordine merce"],
+  },
+];
+
+function canonicalizeTaskTitle(input: unknown) {
+  const normalized = normalizeTemplateTitle(input);
+  for (const alias of LEGACY_TITLE_ALIASES) {
+    if (alias.aliases.includes(normalized)) return alias.canonical;
   }
-  return value;
-}
-
-function titlesOverlap(a: unknown, b: unknown) {
-  const left = normalizeTaskMatchTitle(a);
-  const right = normalizeTaskMatchTitle(b);
-  if (!left || !right) return false;
-  return left === right || left.includes(right) || right.includes(left);
+  return normalized;
 }
 
 function isRecoverableMissingRelationError(error: any, relation: string) {
@@ -181,12 +191,12 @@ async function fetchChecklistTaskRows(supabase: any, checklistIds: string[]) {
     const chunk = checklistIds.slice(index, index + chunkSize);
     let { data, error } = await supabase
       .from("checklist_tasks")
-      .select("id, checklist_id, task_template_id, titolo, sezione, ordine, target, stato, updated_at")
+      .select("id, checklist_id, task_template_id, titolo, sezione, ordine, target, stato, note, updated_at")
       .in("checklist_id", chunk);
     if (error && isMissingColumn(error, "target")) {
       const retry = await supabase
         .from("checklist_tasks")
-        .select("id, checklist_id, task_template_id, titolo, sezione, ordine, stato, updated_at")
+        .select("id, checklist_id, task_template_id, titolo, sezione, ordine, stato, note, updated_at")
         .in("checklist_id", chunk);
       data = (retry.data || []).map((row: any) => ({ ...row, target: null }));
       error = retry.error;
@@ -194,7 +204,7 @@ async function fetchChecklistTaskRows(supabase: any, checklistIds: string[]) {
     if (error && isMissingColumn(error, "task_template_id")) {
       const retry = await supabase
         .from("checklist_tasks")
-        .select("id, checklist_id, titolo, sezione, ordine, target, stato, updated_at")
+        .select("id, checklist_id, titolo, sezione, ordine, target, stato, note, updated_at")
         .in("checklist_id", chunk);
       data = (retry.data || []).map((row: any) => ({ ...row, task_template_id: null }));
       error = retry.error;
@@ -212,6 +222,7 @@ async function fetchChecklistTaskRows(supabase: any, checklistIds: string[]) {
             ordine: row.ordine == null ? null : Number(row.ordine),
             target: row.target ?? null,
             stato: row.stato ?? null,
+            note: row.note ?? null,
             updated_at: row.updated_at ?? null,
           }) satisfies ChecklistTaskRow
       )
@@ -362,19 +373,20 @@ function needsStructuralUpdate(task: ChecklistTaskRow, template: TemplateTaskRow
 }
 
 function isLegacyTemplateMatch(task: ChecklistTaskRow, template: TemplateTaskRow) {
-  if (task.task_template_id) return false;
   const templateSezione = mapChecklistTaskSezioneToInt(template.sezione);
   const templateOrdine = template.ordine == null ? null : Number(template.ordine);
+  const taskCanonicalTitle = canonicalizeTaskTitle(task.titolo);
+  const templateCanonicalTitle = canonicalizeTaskTitle(template.titolo);
+  if (taskCanonicalTitle && taskCanonicalTitle === templateCanonicalTitle) return true;
+
+  if (task.task_template_id) return false;
   const exactLegacy =
-    normalizeTaskMatchTitle(task.titolo) === normalizeTaskMatchTitle(template.titolo) &&
+    canonicalizeTaskTitle(task.titolo) === canonicalizeTaskTitle(template.titolo) &&
     Number(task.sezione ?? 0) === templateSezione &&
     (task.ordine == null ? null : Number(task.ordine)) === templateOrdine;
   if (exactLegacy) return true;
 
-  const exactTitle = normalizeTaskMatchTitle(task.titolo) === normalizeTaskMatchTitle(template.titolo);
-  if (exactTitle) return true;
-
-  return titlesOverlap(task.titolo, template.titolo);
+  return canonicalizeTaskTitle(task.titolo) === canonicalizeTaskTitle(template.titolo);
 }
 
 function getTaskOperationalScore(task: ChecklistTaskRow, stats: TaskOperationalStats | undefined) {
@@ -397,8 +409,8 @@ function getTaskMatchScore(
 ) {
   const templateSezione = mapChecklistTaskSezioneToInt(template.sezione);
   const templateOrdine = template.ordine == null ? null : Number(template.ordine);
-  const templateTitle = normalizeTaskMatchTitle(template.titolo);
-  const taskTitle = normalizeTaskMatchTitle(task.titolo);
+  const templateTitle = canonicalizeTaskTitle(template.titolo);
+  const taskTitle = canonicalizeTaskTitle(task.titolo);
   let score = getTaskOperationalScore(task, stats);
 
   if (String(task.task_template_id || "") === String(template.id)) score += 500;
@@ -410,7 +422,6 @@ function getTaskMatchScore(
   ) {
     score += 250;
   }
-  if (titlesOverlap(task.titolo, template.titolo)) score += 120;
   if (Number(task.sezione ?? 0) === templateSezione) score += 40;
   if ((task.ordine == null ? null : Number(task.ordine)) === templateOrdine) score += 20;
   if (inferChecklistTaskTarget(task.titolo, task.target) === inferChecklistTaskTarget(template.titolo, template.target)) {
@@ -497,6 +508,38 @@ async function mergeChecklistTaskMeta(supabase: any, keepTaskId: string, dropTas
 }
 
 async function mergeChecklistTaskData(supabase: any, keepTaskId: string, dropTaskId: string) {
+  const { data: pairRows, error: pairErr } = await supabase
+    .from("checklist_tasks")
+    .select("id, stato, note, updated_at")
+    .in("id", [keepTaskId, dropTaskId]);
+  if (pairErr) throw pairErr;
+  const keepRow = (pairRows || []).find((row: any) => String(row.id) === keepTaskId) as any;
+  const dropRow = (pairRows || []).find((row: any) => String(row.id) === dropTaskId) as any;
+
+  if (keepRow && dropRow) {
+    const keepStato = String(keepRow.stato || "").trim().toUpperCase();
+    const dropStato = String(dropRow.stato || "").trim().toUpperCase();
+    const mergedNote = [String(keepRow.note || "").trim(), String(dropRow.note || "").trim()]
+      .filter(Boolean)
+      .filter((value, index, arr) => arr.indexOf(value) === index)
+      .join("\n\n");
+
+    const updatePayload: Record<string, any> = {};
+    if (keepStato === "DA_FARE" && dropStato && dropStato !== "DA_FARE") {
+      updatePayload.stato = dropRow.stato;
+    }
+    if (mergedNote && mergedNote !== String(keepRow.note || "").trim()) {
+      updatePayload.note = mergedNote;
+    }
+    if (Object.keys(updatePayload).length > 0) {
+      const { error: taskMergeErr } = await supabase
+        .from("checklist_tasks")
+        .update(updatePayload)
+        .eq("id", keepTaskId);
+      if (taskMergeErr) throw taskMergeErr;
+    }
+  }
+
   const moveConfigs = [
     { table: "attachments", match: { entity_type: "CHECKLIST_TASK", entity_id: dropTaskId }, update: { entity_id: keepTaskId } },
     { table: "checklist_task_documents", match: { task_id: dropTaskId }, update: { task_id: keepTaskId } },
@@ -617,6 +660,7 @@ async function syncTemplatesToChecklistIds(
         checklist_id: checklistId,
         ...buildTemplatePayload(template),
         stato: "DA_FARE",
+        note: null,
         updated_at: null,
       });
       result.created += 1;

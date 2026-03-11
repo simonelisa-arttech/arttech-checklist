@@ -133,6 +133,14 @@
   - titolo canonico `Elettronica di controllo`
   - spostamento canonico di `Preparazione / riserva disponibilita / ordine merce` in `DOCUMENTI` ordine `74`.
 
+## Snapshot 2026-03-11 - Alias legacy espliciti e merge note/stato
+- La riconciliazione finale non si limita piu alle righe senza `task_template_id`.
+- Anche una riga gia collegata male viene ora considerata candidata al merge se rientra negli alias legacy espliciti.
+- Alias gestiti:
+  - `Elettronica di controllo: schemi dati ed elettrici` -> `Elettronica di controllo`
+  - `Preparazione / riserva disponibilita / ordine merce` -> task canonica del template
+- Sul merge del duplicato nella riga canonica vengono preservati anche `stato` e `note` della task, oltre ai riferimenti esterni gia gestiti.
+
 ## Query rapide di controllo (manuali)
 ```sql
 -- Tagliandi cliente con progetto associato

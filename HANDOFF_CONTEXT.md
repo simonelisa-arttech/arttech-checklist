@@ -234,3 +234,15 @@ Dopo il push, Vercel farà auto-deploy e i fix saranno in produzione.
   - `Preparazione / riserva disponibilita / ordine merce` viene mantenuta come singola riga e spostata alla posizione template corretta (`DOCUMENTI`, ordine `74`)
 - Se esistono doppioni della stessa task template, la sync tiene una sola riga canonica, migra allegati/documenti/commenti/meta/job collegati e cancella il duplicato.
 - Dati operativi preservati: `stato`, note, allegati, log, override notifiche.
+
+## Update 2026-03-11 - Cleanup finale alias legacy checklist operative
+
+- Il cleanup precedente non eliminava tutti i doppioni perche escludeva dal fallback legacy le righe che avevano gia un `task_template_id` errato o storico.
+- La riconciliazione ora gestisce alias espliciti:
+  - `Elettronica di controllo: schemi dati ed elettrici` -> `Elettronica di controllo`
+  - `Preparazione / riserva disponibilita / ordine merce` -> task canonica template (ora `DOCUMENTI`, ordine `74`)
+- Il merge dati tra riga canonica e duplicato ora conserva anche:
+  - `stato` piu avanzato
+  - `note` della task
+  - allegati, documenti task, commenti, meta e notification jobs
+- Dopo il merge, la riga duplicata viene eliminata.
