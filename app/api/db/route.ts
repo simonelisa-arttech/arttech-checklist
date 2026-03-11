@@ -489,6 +489,23 @@ export async function POST(request: Request) {
       }
 
       if (
+        table === "saas_contratti" &&
+        select !== "*" &&
+        msg.includes("saas_contratti.cliente_id") &&
+        msg.includes("does not exist")
+      ) {
+        const retrySelect = stripSelectColumn(select, "cliente_id");
+        let retryQ: any = supabaseAdmin.from(table).select(retrySelect);
+        for (const [k, v] of Object.entries(filter)) retryQ = retryQ.eq(k, v);
+        for (const [k, v] of Object.entries(filterIn)) retryQ = retryQ.in(k, v as any[]);
+        for (const o of order) retryQ = retryQ.order(o.col, { ascending: o.asc !== false });
+        if (normalizedLimit > 0) retryQ = retryQ.limit(normalizedLimit);
+        const retry = await retryQ;
+        data = retry.data;
+        error = retry.error;
+      }
+
+      if (
         table === "operatori" &&
         select !== "*" &&
         msg.includes("operatori.cliente") &&
