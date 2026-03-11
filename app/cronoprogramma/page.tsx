@@ -210,9 +210,10 @@ export default function CronoprogrammaPage() {
   const [noteHistoryKey, setNoteHistoryKey] = useState<string | null>(null);
   const [operativiDraftByKey, setOperativiDraftByKey] = useState<Record<string, OperativiFields>>({});
   const topScrollRef = useRef<HTMLDivElement | null>(null);
+  const mainScrollRef = useRef<HTMLDivElement | null>(null);
   const bottomScrollRef = useRef<HTMLDivElement | null>(null);
   const scrollContentRef = useRef<HTMLDivElement | null>(null);
-  const syncingScrollRef = useRef<"top" | "bottom" | null>(null);
+  const syncingScrollRef = useRef<"top" | "main" | "bottom" | null>(null);
   const [scrollContentWidth, setScrollContentWidth] = useState(4320);
 
   async function loadRowState(timelineRows: TimelineRow[]) {
@@ -472,16 +473,26 @@ export default function CronoprogrammaPage() {
   }, [metaByKey]);
 
   function onTopScroll(e: UIEvent<HTMLDivElement>) {
-    if (syncingScrollRef.current === "bottom") return;
+    if (syncingScrollRef.current === "main" || syncingScrollRef.current === "bottom") return;
     syncingScrollRef.current = "top";
+    if (mainScrollRef.current) mainScrollRef.current.scrollLeft = e.currentTarget.scrollLeft;
+    if (bottomScrollRef.current) bottomScrollRef.current.scrollLeft = e.currentTarget.scrollLeft;
+    syncingScrollRef.current = null;
+  }
+
+  function onMainScroll(e: UIEvent<HTMLDivElement>) {
+    if (syncingScrollRef.current === "top" || syncingScrollRef.current === "bottom") return;
+    syncingScrollRef.current = "main";
+    if (topScrollRef.current) topScrollRef.current.scrollLeft = e.currentTarget.scrollLeft;
     if (bottomScrollRef.current) bottomScrollRef.current.scrollLeft = e.currentTarget.scrollLeft;
     syncingScrollRef.current = null;
   }
 
   function onBottomScroll(e: UIEvent<HTMLDivElement>) {
-    if (syncingScrollRef.current === "top") return;
+    if (syncingScrollRef.current === "top" || syncingScrollRef.current === "main") return;
     syncingScrollRef.current = "bottom";
     if (topScrollRef.current) topScrollRef.current.scrollLeft = e.currentTarget.scrollLeft;
+    if (mainScrollRef.current) mainScrollRef.current.scrollLeft = e.currentTarget.scrollLeft;
     syncingScrollRef.current = null;
   }
 
@@ -754,60 +765,78 @@ export default function CronoprogrammaPage() {
       </div>
 
       <div style={{ border: "1px solid #eee", borderRadius: 12, overflow: "hidden" }}>
-        <div ref={topScrollRef} onScroll={onTopScroll} style={{ overflowX: "auto", overflowY: "hidden" }}>
         <div
-          ref={scrollContentRef}
+          ref={topScrollRef}
+          onScroll={onTopScroll}
           style={{
-            display: "grid",
-            gridTemplateColumns:
-              "110px 110px 110px 240px 220px 260px 140px 130px 120px 260px 260px 220px 260px 160px 140px 300px 300px 120px",
-            gap: 12,
-            padding: "10px 12px",
-            fontWeight: 700,
-            background: "#fafafa",
+            overflowX: "auto",
+            overflowY: "hidden",
             borderBottom: "1px solid #eee",
-            minWidth: 3860,
+            background: "#fafafa",
+            height: 16,
           }}
+          aria-label="Scrollbar orizzontale superiore cronoprogramma"
         >
-          <button
-            type="button"
-            onClick={() => toggleSort("data_prevista")}
-            style={{ border: "none", background: "transparent", padding: 0, textAlign: "left", cursor: "pointer", fontWeight: 700 }}
-            title="Ordina per data prevista"
-          >
-            Data prevista {sortBy === "data_prevista" ? (sortDir === "asc" ? "↑" : "↓") : ""}
-          </button>
-          <button
-            type="button"
-            onClick={() => toggleSort("data_tassativa")}
-            style={{ border: "none", background: "transparent", padding: 0, textAlign: "left", cursor: "pointer", fontWeight: 700 }}
-            title="Ordina per data tassativa"
-          >
-            Data tassativa {sortBy === "data_tassativa" ? (sortDir === "asc" ? "↑" : "↓") : ""}
-          </button>
-          <div style={{ paddingRight: 18 }}>Evento</div>
-          <div style={{ paddingLeft: 6 }}>Cliente</div>
-          <div>Progetto</div>
-          <div>Dettaglio</div>
-          <div>Ticket/Pf</div>
-          <div>Fatto</div>
-          <div>Nascosta</div>
-          <div>Note</div>
-          <div>Personale previsto / incarico</div>
-          <div>Mezzi</div>
-          <div>Descrizione attività</div>
-          <div>Indirizzo</div>
-          <div>Orario</div>
-          <div>Referente cliente</div>
-          <div>Commerciale Art Tech</div>
-          <div>Azioni</div>
+          <div style={{ width: scrollContentWidth, height: 1 }} />
         </div>
-        {loading ? (
-          <div style={{ padding: 12, opacity: 0.7 }}>Caricamento...</div>
-        ) : filteredSorted.length === 0 ? (
-          <div style={{ padding: 12, opacity: 0.7 }}>Nessun risultato</div>
-        ) : (
-          filteredSorted.map((r) => {
+        <div
+          ref={mainScrollRef}
+          onScroll={onMainScroll}
+          style={{ overflowX: "auto", overflowY: "hidden" }}
+        >
+          <div
+            ref={scrollContentRef}
+            style={{
+              display: "grid",
+              gridTemplateColumns:
+                "110px 110px 110px 240px 220px 260px 140px 130px 120px 260px 260px 220px 260px 160px 140px 300px 300px 120px",
+              gap: 12,
+              padding: "10px 12px",
+              fontWeight: 700,
+              background: "#fafafa",
+              borderBottom: "1px solid #eee",
+              minWidth: 3860,
+            }}
+          >
+            <button
+              type="button"
+              onClick={() => toggleSort("data_prevista")}
+              style={{ border: "none", background: "transparent", padding: 0, textAlign: "left", cursor: "pointer", fontWeight: 700 }}
+              title="Ordina per data prevista"
+            >
+              Data prevista {sortBy === "data_prevista" ? (sortDir === "asc" ? "↑" : "↓") : ""}
+            </button>
+            <button
+              type="button"
+              onClick={() => toggleSort("data_tassativa")}
+              style={{ border: "none", background: "transparent", padding: 0, textAlign: "left", cursor: "pointer", fontWeight: 700 }}
+              title="Ordina per data tassativa"
+            >
+              Data tassativa {sortBy === "data_tassativa" ? (sortDir === "asc" ? "↑" : "↓") : ""}
+            </button>
+            <div style={{ paddingRight: 18 }}>Evento</div>
+            <div style={{ paddingLeft: 6 }}>Cliente</div>
+            <div>Progetto</div>
+            <div>Dettaglio</div>
+            <div>Ticket/Pf</div>
+            <div>Fatto</div>
+            <div>Nascosta</div>
+            <div>Note</div>
+            <div>Personale previsto / incarico</div>
+            <div>Mezzi</div>
+            <div>Descrizione attività</div>
+            <div>Indirizzo</div>
+            <div>Orario</div>
+            <div>Referente cliente</div>
+            <div>Commerciale Art Tech</div>
+            <div>Azioni</div>
+          </div>
+          {loading ? (
+            <div style={{ padding: 12, opacity: 0.7 }}>Caricamento...</div>
+          ) : filteredSorted.length === 0 ? (
+            <div style={{ padding: 12, opacity: 0.7 }}>Nessun risultato</div>
+          ) : (
+            filteredSorted.map((r) => {
             const key = getRowKey(r.kind, r.row_ref_id);
             const meta = metaByKey[key];
             const fatto = Boolean(meta?.fatto ?? r.fatto);
@@ -1082,8 +1111,8 @@ export default function CronoprogrammaPage() {
                 </div>
               </div>
             );
-          })
-        )}
+            })
+          )}
         </div>
         <div
           ref={bottomScrollRef}

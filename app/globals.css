@@ -9,12 +9,22 @@ html {
 }
 
 /* Dashboard: wrapper scrollabile unico (X + Y) */
+.dashboard-table-top-scroll {
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-gutter: stable;
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  border-bottom: 0;
+  border-radius: 12px 12px 0 0;
+  background: #fafafa;
+}
+
 .dashboard-table-wrap {
   height: calc(100vh - 260px);
   overflow: auto;
   scrollbar-gutter: stable;
   border: 1px solid rgba(0, 0, 0, 0.06);
-  border-radius: 12px;
+  border-radius: 0 0 12px 12px;
 }
 
 .dashboard-table-content {
@@ -22,18 +32,22 @@ html {
   min-width: 1100px;
 }
 
+.dashboard-table-top-scroll::-webkit-scrollbar,
 .dashboard-table-wrap::-webkit-scrollbar {
   height: 14px;
   width: 12px;
 }
+.dashboard-table-top-scroll::-webkit-scrollbar-track,
 .dashboard-table-wrap::-webkit-scrollbar-track {
   background: #f3f4f6;
   border-radius: 6px;
 }
+.dashboard-table-top-scroll::-webkit-scrollbar-thumb,
 .dashboard-table-wrap::-webkit-scrollbar-thumb {
   background: #d1d5db;
   border-radius: 6px;
 }
+.dashboard-table-top-scroll::-webkit-scrollbar-thumb:hover,
 .dashboard-table-wrap::-webkit-scrollbar-thumb:hover {
   background: #9ca3af;
 }
