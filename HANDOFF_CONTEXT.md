@@ -208,3 +208,15 @@ Dopo il push, Vercel farà auto-deploy e i fix saranno in produzione.
 - Le task template disattivate non vengono cancellate dalle checklist esistenti: le righe progetto vengono preservate per non perdere storico e allegati.
 - La creazione nuova checklist/progetto ora materializza le task via route unica `POST /api/checklists/materialize-tasks`, senza logiche duplicate sparse.
 - Fix `notification_rules`: il salvataggio ora riallinea il write alla chiave unica legacy reale `(task_title, target)` se presente in produzione e aggiorna la riga esistente invece di creare duplicati.
+
+## Update 2026-03-11 - Recovery retroattivo checklist operative esistenti
+
+- Causa del mancato riallineamento: il sync template -> checklist partiva solo su:
+  - creazione/modifica del template
+  - creazione nuova checklist
+- Le checklist gia esistenti prima del refactor non avevano quindi nessuna code path che eseguisse il recovery globale delle task attive correnti.
+- La route `GET /api/impostazioni/checklist-attivita` ora esegue `syncAllChecklistTemplates()` prima di restituire il template.
+- Effetto:
+  - checklist esistenti vengono riallineate retroattivamente al template attivo
+  - checklist nuove continuano a essere materializzate via `materializeChecklistTasks(checklistId)`
+- La sync resta non distruttiva sui dati operativi: non sovrascrive stato, note, allegati, log o override notifiche.

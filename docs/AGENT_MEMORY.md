@@ -110,6 +110,14 @@
   - se l'insert collide sul vecchio indice unico, la route converte il salvataggio in update della riga compatibile
   - precedenza effettiva lato UI/resta: override checklist > globale.
 
+## Snapshot 2026-03-11 - Recovery retroattivo checklist esistenti
+- Il problema residuo era che il riallineamento template -> checklist non veniva eseguito per i template gia attivi se nessuno li modificava.
+- `GET /api/impostazioni/checklist-attivita` esegue ora `syncAllChecklistTemplates()` come recovery retroattivo globale.
+- Risultato:
+  - ogni task template attiva viene inserita nelle checklist che la stanno ancora perdendo
+  - le righe legacy esistenti vengono collegate a `task_template_id` per match `titolo + sezione + ordine`
+  - nessun tocco a `stato`, note, allegati, log, override notifiche.
+
 ## Query rapide di controllo (manuali)
 ```sql
 -- Tagliandi cliente con progetto associato

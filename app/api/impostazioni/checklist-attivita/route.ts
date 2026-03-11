@@ -2,7 +2,10 @@ export const runtime = "nodejs";
 
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { syncChecklistTemplate } from "@/lib/checklist/syncChecklistTemplate";
+import {
+  syncAllChecklistTemplates,
+  syncChecklistTemplate,
+} from "@/lib/checklist/syncChecklistTemplate";
 
 type Payload = {
   id?: string;
@@ -111,6 +114,15 @@ export async function GET(request: Request) {
   const supabase = getSupabaseClient();
   if (!supabase) {
     return NextResponse.json({ error: "Missing SUPABASE_SERVICE_ROLE_KEY" }, { status: 500 });
+  }
+
+  try {
+    await syncAllChecklistTemplates(supabase);
+  } catch (syncError: any) {
+    return NextResponse.json(
+      { error: syncError?.message || "Errore recovery checklist_tasks" },
+      { status: 500 }
+    );
   }
 
   const rowsRes = await fetchRows(supabase);
