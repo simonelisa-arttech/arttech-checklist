@@ -141,6 +141,15 @@
   - `Preparazione / riserva disponibilita / ordine merce` -> task canonica del template
 - Sul merge del duplicato nella riga canonica vengono preservati anche `stato` e `note` della task, oltre ai riferimenti esterni gia gestiti.
 
+## Snapshot 2026-03-11 - Recovery manuale eseguibile
+- Il `Bad Request` sul recovery globale derivava da query troppo grandi durante `syncAllChecklistTemplates()`.
+- Correzione:
+  - chunk `taskIds` nelle query statistiche operative
+  - chunk `checklistIds` nel recovery globale
+- Recovery manuale disponibile via:
+  - `GET /api/impostazioni/checklist-attivita?recovery=1`
+  - `GET /api/impostazioni/checklist-attivita?recovery=1&force=1` per bypassare il cooldown recente
+
 ## Query rapide di controllo (manuali)
 ```sql
 -- Tagliandi cliente con progetto associato

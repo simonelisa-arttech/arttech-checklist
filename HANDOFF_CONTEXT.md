@@ -246,3 +246,12 @@ Dopo il push, Vercel farà auto-deploy e i fix saranno in produzione.
   - `note` della task
   - allegati, documenti task, commenti, meta e notification jobs
 - Dopo il merge, la riga duplicata viene eliminata.
+
+## Update 2026-03-11 - Recovery checklist-attivita invocabile manualmente
+
+- Il `Bad Request` sul recovery globale era causato dal volume eccessivo delle query `IN (...)` durante `syncAllChecklistTemplates()`.
+- Il servizio ora elabora:
+  - `taskIds` in chunk da `250`
+  - `checklistIds` in chunk da `100`
+- La route `GET /api/impostazioni/checklist-attivita?recovery=1` resta valida e ora supporta anche `force=1` per bypassare il cooldown:
+  - `/api/impostazioni/checklist-attivita?recovery=1&force=1`

@@ -275,77 +275,82 @@ async function fetchTaskOperationalStats(supabase: any, taskIds: string[]) {
   for (const taskId of taskIds) ensure(taskId);
   if (!taskIds.length) return stats;
 
-  const { data: attachments, error: attachmentsErr } = await supabase
-    .from("attachments")
-    .select("entity_id")
-    .eq("entity_type", "CHECKLIST_TASK")
-    .in("entity_id", taskIds);
-  if (!attachmentsErr) {
-    for (const row of attachments || []) {
-      const taskId = String((row as any)?.entity_id || "");
-      if (!taskId) continue;
-      ensure(taskId).attachments += 1;
-    }
-  } else if (!isRecoverableMissingRelationError(attachmentsErr, "attachments")) {
-    throw attachmentsErr;
-  }
+  const chunkSize = 250;
+  for (let index = 0; index < taskIds.length; index += chunkSize) {
+    const chunk = taskIds.slice(index, index + chunkSize);
 
-  const { data: documents, error: documentsErr } = await supabase
-    .from("checklist_task_documents")
-    .select("task_id")
-    .in("task_id", taskIds);
-  if (!documentsErr) {
-    for (const row of documents || []) {
-      const taskId = String((row as any)?.task_id || "");
-      if (!taskId) continue;
-      ensure(taskId).documents += 1;
+    const { data: attachments, error: attachmentsErr } = await supabase
+      .from("attachments")
+      .select("entity_id")
+      .eq("entity_type", "CHECKLIST_TASK")
+      .in("entity_id", chunk);
+    if (!attachmentsErr) {
+      for (const row of attachments || []) {
+        const taskId = String((row as any)?.entity_id || "");
+        if (!taskId) continue;
+        ensure(taskId).attachments += 1;
+      }
+    } else if (!isRecoverableMissingRelationError(attachmentsErr, "attachments")) {
+      throw attachmentsErr;
     }
-  } else if (!isRecoverableMissingRelationError(documentsErr, "checklist_task_documents")) {
-    throw documentsErr;
-  }
 
-  const { data: comments, error: commentsErr } = await supabase
-    .from("cronoprogramma_comments")
-    .select("row_ref_id")
-    .eq("row_kind", "CHECKLIST_TASK")
-    .in("row_ref_id", taskIds);
-  if (!commentsErr) {
-    for (const row of comments || []) {
-      const taskId = String((row as any)?.row_ref_id || "");
-      if (!taskId) continue;
-      ensure(taskId).comments += 1;
+    const { data: documents, error: documentsErr } = await supabase
+      .from("checklist_task_documents")
+      .select("task_id")
+      .in("task_id", chunk);
+    if (!documentsErr) {
+      for (const row of documents || []) {
+        const taskId = String((row as any)?.task_id || "");
+        if (!taskId) continue;
+        ensure(taskId).documents += 1;
+      }
+    } else if (!isRecoverableMissingRelationError(documentsErr, "checklist_task_documents")) {
+      throw documentsErr;
     }
-  } else if (!isRecoverableMissingRelationError(commentsErr, "cronoprogramma_comments")) {
-    throw commentsErr;
-  }
 
-  const { data: metaRows, error: metaErr } = await supabase
-    .from("cronoprogramma_meta")
-    .select("row_ref_id")
-    .eq("row_kind", "CHECKLIST_TASK")
-    .in("row_ref_id", taskIds);
-  if (!metaErr) {
-    for (const row of metaRows || []) {
-      const taskId = String((row as any)?.row_ref_id || "");
-      if (!taskId) continue;
-      ensure(taskId).hasMeta = true;
+    const { data: comments, error: commentsErr } = await supabase
+      .from("cronoprogramma_comments")
+      .select("row_ref_id")
+      .eq("row_kind", "CHECKLIST_TASK")
+      .in("row_ref_id", chunk);
+    if (!commentsErr) {
+      for (const row of comments || []) {
+        const taskId = String((row as any)?.row_ref_id || "");
+        if (!taskId) continue;
+        ensure(taskId).comments += 1;
+      }
+    } else if (!isRecoverableMissingRelationError(commentsErr, "cronoprogramma_comments")) {
+      throw commentsErr;
     }
-  } else if (!isRecoverableMissingRelationError(metaErr, "cronoprogramma_meta")) {
-    throw metaErr;
-  }
 
-  const { data: jobs, error: jobsErr } = await supabase
-    .from("notification_jobs")
-    .select("task_id")
-    .in("task_id", taskIds);
-  if (!jobsErr) {
-    for (const row of jobs || []) {
-      const taskId = String((row as any)?.task_id || "");
-      if (!taskId) continue;
-      ensure(taskId).jobs += 1;
+    const { data: metaRows, error: metaErr } = await supabase
+      .from("cronoprogramma_meta")
+      .select("row_ref_id")
+      .eq("row_kind", "CHECKLIST_TASK")
+      .in("row_ref_id", chunk);
+    if (!metaErr) {
+      for (const row of metaRows || []) {
+        const taskId = String((row as any)?.row_ref_id || "");
+        if (!taskId) continue;
+        ensure(taskId).hasMeta = true;
+      }
+    } else if (!isRecoverableMissingRelationError(metaErr, "cronoprogramma_meta")) {
+      throw metaErr;
     }
-  } else if (!isRecoverableMissingRelationError(jobsErr, "notification_jobs")) {
-    throw jobsErr;
+
+    const { data: jobs, error: jobsErr } = await supabase
+      .from("notification_jobs")
+      .select("task_id")
+      .in("task_id", chunk);
+    if (!jobsErr) {
+      for (const row of jobs || []) {
+        const taskId = String((row as any)?.task_id || "");
+        if (!taskId) continue;
+        ensure(taskId).jobs += 1;
+      }
+    } else if (!isRecoverableMissingRelationError(jobsErr, "notification_jobs")) {
+      throw jobsErr;
+    }
   }
 
   return stats;
@@ -724,5 +729,24 @@ export async function syncChecklistTemplate(supabase: any, templateId: string) {
 export async function syncAllChecklistTemplates(supabase: any) {
   const templates = await fetchTemplateRows(supabase, { activeOnly: false });
   const checklistIds = await fetchAllChecklistIds(supabase);
-  return syncTemplatesToChecklistIds(supabase, checklistIds, templates);
+  const total: SyncResult = {
+    created: 0,
+    updated: 0,
+    linkedLegacy: 0,
+    preservedInactive: 0,
+    reconciled: 0,
+    cleanedDuplicates: 0,
+  };
+  const chunkSize = 100;
+  for (let index = 0; index < checklistIds.length; index += chunkSize) {
+    const chunk = checklistIds.slice(index, index + chunkSize);
+    const partial = await syncTemplatesToChecklistIds(supabase, chunk, templates);
+    total.created += partial.created;
+    total.updated += partial.updated;
+    total.linkedLegacy += partial.linkedLegacy;
+    total.preservedInactive += partial.preservedInactive;
+    total.reconciled += partial.reconciled;
+    total.cleanedDuplicates += partial.cleanedDuplicates;
+  }
+  return total;
 }

@@ -118,10 +118,12 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Missing SUPABASE_SERVICE_ROLE_KEY" }, { status: 500 });
   }
 
-  const wantsRecovery = new URL(request.url).searchParams.get("recovery") === "1";
+  const url = new URL(request.url);
+  const wantsRecovery = url.searchParams.get("recovery") === "1";
+  const forceRecovery = url.searchParams.get("force") === "1";
   if (wantsRecovery) {
     const now = Date.now();
-    if (!recoveryPromise && now - lastRecoveryAt > 5 * 60_000) {
+    if (!recoveryPromise && (forceRecovery || now - lastRecoveryAt > 5 * 60_000)) {
       recoveryPromise = syncAllChecklistTemplates(supabase)
         .then((result) => {
           lastRecoveryAt = Date.now();
