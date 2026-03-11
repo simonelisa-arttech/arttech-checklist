@@ -3603,7 +3603,7 @@ function buildFormData(c: Checklist): FormData {
       day_of_week: null,
       send_on_create: false,
       only_future: true,
-    } satisfies NotificationRule;
+    } as NotificationRule;
   }
 
   async function openRuleSettings(task: ChecklistTask) {
@@ -3697,10 +3697,8 @@ function buildFormData(c: Checklist): FormData {
           : []
       );
     } catch (err: any) {
-      setRuleError(
-        err?.message || "Nessuna regola disponibile per questa task. Puoi chiudere il popup o salvare un override progetto."
-      );
-      setRuleDraft(buildFallbackRuleDraft(task));
+      setRuleError(err?.message || "Nessuna regola disponibile per questa task.");
+      setRuleDraft(null);
       setRuleGlobal(null);
       setRuleOverride(null);
       setRuleRecipientsInput("");
@@ -3723,17 +3721,6 @@ function buildFormData(c: Checklist): FormData {
     setRuleGlobal(null);
     setRuleOverride(null);
   }
-
-  useEffect(() => {
-    if (!ruleTask) return;
-    function onKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") {
-        closeRuleSettings();
-      }
-    }
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [ruleTask]);
 
   async function saveRuleSettings() {
     if (!ruleDraft) return;
@@ -8099,9 +8086,48 @@ function buildFormData(c: Checklist): FormData {
             {ruleLoading ? (
               <div style={{ fontSize: 13, opacity: 0.7 }}>Caricamento regola...</div>
             ) : !ruleDraft ? (
-              <div style={{ fontSize: 13, color: "#b91c1c" }}>
-                {ruleError || "Regola non disponibile."}
-              </div>
+              <>
+                <div style={{ fontSize: 13, color: "#b91c1c" }}>
+                  {ruleError || "Nessuna regola disponibile per questa task."}
+                </div>
+                <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 14 }}>
+                  <button
+                    type="button"
+                    onClick={closeRuleSettings}
+                    style={{
+                      padding: "8px 12px",
+                      borderRadius: 8,
+                      border: "1px solid #ddd",
+                      background: "white",
+                    }}
+                  >
+                    Chiudi
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!ruleTask) return;
+                      const fallback = buildFallbackRuleDraft(ruleTask);
+                      setRuleDraft(fallback);
+                      setRuleRecipientsInput("");
+                      setRuleAutoRecipients([]);
+                      setRuleEffectiveRecipients([]);
+                      setRuleError(
+                        "Regola globale non disponibile. Stai creando un override progetto da questa checklist."
+                      );
+                    }}
+                    style={{
+                      padding: "8px 12px",
+                      borderRadius: 8,
+                      border: "1px solid #111",
+                      background: "#111",
+                      color: "white",
+                    }}
+                  >
+                    Crea override progetto
+                  </button>
+                </div>
+              </>
             ) : (
               <>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
