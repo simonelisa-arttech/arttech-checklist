@@ -1,5 +1,18 @@
 # AGENT MEMORY — Snapshot Operativo
 
+## Snapshot 2026-03-11 - Handoff stabile + Drive cliente
+- Handoff aggiornato con istruzioni operative minime prima di nuovi sviluppi.
+- Checklist operative:
+  - recovery globale batch disabilitato
+  - usare solo recovery esplicito per checklist singola o lista stabile di `checklist_id`
+  - endpoint sicuro:
+    - `GET /api/impostazioni/checklist-attivita?recovery=1&checklist_id=<UUID>`
+- Cliente:
+  - aggiunto campo dedicato `clienti_anagrafica.drive_url`
+  - gestito da `GET|POST|PATCH /api/clienti`
+  - mostrato nella scheda cliente vicino al nome cliente come link cliccabile in nuova tab
+  - validazione applicativa `http/https` lato modal e route API
+
 ## Ultimo aggiornamento
 2026-02-25
 

@@ -1,5 +1,30 @@
 # Handoff Context — AT SYSTEM (arttech-checklist)
 
+## Aggiornamento rapido (11 marzo 2026)
+
+- Handoff riallineato prima dei prossimi sviluppi.
+- Checklist operative:
+  - la sync strutturale `checklist_task_templates -> checklist_tasks` resta area fragile
+  - il recovery globale batch e' stato disabilitato perche non idempotente sul dataset sporco
+  - usare solo recovery mirato per checklist esplicite
+- Recovery checklist singola da usare in caso di doppioni:
+  - `GET /api/impostazioni/checklist-attivita?recovery=1&checklist_id=<UUID>`
+  - supporta anche lista stabile:
+    - `GET /api/impostazioni/checklist-attivita?recovery=1&checklist_ids=<UUID1>,<UUID2>`
+- Endpoint utili:
+  - `GET /api/impostazioni/checklist-attivita`
+  - `GET /api/impostazioni/checklist-attivita?recovery=1&checklist_id=<UUID>`
+  - `POST /api/checklists/materialize-tasks`
+  - `GET|POST|PATCH /api/clienti`
+- Problemi ancora aperti:
+  - validare manualmente il cleanup reale delle checklist gia sporcate da recovery precedenti
+  - evitare qualsiasi recovery globale non basato su checklist esplicite
+- Convenzioni operative per i prossimi sviluppi:
+  - nessun recovery checklist globale senza lista stabile di `checklist_id`
+  - la sync task puo aggiornare solo campi strutturali: `titolo`, `sezione`, `ordine`, `target`, `task_template_id`
+  - non toccare da sync: `stato`, note, allegati, log, override notifiche
+  - il link Drive cliente vive su `clienti_anagrafica.drive_url` ed e' separato dal link magazzino checklist/progetto
+
 ## Repository
 GitHub: `simonelisa-arttech/arttech-checklist`
 Stack: Next.js App Router, Supabase (Postgres), Vercel, Resend (email)

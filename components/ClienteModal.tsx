@@ -18,6 +18,7 @@ export type ClienteRecord = {
   indirizzo?: string | null;
   cap?: string | null;
   paese?: string | null;
+  drive_url?: string | null;
 };
 
 type ClienteModalProps = {
@@ -43,6 +44,7 @@ export default function ClienteModal({ open, onClose, initial, onSaved }: Client
     indirizzo: "",
     cap: "",
     paese: "",
+    drive_url: "",
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -65,6 +67,7 @@ export default function ClienteModal({ open, onClose, initial, onSaved }: Client
       indirizzo: initial?.indirizzo || "",
       cap: initial?.cap || "",
       paese: initial?.paese || "",
+      drive_url: initial?.drive_url || "",
     });
   }, [open, initial]);
 
@@ -74,6 +77,19 @@ export default function ClienteModal({ open, onClose, initial, onSaved }: Client
     if (!form.denominazione.trim()) {
       setError("Denominazione obbligatoria.");
       return;
+    }
+    const driveUrl = `${form.drive_url || ""}`.trim();
+    if (driveUrl) {
+      try {
+        const parsed = new URL(driveUrl);
+        if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+          setError("Il link Drive cliente deve essere un URL http/https valido.");
+          return;
+        }
+      } catch {
+        setError("Il link Drive cliente deve essere un URL http/https valido.");
+        return;
+      }
     }
     setSaving(true);
     setError(null);
@@ -93,6 +109,7 @@ export default function ClienteModal({ open, onClose, initial, onSaved }: Client
         indirizzo: form.indirizzo?.trim() || null,
         cap: form.cap?.trim() || null,
         paese: form.paese?.trim() || null,
+        drive_url: driveUrl || null,
       };
 
       const res = await fetch("/api/clienti", {
@@ -202,6 +219,15 @@ export default function ClienteModal({ open, onClose, initial, onSaved }: Client
               <input
                 value={form.telefono || ""}
                 onChange={(e) => setForm({ ...form, telefono: e.target.value })}
+                style={{ width: "100%", padding: 10 }}
+              />
+            </label>
+            <label style={{ gridColumn: "1 / -1" }}>
+              Link Drive cliente<br />
+              <input
+                value={form.drive_url || ""}
+                onChange={(e) => setForm({ ...form, drive_url: e.target.value })}
+                placeholder="https://drive.google.com/..."
                 style={{ width: "100%", padding: 10 }}
               />
             </label>

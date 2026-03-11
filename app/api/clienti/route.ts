@@ -62,6 +62,20 @@ function normalizeDenominazione(value: string) {
     .replace(/[^\p{L}\p{N}\s]/gu, "");
 }
 
+function normalizeOptionalHttpUrl(value: unknown) {
+  const raw = `${value || ""}`.trim();
+  if (!raw) return { value: null as string | null, error: null as string | null };
+  try {
+    const parsed = new URL(raw);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      return { value: null, error: "Il link Drive cliente deve essere un URL http/https valido" };
+    }
+    return { value: parsed.toString(), error: null };
+  } catch {
+    return { value: null, error: "Il link Drive cliente deve essere un URL http/https valido" };
+  }
+}
+
 export async function GET(request: Request) {
   if (!assertAuth(request)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -83,7 +97,7 @@ export async function GET(request: Request) {
   let query = supabase
     .from("clienti_anagrafica")
     .select(
-      "id,denominazione,denominazione_norm,piva,codice_fiscale,codice_sdi,pec,email,telefono,indirizzo,comune,cap,provincia,paese,codice_interno,attivo"
+      "id,denominazione,denominazione_norm,piva,codice_fiscale,codice_sdi,pec,email,telefono,indirizzo,comune,cap,provincia,paese,codice_interno,attivo,drive_url"
     )
     .order("denominazione", { ascending: true })
     .range(offset, offset + limit - 1);
@@ -126,6 +140,10 @@ export async function POST(request: Request) {
   if (!denominazione) {
     return NextResponse.json({ error: "Denominazione obbligatoria" }, { status: 400 });
   }
+  const driveUrl = normalizeOptionalHttpUrl(body?.drive_url);
+  if (driveUrl.error) {
+    return NextResponse.json({ error: driveUrl.error }, { status: 400 });
+  }
   const payload = {
     denominazione,
     denominazione_norm: normalizeDenominazione(denominazione),
@@ -141,6 +159,7 @@ export async function POST(request: Request) {
     provincia: `${body?.provincia || ""}`.trim() || null,
     paese: `${body?.paese || ""}`.trim() || null,
     codice_interno: `${body?.codice_interno || ""}`.trim() || null,
+    drive_url: driveUrl.value,
     attivo: typeof body?.attivo === "boolean" ? body.attivo : true,
   };
 
@@ -148,7 +167,7 @@ export async function POST(request: Request) {
     .from("clienti_anagrafica")
     .insert(payload)
     .select(
-      "id,denominazione,denominazione_norm,piva,codice_fiscale,codice_sdi,pec,email,telefono,indirizzo,comune,cap,provincia,paese,codice_interno,attivo"
+      "id,denominazione,denominazione_norm,piva,codice_fiscale,codice_sdi,pec,email,telefono,indirizzo,comune,cap,provincia,paese,codice_interno,attivo,drive_url"
     )
     .single();
 
@@ -176,6 +195,10 @@ export async function PATCH(request: Request) {
   if (!id) {
     return NextResponse.json({ error: "Id mancante" }, { status: 400 });
   }
+  const driveUrl = normalizeOptionalHttpUrl(body?.drive_url);
+  if (driveUrl.error) {
+    return NextResponse.json({ error: driveUrl.error }, { status: 400 });
+  }
 
   const denominazione = body?.denominazione != null ? `${body.denominazione}`.trim() : "";
   const payload: Record<string, string | null | boolean> = {
@@ -191,6 +214,7 @@ export async function PATCH(request: Request) {
     provincia: `${body?.provincia || ""}`.trim() || null,
     paese: `${body?.paese || ""}`.trim() || null,
     codice_interno: `${body?.codice_interno || ""}`.trim() || null,
+    drive_url: driveUrl.value,
   };
 
   if (typeof body?.attivo === "boolean") {
@@ -207,7 +231,7 @@ export async function PATCH(request: Request) {
     .update(payload)
     .eq("id", id)
     .select(
-      "id,denominazione,denominazione_norm,piva,codice_fiscale,codice_sdi,pec,email,telefono,indirizzo,comune,cap,provincia,paese,codice_interno,attivo"
+      "id,denominazione,denominazione_norm,piva,codice_fiscale,codice_sdi,pec,email,telefono,indirizzo,comune,cap,provincia,paese,codice_interno,attivo,drive_url"
     )
     .single();
 

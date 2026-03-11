@@ -797,6 +797,7 @@ export default function ClientePage({
   const [editScadenzaErr, setEditScadenzaErr] = useState<string | null>(null);
   const [alertTemplates, setAlertTemplates] = useState<AlertMessageTemplate[]>([]);
   const [clienteAnagraficaEmail, setClienteAnagraficaEmail] = useState<string | null>(null);
+  const [clienteDriveUrl, setClienteDriveUrl] = useState<string | null>(null);
   const [selectedPresetId, setSelectedPresetId] = useState<string>("");
   const [tagliandi, setTagliandi] = useState<TagliandoRow[]>([]);
   const [newTagliando, setNewTagliando] = useState({
@@ -1287,6 +1288,7 @@ export default function ClientePage({
       let displayCliente = decoded.trim();
       setCliente(displayCliente);
       setClienteAnagraficaEmail(null);
+      setClienteDriveUrl(null);
       setLoading(true);
       setInitialClienteLoadDone(false);
       setError(null);
@@ -1327,6 +1329,8 @@ export default function ClientePage({
           }
           const mail = String((anagData as any)?.email || "").trim();
           setClienteAnagraficaEmail(mail && mail.includes("@") ? mail : null);
+          const driveUrl = String((anagData as any)?.drive_url || "").trim();
+          setClienteDriveUrl(/^https?:\/\//i.test(driveUrl) ? driveUrl : null);
         } catch {
           // keep fallback values from URL
         }
@@ -1354,7 +1358,7 @@ export default function ClientePage({
         if (isPerfEnabled()) console.time(`[perf][cliente][mount#${mountRun}] db clienti_anagrafica`);
         perfCountDb("clienti_anagrafica.select");
         const { data: clienteById } = await dbFrom("clienti_anagrafica")
-          .select("denominazione")
+          .select("denominazione,drive_url")
           .eq("id", firstClienteId)
           .maybeSingle();
         if (isPerfEnabled()) console.timeEnd(`[perf][cliente][mount#${mountRun}] db clienti_anagrafica`);
@@ -1362,6 +1366,10 @@ export default function ClientePage({
         if (fullById) {
           displayCliente = fullById;
           setCliente(fullById);
+        }
+        const driveUrl = String((clienteById as any)?.drive_url || "").trim();
+        if (driveUrl && /^https?:\/\//i.test(driveUrl)) {
+          setClienteDriveUrl(driveUrl);
         }
       }
       setChecklists(list);
@@ -5337,7 +5345,40 @@ export default function ClientePage({
         </Link>
       </div>
 
-      <h2 style={{ marginTop: 12, marginBottom: 6 }}>Cliente: {cliente}</h2>
+      <div
+        style={{
+          marginTop: 12,
+          marginBottom: 6,
+          display: "flex",
+          alignItems: "center",
+          gap: 10,
+          flexWrap: "wrap",
+        }}
+      >
+        <h2 style={{ margin: 0 }}>Cliente: {cliente}</h2>
+        {clienteDriveUrl ? (
+          <a
+            href={clienteDriveUrl}
+            target="_blank"
+            rel="noreferrer"
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+              padding: "6px 10px",
+              borderRadius: 999,
+              border: "1px solid #d1d5db",
+              background: "white",
+              textDecoration: "none",
+              color: "#1d4ed8",
+              fontSize: 13,
+              fontWeight: 600,
+            }}
+          >
+            Drive cliente
+          </a>
+        ) : null}
+      </div>
       <div
         style={{
           marginTop: 6,
