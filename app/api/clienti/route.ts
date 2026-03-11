@@ -175,7 +175,7 @@ export async function POST(request: Request) {
     attivo: typeof body?.attivo === "boolean" ? body.attivo : true,
   };
   let warning: string | null = null;
-  let { data, error } = await supabase
+  let { data, error }: { data: any; error: any } = await supabase
     .from("clienti_anagrafica")
     .insert(payload)
     .select(CLIENTI_SELECT_WITH_DRIVE)
@@ -250,7 +250,7 @@ export async function PATCH(request: Request) {
     payload.denominazione_norm = normalizeDenominazione(denominazione);
   }
   let warning: string | null = null;
-  let { data, error } = await supabase
+  let { data, error }: { data: any; error: any } = await supabase
     .from("clienti_anagrafica")
     .update(payload)
     .eq("id", id)
