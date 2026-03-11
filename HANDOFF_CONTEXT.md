@@ -257,3 +257,14 @@ Dopo il push, Vercel farà auto-deploy e i fix saranno in produzione.
   - `GET /api/impostazioni/checklist-attivita?recovery=1&offset=0&limit=25`
   - risposta con `processed`, `remaining`, `nextOffset`
 - Il page load normale di `Checklist attivita` non lancia piu recovery impliciti in background.
+
+## Update 2026-03-11 - Recovery globale messo in sicurezza
+
+- Il recovery batch per offset e' stato disabilitato: non era affidabile e ha peggiorato il dataset `checklist_tasks`.
+- Causa sospetta confermata a livello operativo:
+  - run ripetibili sullo stesso insieme di checklist
+  - convergenza non garantita con recovery globale paginato
+- L'endpoint recovery ora accetta solo checklist esplicite e stabili:
+  - `GET /api/impostazioni/checklist-attivita?recovery=1&checklist_id=<uuid>`
+  - `GET /api/impostazioni/checklist-attivita?recovery=1&checklist_ids=<uuid1>,<uuid2>,<uuid3>`
+- La bonifica va eseguita per liste stabili di `checklist_id`, cosi ogni checklist viene processata una sola volta per run.

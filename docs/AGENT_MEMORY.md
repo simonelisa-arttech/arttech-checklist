@@ -154,6 +154,16 @@
   - `nextOffset`
 - Il page load di `Checklist attivita` non avvia piu recovery batch automatici.
 
+## Snapshot 2026-03-11 - Recovery batch disabilitato, cleanup per checklist_ids stabili
+- Il recovery globale con offset e' stato disabilitato per sicurezza: non e' considerato idempotente sul dataset sporco.
+- La route recovery accetta ora solo:
+  - `checklist_id=<uuid>`
+  - `checklist_ids=<uuid1>,<uuid2>,...`
+- Strategia corretta:
+  - snapshot esterno degli `id` checklist da bonificare
+  - invocazioni ripetute con liste esplicite e stabili
+  - nessun ricalcolo paginato per offset sul run di cleanup
+
 ## Query rapide di controllo (manuali)
 ```sql
 -- Tagliandi cliente con progetto associato

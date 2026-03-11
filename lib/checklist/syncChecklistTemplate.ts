@@ -761,6 +761,32 @@ export async function syncChecklistTemplate(supabase: any, templateId: string) {
   return syncTemplatesToChecklistIds(supabase, checklistIds, templates);
 }
 
+export async function syncChecklistTemplatesForChecklistIds(
+  supabase: any,
+  checklistIds: string[]
+) {
+  const stableChecklistIds = Array.from(
+    new Set(checklistIds.map((id) => String(id || "").trim()).filter(Boolean))
+  );
+  if (!stableChecklistIds.length) {
+    return {
+      created: 0,
+      updated: 0,
+      linkedLegacy: 0,
+      preservedInactive: 0,
+      reconciled: 0,
+      cleanedDuplicates: 0,
+      processed: 0,
+    };
+  }
+  const templates = await fetchTemplateRows(supabase, { activeOnly: false });
+  const result = await syncTemplatesToChecklistIds(supabase, stableChecklistIds, templates);
+  return {
+    ...result,
+    processed: stableChecklistIds.length,
+  };
+}
+
 export async function syncAllChecklistTemplates(supabase: any) {
   const templates = await fetchTemplateRows(supabase, { activeOnly: false });
   const checklistIds = await fetchAllChecklistIds(supabase);

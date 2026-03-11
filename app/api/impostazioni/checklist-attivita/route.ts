@@ -4,7 +4,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import {
   syncChecklistTemplate,
-  syncChecklistTemplatesBatch,
+  syncChecklistTemplatesForChecklistIds,
 } from "@/lib/checklist/syncChecklistTemplate";
 
 type Payload = {
@@ -119,10 +119,28 @@ export async function GET(request: Request) {
   const url = new URL(request.url);
   const wantsRecovery = url.searchParams.get("recovery") === "1";
   if (wantsRecovery) {
-    const offset = Math.max(0, Number(url.searchParams.get("offset") || 0));
-    const limit = Math.max(1, Number(url.searchParams.get("limit") || 25));
+    const rawChecklistIds = (url.searchParams.get("checklist_ids") || "")
+      .split(",")
+      .map((id) => id.trim())
+      .filter(Boolean);
+    const singleChecklistId = String(url.searchParams.get("checklist_id") || "").trim();
+    const checklistIds = Array.from(
+      new Set([
+        ...rawChecklistIds,
+        ...(singleChecklistId ? [singleChecklistId] : []),
+      ])
+    );
+    if (checklistIds.length === 0) {
+      return NextResponse.json(
+        {
+          error:
+            "Recovery batch globale temporaneamente disabilitato. Passa checklist_id o checklist_ids espliciti.",
+        },
+        { status: 409 }
+      );
+    }
     try {
-      const result = await syncChecklistTemplatesBatch(supabase, { offset, limit });
+      const result = await syncChecklistTemplatesForChecklistIds(supabase, checklistIds);
       return NextResponse.json({ ok: true, ...result });
     } catch (syncError: any) {
       return NextResponse.json(
