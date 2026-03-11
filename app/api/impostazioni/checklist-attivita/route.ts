@@ -3,8 +3,8 @@ export const runtime = "nodejs";
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import {
-  syncAllChecklistTemplates,
   syncChecklistTemplate,
+  syncChecklistTemplatesBatch,
 } from "@/lib/checklist/syncChecklistTemplate";
 
 type Payload = {
@@ -18,8 +18,6 @@ type Payload = {
 
 type RateLimitEntry = { count: number; resetAt: number };
 const rateLimitMap = new Map<string, RateLimitEntry>();
-let recoveryPromise: Promise<any> | null = null;
-let lastRecoveryAt = 0;
 
 function getClientIp(request: Request) {
   const xfwd = request.headers.get("x-forwarded-for");
@@ -120,33 +118,18 @@ export async function GET(request: Request) {
 
   const url = new URL(request.url);
   const wantsRecovery = url.searchParams.get("recovery") === "1";
-  const forceRecovery = url.searchParams.get("force") === "1";
   if (wantsRecovery) {
-    const now = Date.now();
-    if (!recoveryPromise && (forceRecovery || now - lastRecoveryAt > 5 * 60_000)) {
-      recoveryPromise = syncAllChecklistTemplates(supabase)
-        .then((result) => {
-          lastRecoveryAt = Date.now();
-          return result;
-        })
-        .finally(() => {
-          recoveryPromise = null;
-        });
+    const offset = Math.max(0, Number(url.searchParams.get("offset") || 0));
+    const limit = Math.max(1, Number(url.searchParams.get("limit") || 25));
+    try {
+      const result = await syncChecklistTemplatesBatch(supabase, { offset, limit });
+      return NextResponse.json({ ok: true, ...result });
+    } catch (syncError: any) {
+      return NextResponse.json(
+        { error: syncError?.message || "Errore recovery checklist_tasks" },
+        { status: 500 }
+      );
     }
-
-    if (recoveryPromise) {
-      try {
-        const result = await recoveryPromise;
-        return NextResponse.json({ ok: true, recovery: result });
-      } catch (syncError: any) {
-        return NextResponse.json(
-          { error: syncError?.message || "Errore recovery checklist_tasks" },
-          { status: 500 }
-        );
-      }
-    }
-
-    return NextResponse.json({ ok: true, skipped: true, reason: "recent_recovery" });
   }
 
   const rowsRes = await fetchRows(supabase);

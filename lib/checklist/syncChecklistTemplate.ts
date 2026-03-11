@@ -29,6 +29,20 @@ type SyncResult = {
   cleanedDuplicates: number;
 };
 
+type SyncBatchOptions = {
+  offset?: number;
+  limit?: number;
+};
+
+type SyncBatchResult = SyncResult & {
+  processed: number;
+  remaining: number;
+  nextOffset: number | null;
+  total: number;
+  offset: number;
+  limit: number;
+};
+
 type TaskOperationalStats = {
   attachments: number;
   documents: number;
@@ -136,6 +150,27 @@ async function fetchAllChecklistIds(supabase: any) {
     if (rows.length < pageSize) break;
   }
   return ids;
+}
+
+async function fetchChecklistIdsBatch(
+  supabase: any,
+  options: { offset: number; limit: number }
+) {
+  const from = Math.max(0, options.offset);
+  const to = from + Math.max(1, options.limit) - 1;
+  const { data, error, count } = await supabase
+    .from("checklists")
+    .select("id", { count: "exact" })
+    .order("id", { ascending: true })
+    .range(from, to);
+  if (error) throw error;
+  const ids = ((data || []) as Array<{ id: string | null }>)
+    .map((row) => String(row.id || "").trim())
+    .filter(Boolean);
+  return {
+    ids,
+    total: Number(count || 0),
+  };
 }
 
 async function fetchTemplateRows(
@@ -749,4 +784,23 @@ export async function syncAllChecklistTemplates(supabase: any) {
     total.cleanedDuplicates += partial.cleanedDuplicates;
   }
   return total;
+}
+
+export async function syncChecklistTemplatesBatch(supabase: any, options: SyncBatchOptions = {}) {
+  const offset = Math.max(0, Number(options.offset || 0));
+  const limit = Math.min(50, Math.max(1, Number(options.limit || 25)));
+  const templates = await fetchTemplateRows(supabase, { activeOnly: false });
+  const batch = await fetchChecklistIdsBatch(supabase, { offset, limit });
+  const partial = await syncTemplatesToChecklistIds(supabase, batch.ids, templates);
+  const processed = batch.ids.length;
+  const remaining = Math.max(0, batch.total - offset - processed);
+  return {
+    ...partial,
+    processed,
+    remaining,
+    nextOffset: remaining > 0 ? offset + processed : null,
+    total: batch.total,
+    offset,
+    limit,
+  } satisfies SyncBatchResult;
 }

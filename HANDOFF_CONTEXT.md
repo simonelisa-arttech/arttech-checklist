@@ -253,5 +253,7 @@ Dopo il push, Vercel farà auto-deploy e i fix saranno in produzione.
 - Il servizio ora elabora:
   - `taskIds` in chunk da `250`
   - `checklistIds` in chunk da `100`
-- La route `GET /api/impostazioni/checklist-attivita?recovery=1` resta valida e ora supporta anche `force=1` per bypassare il cooldown:
-  - `/api/impostazioni/checklist-attivita?recovery=1&force=1`
+- Il recovery globale e' ora batch-based per invocation:
+  - `GET /api/impostazioni/checklist-attivita?recovery=1&offset=0&limit=25`
+  - risposta con `processed`, `remaining`, `nextOffset`
+- Il page load normale di `Checklist attivita` non lancia piu recovery impliciti in background.

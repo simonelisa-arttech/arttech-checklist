@@ -90,10 +90,6 @@ export default function ChecklistAttivitaPage() {
 
   useEffect(() => {
     loadRows();
-    void fetch("/api/impostazioni/checklist-attivita?recovery=1", {
-      method: "GET",
-      credentials: "include",
-    }).catch(() => null);
   }, []);
 
   function addRow() {

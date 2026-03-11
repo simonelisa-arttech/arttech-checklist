@@ -147,8 +147,12 @@
   - chunk `taskIds` nelle query statistiche operative
   - chunk `checklistIds` nel recovery globale
 - Recovery manuale disponibile via:
-  - `GET /api/impostazioni/checklist-attivita?recovery=1`
-  - `GET /api/impostazioni/checklist-attivita?recovery=1&force=1` per bypassare il cooldown recente
+  - `GET /api/impostazioni/checklist-attivita?recovery=1&offset=0&limit=25`
+- La route ora processa batch limitati di checklist per invocation e restituisce:
+  - `processed`
+  - `remaining`
+  - `nextOffset`
+- Il page load di `Checklist attivita` non avvia piu recovery batch automatici.
 
 ## Query rapide di controllo (manuali)
 ```sql
