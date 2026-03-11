@@ -73,6 +73,14 @@ export async function GET(req: Request) {
     auth: { persistSession: false },
   });
 
+  return NextResponse.json({
+    ok: true,
+    sent: 0,
+    skipped: 0,
+    disabled: true,
+    reason: "notification_jobs_legacy_disabled",
+  });
+
   const { data: jobs, error: jobsErr } = await supabase
     .from("notification_jobs")
     .select("id, checklist_id, task_id")

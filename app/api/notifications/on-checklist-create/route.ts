@@ -90,6 +90,10 @@ function normalizeTarget(value: string | null | undefined) {
   return raw || "GENERICA";
 }
 
+function isMissingColumn(error: any, column: string) {
+  return String(error?.message || "").toLowerCase().includes(column.toLowerCase());
+}
+
 async function listOperatoriForNotifications(adminClient: any): Promise<OperatoreRow[]> {
   const withRiceve = await adminClient
     .from("operatori")
@@ -239,6 +243,17 @@ export async function POST(request: Request) {
     )
     .eq("enabled", true)
     .or(`checklist_id.is.null,checklist_id.eq.${checklistId}`);
+  if (rulesErr && isMissingColumn(rulesErr, "task_template_id")) {
+    const fallback = await adminClient
+      .from("notification_rules")
+      .select(
+        "id, checklist_id, task_title, target, recipients, only_future, enabled, mode, send_on_create"
+      )
+      .eq("enabled", true)
+      .or(`checklist_id.is.null,checklist_id.eq.${checklistId}`);
+    rulesRaw = (fallback.data || []).map((row: any) => ({ ...row, task_template_id: null }));
+    rulesErr = fallback.error;
+  }
   if (rulesErr && String(rulesErr.message || "").toLowerCase().includes("send_on_create")) {
     return NextResponse.json({ ok: true, sent: 0, skipped: "missing_send_on_create_column" });
   }

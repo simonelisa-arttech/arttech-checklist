@@ -118,9 +118,9 @@ const TABLE_RULES: Record<
   },
   saas_contratti: {
     ops: ["select", "insert", "update", "delete"],
-    filterCols: ["id", "cliente", "cliente_id"],
+    filterCols: ["id", "cliente"],
     orderCols: ["created_at", "updated_at", "scadenza"],
-    requiredEqAnyOf: ["id", "cliente", "cliente_id"],
+    requiredEqAnyOf: ["id", "cliente"],
   },
   saas_piani: {
     ops: ["select"],

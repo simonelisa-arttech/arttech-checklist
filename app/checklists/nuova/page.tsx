@@ -134,17 +134,6 @@ function isChecklistDuplicateError(error: any) {
   );
 }
 
-function isMissingNotificationJobsError(error: any) {
-  const code = String(error?.code || "").toLowerCase();
-  const message = String(error?.message || "").toLowerCase();
-  const details = String(error?.details || "").toLowerCase();
-  return (
-    code === "pgrst205" ||
-    message.includes("notification_jobs") ||
-    details.includes("notification_jobs")
-  );
-}
-
 function isFiniteNumberString(v: string) {
   if (v.trim() === "") return false;
   const n = Number(v);
@@ -968,33 +957,6 @@ export default function NuovaChecklistPage() {
           alert("Errore inserimento seriali: " + msg);
           return;
         }
-      }
-
-      const { data: taskRows, error: taskRowsErr } = await dbFrom("checklist_tasks")
-        .select("id, titolo, stato")
-        .eq("checklist_id", checklistId)
-        .eq("stato", "DA_FARE");
-
-      if (taskRowsErr) {
-        console.error("Errore caricamento task per notifiche", taskRowsErr);
-      } else if (taskRows && taskRows.length > 0) {
-        const jobPayload = taskRows.map((t: any) => ({
-          checklist_id: checklistId,
-          task_id: t.id,
-          stato: "PENDING",
-        }));
-        const { error: jobErr } = await dbFrom("notification_jobs").insert(jobPayload);
-        if (jobErr) {
-          if (isMissingNotificationJobsError(jobErr)) {
-            console.warn(
-              "notification_jobs non disponibile: salto la schedulazione reminder checklist",
-              jobErr
-            );
-          } else {
-            console.error("Errore inserimento notification_jobs", jobErr);
-          }
-        }
-
       }
 
       try {

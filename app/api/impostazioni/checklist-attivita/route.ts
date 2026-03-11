@@ -133,6 +133,7 @@ async function backfillTemplateToExistingChecklists(
     ordine: number | null;
     titolo: string | null;
     target?: string | null;
+    attivo?: boolean;
   }
 ) {
   const checklistIds = await fetchAllChecklistIds(supabase);
@@ -146,17 +147,43 @@ async function backfillTemplateToExistingChecklists(
     titolo: string | null;
     sezione: number | null;
     ordine: number | null;
+    target: string | null;
+  }> = [];
+  const templateTaskIds: string[] = [];
+  const checklistTaskUpdates: Array<{
+    id: string;
+    payload: {
+      sezione: number;
+      ordine: number | null;
+      titolo: string | null;
+      target: string;
+      task_template_id?: string;
+    };
   }> = [];
   const templateSezione = mapSezioneToInt(template.sezione);
   const templateOrdine = template.ordine != null ? Number(template.ordine) : null;
   const templateTitle = normalizeTemplateTitle(template.titolo);
+  const templateTarget = normalizeTarget(template.target);
+  const templateAttivo = template.attivo !== false;
   const pageSize = 1000;
   for (let from = 0; ; from += pageSize) {
     const to = from + pageSize - 1;
-    const { data, error } = await supabase
+    let data: any[] | null = null;
+    let error: any = null;
+    let result = await supabase
       .from("checklist_tasks")
-      .select("id, checklist_id, task_template_id, titolo, sezione, ordine")
+      .select("id, checklist_id, task_template_id, titolo, sezione, ordine, target")
       .range(from, to);
+    data = result.data;
+    error = result.error;
+    if (error && String(error.message || "").toLowerCase().includes("target")) {
+      result = await supabase
+        .from("checklist_tasks")
+        .select("id, checklist_id, task_template_id, titolo, sezione, ordine")
+        .range(from, to);
+      data = (result.data || []).map((row: any) => ({ ...row, target: null }));
+      error = result.error;
+    }
     if (error) throw error;
     const rows = (data || []) as Array<{
       id: string | null;
@@ -165,6 +192,7 @@ async function backfillTemplateToExistingChecklists(
       titolo: string | null;
       sezione: number | null;
       ordine: number | null;
+      target: string | null;
     }>;
     for (const row of rows) {
       const checklistId = String(row.checklist_id || "").trim();
@@ -172,6 +200,28 @@ async function backfillTemplateToExistingChecklists(
       const taskTemplateId = String(row.task_template_id || "").trim();
       if (taskTemplateId === template.id) {
         existingChecklistIds.add(checklistId);
+        if (row.id) templateTaskIds.push(String(row.id));
+        if (templateAttivo && row.id) {
+          const currentTitle = row.titolo?.trim() || null;
+          const currentOrder = row.ordine == null ? null : Number(row.ordine);
+          const currentTarget = normalizeTarget(row.target);
+          if (
+            currentTitle !== (template.titolo?.trim() || null) ||
+            Number(row.sezione ?? 0) !== templateSezione ||
+            currentOrder !== templateOrdine ||
+            currentTarget !== templateTarget
+          ) {
+            checklistTaskUpdates.push({
+              id: String(row.id),
+              payload: {
+                sezione: templateSezione,
+                ordine: templateOrdine,
+                titolo: template.titolo?.trim() || null,
+                target: templateTarget,
+              },
+            });
+          }
+        }
         continue;
       }
       const sameLegacyTask =
@@ -187,6 +237,7 @@ async function backfillTemplateToExistingChecklists(
           titolo: row.titolo ?? null,
           sezione: row.sezione ?? null,
           ordine: row.ordine ?? null,
+          target: row.target ?? null,
         });
         existingChecklistIds.add(checklistId);
       }
@@ -194,19 +245,54 @@ async function backfillTemplateToExistingChecklists(
     if (rows.length < pageSize) break;
   }
 
+  if (!templateAttivo) {
+    const deleteIds = Array.from(
+      new Set([...templateTaskIds, ...legacyTaskRows.map((row) => String(row.id || "")).filter(Boolean)])
+    );
+    const chunkSize = 500;
+    for (let index = 0; index < deleteIds.length; index += chunkSize) {
+      const chunk = deleteIds.slice(index, index + chunkSize);
+      if (!chunk.length) continue;
+      const { error } = await supabase.from("checklist_tasks").delete().in("id", chunk);
+      if (error) throw error;
+    }
+    return;
+  }
+
   for (const row of legacyTaskRows) {
+    const payload = {
+      task_template_id: template.id,
+      sezione: templateSezione,
+      ordine: templateOrdine,
+      titolo: template.titolo?.trim() || null,
+      target: templateTarget,
+    };
     let { error } = await supabase
       .from("checklist_tasks")
-      .update({
-        task_template_id: template.id,
-        target: normalizeTarget(template.target),
-      })
+      .update(payload)
       .eq("id", row.id);
     if (error && String(error.message || "").toLowerCase().includes("target")) {
       ({ error } = await supabase
         .from("checklist_tasks")
-        .update({ task_template_id: template.id })
+        .update({
+          task_template_id: template.id,
+          sezione: templateSezione,
+          ordine: templateOrdine,
+          titolo: template.titolo?.trim() || null,
+        })
         .eq("id", row.id));
+    }
+    if (error) throw error;
+  }
+
+  for (const update of checklistTaskUpdates) {
+    let { error } = await supabase.from("checklist_tasks").update(update.payload).eq("id", update.id);
+    if (error && String(error.message || "").toLowerCase().includes("target")) {
+      const { target: _ignore, ...fallbackPayload } = update.payload;
+      ({ error } = await supabase
+        .from("checklist_tasks")
+        .update(fallbackPayload)
+        .eq("id", update.id));
     }
     if (error) throw error;
   }
@@ -293,6 +379,7 @@ export async function GET(request: Request) {
         ordine: row.ordine ?? null,
         titolo: row.titolo ?? null,
         target: row.target ?? null,
+        attivo: row.attivo !== false,
       });
     } catch (error: any) {
       return NextResponse.json(
@@ -365,6 +452,7 @@ export async function POST(request: Request) {
         ordine: payload.ordine,
         titolo: payload.titolo,
         target: payload.target,
+        attivo: payload.attivo,
       });
     } catch (backfillError: any) {
       return NextResponse.json(
@@ -401,6 +489,7 @@ export async function POST(request: Request) {
           ordine: data.ordine ?? payload.ordine,
           titolo: data.titolo ?? payload.titolo,
           target: data.target ?? payload.target,
+          attivo: payload.attivo,
         });
       } catch (backfillError: any) {
         return NextResponse.json(

@@ -2937,10 +2937,8 @@ function buildFormData(c: Checklist): FormData {
       const { data: contrattiDataRaw, error: contrattiErr } = await db<any[]>({
         table: "saas_contratti",
         op: "select",
-        select: "id, cliente, cliente_id, piano_codice, scadenza, interventi_annui, illimitati, created_at",
-        filter: headChecklist.cliente_id
-          ? { cliente_id: headChecklist.cliente_id }
-          : { cliente: clienteKey },
+        select: "id, cliente, piano_codice, scadenza, interventi_annui, illimitati, created_at",
+        filter: { cliente: clienteKey },
         order: [{ col: "created_at", asc: false }],
         limit: 1000,
       });
