@@ -96,7 +96,10 @@ export async function GET(req: Request) {
         reason: "notification_jobs_missing",
       });
     }
-    return NextResponse.json({ error: jobsErr.message }, { status: 500 });
+    return NextResponse.json(
+      { error: jobsErr?.message || "Errore caricamento notification_jobs" },
+      { status: 500 }
+    );
   }
 
   if (!jobs || jobs.length === 0) {
