@@ -153,25 +153,6 @@ function startsWithTecOrSas(value?: string | null) {
   return v.startsWith("TEC") || v.startsWith("SAAS");
 }
 
-function inferTaskTarget(titolo?: string | null, templateTarget?: string | null) {
-  const fromTemplate = String(templateTarget || "")
-    .trim()
-    .toUpperCase();
-  if (fromTemplate) {
-    if (fromTemplate === "TECNICO SW" || fromTemplate === "TECNICO-SW") return "TECNICO_SW";
-    if (fromTemplate === "ALTRO") return "GENERICA";
-    return fromTemplate;
-  }
-  const t = String(titolo || "")
-    .trim()
-    .toUpperCase();
-  if (t.includes("ELETTRONICA DI CONTROLLO: SCHEMI DATI ED ELETTRICI")) return "TECNICO_SW";
-  if (t.includes("PREPARAZIONE / RISERVA DISPONIBILIT") || t.includes("ORDINE MERCE")) {
-    return "MAGAZZINO";
-  }
-  return "GENERICA";
-}
-
 function getImpiantoSelectValue(
   options: CatalogItem[],
   codice: string,
@@ -659,174 +640,16 @@ export default function NuovaChecklistPage() {
         );
       }
 
-      const { data: existingTasksData, error: existingTasksErr } = await dbFrom("checklist_tasks")
-        .select("id")
-        .eq("checklist_id", checklistId);
-
-      const existingTasksCount = existingTasksData?.length ?? 0;
-
-      if (existingTasksErr) {
-        logSupabaseError(existingTasksErr);
-        throw existingTasksErr;
-      }
-
-      function mapSezioneToInt(raw: any): number {
-        if (raw === null || raw === undefined) return 0;
-        if (typeof raw === "number" && Number.isFinite(raw)) return raw;
-        const s0 = String(raw).toUpperCase().trim();
-        const s = s0.replace(/[\s\-]+/g, "_");
-        if (s.includes("DOCUMENTI")) return 0;
-        if (s.includes("SEZIONE_1") || s.includes("SEZIONE1") || s.includes("SEZIONE_01"))
-          return 1;
-        if (s.includes("SEZIONE_2") || s.includes("SEZIONE2") || s.includes("SEZIONE_02"))
-          return 2;
-        if (s.includes("SEZIONE_3") || s.includes("SEZIONE3") || s.includes("SEZIONE_03"))
-          return 3;
-        if (s.includes("_1")) return 1;
-        if (s.includes("_2")) return 2;
-        if (s.includes("_3")) return 3;
-        return 0;
-      }
-
-      if ((existingTasksCount ?? 0) === 0) {
-        let tpl: any[] | null = null;
-        let tplErr: any = null;
-        const mapTaskTemplateRows = (rows: any[] | null | undefined) =>
-          (rows || []).map((x: any) => ({
-            sezione: x.sezione,
-            ordine: x.ordine,
-            titolo: x.titolo ?? x.voce,
-            target: x.target ?? null,
-          }));
-
-        {
-          const res = await dbFrom("checklist_task_templates")
-            .select("sezione, ordine, titolo, target")
-            .eq("attivo", true)
-            .order("sezione", { ascending: true })
-            .order("ordine", { ascending: true });
-          tpl = mapTaskTemplateRows(res.data as any[] | null);
-          tplErr = res.error;
-        }
-
-        if (tplErr && String(tplErr.message || "").toLowerCase().includes("target")) {
-          const res = await dbFrom("checklist_task_templates")
-            .select("sezione, ordine, titolo")
-            .eq("attivo", true)
-            .order("sezione", { ascending: true })
-            .order("ordine", { ascending: true });
-          tpl = mapTaskTemplateRows(res.data as any[] | null);
-          tplErr = res.error;
-        }
-
-        if (
-          tplErr &&
-          String(tplErr.message || "").toLowerCase().includes("checklist_task_templates")
-        ) {
-          const res = await dbFrom("checklist_template_items")
-            .select("sezione, ordine, voce")
-            .eq("attivo", true)
-            .order("sezione", { ascending: true })
-            .order("ordine", { ascending: true });
-          tpl = mapTaskTemplateRows(res.data as any[] | null);
-          tplErr = res.error;
-        }
-
-        if (tplErr) {
-          logSupabaseError(tplErr);
-          throw tplErr;
-        }
-
-        const rows = (tpl ?? []).map((t: any) => ({
-          checklist_id: checklistId,
-          sezione: mapSezioneToInt(t.sezione),
-          ordine: t.ordine,
-          titolo: t.titolo,
-          target: inferTaskTarget(t.titolo, t.target),
-          stato: "DA_FARE",
-        }));
-
-        if (rows.length) {
-          const { error: insErr } = await dbFrom("checklist_tasks").insert(rows);
-          if (insErr) {
-            logSupabaseError(insErr);
-            throw insErr;
-          }
-        }
-      }
-
-      // Alcuni ambienti creano task via trigger DB: riallineo comunque il target dal template/titolo.
       {
-        const { data: createdTasks, error: createdTasksErr } = await dbFrom("checklist_tasks")
-          .select("id, titolo, target, task_template_id")
-          .eq("checklist_id", checklistId);
-        if (createdTasksErr) {
-          logSupabaseError(createdTasksErr);
-          throw createdTasksErr;
-        }
-
-        if (createdTasks && createdTasks.length > 0) {
-          const templateIds = Array.from(
-            new Set(
-              createdTasks
-                .map((t: any) => String(t.task_template_id || "").trim())
-                .filter(Boolean)
-            )
-          );
-          const templateById = new Map<string, string | null>();
-          const templateByTitle = new Map<string, string | null>();
-
-          if (templateIds.length > 0) {
-            const templateIdsSafe = (templateIds as Array<string | number>).filter(
-              (x): x is string | number => x !== null && x !== undefined
-            );
-            const { data: templatesById, error: templatesByIdErr } = await dbFrom("checklist_task_templates")
-              .select("id, target")
-              .in("id", templateIdsSafe);
-            if (templatesByIdErr && !String(templatesByIdErr.message || "").toLowerCase().includes("target")) {
-              logSupabaseError(templatesByIdErr);
-              throw templatesByIdErr;
-            }
-            (templatesById || []).forEach((tpl: any) => {
-              templateById.set(String(tpl.id), tpl.target ?? null);
-            });
-          }
-
-          const { data: templatesByTitle, error: templatesByTitleErr } = await dbFrom("checklist_task_templates")
-            .select("titolo, target")
-            .eq("attivo", true);
-          if (templatesByTitleErr && !String(templatesByTitleErr.message || "").toLowerCase().includes("target")) {
-            logSupabaseError(templatesByTitleErr);
-            throw templatesByTitleErr;
-          }
-          (templatesByTitle || []).forEach((tpl: any) => {
-            const key = String(tpl.titolo || "").trim().toLowerCase();
-            if (key && !templateByTitle.has(key)) {
-              templateByTitle.set(key, tpl.target ?? null);
-            }
-          });
-
-          for (const task of createdTasks as any[]) {
-            const taskId = String(task.id || "");
-            if (!taskId) continue;
-            const taskTitle = String(task.titolo || "").trim();
-            const currentTarget = String(task.target || "").trim().toUpperCase();
-            const templateId = String(task.task_template_id || "").trim();
-            const templateTargetById = templateId ? templateById.get(templateId) ?? null : null;
-            const templateTargetByTitle = taskTitle
-              ? templateByTitle.get(taskTitle.toLowerCase()) ?? null
-              : null;
-            const desiredTarget = inferTaskTarget(taskTitle, templateTargetById ?? templateTargetByTitle);
-            if (currentTarget !== desiredTarget) {
-              const { error: updTargetErr } = await dbFrom("checklist_tasks")
-                .update({ target: desiredTarget })
-                .eq("id", taskId);
-              if (updTargetErr && !String(updTargetErr.message || "").toLowerCase().includes("target")) {
-                logSupabaseError(updTargetErr);
-                throw updTargetErr;
-              }
-            }
-          }
+        const res = await fetch("/api/checklists/materialize-tasks", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({ checklist_id: checklistId }),
+        });
+        const json = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          throw new Error(json?.error || "Errore materializzazione checklist_tasks");
         }
       }
 

@@ -1023,103 +1023,16 @@ export default function Page() {
 
     const checklistId = created.id as string;
 
-    // 1) crea tasks da template (solo se non esistono già)
-    const { data: existingTasksRows, error: existingTasksErr } = await dbFrom("checklist_tasks")
-      .select("id")
-      .eq("checklist_id", checklistId);
-    const existingTasksCount = existingTasksRows?.length ?? 0;
-
-    if (existingTasksErr) {
-      logSupabaseError(existingTasksErr);
-      throw existingTasksErr;
-    }
-
-    function mapSezioneToInt(raw: any): number {
-      if (raw === null || raw === undefined) return 0;
-      if (typeof raw === "number" && Number.isFinite(raw)) return raw;
-      const s0 = String(raw).toUpperCase().trim();
-      const s = s0.replace(/[\s\-]+/g, "_"); // spazi/trattini -> _
-      if (s.includes("DOCUMENTI")) return 0;
-      if (s.includes("SEZIONE_1") || s.includes("SEZIONE1") || s.includes("SEZIONE_01"))
-        return 1;
-      if (s.includes("SEZIONE_2") || s.includes("SEZIONE2") || s.includes("SEZIONE_02"))
-        return 2;
-      if (s.includes("SEZIONE_3") || s.includes("SEZIONE3") || s.includes("SEZIONE_03"))
-        return 3;
-      if (s.includes("_1")) return 1;
-      if (s.includes("_2")) return 2;
-      if (s.includes("_3")) return 3;
-      return 0;
-    }
-
-    if ((existingTasksCount ?? 0) === 0) {
-      let tpl: any[] | null = null;
-      let tplErr: any = null;
-      const mapTaskTemplateRows = (rows: any[] | null | undefined) =>
-        (rows || []).map((x: any) => ({
-          sezione: x.sezione,
-          ordine: x.ordine,
-          titolo: x.titolo ?? x.voce,
-          target: x.target ?? null,
-        }));
-
-      {
-        const res = await dbFrom("checklist_task_templates")
-          .select("sezione, ordine, titolo, target")
-          .eq("attivo", true)
-          .order("sezione", { ascending: true })
-          .order("ordine", { ascending: true });
-        tpl = mapTaskTemplateRows(res.data as any[] | null);
-        tplErr = res.error;
-      }
-
-      if (tplErr && String(tplErr.message || "").toLowerCase().includes("target")) {
-        const res = await dbFrom("checklist_task_templates")
-          .select("sezione, ordine, titolo")
-          .eq("attivo", true)
-          .order("sezione", { ascending: true })
-          .order("ordine", { ascending: true });
-        tpl = mapTaskTemplateRows(res.data as any[] | null);
-        tplErr = res.error;
-      }
-
-      if (
-        tplErr &&
-        String(tplErr.message || "").toLowerCase().includes("checklist_task_templates")
-      ) {
-        const res = await dbFrom("checklist_template_items")
-          .select("sezione, ordine, voce")
-          .eq("attivo", true)
-          .order("sezione", { ascending: true })
-          .order("ordine", { ascending: true });
-        tpl = mapTaskTemplateRows(res.data as any[] | null);
-        tplErr = res.error;
-      }
-
-      if (tplErr) {
-        logSupabaseError(tplErr);
-        throw tplErr;
-      }
-
-      const rows = (tpl ?? []).map((t: any) => {
-        return {
-        checklist_id: checklistId,
-        sezione: mapSezioneToInt(t.sezione), // int4
-        ordine: t.ordine, // int4
-        titolo: t.titolo, // testo task
-        target: inferTaskTarget(t.titolo, t.target),
-        stato: "DA_FARE",
-        };
+    {
+      const res = await fetch("/api/checklists/materialize-tasks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ checklist_id: checklistId }),
       });
-
-      if (rows.length) {
-        const { error: insErr } = await dbFrom("checklist_tasks")
-          .insert(rows);
-
-        if (insErr) {
-          logSupabaseError(insErr);
-          throw insErr;
-        }
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(json?.error || "Errore materializzazione checklist_tasks");
       }
     }
 

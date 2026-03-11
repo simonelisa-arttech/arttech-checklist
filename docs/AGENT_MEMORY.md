@@ -95,6 +95,21 @@
 - Prima dell'enforcement, i duplicati storici mantengono invariata la checklist piu recente; le altre vengono rinominate come duplicate.
 - UI create checklist/progetto mostra messaggio chiaro quando il DB risponde con violazione del vincolo univoco.
 
+## Snapshot 2026-03-11 - Checklist operativa sync e notification_rules
+- Estratta la sync checklist operativa in `lib/checklist/syncChecklistTemplate.ts`.
+- Funzioni disponibili:
+  - `materializeChecklistTasks(checklistId)`
+  - `syncChecklistTemplate(templateId)`
+  - `syncAllChecklistTemplates()`
+- La creazione checklist/progetto usa ora la route unica `POST /api/checklists/materialize-tasks`.
+- La sync template -> checklist aggiorna solo `sezione`, `ordine`, `titolo`, `target`, oltre all'aggancio `task_template_id` per righe legacy.
+- Non tocca mai dati operativi della task: `stato`, note, allegati, log, override notifiche.
+- Le task template disattivate restano preservate nelle checklist esistenti per non perdere storico.
+- `notification_rules` ora gestisce anche ambienti ancora fermi al vincolo legacy `(task_title, target)`:
+  - se la riga esiste, viene aggiornata
+  - se l'insert collide sul vecchio indice unico, la route converte il salvataggio in update della riga compatibile
+  - precedenza effettiva lato UI/resta: override checklist > globale.
+
 ## Query rapide di controllo (manuali)
 ```sql
 -- Tagliandi cliente con progetto associato

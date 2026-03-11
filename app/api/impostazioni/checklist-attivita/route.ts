@@ -2,6 +2,7 @@ export const runtime = "nodejs";
 
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { syncChecklistTemplate } from "@/lib/checklist/syncChecklistTemplate";
 
 type Payload = {
   id?: string;
@@ -78,259 +79,6 @@ function normalizeTarget(input: unknown) {
   return raw;
 }
 
-function normalizeTemplateTitle(input: unknown) {
-  return String(input || "")
-    .trim()
-    .replace(/\s+/g, " ")
-    .toLowerCase();
-}
-
-function mapSezioneToInt(raw: string | number | null | undefined) {
-  if (typeof raw === "number" && Number.isFinite(raw)) return raw;
-  const value = String(raw || "")
-    .trim()
-    .toUpperCase()
-    .replace(/[\s-]+/g, "_");
-  if (value.includes("DOCUMENTI")) return 0;
-  if (value.includes("SEZIONE_1") || value.includes("SEZIONE1") || value.includes("SEZIONE_01")) {
-    return 1;
-  }
-  if (value.includes("SEZIONE_2") || value.includes("SEZIONE2") || value.includes("SEZIONE_02")) {
-    return 2;
-  }
-  if (value.includes("SEZIONE_3") || value.includes("SEZIONE3") || value.includes("SEZIONE_03")) {
-    return 3;
-  }
-  if (value.includes("_1")) return 1;
-  if (value.includes("_2")) return 2;
-  if (value.includes("_3")) return 3;
-  return 0;
-}
-
-async function fetchAllChecklistIds(supabase: any) {
-  const ids: string[] = [];
-  const pageSize = 1000;
-  for (let from = 0; ; from += pageSize) {
-    const to = from + pageSize - 1;
-    const { data, error } = await supabase
-      .from("checklists")
-      .select("id")
-      .order("id", { ascending: true })
-      .range(from, to);
-    if (error) throw error;
-    const rows = (data || []) as Array<{ id: string | null }>;
-    ids.push(...rows.map((row) => String(row.id || "")).filter(Boolean));
-    if (rows.length < pageSize) break;
-  }
-  return ids;
-}
-
-async function backfillTemplateToExistingChecklists(
-  supabase: any,
-  template: {
-    id: string;
-    sezione: string | null;
-    ordine: number | null;
-    titolo: string | null;
-    target?: string | null;
-    attivo?: boolean;
-  }
-) {
-  const checklistIds = await fetchAllChecklistIds(supabase);
-  if (checklistIds.length === 0) return;
-
-  const existingChecklistIds = new Set<string>();
-  const legacyTaskRows: Array<{
-    id: string;
-    checklist_id: string;
-    task_template_id: string | null;
-    titolo: string | null;
-    sezione: number | null;
-    ordine: number | null;
-    target: string | null;
-  }> = [];
-  const templateTaskIds: string[] = [];
-  const checklistTaskUpdates: Array<{
-    id: string;
-    payload: {
-      sezione: number;
-      ordine: number | null;
-      titolo: string | null;
-      target: string;
-      task_template_id?: string;
-    };
-  }> = [];
-  const templateSezione = mapSezioneToInt(template.sezione);
-  const templateOrdine = template.ordine != null ? Number(template.ordine) : null;
-  const templateTitle = normalizeTemplateTitle(template.titolo);
-  const templateTarget = normalizeTarget(template.target);
-  const templateAttivo = template.attivo !== false;
-  const pageSize = 1000;
-  for (let from = 0; ; from += pageSize) {
-    const to = from + pageSize - 1;
-    let data: any[] | null = null;
-    let error: any = null;
-    let result = await supabase
-      .from("checklist_tasks")
-      .select("id, checklist_id, task_template_id, titolo, sezione, ordine, target")
-      .range(from, to);
-    data = result.data;
-    error = result.error;
-    if (error && String(error.message || "").toLowerCase().includes("target")) {
-      result = await supabase
-        .from("checklist_tasks")
-        .select("id, checklist_id, task_template_id, titolo, sezione, ordine")
-        .range(from, to);
-      data = (result.data || []).map((row: any) => ({ ...row, target: null }));
-      error = result.error;
-    }
-    if (error) throw error;
-    const rows = (data || []) as Array<{
-      id: string | null;
-      checklist_id: string | null;
-      task_template_id: string | null;
-      titolo: string | null;
-      sezione: number | null;
-      ordine: number | null;
-      target: string | null;
-    }>;
-    for (const row of rows) {
-      const checklistId = String(row.checklist_id || "").trim();
-      if (!checklistId) continue;
-      const taskTemplateId = String(row.task_template_id || "").trim();
-      if (taskTemplateId === template.id) {
-        existingChecklistIds.add(checklistId);
-        if (row.id) templateTaskIds.push(String(row.id));
-        if (templateAttivo && row.id) {
-          const currentTitle = row.titolo?.trim() || null;
-          const currentOrder = row.ordine == null ? null : Number(row.ordine);
-          const currentTarget = normalizeTarget(row.target);
-          if (
-            currentTitle !== (template.titolo?.trim() || null) ||
-            Number(row.sezione ?? 0) !== templateSezione ||
-            currentOrder !== templateOrdine ||
-            currentTarget !== templateTarget
-          ) {
-            checklistTaskUpdates.push({
-              id: String(row.id),
-              payload: {
-                sezione: templateSezione,
-                ordine: templateOrdine,
-                titolo: template.titolo?.trim() || null,
-                target: templateTarget,
-              },
-            });
-          }
-        }
-        continue;
-      }
-      const sameLegacyTask =
-        !taskTemplateId &&
-        normalizeTemplateTitle(row.titolo) === templateTitle &&
-        Number(row.sezione ?? 0) === templateSezione &&
-        (row.ordine == null ? null : Number(row.ordine)) === templateOrdine;
-      if (sameLegacyTask && row.id) {
-        legacyTaskRows.push({
-          id: String(row.id),
-          checklist_id: checklistId,
-          task_template_id: null,
-          titolo: row.titolo ?? null,
-          sezione: row.sezione ?? null,
-          ordine: row.ordine ?? null,
-          target: row.target ?? null,
-        });
-        existingChecklistIds.add(checklistId);
-      }
-    }
-    if (rows.length < pageSize) break;
-  }
-
-  if (!templateAttivo) {
-    const deleteIds = Array.from(
-      new Set([...templateTaskIds, ...legacyTaskRows.map((row) => String(row.id || "")).filter(Boolean)])
-    );
-    const chunkSize = 500;
-    for (let index = 0; index < deleteIds.length; index += chunkSize) {
-      const chunk = deleteIds.slice(index, index + chunkSize);
-      if (!chunk.length) continue;
-      const { error } = await supabase.from("checklist_tasks").delete().in("id", chunk);
-      if (error) throw error;
-    }
-    return;
-  }
-
-  for (const row of legacyTaskRows) {
-    const payload = {
-      task_template_id: template.id,
-      sezione: templateSezione,
-      ordine: templateOrdine,
-      titolo: template.titolo?.trim() || null,
-      target: templateTarget,
-    };
-    let { error } = await supabase
-      .from("checklist_tasks")
-      .update(payload)
-      .eq("id", row.id);
-    if (error && String(error.message || "").toLowerCase().includes("target")) {
-      ({ error } = await supabase
-        .from("checklist_tasks")
-        .update({
-          task_template_id: template.id,
-          sezione: templateSezione,
-          ordine: templateOrdine,
-          titolo: template.titolo?.trim() || null,
-        })
-        .eq("id", row.id));
-    }
-    if (error) throw error;
-  }
-
-  for (const update of checklistTaskUpdates) {
-    let { error } = await supabase.from("checklist_tasks").update(update.payload).eq("id", update.id);
-    if (error && String(error.message || "").toLowerCase().includes("target")) {
-      const { target: _ignore, ...fallbackPayload } = update.payload;
-      ({ error } = await supabase
-        .from("checklist_tasks")
-        .update(fallbackPayload)
-        .eq("id", update.id));
-    }
-    if (error) throw error;
-  }
-
-  const missingChecklistIds = checklistIds.filter((id) => !existingChecklistIds.has(id));
-  if (missingChecklistIds.length === 0) return;
-
-  const insertRows = missingChecklistIds.map((checklistId) => ({
-    checklist_id: checklistId,
-    task_template_id: template.id,
-    sezione: mapSezioneToInt(template.sezione),
-    ordine: template.ordine != null ? Number(template.ordine) : null,
-    titolo: template.titolo?.trim() || null,
-    target: normalizeTarget(template.target),
-    stato: "DA_FARE",
-  }));
-
-  const chunkSize = 500;
-  for (let index = 0; index < insertRows.length; index += chunkSize) {
-    const chunk = insertRows.slice(index, index + chunkSize);
-    let { error } = await supabase.from("checklist_tasks").insert(chunk);
-    if (error && String(error.message || "").toLowerCase().includes("target")) {
-      const fallbackChunk = chunk.map(({ target: _ignore, ...row }) => row);
-      ({ error } = await supabase.from("checklist_tasks").insert(fallbackChunk));
-    }
-    if (error) throw error;
-  }
-}
-
-function isRetroactiveRecoveryTemplate(row: any) {
-  const ordine = Number(row?.ordine);
-  const title = normalizeTemplateTitle(row?.titolo);
-  return (
-    ordine === 75 &&
-    title === normalizeTemplateTitle("schemi dati ed elettrici + Pixel Map")
-  );
-}
-
 async function fetchRows(supabase: any) {
   const selectWithTarget = "id, sezione, ordine, titolo, attivo, target";
   const selectFallback = "id, sezione, ordine, titolo, attivo";
@@ -368,25 +116,6 @@ export async function GET(request: Request) {
   const rowsRes = await fetchRows(supabase);
   if (rowsRes.error) {
     return NextResponse.json({ error: rowsRes.error.message }, { status: 500 });
-  }
-
-  const recoveryTemplates = (rowsRes.data || []).filter((row: any) => isRetroactiveRecoveryTemplate(row));
-  for (const row of recoveryTemplates) {
-    try {
-      await backfillTemplateToExistingChecklists(supabase, {
-        id: String(row.id),
-        sezione: row.sezione ?? null,
-        ordine: row.ordine ?? null,
-        titolo: row.titolo ?? null,
-        target: row.target ?? null,
-        attivo: row.attivo !== false,
-      });
-    } catch (error: any) {
-      return NextResponse.json(
-        { error: error?.message || "Errore recovery checklist_tasks per task 75" },
-        { status: 500 }
-      );
-    }
   }
 
   const baseTargets = ["GENERICA", "MAGAZZINO", "TECNICO_SW"];
@@ -446,17 +175,10 @@ export async function POST(request: Request) {
     }
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     try {
-      await backfillTemplateToExistingChecklists(supabase, {
-        id: String(body.id),
-        sezione: payload.sezione,
-        ordine: payload.ordine,
-        titolo: payload.titolo,
-        target: payload.target,
-        attivo: payload.attivo,
-      });
-    } catch (backfillError: any) {
+      await syncChecklistTemplate(supabase, String(body.id));
+    } catch (syncError: any) {
       return NextResponse.json(
-        { error: backfillError?.message || "Errore backfill checklist_tasks" },
+        { error: syncError?.message || "Errore sync checklist_tasks" },
         { status: 500 }
       );
     }
@@ -483,17 +205,10 @@ export async function POST(request: Request) {
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     if (data?.id) {
       try {
-        await backfillTemplateToExistingChecklists(supabase, {
-          id: String(data.id),
-          sezione: data.sezione ?? payload.sezione,
-          ordine: data.ordine ?? payload.ordine,
-          titolo: data.titolo ?? payload.titolo,
-          target: data.target ?? payload.target,
-          attivo: payload.attivo,
-        });
-      } catch (backfillError: any) {
+        await syncChecklistTemplate(supabase, String(data.id));
+      } catch (syncError: any) {
         return NextResponse.json(
-          { error: backfillError?.message || "Errore backfill checklist_tasks" },
+          { error: syncError?.message || "Errore sync checklist_tasks" },
           { status: 500 }
         );
       }

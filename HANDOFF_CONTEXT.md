@@ -193,3 +193,18 @@ Dopo il push, Vercel farà auto-deploy e i fix saranno in produzione.
 - Create/edit allegati/link:
   - create: upload file selezionati dopo insert intervento, poi apertura automatica del dettaglio/edit per aggiungere link/altri allegati
   - edit: `AttachmentsPanel` inline nello stesso flow del form modifica
+
+## Update 2026-03-11 - Checklist operativa: sync template centralizzato
+
+- Aggiunto servizio server `lib/checklist/syncChecklistTemplate.ts` come punto unico per:
+  - `materializeChecklistTasks(checklistId)`
+  - `syncChecklistTemplate(templateId)`
+  - `syncAllChecklistTemplates()`
+- Source of truth consolidata:
+  - template strutturale: `checklist_task_templates`
+  - task materializzate progetto: `checklist_tasks`
+  - dati operativi preservati: stato, note, allegati, log, override notifiche
+- La sync aggiorna solo campi strutturali (`task_template_id`, `sezione`, `ordine`, `titolo`, `target`) e non sovrascrive dati operativi.
+- Le task template disattivate non vengono cancellate dalle checklist esistenti: le righe progetto vengono preservate per non perdere storico e allegati.
+- La creazione nuova checklist/progetto ora materializza le task via route unica `POST /api/checklists/materialize-tasks`, senza logiche duplicate sparse.
+- Fix `notification_rules`: il salvataggio ora riallinea il write alla chiave unica legacy reale `(task_title, target)` se presente in produzione e aggiorna la riga esistente invece di creare duplicati.

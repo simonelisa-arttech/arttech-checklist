@@ -119,6 +119,7 @@ function isLegacyTaskTargetUniqueViolation(err: any) {
   return (
     code === "23505" &&
     (msg.includes("notification_rules_task_target_uniq") ||
+      msg.includes("notification_rules_task_target_uni") ||
       msg.includes("task_target_uniq") ||
       (msg.includes("duplicate key") && msg.includes("task_title") && msg.includes("target")))
   );
@@ -347,6 +348,306 @@ async function listRulesForTask(
   return { data: (data || []) as any[], error };
 }
 
+async function findExistingRuleForWrite(
+  adminClient: any,
+  input: {
+    taskTitle: string;
+    target: string;
+    checklistId: string | null;
+    taskTemplateId: string | null;
+  }
+) {
+  const selectFull = "id, checklist_id, task_template_id, task_title, target, created_at";
+  const selectNoTemplate = "id, checklist_id, task_title, target, created_at";
+  const selectLegacy = "id, task_title, target, created_at";
+
+  let data: any[] | null = null;
+  let error: any = null;
+
+  let fullQuery = adminClient
+    .from("notification_rules")
+    .select(selectFull)
+    .eq("task_title", input.taskTitle)
+    .eq("target", input.target)
+    .order("created_at", { ascending: true })
+    .limit(20);
+  ({ data, error } = await fullQuery);
+
+  if (error && isMissingColumn(error, "task_template_id")) {
+    const retry = await adminClient
+      .from("notification_rules")
+      .select(selectNoTemplate)
+      .eq("task_title", input.taskTitle)
+      .eq("target", input.target)
+      .order("created_at", { ascending: true })
+      .limit(20);
+    data = (retry.data || []).map((row: any) => ({ ...row, task_template_id: null }));
+    error = retry.error;
+  }
+
+  if (error && isMissingColumn(error, "checklist_id")) {
+    const retry = await adminClient
+      .from("notification_rules")
+      .select(selectLegacy)
+      .eq("task_title", input.taskTitle)
+      .eq("target", input.target)
+      .order("created_at", { ascending: true })
+      .limit(20);
+    data = (retry.data || []).map((row: any) => ({
+      ...row,
+      checklist_id: null,
+      task_template_id: null,
+    }));
+    error = retry.error;
+  }
+
+  if (error) throw error;
+
+  const rows = (data || []) as Array<{
+    id: string;
+    checklist_id?: string | null;
+    task_template_id?: string | null;
+  }>;
+  const checklistId = String(input.checklistId || "").trim();
+  const taskTemplateId = String(input.taskTemplateId || "").trim();
+
+  if (checklistId) {
+    const scoped = rows.find((row) => String(row.checklist_id || "").trim() === checklistId);
+    if (scoped) return scoped;
+  }
+
+  if (taskTemplateId) {
+    const byTemplate = rows.find(
+      (row) => String(row.task_template_id || "").trim() === taskTemplateId
+    );
+    if (byTemplate) return byTemplate;
+  }
+
+  const global = rows.find((row) => !String(row.checklist_id || "").trim());
+  if (global) return global;
+  return rows[0] || null;
+}
+
+async function updateRuleCompat(
+  adminClient: any,
+  ruleId: string,
+  payload: Record<string, any>
+) {
+  const selectSaved =
+    "id, enabled, mode, checklist_id, task_template_id, task_title, target, recipients, frequency, send_time, timezone, day_of_week, only_future, send_on_create, created_at, updated_at";
+
+  let { data, error } = await adminClient
+    .from("notification_rules")
+    .update(payload)
+    .eq("id", ruleId)
+    .select(selectSaved)
+    .single();
+
+  if (error && isMissingColumn(error, "send_on_create")) {
+    const compatPayload = { ...payload } as any;
+    delete compatPayload.send_on_create;
+    const res = await adminClient
+      .from("notification_rules")
+      .update(compatPayload)
+      .eq("id", ruleId)
+      .select(
+        "id, enabled, mode, checklist_id, task_template_id, task_title, target, recipients, frequency, send_time, timezone, day_of_week, only_future, created_at, updated_at"
+      )
+      .single();
+    return {
+      data: res.data ? ({ ...(res.data as any), send_on_create: false } as any) : null,
+      error: res.error,
+    };
+  }
+
+  if (error && isMissingColumn(error, "checklist_id")) {
+    const compatPayload = { ...payload } as any;
+    delete compatPayload.checklist_id;
+    delete compatPayload.day_of_week;
+    const res = await adminClient
+      .from("notification_rules")
+      .update(compatPayload)
+      .eq("id", ruleId)
+      .select(
+        "id, enabled, mode, task_template_id, task_title, target, recipients, frequency, send_time, timezone, only_future, send_on_create, created_at, updated_at"
+      )
+      .single();
+    return {
+      data: res.data ? ({ ...(res.data as any), checklist_id: null, day_of_week: null } as any) : null,
+      error: res.error,
+    };
+  }
+
+  if (error && isMissingColumn(error, "day_of_week")) {
+    const compatPayload = { ...payload } as any;
+    delete compatPayload.day_of_week;
+    const res = await adminClient
+      .from("notification_rules")
+      .update(compatPayload)
+      .eq("id", ruleId)
+      .select(
+        "id, enabled, mode, checklist_id, task_template_id, task_title, target, recipients, frequency, send_time, timezone, only_future, send_on_create, created_at, updated_at"
+      )
+      .single();
+    return {
+      data: res.data ? ({ ...(res.data as any), day_of_week: null } as any) : null,
+      error: res.error,
+    };
+  }
+
+  if (error && isMissingColumn(error, "task_template_id")) {
+    const compatPayload = { ...payload } as any;
+    delete compatPayload.task_template_id;
+    delete compatPayload.day_of_week;
+    const res = await adminClient
+      .from("notification_rules")
+      .update(compatPayload)
+      .eq("id", ruleId)
+      .select(
+        "id, enabled, mode, checklist_id, task_title, target, recipients, frequency, send_time, timezone, only_future, send_on_create, created_at, updated_at"
+      )
+      .single();
+    if (res.error && isMissingColumn(res.error, "checklist_id")) {
+      const res2 = await adminClient
+        .from("notification_rules")
+        .update(compatPayload)
+        .eq("id", ruleId)
+        .select(
+          "id, enabled, mode, task_title, target, recipients, frequency, send_time, timezone, only_future, send_on_create, created_at, updated_at"
+        )
+        .single();
+      return {
+        data: res2.data
+          ? ({
+              ...(res2.data as any),
+              checklist_id: null,
+              task_template_id: null,
+              day_of_week: null,
+            } as any)
+          : null,
+        error: res2.error,
+      };
+    }
+    return {
+      data: res.data ? ({ ...(res.data as any), task_template_id: null, day_of_week: null } as any) : null,
+      error: res.error,
+    };
+  }
+
+  return { data, error };
+}
+
+async function insertRuleCompat(adminClient: any, payload: Record<string, any>, checklistId: string | null) {
+  const selectSaved =
+    "id, enabled, mode, checklist_id, task_template_id, task_title, target, recipients, frequency, send_time, timezone, day_of_week, only_future, send_on_create, created_at, updated_at";
+
+  let { data, error } = await adminClient
+    .from("notification_rules")
+    .insert(payload)
+    .select(selectSaved)
+    .single();
+
+  if (error && isMissingColumn(error, "send_on_create")) {
+    const compatPayload = { ...payload } as any;
+    delete compatPayload.send_on_create;
+    const res = await adminClient
+      .from("notification_rules")
+      .insert(compatPayload)
+      .select(
+        "id, enabled, mode, checklist_id, task_template_id, task_title, target, recipients, frequency, send_time, timezone, day_of_week, only_future, created_at, updated_at"
+      )
+      .single();
+    return {
+      data: res.data ? ({ ...(res.data as any), send_on_create: false } as any) : null,
+      error: res.error,
+    };
+  }
+
+  if (error && isMissingColumn(error, "checklist_id")) {
+    if (checklistId) {
+      return {
+        data: null,
+        error: { message: "Schema DB non aggiornato: manca notification_rules.checklist_id" },
+      };
+    }
+    const compatPayload = { ...payload } as any;
+    delete compatPayload.checklist_id;
+    delete compatPayload.day_of_week;
+    const res = await adminClient
+      .from("notification_rules")
+      .insert(compatPayload)
+      .select(
+        "id, enabled, mode, task_template_id, task_title, target, recipients, frequency, send_time, timezone, only_future, send_on_create, created_at, updated_at"
+      )
+      .single();
+    return {
+      data: res.data ? ({ ...(res.data as any), checklist_id: null, day_of_week: null } as any) : null,
+      error: res.error,
+    };
+  }
+
+  if (error && isMissingColumn(error, "day_of_week")) {
+    const compatPayload = { ...payload } as any;
+    delete compatPayload.day_of_week;
+    const res = await adminClient
+      .from("notification_rules")
+      .insert(compatPayload)
+      .select(
+        "id, enabled, mode, checklist_id, task_template_id, task_title, target, recipients, frequency, send_time, timezone, only_future, send_on_create, created_at, updated_at"
+      )
+      .single();
+    return {
+      data: res.data ? ({ ...(res.data as any), day_of_week: null } as any) : null,
+      error: res.error,
+    };
+  }
+
+  if (error && isMissingColumn(error, "task_template_id")) {
+    const compatPayload = { ...payload } as any;
+    delete compatPayload.task_template_id;
+    delete compatPayload.day_of_week;
+    const res = await adminClient
+      .from("notification_rules")
+      .insert(compatPayload)
+      .select(
+        "id, enabled, mode, checklist_id, task_title, target, recipients, frequency, send_time, timezone, only_future, send_on_create, created_at, updated_at"
+      )
+      .single();
+    if (res.error && isMissingColumn(res.error, "checklist_id")) {
+      if (checklistId) {
+        return {
+          data: null,
+          error: { message: "Schema DB non aggiornato: manca notification_rules.checklist_id" },
+        };
+      }
+      const res2 = await adminClient
+        .from("notification_rules")
+        .insert(compatPayload)
+        .select(
+          "id, enabled, mode, task_title, target, recipients, frequency, send_time, timezone, only_future, send_on_create, created_at, updated_at"
+        )
+        .single();
+      return {
+        data: res2.data
+          ? ({
+              ...(res2.data as any),
+              checklist_id: null,
+              task_template_id: null,
+              day_of_week: null,
+            } as any)
+          : null,
+        error: res2.error,
+      };
+    }
+    return {
+      data: res.data ? ({ ...(res.data as any), task_template_id: null, day_of_week: null } as any) : null,
+      error: res.error,
+    };
+  }
+
+  return { data, error };
+}
+
 export async function GET(request: Request) {
   const auth = await requireUser(request);
   if (!auth.ok) return auth.response;
@@ -485,259 +786,67 @@ export async function POST(request: Request) {
     only_future: parseOnlyFuture(body?.only_future),
   };
 
-  let existingQuery = auth.adminClient
-    .from("notification_rules")
-    .select("id")
-    .eq("task_title", taskTitle)
-    .eq("target", target)
-    .limit(1);
-  if (checklistId) {
-    existingQuery = existingQuery.eq("checklist_id", checklistId);
-  } else {
-    existingQuery = existingQuery.is("checklist_id", null);
+  let existing: { id: string } | null = null;
+  try {
+    existing = await findExistingRuleForWrite(auth.adminClient, {
+      taskTitle,
+      target,
+      checklistId,
+      taskTemplateId,
+    });
+  } catch (existingErr: any) {
+    return NextResponse.json({ error: existingErr.message }, { status: 500 });
   }
-
-  let { data: existing, error: existingErr } = await existingQuery.maybeSingle();
-  if (existingErr && isMissingColumn(existingErr, "checklist_id")) {
-    if (checklistId) {
-      return NextResponse.json(
-        { error: "Schema DB non aggiornato: manca notification_rules.checklist_id" },
-        { status: 500 }
-      );
-    }
-    existing = null;
-    existingErr = null;
-  }
-  if (existingErr) return NextResponse.json({ error: existingErr.message }, { status: 500 });
-
-  const selectSaved =
-    "id, enabled, mode, checklist_id, task_template_id, task_title, target, recipients, frequency, send_time, timezone, day_of_week, only_future, send_on_create, created_at, updated_at";
 
   if (existing?.id) {
-    const { data, error } = await auth.adminClient
-      .from("notification_rules")
-      .update(payload)
-      .eq("id", existing.id)
-      .select(selectSaved)
-      .single();
-    if (error && isMissingColumn(error, "send_on_create")) {
-      const compatPayload = { ...payload } as any;
-      delete compatPayload.send_on_create;
-      const res = await auth.adminClient
-        .from("notification_rules")
-        .update(compatPayload)
-        .eq("id", existing.id)
-        .select(
-          "id, enabled, mode, checklist_id, task_template_id, task_title, target, recipients, frequency, send_time, timezone, day_of_week, only_future, created_at, updated_at"
-        )
-        .single();
-      if (res.error) return NextResponse.json({ error: res.error.message }, { status: 500 });
-      const dataWithRecipients = withRecipients({ ...(res.data as any), send_on_create: false }, operatori);
-      return NextResponse.json({ ok: true, data: dataWithRecipients });
-    }
-    if (error && isMissingColumn(error, "checklist_id")) {
-      const compatPayload = { ...payload } as any;
-      delete compatPayload.checklist_id;
-      delete compatPayload.day_of_week;
-      const res = await auth.adminClient
-        .from("notification_rules")
-        .update(compatPayload)
-        .eq("id", existing.id)
-        .select(
-          "id, enabled, mode, task_template_id, task_title, target, recipients, frequency, send_time, timezone, only_future, send_on_create, created_at, updated_at"
-        )
-        .single();
-      if (res.error) return NextResponse.json({ error: res.error.message }, { status: 500 });
-      const dataWithRecipients = withRecipients(
-        { ...(res.data as any), checklist_id: null, day_of_week: null },
-        operatori
-      );
-      return NextResponse.json({ ok: true, data: dataWithRecipients });
-    }
-    if (error && isMissingColumn(error, "day_of_week")) {
-      const compatPayload = { ...payload } as any;
-      delete compatPayload.day_of_week;
-      const res = await auth.adminClient
-        .from("notification_rules")
-        .update(compatPayload)
-        .eq("id", existing.id)
-        .select(
-          "id, enabled, mode, checklist_id, task_template_id, task_title, target, recipients, frequency, send_time, timezone, only_future, send_on_create, created_at, updated_at"
-        )
-        .single();
-      if (res.error) return NextResponse.json({ error: res.error.message }, { status: 500 });
-      const dataWithRecipients = withRecipients({ ...(res.data as any), day_of_week: null }, operatori);
-      return NextResponse.json({ ok: true, data: dataWithRecipients });
-    }
-    if (error && isMissingColumn(error, "task_template_id")) {
-      const compatPayload = { ...payload } as any;
-      delete compatPayload.task_template_id;
-      delete compatPayload.day_of_week;
-      const res = await auth.adminClient
-        .from("notification_rules")
-        .update(compatPayload)
-        .eq("id", existing.id)
-        .select(
-          "id, enabled, mode, checklist_id, task_title, target, recipients, frequency, send_time, timezone, only_future, send_on_create, created_at, updated_at"
-        )
-        .single();
-      if (res.error && isMissingColumn(res.error, "checklist_id")) {
-        const res2 = await auth.adminClient
-          .from("notification_rules")
-          .update(compatPayload)
-          .eq("id", existing.id)
-          .select(
-            "id, enabled, mode, task_title, target, recipients, frequency, send_time, timezone, only_future, send_on_create, created_at, updated_at"
-          )
-          .single();
-        if (res2.error) return NextResponse.json({ error: res2.error.message }, { status: 500 });
-        const dataWithRecipients = withRecipients(
-          { ...(res2.data as any), checklist_id: null, task_template_id: null, day_of_week: null },
-          operatori
-        );
-        return NextResponse.json({ ok: true, data: dataWithRecipients });
+    let saved = await updateRuleCompat(auth.adminClient, existing.id, payload);
+    if (saved.error && isLegacyTaskTargetUniqueViolation(saved.error)) {
+      let legacyExisting: { id: string } | null = null;
+      try {
+        legacyExisting = await findExistingRuleForWrite(auth.adminClient, {
+          taskTitle,
+          target,
+          checklistId,
+          taskTemplateId,
+        });
+      } catch (legacyErr: any) {
+        return NextResponse.json({ error: legacyErr.message }, { status: 500 });
       }
-      if (res.error) return NextResponse.json({ error: res.error.message }, { status: 500 });
-      const dataWithRecipients = withRecipients(
-        { ...(res.data as any), task_template_id: null, day_of_week: null },
-        operatori
-      );
-      return NextResponse.json({ ok: true, data: dataWithRecipients });
+      if (legacyExisting?.id && legacyExisting.id !== existing.id) {
+        saved = await updateRuleCompat(auth.adminClient, legacyExisting.id, payload);
+      }
     }
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-    return NextResponse.json({ ok: true, data: withRecipients(data, operatori) });
+    if (saved.error) return NextResponse.json({ error: saved.error.message }, { status: 500 });
+    return NextResponse.json({ ok: true, data: withRecipients(saved.data, operatori) });
   }
 
-  const { data, error } = await auth.adminClient
-    .from("notification_rules")
-    .insert(payload)
-    .select(selectSaved)
-    .single();
-  if (error && isLegacyTaskTargetUniqueViolation(error)) {
-    // Compat mode per schema legacy: esiste unicità globale (task_title,target)
-    // e non può coesistere override progetto + globale.
-    // In questo caso aggiorniamo la regola esistente invece di fallire.
-    const { data: legacyExisting, error: legacyErr } = await auth.adminClient
-      .from("notification_rules")
-      .select("id")
-      .eq("task_title", taskTitle)
-      .eq("target", target)
-      .limit(1)
-      .maybeSingle();
-    if (legacyErr) return NextResponse.json({ error: legacyErr.message }, { status: 500 });
-    if (!legacyExisting?.id) return NextResponse.json({ error: error.message }, { status: 500 });
-
-    const { data: legacySaved, error: legacySaveErr } = await auth.adminClient
-      .from("notification_rules")
-      .update(payload)
-      .eq("id", legacyExisting.id)
-      .select(selectSaved)
-      .single();
-    if (legacySaveErr) return NextResponse.json({ error: legacySaveErr.message }, { status: 500 });
-    return NextResponse.json({
-      ok: true,
-      data: withRecipients(legacySaved, operatori),
-      warning:
-        "Schema legacy: override progetto non separabile da regola globale (vincolo unico task_title,target).",
-    });
-  }
-  if (error && isMissingColumn(error, "send_on_create")) {
-    const compatPayload = { ...payload } as any;
-    delete compatPayload.send_on_create;
-    const res = await auth.adminClient
-      .from("notification_rules")
-      .insert(compatPayload)
-      .select(
-        "id, enabled, mode, checklist_id, task_template_id, task_title, target, recipients, frequency, send_time, timezone, day_of_week, only_future, created_at, updated_at"
-      )
-      .single();
-    if (res.error) return NextResponse.json({ error: res.error.message }, { status: 500 });
-    return NextResponse.json({
-      ok: true,
-      data: withRecipients({ ...(res.data as any), send_on_create: false }, operatori),
-    });
-  }
-  if (error && isMissingColumn(error, "checklist_id")) {
-    if (checklistId) {
-      return NextResponse.json(
-        { error: "Schema DB non aggiornato: manca notification_rules.checklist_id" },
-        { status: 500 }
-      );
-    }
-    const compatPayload = { ...payload } as any;
-    delete compatPayload.checklist_id;
-    delete compatPayload.day_of_week;
-    const res = await auth.adminClient
-      .from("notification_rules")
-      .insert(compatPayload)
-      .select(
-        "id, enabled, mode, task_template_id, task_title, target, recipients, frequency, send_time, timezone, only_future, send_on_create, created_at, updated_at"
-      )
-      .single();
-    if (res.error) return NextResponse.json({ error: res.error.message }, { status: 500 });
-    return NextResponse.json({
-      ok: true,
-      data: withRecipients({ ...(res.data as any), checklist_id: null, day_of_week: null }, operatori),
-    });
-  }
-  if (error && isMissingColumn(error, "day_of_week")) {
-    const compatPayload = { ...payload } as any;
-    delete compatPayload.day_of_week;
-    const res = await auth.adminClient
-      .from("notification_rules")
-      .insert(compatPayload)
-      .select(
-        "id, enabled, mode, checklist_id, task_template_id, task_title, target, recipients, frequency, send_time, timezone, only_future, send_on_create, created_at, updated_at"
-      )
-      .single();
-    if (res.error) return NextResponse.json({ error: res.error.message }, { status: 500 });
-    return NextResponse.json({
-      ok: true,
-      data: withRecipients({ ...(res.data as any), day_of_week: null }, operatori),
-    });
-  }
-  if (error && isMissingColumn(error, "task_template_id")) {
-    const compatPayload = { ...payload } as any;
-    delete compatPayload.task_template_id;
-    delete compatPayload.day_of_week;
-    const res = await auth.adminClient
-      .from("notification_rules")
-      .insert(compatPayload)
-      .select(
-        "id, enabled, mode, checklist_id, task_title, target, recipients, frequency, send_time, timezone, only_future, send_on_create, created_at, updated_at"
-      )
-      .single();
-    if (res.error && isMissingColumn(res.error, "checklist_id")) {
-      if (checklistId) {
-        return NextResponse.json(
-          { error: "Schema DB non aggiornato: manca notification_rules.checklist_id" },
-          { status: 500 }
-        );
-      }
-      const res2 = await auth.adminClient
-        .from("notification_rules")
-        .insert(compatPayload)
-        .select(
-          "id, enabled, mode, task_title, target, recipients, frequency, send_time, timezone, only_future, send_on_create, created_at, updated_at"
-        )
-        .single();
-      if (res2.error) return NextResponse.json({ error: res2.error.message }, { status: 500 });
-      return NextResponse.json({
-        ok: true,
-        data: withRecipients(
-          { ...(res2.data as any), checklist_id: null, task_template_id: null, day_of_week: null },
-          operatori
-        ),
+  let saved = await insertRuleCompat(auth.adminClient, payload, checklistId);
+  if (saved.error && isLegacyTaskTargetUniqueViolation(saved.error)) {
+    let legacyExisting: { id: string } | null = null;
+    try {
+      legacyExisting = await findExistingRuleForWrite(auth.adminClient, {
+        taskTitle,
+        target,
+        checklistId,
+        taskTemplateId,
       });
+    } catch (legacyErr: any) {
+      return NextResponse.json({ error: legacyErr.message }, { status: 500 });
     }
-    if (res.error) return NextResponse.json({ error: res.error.message }, { status: 500 });
+    if (!legacyExisting?.id) {
+      return NextResponse.json({ error: saved.error.message }, { status: 500 });
+    }
+    saved = await updateRuleCompat(auth.adminClient, legacyExisting.id, payload);
+    if (saved.error) return NextResponse.json({ error: saved.error.message }, { status: 500 });
     return NextResponse.json({
       ok: true,
-      data: withRecipients({ ...(res.data as any), task_template_id: null, day_of_week: null }, operatori),
+      data: withRecipients(saved.data, operatori),
+      warning:
+        "Salvataggio allineato alla chiave unica reale task_title+target: la regola esistente e' stata aggiornata.",
     });
   }
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  return NextResponse.json({ ok: true, data: withRecipients(data, operatori) });
+  if (saved.error) return NextResponse.json({ error: saved.error.message }, { status: 500 });
+  return NextResponse.json({ ok: true, data: withRecipients(saved.data, operatori) });
 }
 
 export async function DELETE(request: Request) {
