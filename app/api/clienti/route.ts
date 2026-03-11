@@ -2,6 +2,7 @@ export const runtime = "nodejs";
 
 import { NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import { isMissingClientiDriveColumnError } from "@/lib/clientiDrive";
 
 type RateLimitEntry = { count: number; resetAt: number };
 const rateLimitMap = new Map<string, RateLimitEntry>();
@@ -76,6 +77,10 @@ function normalizeOptionalHttpUrl(value: unknown) {
   }
 }
 
+const CLIENTI_BASE_SELECT =
+  "id,denominazione,denominazione_norm,piva,codice_fiscale,codice_sdi,pec,email,telefono,indirizzo,comune,cap,provincia,paese,codice_interno,attivo";
+const CLIENTI_SELECT_WITH_DRIVE = `${CLIENTI_BASE_SELECT},drive_url`;
+
 export async function GET(request: Request) {
   if (!assertAuth(request)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -94,32 +99,39 @@ export async function GET(request: Request) {
   const qNorm = normalizeDenominazione(q);
   const includeInactive = url.searchParams.get("include_inactive") === "1";
 
-  let query = supabase
-    .from("clienti_anagrafica")
-    .select(
-      "id,denominazione,denominazione_norm,piva,codice_fiscale,codice_sdi,pec,email,telefono,indirizzo,comune,cap,provincia,paese,codice_interno,attivo,drive_url"
-    )
-    .order("denominazione", { ascending: true })
-    .range(offset, offset + limit - 1);
+  const buildQuery = (includeDrive: boolean) => {
+    let query = supabase
+      .from("clienti_anagrafica")
+      .select(includeDrive ? CLIENTI_SELECT_WITH_DRIVE : CLIENTI_BASE_SELECT)
+      .order("denominazione", { ascending: true })
+      .range(offset, offset + limit - 1);
 
-  if (!includeInactive) {
-    query = query.eq("attivo", true);
+    if (!includeInactive) {
+      query = query.eq("attivo", true);
+    }
+
+    if (qNorm) {
+      const like = `%${qNorm}%`;
+      query = query.or(
+        [
+          `denominazione.ilike.%${q}%`,
+          `denominazione_norm.ilike.${like}`,
+          `codice_interno.ilike.%${q}%`,
+          `piva.ilike.%${q}%`,
+          `codice_fiscale.ilike.%${q}%`,
+        ].join(",")
+      );
+    }
+
+    return query;
+  };
+
+  let { data, error } = await buildQuery(true);
+  if (error && isMissingClientiDriveColumnError(error)) {
+    const fallback = await buildQuery(false);
+    data = fallback.data;
+    error = fallback.error;
   }
-
-  if (qNorm) {
-    const like = `%${qNorm}%`;
-    query = query.or(
-      [
-        `denominazione.ilike.%${q}%`,
-        `denominazione_norm.ilike.${like}`,
-        `codice_interno.ilike.%${q}%`,
-        `piva.ilike.%${q}%`,
-        `codice_fiscale.ilike.%${q}%`,
-      ].join(",")
-    );
-  }
-
-  const { data, error } = await query;
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
@@ -162,14 +174,26 @@ export async function POST(request: Request) {
     drive_url: driveUrl.value,
     attivo: typeof body?.attivo === "boolean" ? body.attivo : true,
   };
-
-  const { data, error } = await supabase
+  let warning: string | null = null;
+  let { data, error } = await supabase
     .from("clienti_anagrafica")
     .insert(payload)
-    .select(
-      "id,denominazione,denominazione_norm,piva,codice_fiscale,codice_sdi,pec,email,telefono,indirizzo,comune,cap,provincia,paese,codice_interno,attivo,drive_url"
-    )
+    .select(CLIENTI_SELECT_WITH_DRIVE)
     .single();
+  if (error && isMissingClientiDriveColumnError(error)) {
+    const { drive_url: _skip, ...legacyPayload } = payload;
+    const fallback = await supabase
+      .from("clienti_anagrafica")
+      .insert(legacyPayload)
+      .select(CLIENTI_BASE_SELECT)
+      .single();
+    data = fallback.data;
+    error = fallback.error;
+    if (!error && driveUrl.value) {
+      warning =
+        "Cliente salvato. Il link Drive non e' stato salvato: colonna non disponibile nello schema cache / ambiente non migrato.";
+    }
+  }
 
   if (error) {
     const msg = error.message || "Errore creazione cliente";
@@ -178,7 +202,7 @@ export async function POST(request: Request) {
     }
     return NextResponse.json({ error: msg }, { status: 500 });
   }
-  return NextResponse.json({ ok: true, data });
+  return NextResponse.json({ ok: true, data, warning });
 }
 
 export async function PATCH(request: Request) {
@@ -225,15 +249,28 @@ export async function PATCH(request: Request) {
     payload.denominazione = denominazione;
     payload.denominazione_norm = normalizeDenominazione(denominazione);
   }
-
-  const { data, error } = await supabase
+  let warning: string | null = null;
+  let { data, error } = await supabase
     .from("clienti_anagrafica")
     .update(payload)
     .eq("id", id)
-    .select(
-      "id,denominazione,denominazione_norm,piva,codice_fiscale,codice_sdi,pec,email,telefono,indirizzo,comune,cap,provincia,paese,codice_interno,attivo,drive_url"
-    )
+    .select(CLIENTI_SELECT_WITH_DRIVE)
     .single();
+  if (error && isMissingClientiDriveColumnError(error)) {
+    const { drive_url: _skip, ...legacyPayload } = payload;
+    const fallback = await supabase
+      .from("clienti_anagrafica")
+      .update(legacyPayload)
+      .eq("id", id)
+      .select(CLIENTI_BASE_SELECT)
+      .single();
+    data = fallback.data;
+    error = fallback.error;
+    if (!error && driveUrl.value) {
+      warning =
+        "Cliente salvato. Il link Drive non e' stato salvato: colonna non disponibile nello schema cache / ambiente non migrato.";
+    }
+  }
 
   if (error) {
     const msg = error.message || "Errore modifica cliente";
@@ -242,5 +279,5 @@ export async function PATCH(request: Request) {
     }
     return NextResponse.json({ error: msg }, { status: 500 });
   }
-  return NextResponse.json({ ok: true, data });
+  return NextResponse.json({ ok: true, data, warning });
 }

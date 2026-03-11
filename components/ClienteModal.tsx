@@ -123,6 +123,9 @@ export default function ClienteModal({ open, onClose, initial, onSaved }: Client
         setSaving(false);
         return;
       }
+      if (json?.warning) {
+        window.alert(String(json.warning));
+      }
       onSaved?.(json.data as ClienteRecord);
       onClose();
     } catch (err: any) {

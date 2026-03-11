@@ -20,6 +20,7 @@ import { isSupabaseConfigured, supabase } from "@/lib/supabaseClient";
 import { dbFrom } from "@/lib/clientDbBroker";
 import { storageRemove, storageSignedUrl, storageUpload } from "@/lib/clientStorageApi";
 import { sendAlert } from "@/lib/sendAlert";
+import { isMissingClientiDriveColumnError } from "@/lib/clientiDrive";
 
 function parseLocalDay(value?: string | null): Date | null {
   if (!value) return null;
@@ -1357,10 +1358,18 @@ export default function ClientePage({
       if (firstClienteId) {
         if (isPerfEnabled()) console.time(`[perf][cliente][mount#${mountRun}] db clienti_anagrafica`);
         perfCountDb("clienti_anagrafica.select");
-        const { data: clienteById } = await dbFrom("clienti_anagrafica")
+        let { data: clienteById, error: clienteByIdErr } = await dbFrom("clienti_anagrafica")
           .select("denominazione,drive_url")
           .eq("id", firstClienteId)
           .maybeSingle();
+        if (clienteByIdErr && isMissingClientiDriveColumnError(clienteByIdErr)) {
+          const fallback = await dbFrom("clienti_anagrafica")
+            .select("denominazione")
+            .eq("id", firstClienteId)
+            .maybeSingle();
+          clienteById = fallback.data;
+          clienteByIdErr = fallback.error;
+        }
         if (isPerfEnabled()) console.timeEnd(`[perf][cliente][mount#${mountRun}] db clienti_anagrafica`);
         const fullById = String((clienteById as any)?.denominazione || "").trim();
         if (fullById) {
@@ -1368,7 +1377,7 @@ export default function ClientePage({
           setCliente(fullById);
         }
         const driveUrl = String((clienteById as any)?.drive_url || "").trim();
-        if (driveUrl && /^https?:\/\//i.test(driveUrl)) {
+        if (!clienteByIdErr && driveUrl && /^https?:\/\//i.test(driveUrl)) {
           setClienteDriveUrl(driveUrl);
         }
       }
