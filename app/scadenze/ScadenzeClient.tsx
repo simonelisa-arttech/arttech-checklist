@@ -47,6 +47,37 @@ function formatDate(value?: string | null) {
   return Number.isFinite(dt.getTime()) ? dt.toLocaleDateString() : value;
 }
 
+function startOfDay(date: Date) {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+}
+
+function getScadenzaDiffDays(value?: string | null) {
+  if (!value) return null;
+  const dt = new Date(value);
+  if (!Number.isFinite(dt.getTime())) return null;
+  const due = startOfDay(dt);
+  const today = startOfDay(new Date());
+  return Math.round((due.getTime() - today.getTime()) / 86400000);
+}
+
+function getScadenzaRowStyle(value?: string | null) {
+  const diffDays = getScadenzaDiffDays(value);
+  if (diffDays == null) return { background: "white" };
+  if (diffDays < 0) return { background: "#fef2f2" };
+  if (diffDays <= 7) return { background: "#fff7ed" };
+  if (diffDays <= 30) return { background: "#fefce8" };
+  return { background: "white" };
+}
+
+function renderDiffDays(value?: string | null) {
+  const diffDays = getScadenzaDiffDays(value);
+  if (diffDays == null) return "—";
+  if (diffDays < 0) return "SCADUTO";
+  if (diffDays === 0) return "Oggi";
+  if (diffDays === 1) return "tra 1 giorno";
+  return `tra ${diffDays} giorni`;
+}
+
 function csvEscape(value: any) {
   if (value == null) return "";
   const raw = String(value);
@@ -483,20 +514,22 @@ export default function ScadenzeClient() {
           background: "white",
         }}
       >
-        <table style={{ width: "100%", minWidth: 1260, borderCollapse: "collapse", tableLayout: "fixed" }}>
+        <table style={{ width: "100%", minWidth: 1360, borderCollapse: "collapse", tableLayout: "fixed" }}>
           <colgroup>
+            <col style={{ width: "9%" }} />
+            <col style={{ width: "11%" }} />
+            <col style={{ width: "16%" }} />
+            <col style={{ width: "16%" }} />
             <col style={{ width: "10%" }} />
             <col style={{ width: "18%" }} />
-            <col style={{ width: "18%" }} />
-            <col style={{ width: "10%" }} />
-            <col style={{ width: "20%" }} />
-            <col style={{ width: "12%" }} />
+            <col style={{ width: "11%" }} />
             <col style={{ width: "7%" }} />
-            <col style={{ width: "15%" }} />
+            <col style={{ width: "14%" }} />
           </colgroup>
           <thead>
             <tr style={{ textAlign: "left", fontSize: 12, opacity: 0.7 }}>
               <th style={{ padding: "10px 12px" }}>Scadenza</th>
+              <th style={{ padding: "10px 12px" }}>Giorni</th>
               <th style={{ padding: "10px 12px" }}>Cliente</th>
               <th style={{ padding: "10px 12px" }}>Progetto</th>
               <th style={{ padding: "10px 12px" }}>Tipo</th>
@@ -509,14 +542,23 @@ export default function ScadenzeClient() {
           <tbody>
             {!loading && rows.length === 0 && (
               <tr>
-                <td colSpan={8} style={{ padding: 16, textAlign: "center" }}>
+                <td colSpan={9} style={{ padding: 16, textAlign: "center" }}>
                   Nessuna scadenza trovata
                 </td>
               </tr>
             )}
             {rows.map((row) => (
-              <tr key={row.id} style={{ borderTop: "1px solid #f1f1f1" }}>
+              <tr
+                key={row.id}
+                style={{
+                  borderTop: "1px solid #f1f1f1",
+                  ...getScadenzaRowStyle(row.scadenza),
+                }}
+              >
                 <td style={{ padding: "10px 12px", verticalAlign: "top" }}>{formatDate(row.scadenza)}</td>
+                <td style={{ padding: "10px 12px", verticalAlign: "top", fontWeight: 600 }}>
+                  {renderDiffDays(row.scadenza)}
+                </td>
                 <td style={{ padding: "10px 12px", verticalAlign: "top", wordBreak: "break-word" }}>
                   {row.cliente || "—"}
                 </td>
