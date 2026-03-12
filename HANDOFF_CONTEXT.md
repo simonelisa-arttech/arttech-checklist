@@ -7,7 +7,8 @@
   - builder server-side: `lib/scadenze/buildScadenzeAgenda.ts`
   - fonti aggregate: `rinnovi_servizi`, `tagliandi`, `licenses`, `checklists`, `saas_contratti`
   - filtri supportati: `from`, `to`, `cliente`, `cliente_id`, `checklist_id`, `tipo`, `stato`
-  - nessuna UI `/scadenze` ancora implementata in questo step
+  - prima UI minima disponibile in `app/scadenze/page.tsx`
+  - pagina read-only con filtri `from/to/cliente/tipo/stato` e tabella risultati
 - Checklist operative:
   - la sync strutturale `checklist_task_templates -> checklist_tasks` resta area fragile
   - il recovery globale batch e' stato disabilitato perche non idempotente sul dataset sporco

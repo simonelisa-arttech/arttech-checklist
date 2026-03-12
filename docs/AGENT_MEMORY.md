@@ -6,7 +6,8 @@
   - introdotto builder read-only `lib/scadenze/buildScadenzeAgenda.ts`
   - introdotta route `GET /api/scadenze`
   - source of truth dominio riusata dalla scheda cliente, non dal cronoprogramma
-  - nessuna UI finale `/scadenze` ancora implementata
+  - introdotta UI minima `app/scadenze/page.tsx` + `app/scadenze/ScadenzeClient.tsx`
+  - fetch solo on-load e submit filtro, nessun export ancora
 - Checklist operative:
   - recovery globale batch disabilitato
   - usare solo recovery esplicito per checklist singola o lista stabile di `checklist_id`
