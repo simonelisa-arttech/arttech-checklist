@@ -268,84 +268,122 @@ async function listRulesForTask(
   const selectFallback =
     "id, enabled, mode, task_template_id, task_title, target, recipients, frequency, send_time, timezone, only_future, send_on_create, created_at, updated_at";
 
-  let q = adminClient
-    .from("notification_rules")
-    .select(selectWithChecklist)
-    .eq("task_title", taskTitle)
-    .eq("target", target)
-    .order("created_at", { ascending: false });
-  if (taskTemplateId) q = q.eq("task_template_id", taskTemplateId);
+  async function runQuery(matchMode: "template" | "legacy") {
+    let q = adminClient
+      .from("notification_rules")
+      .select(selectWithChecklist)
+      .eq("target", target)
+      .order("created_at", { ascending: false });
+    if (matchMode === "template" && taskTemplateId) {
+      q = q.eq("task_template_id", taskTemplateId);
+    } else {
+      q = q.eq("task_title", taskTitle);
+      if (taskTemplateId) q = q.eq("task_template_id", taskTemplateId);
+    }
 
-  let { data, error } = await q;
-  if (error && isMissingColumn(error, "send_on_create")) {
-    let qS = adminClient
-      .from("notification_rules")
-      .select(
-        "id, enabled, mode, checklist_id, task_template_id, task_title, target, recipients, frequency, send_time, timezone, day_of_week, only_future, created_at, updated_at"
-      )
-      .eq("task_title", taskTitle)
-      .eq("target", target)
-      .order("created_at", { ascending: false });
-    if (taskTemplateId) qS = qS.eq("task_template_id", taskTemplateId);
-    const res = await qS;
-    data = (res.data || []).map((r: any) => ({ ...r, send_on_create: false }));
-    error = res.error;
-  }
-  if (error && isMissingColumn(error, "day_of_week")) {
-    let q2 = adminClient
-      .from("notification_rules")
-      .select(selectFallback)
-      .eq("task_title", taskTitle)
-      .eq("target", target)
-      .order("created_at", { ascending: false });
-    if (taskTemplateId) q2 = q2.eq("task_template_id", taskTemplateId);
-    const res = await q2;
-    data = (res.data || []).map((r: any) => ({ ...r, day_of_week: null, checklist_id: null, send_on_create: false }));
-    error = res.error;
-  }
-  if (error && isMissingColumn(error, "checklist_id")) {
-    let q3 = adminClient
-      .from("notification_rules")
-      .select(selectFallback)
-      .eq("task_title", taskTitle)
-      .eq("target", target)
-      .order("created_at", { ascending: false });
-    if (taskTemplateId) q3 = q3.eq("task_template_id", taskTemplateId);
-    const res = await q3;
-    data = (res.data || []).map((r: any) => ({ ...r, checklist_id: null, day_of_week: null }));
-    error = res.error;
-  }
-  if (error && isMissingColumn(error, "task_template_id")) {
-    const selectNoTemplate =
-      "id, enabled, mode, checklist_id, task_title, target, recipients, frequency, send_time, timezone, only_future, send_on_create, created_at, updated_at";
-    const selectNoTemplateNoChecklist =
-      "id, enabled, mode, task_title, target, recipients, frequency, send_time, timezone, only_future, send_on_create, created_at, updated_at";
-    const res = await adminClient
-      .from("notification_rules")
-      .select(selectNoTemplate)
-      .eq("task_title", taskTitle)
-      .eq("target", target)
-      .order("created_at", { ascending: false });
-    data = (res.data || []).map((r: any) => ({ ...r, task_template_id: null, day_of_week: null }));
-    error = res.error;
-    if (error && isMissingColumn(error, "checklist_id")) {
-      const res2 = await adminClient
+    let { data, error } = await q;
+    if (error && isMissingColumn(error, "send_on_create")) {
+      let qS = adminClient
         .from("notification_rules")
-        .select(selectNoTemplateNoChecklist)
-        .eq("task_title", taskTitle)
+        .select(
+          "id, enabled, mode, checklist_id, task_template_id, task_title, target, recipients, frequency, send_time, timezone, day_of_week, only_future, created_at, updated_at"
+        )
         .eq("target", target)
         .order("created_at", { ascending: false });
-      data = (res2.data || []).map((r: any) => ({
+      if (matchMode === "template" && taskTemplateId) {
+        qS = qS.eq("task_template_id", taskTemplateId);
+      } else {
+        qS = qS.eq("task_title", taskTitle);
+        if (taskTemplateId) qS = qS.eq("task_template_id", taskTemplateId);
+      }
+      const res = await qS;
+      data = (res.data || []).map((r: any) => ({ ...r, send_on_create: false }));
+      error = res.error;
+    }
+    if (error && isMissingColumn(error, "day_of_week")) {
+      let q2 = adminClient
+        .from("notification_rules")
+        .select(selectFallback)
+        .eq("target", target)
+        .order("created_at", { ascending: false });
+      if (matchMode === "template" && taskTemplateId) {
+        q2 = q2.eq("task_template_id", taskTemplateId);
+      } else {
+        q2 = q2.eq("task_title", taskTitle);
+        if (taskTemplateId) q2 = q2.eq("task_template_id", taskTemplateId);
+      }
+      const res = await q2;
+      data = (res.data || []).map((r: any) => ({
         ...r,
-        task_template_id: null,
-        checklist_id: null,
         day_of_week: null,
+        checklist_id: null,
         send_on_create: false,
       }));
-      error = res2.error;
+      error = res.error;
+    }
+    if (error && isMissingColumn(error, "checklist_id")) {
+      let q3 = adminClient
+        .from("notification_rules")
+        .select(selectFallback)
+        .eq("target", target)
+        .order("created_at", { ascending: false });
+      if (matchMode === "template" && taskTemplateId) {
+        q3 = q3.eq("task_template_id", taskTemplateId);
+      } else {
+        q3 = q3.eq("task_title", taskTitle);
+        if (taskTemplateId) q3 = q3.eq("task_template_id", taskTemplateId);
+      }
+      const res = await q3;
+      data = (res.data || []).map((r: any) => ({ ...r, checklist_id: null, day_of_week: null }));
+      error = res.error;
+    }
+    if (error && isMissingColumn(error, "task_template_id")) {
+      const selectNoTemplate =
+        "id, enabled, mode, checklist_id, task_title, target, recipients, frequency, send_time, timezone, only_future, send_on_create, created_at, updated_at";
+      const selectNoTemplateNoChecklist =
+        "id, enabled, mode, task_title, target, recipients, frequency, send_time, timezone, only_future, send_on_create, created_at, updated_at";
+      let noTemplate = adminClient
+        .from("notification_rules")
+        .select(selectNoTemplate)
+        .eq("target", target)
+        .order("created_at", { ascending: false });
+      if (matchMode === "legacy") {
+        noTemplate = noTemplate.eq("task_title", taskTitle);
+      }
+      const res = await noTemplate;
+      data = (res.data || []).map((r: any) => ({ ...r, task_template_id: null, day_of_week: null }));
+      error = res.error;
+      if (error && isMissingColumn(error, "checklist_id")) {
+        let noChecklist = adminClient
+          .from("notification_rules")
+          .select(selectNoTemplateNoChecklist)
+          .eq("target", target)
+          .order("created_at", { ascending: false });
+        if (matchMode === "legacy") {
+          noChecklist = noChecklist.eq("task_title", taskTitle);
+        }
+        const res2 = await noChecklist;
+        data = (res2.data || []).map((r: any) => ({
+          ...r,
+          task_template_id: null,
+          checklist_id: null,
+          day_of_week: null,
+          send_on_create: false,
+        }));
+        error = res2.error;
+      }
+    }
+    return { data: (data || []) as any[], error };
+  }
+
+  if (taskTemplateId) {
+    const byTemplate = await runQuery("template");
+    if (!byTemplate.error && byTemplate.data.length > 0) {
+      return byTemplate;
     }
   }
-  return { data: (data || []) as any[], error };
+
+  return runQuery("legacy");
 }
 
 async function findExistingRuleForWrite(
