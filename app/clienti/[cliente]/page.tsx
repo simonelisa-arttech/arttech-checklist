@@ -797,7 +797,11 @@ export default function ClientePage({
   const [editScadenzaErr, setEditScadenzaErr] = useState<string | null>(null);
   const [alertTemplates, setAlertTemplates] = useState<AlertMessageTemplate[]>([]);
   const [clienteAnagraficaEmail, setClienteAnagraficaEmail] = useState<string | null>(null);
+  const [clienteAnagraficaId, setClienteAnagraficaId] = useState<string | null>(null);
   const [clienteDriveUrl, setClienteDriveUrl] = useState<string | null>(null);
+  const [clienteDriveDraft, setClienteDriveDraft] = useState("");
+  const [clienteDriveEditing, setClienteDriveEditing] = useState(false);
+  const [clienteDriveSaving, setClienteDriveSaving] = useState(false);
   const [selectedPresetId, setSelectedPresetId] = useState<string>("");
   const [tagliandi, setTagliandi] = useState<TagliandoRow[]>([]);
   const [newTagliando, setNewTagliando] = useState({
@@ -959,6 +963,58 @@ export default function ClientePage({
     if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
     setToast({ message, variant });
     toastTimerRef.current = setTimeout(() => setToast(null), duration);
+  }
+
+  function isValidHttpUrl(value?: string | null) {
+    const raw = String(value || "").trim();
+    if (!raw) return false;
+    try {
+      const parsed = new URL(raw);
+      return parsed.protocol === "http:" || parsed.protocol === "https:";
+    } catch {
+      return false;
+    }
+  }
+
+  async function saveClienteDriveUrl() {
+    if (!clienteAnagraficaId) {
+      showToast("❌ Cliente anagrafica non disponibile", "error");
+      return;
+    }
+    const nextValue = clienteDriveDraft.trim();
+    if (nextValue && !isValidHttpUrl(nextValue)) {
+      showToast("❌ Il link Drive cliente deve essere un URL http/https valido", "error");
+      return;
+    }
+    setClienteDriveSaving(true);
+    try {
+      const res = await fetch("/api/clienti", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          id: clienteAnagraficaId,
+          drive_url: nextValue || null,
+        }),
+      });
+      const json = await res.json().catch(() => ({} as any));
+      if (!res.ok || !json?.ok) {
+        throw new Error(json?.error || "Errore salvataggio Drive cliente");
+      }
+      const savedDriveUrl = String(json?.data?.drive_url || "").trim();
+      setClienteDriveUrl(isValidHttpUrl(savedDriveUrl) ? savedDriveUrl : null);
+      setClienteDriveDraft(isValidHttpUrl(savedDriveUrl) ? savedDriveUrl : "");
+      setClienteDriveEditing(false);
+      if (json?.warning) {
+        showToast(String(json.warning), "error", 4500);
+      } else {
+        showToast("✅ Drive cliente salvato", "success");
+      }
+    } catch (err: any) {
+      showToast(`❌ Salvataggio Drive cliente fallito: ${briefError(err)}`, "error");
+    } finally {
+      setClienteDriveSaving(false);
+    }
   }
 
   function perfCountDb(label: string) {
@@ -1288,7 +1344,10 @@ export default function ClientePage({
       let displayCliente = decoded.trim();
       setCliente(displayCliente);
       setClienteAnagraficaEmail(null);
+      setClienteAnagraficaId(null);
       setClienteDriveUrl(null);
+      setClienteDriveDraft("");
+      setClienteDriveEditing(false);
       setLoading(true);
       setInitialClienteLoadDone(false);
       setError(null);
@@ -1322,6 +1381,10 @@ export default function ClientePage({
           const anagJson = await anagRes.json().catch(() => ({} as any));
           if (isPerfEnabled()) console.timeEnd(`[perf][cliente][mount#${mountRun}] fetch /api/clienti`);
           const anagData = Array.isArray(anagJson?.data) ? anagJson.data[0] : null;
+          const anagId = String((anagData as any)?.id || "").trim();
+          if (anagId) {
+            setClienteAnagraficaId(anagId);
+          }
           const fullName = String((anagData as any)?.denominazione || "").trim();
           if (fullName) {
             displayCliente = fullName;
@@ -1330,7 +1393,8 @@ export default function ClientePage({
           const mail = String((anagData as any)?.email || "").trim();
           setClienteAnagraficaEmail(mail && mail.includes("@") ? mail : null);
           const driveUrl = String((anagData as any)?.drive_url || "").trim();
-          setClienteDriveUrl(/^https?:\/\//i.test(driveUrl) ? driveUrl : null);
+          setClienteDriveUrl(isValidHttpUrl(driveUrl) ? driveUrl : null);
+          setClienteDriveDraft(isValidHttpUrl(driveUrl) ? driveUrl : "");
         } catch {
           // keep fallback values from URL
         }
@@ -1355,6 +1419,9 @@ export default function ClientePage({
       let licenzeCount = 0;
       const firstClienteId = String((list[0] as any)?.cliente_id || "").trim();
       if (firstClienteId) {
+        if (!clienteAnagraficaId) {
+          setClienteAnagraficaId(firstClienteId);
+        }
         if (isPerfEnabled()) console.time(`[perf][cliente][mount#${mountRun}] db clienti_anagrafica`);
         perfCountDb("clienti_anagrafica.select");
         const { data: clienteById } = await dbFrom("clienti_anagrafica")
@@ -5352,28 +5419,104 @@ export default function ClientePage({
         }}
       >
         <h2 style={{ margin: 0 }}>Cliente: {cliente}</h2>
-        {clienteDriveUrl ? (
-          <a
-            href={clienteDriveUrl}
-            target="_blank"
-            rel="noreferrer"
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 6,
-              padding: "6px 10px",
-              borderRadius: 999,
-              border: "1px solid #d1d5db",
-              background: "white",
-              textDecoration: "none",
-              color: "#1d4ed8",
-              fontSize: 13,
-              fontWeight: 600,
-            }}
-          >
-            Drive cliente
-          </a>
-        ) : null}
+      </div>
+      <div
+        style={{
+          marginTop: 4,
+          padding: "10px 12px",
+          borderRadius: 12,
+          border: "1px solid #e5e7eb",
+          background: "white",
+          display: "flex",
+          alignItems: "center",
+          gap: 10,
+          flexWrap: "wrap",
+        }}
+      >
+        <strong style={{ fontSize: 13 }}>Drive cliente</strong>
+        {!clienteDriveEditing && clienteDriveUrl ? (
+          <>
+            <a
+              href={clienteDriveUrl}
+              target="_blank"
+              rel="noreferrer"
+              style={{
+                color: "#1d4ed8",
+                fontSize: 13,
+                fontWeight: 600,
+                textDecoration: "none",
+                wordBreak: "break-all",
+              }}
+            >
+              {clienteDriveUrl}
+            </a>
+            <button
+              type="button"
+              onClick={() => {
+                setClienteDriveDraft(clienteDriveUrl);
+                setClienteDriveEditing(true);
+              }}
+              style={{
+                padding: "6px 10px",
+                borderRadius: 8,
+                border: "1px solid #ddd",
+                background: "white",
+                cursor: "pointer",
+              }}
+            >
+              Modifica
+            </button>
+          </>
+        ) : (
+          <>
+            <input
+              value={clienteDriveDraft}
+              onChange={(e) => setClienteDriveDraft(e.target.value)}
+              placeholder="Nessun link Drive"
+              style={{
+                flex: "1 1 420px",
+                minWidth: 240,
+                padding: "8px 10px",
+                borderRadius: 8,
+                border: "1px solid #d1d5db",
+              }}
+            />
+            <button
+              type="button"
+              onClick={saveClienteDriveUrl}
+              disabled={clienteDriveSaving}
+              style={{
+                padding: "8px 12px",
+                borderRadius: 8,
+                border: "1px solid #111",
+                background: "#111",
+                color: "white",
+                cursor: "pointer",
+                opacity: clienteDriveSaving ? 0.7 : 1,
+              }}
+            >
+              {clienteDriveSaving ? "Salvataggio..." : "Salva"}
+            </button>
+            {clienteDriveEditing && (
+              <button
+                type="button"
+                onClick={() => {
+                  setClienteDriveDraft(clienteDriveUrl || "");
+                  setClienteDriveEditing(false);
+                }}
+                style={{
+                  padding: "8px 12px",
+                  borderRadius: 8,
+                  border: "1px solid #ddd",
+                  background: "white",
+                  cursor: "pointer",
+                }}
+              >
+                Annulla
+              </button>
+            )}
+          </>
+        )}
       </div>
       <div
         style={{
