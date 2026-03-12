@@ -2,6 +2,11 @@
 
 ## Snapshot 2026-03-11 - Handoff stabile + Drive cliente
 - Handoff aggiornato con istruzioni operative minime prima di nuovi sviluppi.
+- Scadenze aggregate:
+  - introdotto builder read-only `lib/scadenze/buildScadenzeAgenda.ts`
+  - introdotta route `GET /api/scadenze`
+  - source of truth dominio riusata dalla scheda cliente, non dal cronoprogramma
+  - nessuna UI finale `/scadenze` ancora implementata
 - Checklist operative:
   - recovery globale batch disabilitato
   - usare solo recovery esplicito per checklist singola o lista stabile di `checklist_id`
