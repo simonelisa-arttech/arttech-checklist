@@ -36,7 +36,8 @@ type FilterState = {
   from: string;
   to: string;
   cliente: string;
-  tipo: string;
+  progetto: string;
+  tipo: string[];
   stato: string;
 };
 
@@ -158,9 +159,12 @@ const DEFAULT_FILTERS: FilterState = {
   from: "",
   to: "",
   cliente: "",
-  tipo: "TUTTI",
+  progetto: "",
+  tipo: [],
   stato: "TUTTI",
 };
+
+const TIPO_OPTIONS = ["GARANZIA", "TAGLIANDO", "LICENZA", "SAAS", "RINNOVO"] as const;
 
 export default function ScadenzeClient() {
   if (!isSupabaseConfigured) {
@@ -183,7 +187,8 @@ export default function ScadenzeClient() {
         if (appliedFilters.from) params.set("from", appliedFilters.from);
         if (appliedFilters.to) params.set("to", appliedFilters.to);
         if (appliedFilters.cliente.trim()) params.set("cliente", appliedFilters.cliente.trim());
-        if (appliedFilters.tipo !== "TUTTI") params.set("tipo", appliedFilters.tipo);
+        if (appliedFilters.progetto.trim()) params.set("progetto", appliedFilters.progetto.trim());
+        if (appliedFilters.tipo.length > 0) params.set("tipo", appliedFilters.tipo.join(","));
         if (appliedFilters.stato !== "TUTTI") params.set("stato", appliedFilters.stato);
         const res = await fetch(`/api/scadenze${params.size ? `?${params.toString()}` : ""}`, {
           cache: "no-store",
@@ -249,6 +254,15 @@ export default function ScadenzeClient() {
       "note",
     ]);
     downloadCsv(exportFilename, csv);
+  }
+
+  function applyQuickRange(days: number) {
+    const today = new Date();
+    const from = today.toISOString().slice(0, 10);
+    const toDate = new Date(today);
+    toDate.setDate(toDate.getDate() + days);
+    const to = toDate.toISOString().slice(0, 10);
+    setFilters((prev) => ({ ...prev, from, to }));
   }
 
   return (
@@ -319,19 +333,13 @@ export default function ScadenzeClient() {
           />
         </label>
         <label>
-          Tipo<br />
-          <select
-            value={filters.tipo}
-            onChange={(e) => setFilters((prev) => ({ ...prev, tipo: e.target.value }))}
+          Progetto<br />
+          <input
+            value={filters.progetto}
+            onChange={(e) => setFilters((prev) => ({ ...prev, progetto: e.target.value }))}
+            placeholder="Cerca progetto..."
             style={{ width: "100%", padding: 10 }}
-          >
-            <option value="TUTTI">TUTTI</option>
-            <option value="GARANZIA">GARANZIA</option>
-            <option value="TAGLIANDO">TAGLIANDO</option>
-            <option value="LICENZA">LICENZA</option>
-            <option value="SAAS">SAAS</option>
-            <option value="RINNOVO">RINNOVO</option>
-          </select>
+          />
         </label>
         <label>
           Stato<br />
@@ -374,6 +382,62 @@ export default function ScadenzeClient() {
         >
           Reset
         </button>
+        <div style={{ gridColumn: "1 / -1" }}>
+          <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 6 }}>Tipo</div>
+          <div style={{ display: "flex", gap: 14, flexWrap: "wrap" }}>
+            {TIPO_OPTIONS.map((tipo) => (
+              <label key={tipo} style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13 }}>
+                <input
+                  type="checkbox"
+                  checked={filters.tipo.includes(tipo)}
+                  onChange={(e) =>
+                    setFilters((prev) => ({
+                      ...prev,
+                      tipo: e.target.checked
+                        ? [...prev.tipo, tipo]
+                        : prev.tipo.filter((current) => current !== tipo),
+                    }))
+                  }
+                />
+                {tipo}
+              </label>
+            ))}
+          </div>
+        </div>
+        <div style={{ gridColumn: "1 / -1", display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+          <span style={{ fontSize: 12, fontWeight: 600 }}>Preset periodo</span>
+          <button
+            type="button"
+            onClick={() => {
+              const today = new Date().toISOString().slice(0, 10);
+              setFilters((prev) => ({ ...prev, from: today, to: today }));
+            }}
+            style={{ padding: "6px 10px", borderRadius: 999, border: "1px solid #ddd", background: "white", cursor: "pointer" }}
+          >
+            Oggi
+          </button>
+          <button
+            type="button"
+            onClick={() => applyQuickRange(7)}
+            style={{ padding: "6px 10px", borderRadius: 999, border: "1px solid #ddd", background: "white", cursor: "pointer" }}
+          >
+            7 giorni
+          </button>
+          <button
+            type="button"
+            onClick={() => applyQuickRange(30)}
+            style={{ padding: "6px 10px", borderRadius: 999, border: "1px solid #ddd", background: "white", cursor: "pointer" }}
+          >
+            30 giorni
+          </button>
+          <button
+            type="button"
+            onClick={() => applyQuickRange(90)}
+            style={{ padding: "6px 10px", borderRadius: 999, border: "1px solid #ddd", background: "white", cursor: "pointer" }}
+          >
+            90 giorni
+          </button>
+        </div>
       </form>
 
       <div style={{ marginTop: 10, display: "flex", alignItems: "center", gap: 12 }}>

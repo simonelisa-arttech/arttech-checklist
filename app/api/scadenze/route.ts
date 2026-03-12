@@ -16,6 +16,7 @@ export async function GET(request: Request) {
       cliente: url.searchParams.get("cliente"),
       cliente_id: url.searchParams.get("cliente_id"),
       checklist_id: url.searchParams.get("checklist_id"),
+      progetto: url.searchParams.get("progetto"),
       tipo: url.searchParams.get("tipo"),
       stato: url.searchParams.get("stato"),
     });
@@ -29,6 +30,7 @@ export async function GET(request: Request) {
         cliente: url.searchParams.get("cliente") || null,
         cliente_id: url.searchParams.get("cliente_id") || null,
         checklist_id: url.searchParams.get("checklist_id") || null,
+        progetto: url.searchParams.get("progetto") || null,
         tipo: url.searchParams.get("tipo") || null,
         stato: url.searchParams.get("stato") || "TUTTI",
       },

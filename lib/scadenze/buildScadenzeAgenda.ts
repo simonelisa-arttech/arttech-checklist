@@ -47,6 +47,7 @@ export type ScadenzeAgendaFilters = {
   cliente_id?: string | null;
   checklist_id?: string | null;
   tipo?: string | null;
+  progetto?: string | null;
   stato?: string | null;
 };
 
@@ -578,8 +579,19 @@ export async function buildScadenzeAgenda(
   });
 
   const tipoFilter = normalizeUpper(filters.tipo);
+  const tipoFilters = tipoFilter
+    ? Array.from(
+        new Set(
+          tipoFilter
+            .split(",")
+            .map((part) => part.trim())
+            .filter(Boolean)
+        )
+      )
+    : [];
   const statoFilter = normalizeUpper(filters.stato || "TUTTI");
   const clienteFilter = normalizeString(filters.cliente).toLowerCase();
+  const progettoFilter = normalizeString(filters.progetto).toLowerCase();
   const clienteIdFilter = normalizeString(filters.cliente_id);
   const checklistIdFilter = normalizeString(filters.checklist_id);
   const from = normalizeDateFilter(filters.from);
@@ -621,8 +633,11 @@ export async function buildScadenzeAgenda(
   if (checklistIdFilter) {
     rows = rows.filter((row) => normalizeString(row.checklist_id) === checklistIdFilter);
   }
-  if (tipoFilter) {
-    rows = rows.filter((row) => normalizeUpper(row.tipo) === tipoFilter);
+  if (progettoFilter) {
+    rows = rows.filter((row) => normalizeString(row.progetto).toLowerCase().includes(progettoFilter));
+  }
+  if (tipoFilters.length > 0) {
+    rows = rows.filter((row) => tipoFilters.includes(normalizeUpper(row.tipo)));
   }
   if (statoFilter === "DA_AVVISARE") {
     rows = rows.filter((row) => row.workflow_stato === "DA_AVVISARE");
