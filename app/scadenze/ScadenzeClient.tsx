@@ -46,6 +46,35 @@ function formatDate(value?: string | null) {
   return Number.isFinite(dt.getTime()) ? dt.toLocaleDateString() : value;
 }
 
+function csvEscape(value: any) {
+  if (value == null) return "";
+  const raw = String(value);
+  if (/[\";\n]/.test(raw)) {
+    return `"${raw.replace(/\"/g, '""')}"`;
+  }
+  return raw;
+}
+
+function toCsv(rows: Record<string, any>[], headers: string[]) {
+  const lines = [headers.join(";")];
+  for (const row of rows) {
+    lines.push(headers.map((header) => csvEscape(row[header])).join(";"));
+  }
+  return lines.join("\n");
+}
+
+function downloadCsv(filename: string, csv: string) {
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
 function renderTipoBadge(value?: string | null) {
   const raw = String(value || "—").toUpperCase();
   let bg = "#e5e7eb";
@@ -186,6 +215,42 @@ export default function ScadenzeClient() {
     return `Totale risultati: ${rows.length}`;
   }, [loading, rows.length]);
 
+  const exportFilename = useMemo(() => {
+    const today = new Date().toISOString().slice(0, 10);
+    if (appliedFilters.from || appliedFilters.to) {
+      return `scadenze_${appliedFilters.from || "TUTTE"}_${appliedFilters.to || "TUTTE"}.csv`;
+    }
+    return `scadenze_${today}.csv`;
+  }, [appliedFilters]);
+
+  function exportCsv() {
+    const csvRows = rows.map((row) => ({
+      scadenza: row.scadenza || "",
+      cliente: row.cliente || "",
+      progetto: row.progetto || "",
+      tipo: row.tipo || "",
+      sottotipo: row.sottotipo || "",
+      riferimento: row.riferimento || "",
+      descrizione: row.descrizione || "",
+      workflow_stato: row.workflow_stato || "",
+      origine: row.origine || "",
+      note: row.note || "",
+    }));
+    const csv = toCsv(csvRows, [
+      "scadenza",
+      "cliente",
+      "progetto",
+      "tipo",
+      "sottotipo",
+      "riferimento",
+      "descrizione",
+      "workflow_stato",
+      "origine",
+      "note",
+    ]);
+    downloadCsv(exportFilename, csv);
+  }
+
   return (
     <div style={{ maxWidth: 1500, margin: "24px auto", padding: 16 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
@@ -311,7 +376,24 @@ export default function ScadenzeClient() {
         </button>
       </form>
 
-      <div style={{ marginTop: 10, fontSize: 12, opacity: 0.75 }}>{countLabel}</div>
+      <div style={{ marginTop: 10, display: "flex", alignItems: "center", gap: 12 }}>
+        <div style={{ fontSize: 12, opacity: 0.75 }}>{countLabel}</div>
+        <button
+          type="button"
+          onClick={exportCsv}
+          disabled={loading || rows.length === 0}
+          style={{
+            padding: "8px 12px",
+            borderRadius: 10,
+            border: "1px solid #ddd",
+            background: "white",
+            cursor: loading || rows.length === 0 ? "default" : "pointer",
+            opacity: loading || rows.length === 0 ? 0.6 : 1,
+          }}
+        >
+          Esporta CSV
+        </button>
+      </div>
 
       {error && (
         <div
