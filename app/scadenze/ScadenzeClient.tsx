@@ -41,6 +41,8 @@ type FilterState = {
   stato: string;
 };
 
+type SortDirection = "asc" | "desc";
+
 function formatDate(value?: string | null) {
   if (!value) return "—";
   const dt = new Date(value);
@@ -58,6 +60,13 @@ function getScadenzaDiffDays(value?: string | null) {
   const due = startOfDay(dt);
   const today = startOfDay(new Date());
   return Math.round((due.getTime() - today.getTime()) / 86400000);
+}
+
+function getScadenzaSortValue(value?: string | null) {
+  if (!value) return null;
+  const dt = new Date(value);
+  if (!Number.isFinite(dt.getTime())) return null;
+  return startOfDay(dt).getTime();
 }
 
 function getScadenzaRowStyle(value?: string | null) {
@@ -207,6 +216,7 @@ export default function ScadenzeClient() {
   const [rows, setRows] = useState<ScadenzaAgendaRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [scadenzaSort, setScadenzaSort] = useState<SortDirection>("asc");
 
   useEffect(() => {
     let active = true;
@@ -250,6 +260,19 @@ export default function ScadenzeClient() {
     if (loading) return "Caricamento...";
     return `Totale risultati: ${rows.length}`;
   }, [loading, rows.length]);
+
+  const sortedRows = useMemo(() => {
+    return [...rows].sort((a, b) => {
+      const left = getScadenzaSortValue(a.scadenza);
+      const right = getScadenzaSortValue(b.scadenza);
+
+      if (left == null && right == null) return 0;
+      if (left == null) return 1;
+      if (right == null) return -1;
+
+      return scadenzaSort === "asc" ? left - right : right - left;
+    });
+  }, [rows, scadenzaSort]);
 
   const exportFilename = useMemo(() => {
     const today = new Date().toISOString().slice(0, 10);
@@ -528,7 +551,23 @@ export default function ScadenzeClient() {
           </colgroup>
           <thead>
             <tr style={{ textAlign: "left", fontSize: 12, opacity: 0.7 }}>
-              <th style={{ padding: "10px 12px" }}>Scadenza</th>
+              <th style={{ padding: "10px 12px" }}>
+                <button
+                  type="button"
+                  onClick={() => setScadenzaSort((prev) => (prev === "asc" ? "desc" : "asc"))}
+                  style={{
+                    padding: 0,
+                    border: 0,
+                    background: "transparent",
+                    font: "inherit",
+                    color: "inherit",
+                    cursor: "pointer",
+                    fontWeight: 700,
+                  }}
+                >
+                  Scadenza {scadenzaSort === "asc" ? "↑" : "↓"}
+                </button>
+              </th>
               <th style={{ padding: "10px 12px" }}>Giorni</th>
               <th style={{ padding: "10px 12px" }}>Cliente</th>
               <th style={{ padding: "10px 12px" }}>Progetto</th>
@@ -547,7 +586,7 @@ export default function ScadenzeClient() {
                 </td>
               </tr>
             )}
-            {rows.map((row) => (
+            {sortedRows.map((row) => (
               <tr
                 key={row.id}
                 style={{
