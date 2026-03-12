@@ -81,6 +81,38 @@ const CLIENTI_BASE_SELECT =
   "id,denominazione,denominazione_norm,piva,codice_fiscale,codice_sdi,pec,email,telefono,indirizzo,comune,cap,provincia,paese,codice_interno,attivo";
 const CLIENTI_SELECT_WITH_DRIVE = `${CLIENTI_BASE_SELECT},drive_url`;
 
+async function enrichClientiWithDriveUrl(supabase: any, rows: any[]) {
+  const ids = Array.from(
+    new Set(
+      (rows || [])
+        .map((row: any) => String(row?.id || "").trim())
+        .filter(Boolean)
+    )
+  );
+  if (ids.length === 0) return rows || [];
+
+  const { data, error } = await supabase
+    .from("clienti_anagrafica")
+    .select("id,drive_url")
+    .in("id", ids);
+
+  if (error) {
+    if (isMissingClientiDriveColumnError(error)) {
+      return (rows || []).map((row: any) => ({ ...row, drive_url: null }));
+    }
+    throw error;
+  }
+
+  const byId = new Map(
+    (data || []).map((row: any) => [String(row?.id || "").trim(), row?.drive_url || null])
+  );
+
+  return (rows || []).map((row: any) => ({
+    ...row,
+    drive_url: byId.get(String(row?.id || "").trim()) || null,
+  }));
+}
+
 export async function GET(request: Request) {
   if (!assertAuth(request)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -99,10 +131,10 @@ export async function GET(request: Request) {
   const qNorm = normalizeDenominazione(q);
   const includeInactive = url.searchParams.get("include_inactive") === "1";
 
-  const buildQuery = (includeDrive: boolean) => {
+  const buildQuery = () => {
     let query = supabase
       .from("clienti_anagrafica")
-      .select(includeDrive ? CLIENTI_SELECT_WITH_DRIVE : CLIENTI_BASE_SELECT)
+      .select(CLIENTI_BASE_SELECT)
       .order("denominazione", { ascending: true })
       .range(offset, offset + limit - 1);
 
@@ -126,14 +158,14 @@ export async function GET(request: Request) {
     return query;
   };
 
-  let { data, error } = await buildQuery(true);
-  if (error && isMissingClientiDriveColumnError(error)) {
-    const fallback = await buildQuery(false);
-    data = fallback.data;
-    error = fallback.error;
-  }
+  let { data, error } = await buildQuery();
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+  try {
+    data = await enrichClientiWithDriveUrl(supabase, data || []);
+  } catch (enrichError: any) {
+    return NextResponse.json({ error: enrichError.message }, { status: 500 });
   }
   return NextResponse.json({ ok: true, data: data || [] });
 }
