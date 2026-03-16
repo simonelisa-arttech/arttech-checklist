@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import ConfigMancante from "@/components/ConfigMancante";
 import { isSupabaseConfigured } from "@/lib/supabaseClient";
 
@@ -229,18 +230,49 @@ const DEFAULT_FILTERS: FilterState = {
 
 const TIPO_OPTIONS = ["GARANZIA", "TAGLIANDO", "LICENZA", "SAAS", "RINNOVO"] as const;
 
+function normalizeDateParam(value?: string | null) {
+  const raw = String(value || "").trim();
+  return /^\d{4}-\d{2}-\d{2}$/.test(raw) ? raw : "";
+}
+
+function buildFiltersFromSearchParams(searchParams: URLSearchParams | ReadonlyURLSearchParamsLike) {
+  return {
+    ...DEFAULT_FILTERS,
+    from: normalizeDateParam(searchParams.get("from")),
+    to: normalizeDateParam(searchParams.get("to")),
+  };
+}
+
+type ReadonlyURLSearchParamsLike = {
+  get(name: string): string | null;
+  toString(): string;
+};
+
 export default function ScadenzeClient() {
   if (!isSupabaseConfigured) {
     return <ConfigMancante />;
   }
 
-  const [filters, setFilters] = useState<FilterState>(DEFAULT_FILTERS);
-  const [appliedFilters, setAppliedFilters] = useState<FilterState>(DEFAULT_FILTERS);
+  const searchParams = useSearchParams();
+  const [filters, setFilters] = useState<FilterState>(() => buildFiltersFromSearchParams(searchParams));
+  const [appliedFilters, setAppliedFilters] = useState<FilterState>(() =>
+    buildFiltersFromSearchParams(searchParams)
+  );
   const [rows, setRows] = useState<ScadenzaAgendaRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [scadenzaSort, setScadenzaSort] = useState<SortDirection>("asc");
   const [summaryFilter, setSummaryFilter] = useState<SummaryFilter>("all");
+
+  useEffect(() => {
+    const nextFilters = buildFiltersFromSearchParams(searchParams);
+    setFilters((prev) =>
+      prev.from === nextFilters.from && prev.to === nextFilters.to ? prev : { ...prev, ...nextFilters }
+    );
+    setAppliedFilters((prev) =>
+      prev.from === nextFilters.from && prev.to === nextFilters.to ? prev : { ...prev, ...nextFilters }
+    );
+  }, [searchParams]);
 
   useEffect(() => {
     let active = true;
