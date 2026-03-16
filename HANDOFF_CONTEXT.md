@@ -30,6 +30,10 @@
   - la sync task puo aggiornare solo campi strutturali: `titolo`, `sezione`, `ordine`, `target`, `task_template_id`
   - non toccare da sync: `stato`, note, allegati, log, override notifiche
   - il link Drive cliente vive su `clienti_anagrafica.drive_url` ed e' separato dal link magazzino checklist/progetto
+- preferenza cliente per invio scadenze: `clienti_anagrafica.scadenze_delivery_mode` con valori `AUTO_CLIENTE` / `MANUALE_INTERNO` (step iniziale: solo lettura/salvataggio UI, non ancora collegato al cron)
+- notifiche checklist `TECNICO_SW`: eleggibilità basata sul campo reale `data_installazione_reale`, con fallback `data_tassativa` -> `data_prevista`; la data di oggi è valida, il passato no
+- recovery dedicato disponibile su `POST /api/notifications/recover-tecnico-sw` per checklist `IN_CORSO` eleggibili non ancora inviate a `TECNICO_SW`
+- cron automatico scadenze disponibile su `GET /api/cron/scadenze-alert`: usa la stessa agenda di `/api/scadenze`, gestisce step `30/15/7`, legge `clienti_anagrafica.scadenze_delivery_mode` e deduplica via `checklist_alert_log`
 
 ## Repository
 GitHub: `simonelisa-arttech/arttech-checklist`

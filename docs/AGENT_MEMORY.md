@@ -18,6 +18,16 @@
   - gestito da `GET|POST|PATCH /api/clienti`
   - mostrato nella scheda cliente vicino al nome cliente come link cliccabile in nuova tab
   - validazione applicativa `http/https` lato modal e route API
+- aggiunto campo dedicato `clienti_anagrafica.scadenze_delivery_mode`
+- valori supportati: `AUTO_CLIENTE` / `MANUALE_INTERNO`
+- mostrato e salvabile in scheda cliente; non ancora collegato al motore cron automatico
+- notifiche `TECNICO_SW` su checklist create: eleggibilità corretta con precedenza `data_installazione_reale` -> `data_tassativa` -> `data_prevista`
+- la data odierna è eleggibile per `TECNICO_SW`; solo date passate bloccano l'invio
+- recovery manuale disponibile su `POST /api/notifications/recover-tecnico-sw`, con deduplica su `notification_log` per `checklist_id + target + task_title`
+- cron `GET /api/cron/scadenze-alert` introdotto per garanzie/licenze/tagliandi
+- step automatici scadenze: `30 / 15 / 7` giorni prima
+- precedenza destinatario scadenze: `clienti_anagrafica.scadenze_delivery_mode` (`AUTO_CLIENTE` -> cliente, `MANUALE_INTERNO` -> Art Tech)
+- deduplica scadenze automatiche su `checklist_alert_log` con `canale = scadenze_auto` e trigger per step
 
 ## Ultimo aggiornamento
 2026-02-25
