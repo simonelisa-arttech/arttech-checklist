@@ -346,6 +346,10 @@ function isUuidLike(v: string) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(v);
 }
 
+function asTrimmedText(value: unknown) {
+  return typeof value === "string" ? value.trim() : "";
+}
+
 export async function POST(request: Request) {
   try {
     const isAuthed = await assertAuthenticated(request);
@@ -545,6 +549,30 @@ export async function POST(request: Request) {
 
     if (op === "insert") {
     if (!payload) return invalid("Missing payload");
+    if (table === "checklists") {
+      const rows = Array.isArray(payload) ? payload : [payload];
+      for (const row of rows) {
+        if (!isPlainObject(row)) continue;
+        const nomeChecklist = asTrimmedText(row.nome_checklist);
+        const cliente = asTrimmedText(row.cliente);
+        if (!nomeChecklist || !cliente) continue;
+
+        const { data: duplicateRows, error: duplicateErr } = await supabaseAdmin
+          .from("checklists")
+          .select("id")
+          .eq("nome_checklist", nomeChecklist)
+          .eq("cliente", cliente)
+          .or("stato_progetto.is.null,stato_progetto.neq.CHIUSO")
+          .limit(1);
+        if (duplicateErr) return dbFailure(table, op, filter, duplicateErr.message);
+        if ((duplicateRows || []).length > 0) {
+          return NextResponse.json(
+            { ok: false, error: "Esiste già un progetto attivo con questo nome per questo cliente" },
+            { status: 409 }
+          );
+        }
+      }
+    }
     const { data, error } = await supabaseAdmin.from(table).insert(payload).select("*");
       if (error) return dbFailure(table, op, filter, error.message);
     return NextResponse.json({ ok: true, data });
