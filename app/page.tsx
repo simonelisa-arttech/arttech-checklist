@@ -1443,6 +1443,20 @@ export default function Page() {
           >
             Scadenze
           </Link>
+          <Link
+            href="/import-progetti"
+            style={{
+              padding: "10px 14px",
+              borderRadius: 10,
+              border: "1px solid #ddd",
+              cursor: "pointer",
+              background: "white",
+              textDecoration: "none",
+              color: "inherit",
+            }}
+          >
+            Importa progetti
+          </Link>
           <button
             type="button"
             onClick={handleLogout}
