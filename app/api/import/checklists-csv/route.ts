@@ -206,6 +206,48 @@ async function insertAssetSerials(
   if (error) throw new Error(error.message);
 }
 
+async function createImportedScadenze(
+  supabaseAdmin: ReturnType<typeof getSupabaseAdmin>,
+  input: {
+    checklistId: string;
+    cliente: string;
+    garanziaScadenza: string | null;
+    licenzaScadenza: string | null;
+    tagliandoScadenza: string | null;
+  }
+) {
+  if (input.garanziaScadenza) {
+    const { error } = await supabaseAdmin
+      .from("checklists")
+      .update({ garanzia_scadenza: input.garanziaScadenza })
+      .eq("id", input.checklistId);
+    if (error) throw new Error(`Errore creazione garanzia: ${error.message}`);
+  }
+
+  if (input.licenzaScadenza) {
+    const { error } = await supabaseAdmin.from("licenses").insert({
+      checklist_id: input.checklistId,
+      tipo: "sim_licenza",
+      scadenza: input.licenzaScadenza,
+      stato: "attiva",
+      note: null,
+    });
+    if (error) throw new Error(`Errore creazione licenza: ${error.message}`);
+  }
+
+  if (input.tagliandoScadenza) {
+    const { error } = await supabaseAdmin.from("tagliandi").insert({
+      checklist_id: input.checklistId,
+      cliente: input.cliente,
+      scadenza: input.tagliandoScadenza,
+      stato: "ATTIVA",
+      modalita: "INCLUSO",
+      note: "Tagliando periodico",
+    });
+    if (error) throw new Error(`Errore creazione tagliando: ${error.message}`);
+  }
+}
+
 async function existsActiveChecklistDuplicate(
   supabaseAdmin: ReturnType<typeof getSupabaseAdmin>,
   nomeChecklist: string,
@@ -264,6 +306,12 @@ export async function POST(request: Request) {
         throw new Error("Campi obbligatori mancanti: nome_checklist / cliente");
       }
 
+      const garanziaScadenza = parseOptionalDate(
+        getRowValue(row, "garanzia_calcolata_auto", "garanzia_scadenza")
+      );
+      const licenzaScadenza = parseOptionalDate(getRowValue(row, "licenza_scadenza"));
+      const tagliandoScadenza = parseOptionalDate(getRowValue(row, "tagliando_prossima_scadenza"));
+
       const duplicate = await existsActiveChecklistDuplicate(supabaseAdmin, nomeChecklist, cliente);
       if (duplicate) {
         skipped += 1;
@@ -284,7 +332,6 @@ export async function POST(request: Request) {
         data_prevista: parseOptionalDate(getRowValue(row, "data_installazione_prevista", "data_prevista")),
         data_tassativa: parseOptionalDate(getRowValue(row, "data_tassativa")),
         data_installazione_reale: parseOptionalDate(getRowValue(row, "data_installazione_reale")),
-        garanzia_scadenza: parseOptionalDate(getRowValue(row, "garanzia_scadenza")),
         magazzino_importazione: parseOptionalText(getRowValue(row, "codice_magazzino")),
       };
 
@@ -308,6 +355,18 @@ export async function POST(request: Request) {
         );
       } catch (err: any) {
         postInsertWarnings.push(`Checklist creata ma seriali non importati: ${String(err?.message || err)}`);
+      }
+
+      try {
+        await createImportedScadenze(supabaseAdmin, {
+          checklistId: insertedChecklist.id as string,
+          cliente,
+          garanziaScadenza,
+          licenzaScadenza,
+          tagliandoScadenza,
+        });
+      } catch (err: any) {
+        postInsertWarnings.push(`Checklist creata ma scadenze operative non complete: ${String(err?.message || err)}`);
       }
 
       try {
