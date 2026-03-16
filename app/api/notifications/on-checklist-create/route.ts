@@ -13,6 +13,7 @@ type ChecklistRow = {
   id: string;
   cliente: string | null;
   nome_checklist: string | null;
+  stato_progetto: string | null;
   data_prevista: string | null;
   data_tassativa: string | null;
   data_installazione_reale: string | null;
@@ -220,7 +221,7 @@ export async function POST(request: Request) {
 
   const { data: checklist, error: checklistErr } = await adminClient
     .from("checklists")
-    .select("id, cliente, nome_checklist, data_prevista, data_tassativa, data_installazione_reale")
+    .select("id, cliente, nome_checklist, stato_progetto, data_prevista, data_tassativa, data_installazione_reale")
     .eq("id", checklistId)
     .single();
   if (checklistErr || !checklist) {

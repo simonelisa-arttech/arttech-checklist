@@ -1,4 +1,5 @@
 export type ChecklistEligibilityRow = {
+  stato_progetto?: string | null;
   data_installazione_reale?: string | null;
   data_tassativa?: string | null;
   data_prevista?: string | null;
@@ -16,10 +17,15 @@ export function getChecklistEligibilityDate(checklist: ChecklistEligibilityRow) 
   );
 }
 
+export function isChecklistProjectInCorso(checklist: ChecklistEligibilityRow) {
+  return String(checklist.stato_progetto || "").trim().toUpperCase() === "IN_CORSO";
+}
+
 export function isChecklistEligibleFromToday(
   checklist: ChecklistEligibilityRow,
   todayRome: string
 ) {
+  if (!isChecklistProjectInCorso(checklist)) return false;
   const effectiveDate = getChecklistEligibilityDate(checklist);
   return Boolean(effectiveDate && effectiveDate >= todayRome);
 }
