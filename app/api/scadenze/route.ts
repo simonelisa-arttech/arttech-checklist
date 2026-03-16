@@ -1,11 +1,11 @@
 export const runtime = "nodejs";
 
 import { NextResponse } from "next/server";
-import { requireAdmin } from "@/lib/adminAuth";
+import { requireOperatore } from "@/lib/adminAuth";
 import { buildScadenzeAgenda } from "@/lib/scadenze/buildScadenzeAgenda";
 
 export async function GET(request: Request) {
-  const auth = await requireAdmin(request);
+  const auth = await requireOperatore(request);
   if (!auth.ok) return auth.response;
 
   const url = new URL(request.url);
