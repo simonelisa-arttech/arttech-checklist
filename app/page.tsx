@@ -1271,6 +1271,16 @@ export default function Page() {
 
   return (
     <div style={{ maxWidth: 1100, margin: "24px auto", padding: 16, paddingBottom: 60 }}>
+      <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12 }}>
+        <button
+          type="button"
+          onClick={handleLogout}
+          style={logoutButtonStyle}
+        >
+          Logout
+        </button>
+      </div>
+
       <div style={{ display: "flex", alignItems: "flex-start", gap: 16, flexWrap: "wrap" }}>
         <div style={{ flexShrink: 0, minWidth: 190 }}>
           <h1 style={{ margin: 0, fontSize: 34, whiteSpace: "nowrap" }}>AT SYSTEM</h1>
@@ -1361,13 +1371,6 @@ export default function Page() {
               Importa progetti
             </Link>
           </div>
-          <button
-            type="button"
-            onClick={handleLogout}
-            style={logoutButtonStyle}
-          >
-            Logout
-          </button>
         </div>
       </div>
 
