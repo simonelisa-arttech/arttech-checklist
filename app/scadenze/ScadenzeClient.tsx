@@ -102,6 +102,13 @@ function renderDiffDays(value?: string | null) {
   return `tra ${diffDays} giorni`;
 }
 
+function toDateInputValue(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
 function csvEscape(value: any) {
   if (value == null) return "";
   const raw = String(value);
@@ -322,11 +329,13 @@ export default function ScadenzeClient() {
 
   function applyQuickRange(days: number) {
     const today = new Date();
-    const from = today.toISOString().slice(0, 10);
+    const from = toDateInputValue(today);
     const toDate = new Date(today);
     toDate.setDate(toDate.getDate() + days);
-    const to = toDate.toISOString().slice(0, 10);
-    setFilters((prev) => ({ ...prev, from, to }));
+    const to = toDateInputValue(toDate);
+    const nextFilters = { ...filters, from, to };
+    setFilters(nextFilters);
+    setAppliedFilters(nextFilters);
   }
 
   return (
@@ -473,8 +482,10 @@ export default function ScadenzeClient() {
           <button
             type="button"
             onClick={() => {
-              const today = new Date().toISOString().slice(0, 10);
-              setFilters((prev) => ({ ...prev, from: today, to: today }));
+              const today = toDateInputValue(new Date());
+              const nextFilters = { ...filters, from: today, to: today };
+              setFilters(nextFilters);
+              setAppliedFilters(nextFilters);
             }}
             style={{ padding: "6px 10px", borderRadius: 999, border: "1px solid #ddd", background: "white", cursor: "pointer" }}
           >
@@ -496,10 +507,10 @@ export default function ScadenzeClient() {
           </button>
           <button
             type="button"
-            onClick={() => applyQuickRange(90)}
+            onClick={() => applyQuickRange(60)}
             style={{ padding: "6px 10px", borderRadius: 999, border: "1px solid #ddd", background: "white", cursor: "pointer" }}
           >
-            90 giorni
+            60 giorni
           </button>
         </div>
       </form>
