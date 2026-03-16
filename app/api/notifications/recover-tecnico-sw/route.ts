@@ -16,6 +16,7 @@ type ChecklistRow = {
   data_prevista: string | null;
   data_tassativa: string | null;
   data_installazione_reale: string | null;
+  stato_progetto: string | null;
 };
 
 type RuleRow = {
@@ -33,6 +34,7 @@ type RuleRow = {
 
 type TaskRow = {
   id: string;
+  checklist_id: string;
   titolo: string | null;
   stato: string | null;
   target: string | null;
@@ -214,23 +216,34 @@ export async function POST(request: Request) {
 
   const body = await request.json().catch(() => ({} as any));
   const checklistId = String(body?.checklist_id || "").trim();
-  if (!checklistId) {
-    return NextResponse.json({ error: "Missing checklist_id" }, { status: 400 });
-  }
 
-  const { data: checklist, error: checklistErr } = await adminClient
+  let checklistsQuery = adminClient
     .from("checklists")
-    .select("id, cliente, nome_checklist, data_prevista, data_tassativa, data_installazione_reale")
-    .eq("id", checklistId)
-    .single();
-  if (checklistErr || !checklist) {
-    return NextResponse.json({ error: checklistErr?.message || "Checklist not found" }, { status: 404 });
+    .select(
+      "id, cliente, nome_checklist, data_prevista, data_tassativa, data_installazione_reale, stato_progetto"
+    )
+    .eq("stato_progetto", "IN_CORSO");
+  if (checklistId) {
+    checklistsQuery = checklistsQuery.eq("id", checklistId);
+  }
+  const { data: checklistRows, error: checklistErr } = await checklistsQuery;
+  if (checklistErr) {
+    return NextResponse.json({ error: checklistErr.message }, { status: 500 });
   }
 
   const todayRome = getRomeDateString();
-  const installDate = getChecklistEligibilityDate(checklist as ChecklistRow);
-  if (!isChecklistEligibleFromToday(checklist as ChecklistRow, todayRome)) {
-    return NextResponse.json({ ok: true, sent: 0, skipped: "not_future" });
+  const eligibleChecklists = ((checklistRows || []) as ChecklistRow[]).filter((checklist) =>
+    isChecklistEligibleFromToday(checklist, todayRome)
+  );
+  if (!eligibleChecklists.length) {
+    return NextResponse.json({
+      ok: true,
+      eligible_checklists: 0,
+      recovered_checklists: 0,
+      emails_sent: 0,
+      tasks_locked: 0,
+      skipped_already_sent: 0,
+    });
   }
 
   let { data: rulesRaw, error: rulesErr } = await adminClient
@@ -238,29 +251,36 @@ export async function POST(request: Request) {
     .select(
       "id, checklist_id, task_template_id, task_title, target, recipients, only_future, enabled, mode, send_on_create"
     )
-    .eq("enabled", true)
-    .or(`checklist_id.is.null,checklist_id.eq.${checklistId}`);
+    .eq("enabled", true);
   if (rulesErr && isMissingColumn(rulesErr, "task_template_id")) {
     const fallback = await adminClient
       .from("notification_rules")
       .select(
         "id, checklist_id, task_title, target, recipients, only_future, enabled, mode, send_on_create"
       )
-      .eq("enabled", true)
-      .or(`checklist_id.is.null,checklist_id.eq.${checklistId}`);
+      .eq("enabled", true);
     rulesRaw = (fallback.data || []).map((row: any) => ({ ...row, task_template_id: null }));
     rulesErr = fallback.error;
   }
   if (rulesErr && String(rulesErr.message || "").toLowerCase().includes("send_on_create")) {
-    return NextResponse.json({ ok: true, sent: 0, skipped: "missing_send_on_create_column" });
+    return NextResponse.json({ ok: true, eligible_checklists: 0, recovered_checklists: 0, emails_sent: 0 });
   }
   if (rulesErr) {
     return NextResponse.json({ error: rulesErr.message }, { status: 500 });
   }
 
-  const rules = ((rulesRaw || []) as RuleRow[]).filter(shouldSendOnChecklistCreate);
+  const rules = ((rulesRaw || []) as RuleRow[]).filter(
+    (rule) => shouldSendOnChecklistCreate(rule) && normalizeTarget(rule.target) === "TECNICO_SW"
+  );
   if (!rules.length) {
-    return NextResponse.json({ ok: true, sent: 0, skipped: "no_matching_rules" });
+    return NextResponse.json({
+      ok: true,
+      eligible_checklists: eligibleChecklists.length,
+      recovered_checklists: 0,
+      emails_sent: 0,
+      tasks_locked: 0,
+      skipped_already_sent: 0,
+    });
   }
 
   let operatori: OperatoreRow[] = [];
@@ -270,143 +290,178 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: err?.message || "Errore caricamento operatori" }, { status: 500 });
   }
 
-  const CLOSED = new Set(["OK", "NON_NECESSARIO"]);
-  const baseUrl = getBaseUrl(request);
-
+  const eligibleChecklistIds = eligibleChecklists.map((checklist) => checklist.id);
   const { data: tasksRaw, error: tasksErr } = await adminClient
     .from("checklist_tasks")
-    .select("id, titolo, stato, target, task_template_id")
-    .eq("checklist_id", checklistId);
+    .select("id, checklist_id, titolo, stato, target, task_template_id")
+    .in("checklist_id", eligibleChecklistIds);
   if (tasksErr) {
     return NextResponse.json({ error: tasksErr.message }, { status: 500 });
   }
 
-  const openTasks = ((tasksRaw || []) as TaskRow[]).filter(
-    (task) => !CLOSED.has(String(task.stato || "").trim().toUpperCase())
-  );
-  if (!openTasks.length) {
-    return NextResponse.json({ ok: true, sent: 0, skipped: "no_open_tasks" });
+  const { data: logRows, error: logErr } = await adminClient
+    .from("notification_log")
+    .select("checklist_id, target, task_title")
+    .eq("target", "TECNICO_SW")
+    .in("checklist_id", eligibleChecklistIds);
+  if (logErr) {
+    return NextResponse.json({ error: logErr.message }, { status: 500 });
   }
 
-  const byRecipientAndTarget = new Map<
-    string,
-    { recipient: string; target: string; taskTitles: Set<string>; ruleIds: Set<string> }
-  >();
-  let locksAcquired = 0;
+  const alreadySentKeys = new Set(
+    (logRows || []).map((row: any) => {
+      const taskTitle = String(row?.task_title || "").trim();
+      return `${String(row?.checklist_id || "").trim()}::TECNICO_SW::${taskTitle}`;
+    })
+  );
 
-  for (const task of openTasks) {
-    const effectiveRule = getMatchingRuleForTask(task, checklistId, rules);
-    if (!effectiveRule) continue;
-    if (effectiveRule.only_future === false) continue;
-    const target = normalizeTarget(effectiveRule.target || task.target);
-    const taskTitle = String(task.titolo || effectiveRule.task_title || "Attività").trim();
-    if (!target || !taskTitle) continue;
-
-    const payloadHash = buildPayloadHash(
-      todayRome,
-      checklistId,
-      target,
-      `${String(effectiveRule.id || taskTitle)}::${String(task.id || taskTitle)}`
-    );
-    if (target === "TECNICO_SW") {
-      const { data: existingLog, error: existingLogErr } = await adminClient
-        .from("notification_log")
-        .select("id")
-        .eq("checklist_id", checklistId)
-        .eq("target", target)
-        .eq("task_title", taskTitle)
-        .limit(1)
-        .maybeSingle();
-      if (existingLogErr) {
-        return NextResponse.json({ error: existingLogErr.message }, { status: 500 });
-      }
-      if (existingLog?.id) continue;
-    }
-    const extraRecipients = parseRecipients(effectiveRule.recipients);
-    const autoRecipients = getAutoRecipients(target, operatori);
-    const recipients = Array.from(new Set([...autoRecipients, ...extraRecipients]));
-    if (!recipients.length) continue;
-
-    const { error: lockErr } = await adminClient.from("notification_log").insert({
-      sent_on: todayRome,
-      checklist_id: checklistId,
-      target,
-      task_title: taskTitle,
-      payload_hash: payloadHash,
-    });
-    if (lockErr) {
-      if ((lockErr as any)?.code === "23505") continue;
-      return NextResponse.json({ error: lockErr.message }, { status: 500 });
-    }
-    locksAcquired += 1;
-    for (const recipient of recipients) {
-      const bucketKey = `${recipient}::${target}`;
-      const bucket = byRecipientAndTarget.get(bucketKey) || {
-        recipient,
-        target,
-        taskTitles: new Set<string>(),
-        ruleIds: new Set<string>(),
-      };
-      bucket.taskTitles.add(taskTitle);
-      bucket.ruleIds.add(String(effectiveRule.id || taskTitle));
-      byRecipientAndTarget.set(bucketKey, bucket);
-    }
+  const CLOSED = new Set(["OK", "NON_NECESSARIO"]);
+  const baseUrl = getBaseUrl(request);
+  const tasksByChecklist = new Map<string, TaskRow[]>();
+  for (const task of (tasksRaw || []) as TaskRow[]) {
+    const bucket = tasksByChecklist.get(task.checklist_id) || [];
+    bucket.push(task);
+    tasksByChecklist.set(task.checklist_id, bucket);
   }
 
   let emailsSent = 0;
-  for (const bucket of byRecipientAndTarget.values()) {
-    const taskTitles = Array.from(bucket.taskTitles);
-    if (!taskTitles.length) continue;
-    const subject = `AT SYSTEM - Promemoria ${bucket.target} - ${checklist.nome_checklist || checklist.id}`;
-    const lines: string[] = [
-      `Cliente: ${checklist.cliente || "—"}`,
-      `Checklist: ${checklist.nome_checklist || checklist.id}`,
-      `Data installazione: ${installDate}`,
-      `Link: ${baseUrl}/checklists/${checklistId}`,
-      "",
-      "Task pendenti di pertinenza:",
-    ];
-    let html = `<div><p><strong>Cliente:</strong> ${escapeHtml(
-      checklist.cliente || "—"
-    )}<br/><strong>Checklist:</strong> ${escapeHtml(
-      checklist.nome_checklist || checklist.id
-    )}<br/><strong>Data installazione:</strong> ${escapeHtml(
-      installDate
-    )}<br/><a href="${escapeHtml(baseUrl + `/checklists/${checklistId}`)}">Apri checklist</a></p><ul>`;
-    for (const taskTitle of taskTitles) {
-      lines.push(`- ${taskTitle}`);
-      html += `<li>${escapeHtml(taskTitle)}</li>`;
-    }
-    html += "</ul></div>";
+  let tasksLocked = 0;
+  let skippedAlreadySent = 0;
+  let recoveredChecklists = 0;
 
-    const sendResult = await Promise.allSettled([
-      sendEmail({
-        to: bucket.recipient,
-        subject,
-        text: lines.join("\n"),
-        html,
-      }),
-    ]);
-    const sentNow = sendResult.filter((s) => s.status === "fulfilled").length;
-    emailsSent += sentNow;
-    if (sentNow > 0) {
-      await Promise.all(
-        Array.from(bucket.ruleIds)
-          .filter((ruleId) => ruleId && !ruleId.includes("::"))
-          .map((ruleId) =>
-          adminClient
-            .from("notification_rules")
-            .update({ last_sent_on: todayRome })
-            .eq("id", ruleId)
-        )
+  for (const checklist of eligibleChecklists) {
+    const openTasks = (tasksByChecklist.get(checklist.id) || []).filter(
+      (task) => !CLOSED.has(String(task.stato || "").trim().toUpperCase())
+    );
+    if (!openTasks.length) continue;
+
+    const byRecipientAndTarget = new Map<
+      string,
+      { recipient: string; target: string; taskTitles: Set<string>; ruleIds: Set<string> }
+    >();
+
+    for (const task of openTasks) {
+      const effectiveRule = getMatchingRuleForTask(task, checklist.id, rules);
+      if (!effectiveRule) continue;
+      if (effectiveRule.only_future === false) continue;
+      const target = normalizeTarget(effectiveRule.target || task.target);
+      if (target !== "TECNICO_SW") continue;
+
+      const taskTitle = String(task.titolo || effectiveRule.task_title || "Attività").trim();
+      if (!taskTitle) continue;
+
+      const alreadySentKey = `${checklist.id}::${target}::${taskTitle}`;
+      if (alreadySentKeys.has(alreadySentKey)) {
+        skippedAlreadySent += 1;
+        continue;
+      }
+
+      const extraRecipients = parseRecipients(effectiveRule.recipients);
+      const autoRecipients = getAutoRecipients(target, operatori);
+      const recipients = Array.from(new Set([...autoRecipients, ...extraRecipients]));
+      if (!recipients.length) continue;
+
+      const payloadHash = buildPayloadHash(
+        todayRome,
+        checklist.id,
+        target,
+        `${String(effectiveRule.id || taskTitle)}::${String(task.id || taskTitle)}`
       );
+      const { error: lockErr } = await adminClient.from("notification_log").insert({
+        sent_on: todayRome,
+        checklist_id: checklist.id,
+        target,
+        task_title: taskTitle,
+        payload_hash: payloadHash,
+      });
+      if (lockErr) {
+        if ((lockErr as any)?.code === "23505") continue;
+        return NextResponse.json({ error: lockErr.message }, { status: 500 });
+      }
+
+      alreadySentKeys.add(alreadySentKey);
+      tasksLocked += 1;
+      for (const recipient of recipients) {
+        const bucketKey = `${recipient}::${target}`;
+        const bucket = byRecipientAndTarget.get(bucketKey) || {
+          recipient,
+          target,
+          taskTitles: new Set<string>(),
+          ruleIds: new Set<string>(),
+        };
+        bucket.taskTitles.add(taskTitle);
+        bucket.ruleIds.add(String(effectiveRule.id || taskTitle));
+        byRecipientAndTarget.set(bucketKey, bucket);
+      }
+    }
+
+    if (!byRecipientAndTarget.size) continue;
+
+    let checklistSent = false;
+    for (const bucket of byRecipientAndTarget.values()) {
+      const taskTitles = Array.from(bucket.taskTitles);
+      if (!taskTitles.length) continue;
+
+      const installDate = getChecklistEligibilityDate(checklist);
+      const subject = `AT SYSTEM - Promemoria ${bucket.target} - ${checklist.nome_checklist || checklist.id}`;
+      const lines: string[] = [
+        `Cliente: ${checklist.cliente || "—"}`,
+        `Checklist: ${checklist.nome_checklist || checklist.id}`,
+        `Data installazione: ${installDate || "—"}`,
+        `Link: ${baseUrl}/checklists/${checklist.id}`,
+        "",
+        "Task pendenti di pertinenza:",
+      ];
+      let html = `<div><p><strong>Cliente:</strong> ${escapeHtml(
+        checklist.cliente || "—"
+      )}<br/><strong>Checklist:</strong> ${escapeHtml(
+        checklist.nome_checklist || checklist.id
+      )}<br/><strong>Data installazione:</strong> ${escapeHtml(
+        installDate || "—"
+      )}<br/><a href="${escapeHtml(baseUrl + `/checklists/${checklist.id}`)}">Apri checklist</a></p><ul>`;
+      for (const taskTitle of taskTitles) {
+        lines.push(`- ${taskTitle}`);
+        html += `<li>${escapeHtml(taskTitle)}</li>`;
+      }
+      html += "</ul></div>";
+
+      const sendResult = await Promise.allSettled([
+        sendEmail({
+          to: bucket.recipient,
+          subject,
+          text: lines.join("\n"),
+          html,
+        }),
+      ]);
+      const sentNow = sendResult.filter((s) => s.status === "fulfilled").length;
+      emailsSent += sentNow;
+      if (sentNow > 0) {
+        checklistSent = true;
+        await Promise.all(
+          Array.from(bucket.ruleIds)
+            .filter((ruleId) => ruleId && !ruleId.includes("::"))
+            .map((ruleId) =>
+              adminClient
+                .from("notification_rules")
+                .update({ last_sent_on: todayRome })
+                .eq("id", ruleId)
+            )
+        );
+      }
+    }
+
+    if (checklistSent) {
+      recoveredChecklists += 1;
     }
   }
 
   return NextResponse.json({
     ok: true,
-    sent: emailsSent,
-    rules_locked: locksAcquired,
-    targets: Array.from(new Set(Array.from(byRecipientAndTarget.values()).map((bucket) => bucket.target))),
+    eligible_checklists: eligibleChecklists.length,
+    recovered_checklists: recoveredChecklists,
+    emails_sent: emailsSent,
+    tasks_locked: tasksLocked,
+    skipped_already_sent: skippedAlreadySent,
+    target: "TECNICO_SW",
   });
 }
