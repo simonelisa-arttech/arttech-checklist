@@ -46,6 +46,11 @@ function saasLabelFromCode(code?: string | null) {
 
 type SaasServiceFilter = "EVENTS" | "ULTRA" | "PREMIUM" | "PLUS";
 type ProjectStatusFilter = "IN_CORSO" | "CONSEGNATO" | "RIENTRATO" | "SOSPESO" | "CHIUSO";
+type DashboardScadenzeBreakdown = {
+  garanzie: number;
+  licenze: number;
+  tagliandi: number;
+};
 
 function matchesSingleSaasService(row: Checklist, filter: SaasServiceFilter) {
   const piano = String(row.saas_piano || "")
@@ -396,6 +401,11 @@ export default function Page() {
   >(new Map());
   const [operatoreAssociationError, setOperatoreAssociationError] = useState<string | null>(null);
   const [scadenzeEntro7Count, setScadenzeEntro7Count] = useState(0);
+  const [scadenzeEntro7Breakdown, setScadenzeEntro7Breakdown] = useState<DashboardScadenzeBreakdown>({
+    garanzie: 0,
+    licenze: 0,
+    tagliandi: 0,
+  });
   const [expandedSaasNoteId, setExpandedSaasNoteId] = useState<string | null>(null);
   const [serialsByChecklistId, setSerialsByChecklistId] = useState<
     Record<string, { seriali: string[] }>
@@ -868,13 +878,29 @@ export default function Page() {
         if (!isLatest()) return;
         if (scadenzeRes.ok && typeof scadenzeData?.count === "number") {
           setScadenzeEntro7Count(scadenzeData.count);
+          const rows = Array.isArray(scadenzeData?.data) ? scadenzeData.data : [];
+          const nextBreakdown = rows.reduce(
+            (acc: DashboardScadenzeBreakdown, row: any) => {
+              const source = String(row?.source || "")
+                .trim()
+                .toLowerCase();
+              if (source === "garanzie") acc.garanzie += 1;
+              if (source === "licenze") acc.licenze += 1;
+              if (source === "tagliandi") acc.tagliandi += 1;
+              return acc;
+            },
+            { garanzie: 0, licenze: 0, tagliandi: 0 }
+          );
+          setScadenzeEntro7Breakdown(nextBreakdown);
         } else {
           setScadenzeEntro7Count(0);
+          setScadenzeEntro7Breakdown({ garanzie: 0, licenze: 0, tagliandi: 0 });
         }
       } catch (e: any) {
         if (e?.name === "AbortError" || controller.signal.aborted) return;
         if (!isLatest()) return;
         setScadenzeEntro7Count(0);
+        setScadenzeEntro7Breakdown({ garanzie: 0, licenze: 0, tagliandi: 0 });
       }
 
       let opRes: Response;
@@ -931,6 +957,7 @@ export default function Page() {
       console.error("Errore caricamento dashboard", e);
       setDashboardLoadError(message);
       setScadenzeEntro7Count(0);
+      setScadenzeEntro7Breakdown({ garanzie: 0, licenze: 0, tagliandi: 0 });
     } finally {
       if (!isLatest()) return;
       setLoading(false);
@@ -1507,7 +1534,14 @@ export default function Page() {
                 fontWeight: 700,
               }}
             >
-              ⚠ {scadenzeEntro7Count} scadenze entro 7 giorni
+              <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: 0.3 }}>SCADENZE IN ARRIVO</div>
+              <div style={{ marginTop: 4, fontSize: 20 }}>
+                ⚠ {scadenzeEntro7Count} scadenze entro 7 giorni
+              </div>
+              <div style={{ marginTop: 6, fontSize: 12, fontWeight: 600, opacity: 0.9 }}>
+                Garanzie: {scadenzeEntro7Breakdown.garanzie} · Licenze: {scadenzeEntro7Breakdown.licenze} ·
+                {" "}Tagliandi: {scadenzeEntro7Breakdown.tagliandi}
+              </div>
             </Link>
           )}
           {loading ? (
