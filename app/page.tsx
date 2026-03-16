@@ -368,6 +368,13 @@ function inferTaskTarget(titolo?: string | null, existingTarget?: string | null)
   return "GENERICA";
 }
 
+function toDateInputValue(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
 export default function Page() {
   if (!isSupabaseConfigured) {
     return <ConfigMancante />;
@@ -388,6 +395,7 @@ export default function Page() {
     Map<string, { nome: string | null; email: string | null }>
   >(new Map());
   const [operatoreAssociationError, setOperatoreAssociationError] = useState<string | null>(null);
+  const [scadenzeEntro7Count, setScadenzeEntro7Count] = useState(0);
   const [expandedSaasNoteId, setExpandedSaasNoteId] = useState<string | null>(null);
   const [serialsByChecklistId, setSerialsByChecklistId] = useState<
     Record<string, { seriali: string[] }>
@@ -846,6 +854,29 @@ export default function Page() {
       setAllProjects(merged as Checklist[]);
       setCatalogItems((catalogItemsData || []) as CatalogItem[]);
 
+      const today = new Date();
+      const from = toDateInputValue(today);
+      const toDate = new Date(today);
+      toDate.setDate(toDate.getDate() + 7);
+      const to = toDateInputValue(toDate);
+      try {
+        const scadenzeRes = await fetch(`/api/scadenze?from=${from}&to=${to}`, {
+          signal: controller.signal,
+          credentials: "include",
+        });
+        const scadenzeData = await scadenzeRes.json().catch(() => ({}));
+        if (!isLatest()) return;
+        if (scadenzeRes.ok && typeof scadenzeData?.count === "number") {
+          setScadenzeEntro7Count(scadenzeData.count);
+        } else {
+          setScadenzeEntro7Count(0);
+        }
+      } catch (e: any) {
+        if (e?.name === "AbortError" || controller.signal.aborted) return;
+        if (!isLatest()) return;
+        setScadenzeEntro7Count(0);
+      }
+
       let opRes: Response;
       try {
         opRes = await fetch("/api/operatori", { signal: controller.signal });
@@ -899,6 +930,7 @@ export default function Page() {
       const message = String(e?.message || "Errore caricamento dashboard");
       console.error("Errore caricamento dashboard", e);
       setDashboardLoadError(message);
+      setScadenzeEntro7Count(0);
     } finally {
       if (!isLatest()) return;
       setLoading(false);
@@ -1446,6 +1478,23 @@ export default function Page() {
             <div style={{ marginBottom: 10, fontSize: 13, color: "#b91c1c" }}>
               {dashboardLoadError}
             </div>
+          )}
+          {scadenzeEntro7Count > 0 && (
+            <Link
+              href={`/scadenze?from=${toDateInputValue(new Date())}&to=${toDateInputValue(new Date(Date.now() + 7 * 86400000))}`}
+              style={{
+                display: "block",
+                padding: "12px 14px",
+                borderRadius: 12,
+                border: "1px solid #f59e0b",
+                background: "#fffbeb",
+                color: "#92400e",
+                textDecoration: "none",
+                fontWeight: 700,
+              }}
+            >
+              ⚠ {scadenzeEntro7Count} scadenze entro 7 giorni
+            </Link>
           )}
           {loading ? (
             <div>Caricamento…</div>
