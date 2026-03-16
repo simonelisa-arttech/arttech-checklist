@@ -668,6 +668,25 @@ export default function ScadenzeClient() {
                       Apri progetto
                     </Link>
                   ) : null}
+                  {row.checklist_id ? (
+                    <Link
+                      href={`/checklists/${row.checklist_id}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      style={{
+                        display: "inline-block",
+                        marginLeft: 8,
+                        padding: "6px 10px",
+                        borderRadius: 8,
+                        border: "1px solid #ddd",
+                        background: "white",
+                        textDecoration: "none",
+                        color: "inherit",
+                      }}
+                    >
+                      Apri checklist
+                    </Link>
+                  ) : null}
                 </td>
               </tr>
             ))}
