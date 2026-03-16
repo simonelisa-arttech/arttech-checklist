@@ -53,7 +53,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  let supabase: ReturnType<typeof createClient>;
+  let supabase: ReturnType<typeof getCronSupabaseClient>;
   try {
     supabase = getCronSupabaseClient();
   } catch (err: any) {
