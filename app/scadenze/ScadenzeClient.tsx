@@ -291,6 +291,21 @@ export default function ScadenzeClient() {
     });
   }, [rows, scadenzaSort]);
 
+  const summary = useMemo(() => {
+    return sortedRows.reduce(
+      (acc, row) => {
+        const diffDays = getScadenzaDiffDays(row.scadenza);
+        acc.total += 1;
+        if (diffDays == null) return acc;
+        if (diffDays < 0) acc.scadute += 1;
+        if (diffDays >= 0 && diffDays <= 7) acc.entro7 += 1;
+        if (diffDays >= 0 && diffDays <= 30) acc.entro30 += 1;
+        return acc;
+      },
+      { total: 0, scadute: 0, entro7: 0, entro30: 0 }
+    );
+  }, [sortedRows]);
+
   const exportFilename = useMemo(() => {
     const today = new Date().toISOString().slice(0, 10);
     if (appliedFilters.from || appliedFilters.to) {
@@ -548,6 +563,20 @@ export default function ScadenzeClient() {
           {error}
         </div>
       )}
+
+      <div
+        style={{
+          marginTop: 14,
+          padding: "10px 12px",
+          borderRadius: 10,
+          border: "1px solid #e5e7eb",
+          background: "white",
+          fontSize: 13,
+          fontWeight: 600,
+        }}
+      >
+        Totale: {summary.total} | Scadute: {summary.scadute} | Entro 7 giorni: {summary.entro7} | Entro 30 giorni: {summary.entro30}
+      </div>
 
       <div
         style={{
