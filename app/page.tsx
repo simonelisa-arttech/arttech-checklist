@@ -411,12 +411,6 @@ export default function Page() {
     Record<string, { seriali: string[] }>
   >({});
 
-  // duplicazione progetto
-  const [dupModalOpen, setDupModalOpen] = useState(false);
-  const [dupSourceId, setDupSourceId] = useState<string | null>(null);
-  const [dupNewName, setDupNewName] = useState("");
-  const [dupSaving, setDupSaving] = useState(false);
-  const [dupError, setDupError] = useState<string | null>(null);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
   const [addInterventoOpen, setAddInterventoOpen] = useState(false);
   const [addInterventoCliente, setAddInterventoCliente] = useState("");
@@ -974,10 +968,6 @@ export default function Page() {
     };
   }, []);
 
-  const closeDupModal = (_reason?: string) => {
-    setDupModalOpen(false);
-  };
-
   const closeAddIntervento = (_reason?: string) => {
     setAddInterventoOpen(false);
   };
@@ -1216,108 +1206,6 @@ export default function Page() {
     } catch (err: any) {
       const info = logSupabaseError(err);
       alert("Errore: " + (info || err?.message || String(err)));
-    }
-  }
-
-  function openDuplicateModal(checklistId: string) {
-    const source = items.find((c) => c.id === checklistId);
-    if (!source) return;
-    setDupSourceId(checklistId);
-    setDupNewName(`COPIA - ${source.nome_checklist || "Senza nome"}`);
-    setDupError(null);
-    setDupModalOpen(true);
-  }
-
-  async function duplicateChecklist() {
-    if (!dupSourceId || !dupNewName.trim()) return;
-    setDupSaving(true);
-    setDupError(null);
-    try {
-      const { data: source, error: srcErr } = await dbFrom("checklists")
-        .select("*")
-        .eq("id", dupSourceId)
-        .single();
-      if (srcErr || !source) throw new Error(srcErr?.message || "Progetto non trovato");
-
-      // Campi da copiare (progetto/impianto), escludendo id, timestamps, stato operativo
-      const {
-        id: _id,
-        created_at: _ca,
-        updated_at: _ua,
-        stato_progetto: _sp,
-        created_by_operatore: _cbo,
-        updated_by_operatore: _ubo,
-        checklist_documents: _docs,
-        // campi vista/aggregazione che non fanno parte della tabella
-        sezione_documenti: _sd,
-        sezione_1: _s1,
-        sezione_2: _s2,
-        sezione_3: _s3,
-        stato_complessivo: _sc,
-        pct_complessivo: _pc,
-        license_count: _lc,
-        next_license_expiry: _nle,
-        main_item_codice: _mic,
-        main_item_descrizione: _mid,
-        ...copyFields
-      } = source as any;
-
-      const payload: Record<string, any> = {
-        ...copyFields,
-        nome_checklist: dupNewName.trim(),
-        stato_progetto: "IN_CORSO",
-        created_by_operatore: currentOperatoreId || null,
-        updated_by_operatore: currentOperatoreId || null,
-      };
-
-      const { data: created, error: insErr } = await dbFrom("checklists")
-        .insert(payload)
-        .select("id")
-        .single();
-      if (insErr) throw new Error(insErr.message);
-      if (!created?.id) throw new Error("ID non ricevuto");
-
-      const newId = created.id as string;
-
-      // Duplica checklist_items (BOM)
-      const { data: srcItems } = await dbFrom("checklist_items")
-        .select("codice, descrizione, quantita, note")
-        .eq("checklist_id", dupSourceId);
-      if (srcItems && srcItems.length > 0) {
-        const itemRows = srcItems.map((r: any) => ({
-          checklist_id: newId,
-          codice: r.codice,
-          descrizione: r.descrizione,
-          quantita: r.quantita,
-          note: r.note,
-        }));
-        await dbFrom("checklist_items").insert(itemRows);
-      }
-
-      // Duplica checklist_tasks (attività da template)
-      const { data: srcTasks } = await dbFrom("checklist_tasks")
-        .select("sezione, ordine, titolo, task_template_id, target")
-        .eq("checklist_id", dupSourceId);
-      if (srcTasks && srcTasks.length > 0) {
-        const taskRows = srcTasks.map((r: any) => ({
-          checklist_id: newId,
-          sezione: r.sezione,
-          ordine: r.ordine,
-          titolo: r.titolo,
-          stato: "DA_FARE",
-          task_template_id: r.task_template_id,
-          target: inferTaskTarget(r.titolo, r.target),
-        }));
-        await dbFrom("checklist_tasks").insert(taskRows);
-      }
-
-      closeDupModal("duplicate-success");
-      setToastMsg("✅ Progetto duplicato");
-      setTimeout(() => router.push(`/checklists/${newId}`), 800);
-    } catch (err: any) {
-      setDupError(err?.message || "Errore duplicazione");
-    } finally {
-      setDupSaving(false);
     }
   }
 
@@ -2569,10 +2457,9 @@ export default function Page() {
                         <td style={{ padding: "10px 12px", display: "flex", gap: 8 }}>
                           <button
                             type="button"
-                            data-testid="project-duplicate-btn"
                             onClick={(e) => {
                               e.stopPropagation();
-                              openDuplicateModal(c.id);
+                              router.push(`/checklists/${c.id}`);
                             }}
                             style={{
                               padding: "6px 10px",
@@ -2583,7 +2470,7 @@ export default function Page() {
                               cursor: "pointer",
                             }}
                           >
-                            Duplica
+                            Apri
                           </button>
                           <button
                             type="button"
@@ -2618,102 +2505,6 @@ export default function Page() {
     )}
   </div>
 )}
-      {dupModalOpen && (
-        <div
-          data-testid="duplicate-modal"
-          style={{
-            position: "fixed",
-            inset: 0,
-            background: "rgba(0,0,0,0.35)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            padding: 16,
-            zIndex: 50,
-          }}
-        >
-          <div
-            style={{
-              width: "100%",
-              maxWidth: 480,
-              background: "white",
-              borderRadius: 12,
-              padding: 20,
-              boxShadow: "0 10px 30px rgba(0,0,0,0.15)",
-            }}
-            onClick={(e) => e.stopPropagation()}
-            onKeyDown={(e) => {
-              if (e.key === "Escape") closeDupModal("esc");
-            }}
-          >
-            <div style={{ fontWeight: 800, fontSize: 18, marginBottom: 14 }}>
-              Duplica progetto
-            </div>
-            <label style={{ display: "block", marginBottom: 14 }}>
-              Nome nuovo progetto
-              <input
-                data-testid="duplicate-name-input"
-                value={dupNewName}
-                onChange={(e) => setDupNewName(e.target.value)}
-                style={{
-                  width: "100%",
-                  padding: 10,
-                  marginTop: 6,
-                  borderRadius: 8,
-                  border: "1px solid #d1d5db",
-                  fontSize: 14,
-                }}
-                autoFocus
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && dupNewName.trim()) duplicateChecklist();
-                }}
-              />
-            </label>
-            <div style={{ fontSize: 12, opacity: 0.6, marginBottom: 14 }}>
-              Verranno copiati: dati impianto, BOM e attività (resettate a DA_FARE).
-              NON verranno copiati: seriali, licenze, SaaS, tagliandi, garanzie, log avvisi.
-            </div>
-            {dupError && (
-              <div style={{ marginBottom: 10, fontSize: 12, color: "#dc2626" }}>
-                {dupError}
-              </div>
-            )}
-            <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
-              <button
-                type="button"
-                data-testid="duplicate-cancel-btn"
-                onClick={() => closeDupModal("cancel")}
-                style={{
-                  padding: "8px 14px",
-                  borderRadius: 8,
-                  border: "1px solid #d1d5db",
-                  background: "white",
-                  cursor: "pointer",
-                }}
-              >
-                Annulla
-              </button>
-              <button
-                type="button"
-                data-testid="duplicate-confirm-btn"
-                onClick={duplicateChecklist}
-                disabled={dupSaving || !dupNewName.trim()}
-                style={{
-                  padding: "8px 14px",
-                  borderRadius: 8,
-                  border: "1px solid #111",
-                  background: "#111",
-                  color: "white",
-                  cursor: dupSaving || !dupNewName.trim() ? "not-allowed" : "pointer",
-                  opacity: dupSaving || !dupNewName.trim() ? 0.6 : 1,
-                }}
-              >
-                {dupSaving ? "Duplicazione..." : "Duplica"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
       {addInterventoOpen && (
         <div
           style={{
