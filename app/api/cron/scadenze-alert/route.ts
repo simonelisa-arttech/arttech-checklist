@@ -3,6 +3,7 @@ export const runtime = "nodejs";
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { sendEmail } from "@/lib/email";
+import { requireOperatore } from "@/lib/adminAuth";
 import { buildScadenzeAgenda, type ScadenzaAgendaRow } from "@/lib/scadenze/buildScadenzeAgenda";
 import {
   addDaysIsoDay,
@@ -44,20 +45,26 @@ function isAuthorizedCron(request: Request) {
   return authHeader === `Bearer ${cronSecret}` || querySecret === cronSecret;
 }
 
+function isVercelCronRequest(request: Request) {
+  return Boolean(request.headers.get("x-vercel-cron"));
+}
+
 function getClienteGroupKey(row: ScadenzaAgendaRow) {
   return `${String(row.cliente_id || "").trim()}::${String(row.cliente || "").trim().toLowerCase()}`;
 }
 
 export async function GET(request: Request) {
-  if (!isAuthorizedCron(request)) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
   let supabase: ReturnType<typeof getCronSupabaseClient>;
-  try {
-    supabase = getCronSupabaseClient();
-  } catch (err: any) {
-    return NextResponse.json({ error: err?.message || "Missing Supabase envs" }, { status: 500 });
+  if (isVercelCronRequest(request) || isAuthorizedCron(request)) {
+    try {
+      supabase = getCronSupabaseClient();
+    } catch (err: any) {
+      return NextResponse.json({ error: err?.message || "Missing Supabase envs" }, { status: 500 });
+    }
+  } else {
+    const auth = await requireOperatore(request);
+    if (!auth.ok) return auth.response;
+    supabase = auth.adminClient as ReturnType<typeof getCronSupabaseClient>;
   }
 
   const todayIso = getRomeIsoDay();
