@@ -167,9 +167,32 @@ function buildRinnovoReference(r: RinnovoServizioRow) {
   return (
     normalizeString(r.riferimento) ||
     normalizeString(r.descrizione) ||
+    normalizeString(r.cod_magazzino) ||
     normalizeUpper(r.item_tipo) ||
     "RINNOVO"
   );
+}
+
+async function fetchRinnoviRows(supabase: any) {
+  const selectWithRiferimento =
+    "id, cliente, item_tipo, subtipo, riferimento, descrizione, checklist_id, scadenza, stato, proforma, cod_magazzino, note_tecniche";
+  let { data, error } = await supabase.from("rinnovi_servizi").select(selectWithRiferimento);
+
+  if (
+    error &&
+    String(error.message || "").toLowerCase().includes("rinnovi_servizi.riferimento") &&
+    String(error.message || "").toLowerCase().includes("does not exist")
+  ) {
+    const fallbackSelect =
+      "id, cliente, item_tipo, subtipo, descrizione, checklist_id, scadenza, stato, proforma, cod_magazzino, note_tecniche";
+    const retry = await supabase.from("rinnovi_servizi").select(fallbackSelect);
+    return {
+      data: (retry.data || []).map((row: any) => ({ ...row, riferimento: null })),
+      error: retry.error,
+    };
+  }
+
+  return { data, error };
 }
 
 function buildLicenseReference(l: LicenseRow) {
@@ -337,11 +360,7 @@ export async function buildScadenzeAgenda(
       .select(
         "id, cliente, cliente_id, nome_checklist, garanzia_scadenza, garanzia_stato, saas_piano, saas_scadenza, saas_note, saas_tipo"
       ),
-    supabase
-      .from("rinnovi_servizi")
-      .select(
-        "id, cliente, item_tipo, subtipo, riferimento, descrizione, checklist_id, scadenza, stato, proforma, cod_magazzino, note_tecniche"
-      ),
+    fetchRinnoviRows(supabase),
     supabase.from("tagliandi").select("id, cliente, checklist_id, scadenza, stato, note, modalita"),
     supabase
       .from("licenses")
