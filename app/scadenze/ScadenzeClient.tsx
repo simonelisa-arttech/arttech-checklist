@@ -42,6 +42,7 @@ type FilterState = {
 };
 
 type SortDirection = "asc" | "desc";
+type SummaryFilter = "all" | "scadute" | "entro7" | "entro30";
 
 function formatDate(value?: string | null) {
   if (!value) return "—";
@@ -239,6 +240,7 @@ export default function ScadenzeClient() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [scadenzaSort, setScadenzaSort] = useState<SortDirection>("asc");
+  const [summaryFilter, setSummaryFilter] = useState<SummaryFilter>("all");
 
   useEffect(() => {
     let active = true;
@@ -264,10 +266,12 @@ export default function ScadenzeClient() {
           setRows([]);
           return;
         }
+        setSummaryFilter("all");
         setRows((json.data || []) as ScadenzaAgendaRow[]);
       } catch (err: any) {
         if (!active) return;
         setError(err?.message || "Errore caricamento scadenze");
+        setSummaryFilter("all");
         setRows([]);
       } finally {
         if (active) setLoading(false);
@@ -305,6 +309,16 @@ export default function ScadenzeClient() {
       { total: 0, scadute: 0, entro7: 0, entro30: 0 }
     );
   }, [sortedRows]);
+
+  const visibleRows = useMemo(() => {
+    return sortedRows.filter((row) => {
+      const diffDays = getScadenzaDiffDays(row.scadenza);
+      if (summaryFilter === "scadute") return diffDays != null && diffDays < 0;
+      if (summaryFilter === "entro7") return diffDays != null && diffDays >= 0 && diffDays <= 7;
+      if (summaryFilter === "entro30") return diffDays != null && diffDays >= 0 && diffDays <= 30;
+      return true;
+    });
+  }, [sortedRows, summaryFilter]);
 
   const exportFilename = useMemo(() => {
     const today = new Date().toISOString().slice(0, 10);
@@ -571,11 +585,38 @@ export default function ScadenzeClient() {
           borderRadius: 10,
           border: "1px solid #e5e7eb",
           background: "white",
-          fontSize: 13,
-          fontWeight: 600,
+          display: "flex",
+          gap: 8,
+          flexWrap: "wrap",
         }}
       >
-        Totale: {summary.total} | Scadute: {summary.scadute} | Entro 7 giorni: {summary.entro7} | Entro 30 giorni: {summary.entro30}
+        {[
+          { key: "all" as const, label: "Totale", value: summary.total },
+          { key: "scadute" as const, label: "Scadute", value: summary.scadute },
+          { key: "entro7" as const, label: "Entro 7 giorni", value: summary.entro7 },
+          { key: "entro30" as const, label: "Entro 30 giorni", value: summary.entro30 },
+        ].map((item) => {
+          const active = summaryFilter === item.key;
+          return (
+            <button
+              key={item.key}
+              type="button"
+              onClick={() => setSummaryFilter(item.key)}
+              style={{
+                padding: "6px 10px",
+                borderRadius: 999,
+                border: active ? "1px solid #111" : "1px solid #ddd",
+                background: active ? "#111" : "white",
+                color: active ? "white" : "inherit",
+                cursor: "pointer",
+                fontSize: 13,
+                fontWeight: 600,
+              }}
+            >
+              {item.label}: {item.value}
+            </button>
+          );
+        })}
       </div>
 
       <div
@@ -631,14 +672,14 @@ export default function ScadenzeClient() {
             </tr>
           </thead>
           <tbody>
-            {!loading && rows.length === 0 && (
+            {!loading && visibleRows.length === 0 && (
               <tr>
                 <td colSpan={8} style={{ padding: 16, textAlign: "center" }}>
                   Nessuna scadenza trovata
                 </td>
               </tr>
             )}
-            {sortedRows.map((row) => (
+            {visibleRows.map((row) => (
               <tr
                 key={row.id}
                 style={{
