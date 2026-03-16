@@ -69,6 +69,21 @@ function getScadenzaSortValue(value?: string | null) {
   return startOfDay(dt).getTime();
 }
 
+function compareScadenzaValues(
+  leftValue: string | null | undefined,
+  rightValue: string | null | undefined,
+  direction: SortDirection
+) {
+  const left = getScadenzaSortValue(leftValue);
+  const right = getScadenzaSortValue(rightValue);
+
+  if (left == null && right == null) return 0;
+  if (left == null) return 1;
+  if (right == null) return -1;
+
+  return direction === "asc" ? left - right : right - left;
+}
+
 function getScadenzaRowStyle(value?: string | null) {
   const diffDays = getScadenzaDiffDays(value);
   if (diffDays == null) return { background: "white" };
@@ -263,14 +278,9 @@ export default function ScadenzeClient() {
 
   const sortedRows = useMemo(() => {
     return [...rows].sort((a, b) => {
-      const left = getScadenzaSortValue(a.scadenza);
-      const right = getScadenzaSortValue(b.scadenza);
-
-      if (left == null && right == null) return 0;
-      if (left == null) return 1;
-      if (right == null) return -1;
-
-      return scadenzaSort === "asc" ? left - right : right - left;
+      const byScadenza = compareScadenzaValues(a.scadenza, b.scadenza, scadenzaSort);
+      if (byScadenza !== 0) return byScadenza;
+      return a.id.localeCompare(b.id);
     });
   }, [rows, scadenzaSort]);
 
@@ -551,10 +561,14 @@ export default function ScadenzeClient() {
           </colgroup>
           <thead>
             <tr style={{ textAlign: "left", fontSize: 12, opacity: 0.7 }}>
-              <th style={{ padding: "10px 12px" }}>
+              <th
+                aria-sort={scadenzaSort === "asc" ? "ascending" : "descending"}
+                style={{ padding: "10px 12px" }}
+              >
                 <button
                   type="button"
                   onClick={() => setScadenzaSort((prev) => (prev === "asc" ? "desc" : "asc"))}
+                  title={`Ordina per scadenza (${scadenzaSort === "asc" ? "asc" : "desc"})`}
                   style={{
                     padding: 0,
                     border: 0,
