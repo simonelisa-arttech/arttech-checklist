@@ -1397,6 +1397,20 @@ export default function Page() {
           >
             Cronoprogramma
           </Link>
+          <Link
+            href="/scadenze"
+            style={{
+              padding: "10px 14px",
+              borderRadius: 10,
+              border: "1px solid #ddd",
+              cursor: "pointer",
+              background: "white",
+              textDecoration: "none",
+              color: "inherit",
+            }}
+          >
+            Scadenze
+          </Link>
           <button
             type="button"
             onClick={handleLogout}

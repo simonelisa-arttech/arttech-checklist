@@ -565,10 +565,9 @@ export default function ScadenzeClient() {
             <col style={{ width: "16%" }} />
             <col style={{ width: "16%" }} />
             <col style={{ width: "10%" }} />
+            <col style={{ width: "20%" }} />
+            <col style={{ width: "12%" }} />
             <col style={{ width: "18%" }} />
-            <col style={{ width: "11%" }} />
-            <col style={{ width: "7%" }} />
-            <col style={{ width: "14%" }} />
           </colgroup>
           <thead>
             <tr style={{ textAlign: "left", fontSize: 12, opacity: 0.7 }}>
@@ -599,14 +598,13 @@ export default function ScadenzeClient() {
               <th style={{ padding: "10px 12px" }}>Tipo</th>
               <th style={{ padding: "10px 12px" }}>Riferimento</th>
               <th style={{ padding: "10px 12px" }}>Stato workflow</th>
-              <th style={{ padding: "10px 12px" }}>Origine</th>
               <th style={{ padding: "10px 12px" }}>Azioni</th>
             </tr>
           </thead>
           <tbody>
             {!loading && rows.length === 0 && (
               <tr>
-                <td colSpan={9} style={{ padding: 16, textAlign: "center" }}>
+                <td colSpan={8} style={{ padding: 16, textAlign: "center" }}>
                   Nessuna scadenza trovata
                 </td>
               </tr>
@@ -636,7 +634,6 @@ export default function ScadenzeClient() {
                 <td style={{ padding: "10px 12px", verticalAlign: "top" }}>
                   {renderWorkflowBadge(row.workflow_stato)}
                 </td>
-                <td style={{ padding: "10px 12px", verticalAlign: "top" }}>{row.origine}</td>
                 <td style={{ padding: "10px 12px", verticalAlign: "top", whiteSpace: "nowrap" }}>
                   {row.cliente ? (
                     <Link
