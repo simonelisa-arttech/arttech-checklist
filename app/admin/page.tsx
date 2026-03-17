@@ -3,6 +3,13 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
+type AdminCard = {
+  title: string;
+  description: string;
+  href: string;
+  count: number;
+};
+
 export default function AdminPage() {
   const [interventiDaChiudereCount, setInterventiDaChiudereCount] = useState(0);
   const [fattureDaEmettereCount, setFattureDaEmettereCount] = useState(0);
@@ -112,7 +119,7 @@ export default function AdminPage() {
     return () => controller.abort();
   }, []);
 
-  const cards = [
+  const cards: AdminCard[] = [
     {
       title: "INTERVENTI DA CHIUDERE",
       count: interventiDaChiudereCount,
@@ -137,7 +144,7 @@ export default function AdminPage() {
       description: "Clienti senza email: avvisi automatici disattivati",
       href: "/clienti",
     },
-  ] as const;
+  ];
 
   return (
     <div style={{ maxWidth: 1100, margin: "24px auto", padding: 16, paddingBottom: 60 }}>
