@@ -6,7 +6,6 @@ import { useRouter } from "next/navigation";
 import ConfigMancante from "@/components/ConfigMancante";
 import DashboardTable from "./components/DashboardTable";
 import Toast from "@/components/Toast";
-import { isAdminRole } from "@/lib/adminRoles";
 import { calcM2FromDimensioni } from "@/lib/parseDimensioni";
 import { isSupabaseConfigured, supabase } from "@/lib/supabaseClient";
 import { dbFrom } from "@/lib/clientDbBroker";
@@ -478,11 +477,6 @@ export default function Page() {
   }, []);
 
   const showDebugAuth = process.env.NODE_ENV !== "production" || debugForcedByQuery;
-  const currentRoleNormalized = String(currentOperatoreLabel?.ruolo || "")
-    .trim()
-    .toUpperCase();
-  const canAccessSettings =
-    isAdminRole(currentOperatoreLabel?.ruolo) || currentRoleNormalized === "MAGAZZINO";
 
   function formatOperatoreRef(refId?: string | null) {
     if (!refId) return "—";
@@ -1288,15 +1282,6 @@ export default function Page() {
           }}
         >
           <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap", justifyContent: "flex-end" }}>
-            {canAccessSettings && (
-              <Link
-                href="/impostazioni"
-                style={navButtonStyle}
-              >
-                Impostazioni
-              </Link>
-            )}
-
             <Link
               href="/checklists/nuova"
               style={navButtonStyle}
@@ -1337,17 +1322,6 @@ export default function Page() {
           </div>
         </div>
       </div>
-
-      {operatoreAssociationError ? (
-        <div style={{ marginTop: 8, fontSize: 12, color: "#991b1b" }}>
-          Operatore non associato
-        </div>
-      ) : currentOperatoreLabel ? (
-        <div style={{ marginTop: 8, fontSize: 12, color: "#166534" }}>
-          Operatore: {currentOperatoreLabel.nome || "—"}
-          {currentOperatoreLabel.ruolo ? ` (${currentOperatoreLabel.ruolo})` : ""}
-        </div>
-      ) : null}
 
       {/* Nuova checklist spostata su /checklists/nuova */}
 
