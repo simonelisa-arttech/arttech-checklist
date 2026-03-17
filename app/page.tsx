@@ -405,6 +405,7 @@ export default function Page() {
     licenze: 0,
     tagliandi: 0,
   });
+  const [clientiMissingEmailCount, setClientiMissingEmailCount] = useState(0);
   const [expandedSaasNoteId, setExpandedSaasNoteId] = useState<string | null>(null);
   const [serialsByChecklistId, setSerialsByChecklistId] = useState<
     Record<string, { seriali: string[] }>
@@ -891,6 +892,24 @@ export default function Page() {
         setScadenzeEntro7Breakdown({ garanzie: 0, licenze: 0, tagliandi: 0 });
       }
 
+      try {
+        const missingEmailRes = await fetch("/api/clienti/missing-email-count", {
+          signal: controller.signal,
+          credentials: "include",
+        });
+        const missingEmailData = await missingEmailRes.json().catch(() => ({}));
+        if (!isLatest()) return;
+        if (missingEmailRes.ok && typeof missingEmailData?.count === "number") {
+          setClientiMissingEmailCount(missingEmailData.count);
+        } else {
+          setClientiMissingEmailCount(0);
+        }
+      } catch (e: any) {
+        if (e?.name === "AbortError" || controller.signal.aborted) return;
+        if (!isLatest()) return;
+        setClientiMissingEmailCount(0);
+      }
+
       let opRes: Response;
       try {
         opRes = await fetch("/api/operatori", { signal: controller.signal });
@@ -1355,6 +1374,24 @@ export default function Page() {
                 {" "}Tagliandi: {scadenzeEntro7Breakdown.tagliandi}
               </div>
             </Link>
+          )}
+          {clientiMissingEmailCount > 0 && (
+            <div
+              style={{
+                marginTop: scadenzeEntro7Count > 0 ? 10 : 0,
+                padding: "12px 14px",
+                borderRadius: 12,
+                border: "1px solid #f59e0b",
+                background: "#fffbeb",
+                color: "#92400e",
+                fontWeight: 700,
+              }}
+            >
+              <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: 0.3 }}>EMAIL CLIENTI MANCANTI</div>
+              <div style={{ marginTop: 4, fontSize: 20 }}>
+                ⚠ {clientiMissingEmailCount} clienti senza email → avvisi automatici disattivati
+              </div>
+            </div>
           )}
           {loading ? (
             <div>Caricamento…</div>
