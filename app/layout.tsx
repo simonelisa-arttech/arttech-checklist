@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import AuthGate from "@/components/AuthGate";
-import AuthHeaderActions from "@/components/AuthHeaderActions";
+import LogoutButton from "@/components/LogoutButton";
 
 
 const geistSans = Geist({
@@ -46,7 +46,7 @@ export default function RootLayout({
             alt="AT SYSTEM"
             style={{ height: 48, width: "auto", objectFit: "contain" }}
           />
-          <AuthHeaderActions />
+          <LogoutButton />
         </header>
         <AuthGate>{children}</AuthGate>
       </body>
