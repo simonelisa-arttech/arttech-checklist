@@ -962,6 +962,9 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
   const [alertManualName, setAlertManualName] = useState("");
   const [alertToCliente, setAlertToCliente] = useState(false);
   const [checklistClienteEmail, setChecklistClienteEmail] = useState<string | null>(null);
+  const [checklistCustomerDeliveryMode, setChecklistCustomerDeliveryMode] = useState<
+    "AUTO_CLIENTE" | "MANUALE_INTERNO"
+  >("AUTO_CLIENTE");
   const [alertFormError, setAlertFormError] = useState<string | null>(null);
   const [alertNotice, setAlertNotice] = useState<string | null>(null);
   const [ruleTask, setRuleTask] = useState<ChecklistTask | null>(null);
@@ -2919,16 +2922,23 @@ function buildFormData(c: Checklist): FormData {
 
     const clienteKey = String(headChecklist.cliente ?? "").trim();
     setChecklistClienteEmail(null);
+    setChecklistCustomerDeliveryMode("AUTO_CLIENTE");
     if (headChecklist.cliente_id) {
       const { data: clienteRows } = await db<any[]>({
         table: "clienti_anagrafica",
         op: "select",
-        select: "email",
+        select: "email, scadenze_delivery_mode",
         filter: { id: headChecklist.cliente_id },
         limit: 1,
       });
-      const mail = String((clienteRows?.[0] as any)?.email || "").trim();
+      const clienteRow = (clienteRows?.[0] as any) || null;
+      const mail = String(clienteRow?.email || "").trim();
       setChecklistClienteEmail(mail && mail.includes("@") ? mail : null);
+      setChecklistCustomerDeliveryMode(
+        String(clienteRow?.scadenze_delivery_mode || "").trim().toUpperCase() === "MANUALE_INTERNO"
+          ? "MANUALE_INTERNO"
+          : "AUTO_CLIENTE"
+      );
     }
 
     let activeContratto: ContrattoRow | null = null;
@@ -6303,6 +6313,7 @@ function buildFormData(c: Checklist): FormData {
         stage={projectRinnoviAlertStage}
         title={projectRinnoviAlertStage === "stage1" ? "Invia avviso scadenza" : "Invia avviso fatturazione"}
         customerEmail={checklistClienteEmail}
+        customerDeliveryMode={checklistCustomerDeliveryMode || "AUTO_CLIENTE"}
         operators={getProjectAlertRecipients()}
         defaultOperatorId=""
         initialSubject={projectRinnoviAlertSubject}
