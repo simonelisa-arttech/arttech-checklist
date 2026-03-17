@@ -1231,21 +1231,6 @@ export default function Page() {
     await load();
   }
 
-  async function handleLogout() {
-    try {
-      await fetch("/auth/logout", { method: "POST" });
-    } catch {
-      // ignore network errors and proceed with client cleanup
-    }
-    try {
-      localStorage.removeItem("current_operatore_id");
-    } catch {
-      // ignore
-    }
-    router.replace("/login");
-    router.refresh();
-  }
-
   const navButtonStyle = {
     padding: "10px 14px",
     borderRadius: 12,
@@ -1258,29 +1243,8 @@ export default function Page() {
     boxShadow: "0 2px 8px rgba(15, 23, 42, 0.08)",
   } as const;
 
-  const logoutButtonStyle = {
-    padding: "10px 14px",
-    borderRadius: 12,
-    border: "1px solid #d1d5db",
-    cursor: "pointer",
-    background: "#fff",
-    fontWeight: 700,
-    boxShadow: "0 2px 8px rgba(15, 23, 42, 0.06)",
-    alignSelf: "flex-start",
-  } as const;
-
   return (
     <div style={{ maxWidth: 1100, margin: "24px auto", padding: 16, paddingBottom: 60 }}>
-      <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 12 }}>
-        <button
-          type="button"
-          onClick={handleLogout}
-          style={logoutButtonStyle}
-        >
-          Logout
-        </button>
-      </div>
-
       <div style={{ display: "flex", alignItems: "flex-start", gap: 16, flexWrap: "wrap" }}>
         <div style={{ flexShrink: 0, minWidth: 190 }}>
           <h1 style={{ margin: 0, fontSize: 34, whiteSpace: "nowrap" }}>AT SYSTEM</h1>

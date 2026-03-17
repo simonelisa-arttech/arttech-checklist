@@ -37,6 +37,7 @@ export default function RootLayout({
             padding: "0 16px",
             display: "flex",
             alignItems: "center",
+            justifyContent: "space-between",
             gap: 12,
           }}
         >
