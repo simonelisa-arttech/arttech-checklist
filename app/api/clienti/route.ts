@@ -7,6 +7,26 @@ import { isMissingClientiDriveColumnError } from "@/lib/clientiDrive";
 type RateLimitEntry = { count: number; resetAt: number };
 const rateLimitMap = new Map<string, RateLimitEntry>();
 
+type ClienteMutationPayload = {
+  denominazione?: string | null;
+  denominazione_norm?: string | null;
+  piva?: string | null;
+  codice_fiscale?: string | null;
+  codice_sdi?: string | null;
+  pec?: string | null;
+  email?: string | null;
+  telefono?: string | null;
+  indirizzo?: string | null;
+  comune?: string | null;
+  cap?: string | null;
+  provincia?: string | null;
+  paese?: string | null;
+  codice_interno?: string | null;
+  drive_url?: string | null;
+  scadenze_delivery_mode?: "AUTO_CLIENTE" | "MANUALE_INTERNO";
+  attivo?: boolean;
+};
+
 function getClientIp(request: Request) {
   const xfwd = request.headers.get("x-forwarded-for");
   if (xfwd) return xfwd.split(",")[0].trim();
@@ -244,7 +264,7 @@ export async function POST(request: Request) {
   if (driveUrl.error) {
     return NextResponse.json({ error: driveUrl.error }, { status: 400 });
   }
-  const payload = {
+  const payload: ClienteMutationPayload = {
     denominazione,
     denominazione_norm: normalizeDenominazione(denominazione),
     piva: `${body?.piva || ""}`.trim() || null,
@@ -264,7 +284,7 @@ export async function POST(request: Request) {
     attivo: typeof body?.attivo === "boolean" ? body.attivo : true,
   };
   let warningParts: string[] = [];
-  let mutationPayload = { ...payload };
+  let mutationPayload: ClienteMutationPayload = { ...payload };
   let selectClause = CLIENTI_SELECT_WITH_OPTIONALS;
   let data: any = null;
   let error: any = null;
@@ -341,7 +361,7 @@ export async function PATCH(request: Request) {
   }
 
   const denominazione = body?.denominazione != null ? `${body.denominazione}`.trim() : "";
-  const payload: Record<string, string | null | boolean> = {
+  const payload: ClienteMutationPayload = {
     piva: `${body?.piva || ""}`.trim() || null,
     codice_fiscale: `${body?.codice_fiscale || ""}`.trim() || null,
     codice_sdi: `${body?.codice_sdi || ""}`.trim() || null,
@@ -371,7 +391,7 @@ export async function PATCH(request: Request) {
     payload.denominazione_norm = normalizeDenominazione(denominazione);
   }
   let warningParts: string[] = [];
-  let mutationPayload = { ...payload };
+  let mutationPayload: ClienteMutationPayload = { ...payload };
   let selectClause = CLIENTI_SELECT_WITH_OPTIONALS;
   let data: any = null;
   let error: any = null;
