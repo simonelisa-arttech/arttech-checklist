@@ -1,29 +1,58 @@
-import Link from "next/link";
+"use client";
 
-const cards = [
-  {
-    title: "SCADENZE",
-    description: "Apri la vista operativa delle scadenze e dei rinnovi.",
-    href: "/scadenze",
-  },
-  {
-    title: "CLIENTI SENZA EMAIL",
-    description: "Verifica i clienti che bloccano gli avvisi automatici.",
-    href: "/clienti",
-  },
-  {
-    title: "INTERVENTI DA CHIUDERE",
-    description: "Area placeholder per i prossimi controlli amministrativi.",
-    href: null,
-  },
-  {
-    title: "FATTURE DA EMETTERE",
-    description: "Area placeholder per la gestione fatture ancora aperte.",
-    href: null,
-  },
-] as const;
+import Link from "next/link";
+import { useEffect, useState } from "react";
 
 export default function AdminPage() {
+  const [interventiDaChiudereCount, setInterventiDaChiudereCount] = useState(0);
+
+  useEffect(() => {
+    const controller = new AbortController();
+
+    async function loadCount() {
+      try {
+        const res = await fetch("/api/interventi/da-chiudere", {
+          signal: controller.signal,
+          credentials: "include",
+        });
+        const data = await res.json().catch(() => []);
+        if (!res.ok || !Array.isArray(data)) {
+          setInterventiDaChiudereCount(0);
+          return;
+        }
+        setInterventiDaChiudereCount(data.length);
+      } catch {
+        setInterventiDaChiudereCount(0);
+      }
+    }
+
+    void loadCount();
+    return () => controller.abort();
+  }, []);
+
+  const cards = [
+    {
+      title: "SCADENZE",
+      description: "Apri la vista operativa delle scadenze e dei rinnovi.",
+      href: "/scadenze",
+    },
+    {
+      title: "CLIENTI SENZA EMAIL",
+      description: "Verifica i clienti che bloccano gli avvisi automatici.",
+      href: "/clienti",
+    },
+    {
+      title: "INTERVENTI DA CHIUDERE",
+      description: `${interventiDaChiudereCount} interventi da chiudere`,
+      href: "/admin/interventi-da-chiudere",
+    },
+    {
+      title: "FATTURE DA EMETTERE",
+      description: "Area placeholder per la gestione fatture ancora aperte.",
+      href: null,
+    },
+  ] as const;
+
   return (
     <div style={{ maxWidth: 1100, margin: "24px auto", padding: 16, paddingBottom: 60 }}>
       <div style={{ marginBottom: 18 }}>
