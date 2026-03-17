@@ -1,4 +1,4 @@
-export const RENEWAL_ALERT_DAY_PRESETS = [90, 60, 30, 15, 7, 3, 1] as const;
+export const RENEWAL_ALERT_PROGRESSIVE_DAYS = [30, 15, 7, 1] as const;
 
 export const RENEWAL_ALERT_STOP_OPTIONS = [
   { value: "AT_EXPIRY", label: "Alla scadenza" },
@@ -46,7 +46,7 @@ export function getDefaultRenewalAlertRule(
     stage,
     enabled: false,
     mode: "MANUALE",
-    days_before: 30,
+    days_before: RENEWAL_ALERT_PROGRESSIVE_DAYS[0],
     send_to_cliente: true,
     send_to_art_tech: false,
     art_tech_mode: "OPERATORE",
@@ -54,7 +54,7 @@ export function getDefaultRenewalAlertRule(
     art_tech_email: null,
     art_tech_name: null,
     stop_condition: "AT_EXPIRY",
-    stop_statuses: ["AVVISATO", "CONFERMATO", "NON_RINNOVATO", "FATTURATO"],
+    stop_statuses: ["CONFERMATO", "NON_RINNOVATO", "FATTURATO"],
   };
 }
 
@@ -71,7 +71,7 @@ export function normalizeRenewalAlertRule(
     stage,
     enabled: row?.enabled === true,
     mode: String(row?.mode || base.mode).toUpperCase() === "AUTOMATICO" ? "AUTOMATICO" : "MANUALE",
-    days_before: RENEWAL_ALERT_DAY_PRESETS.includes(Number(row?.days_before) as any)
+    days_before: RENEWAL_ALERT_PROGRESSIVE_DAYS.includes(Number(row?.days_before) as any)
       ? Number(row?.days_before)
       : base.days_before,
     send_to_cliente: row?.send_to_cliente !== false,
@@ -83,9 +83,7 @@ export function normalizeRenewalAlertRule(
     art_tech_email: row?.art_tech_email || null,
     art_tech_name: row?.art_tech_name || null,
     stop_condition:
-      String(row?.stop_condition || base.stop_condition).toUpperCase() === "AFTER_FIRST_SEND"
-        ? "AFTER_FIRST_SEND"
-        : String(row?.stop_condition || base.stop_condition).toUpperCase() === "ON_STATUS"
+      String(row?.stop_condition || base.stop_condition).toUpperCase() === "ON_STATUS"
         ? "ON_STATUS"
         : "AT_EXPIRY",
     stop_statuses: Array.from(
@@ -108,9 +106,7 @@ export function buildRenewalAlertRuleSummary(rule: RenewalAlertRuleRow | null | 
   if (rule.send_to_cliente) recipients.push("Cliente");
   if (rule.send_to_art_tech) recipients.push("Art Tech");
   let stopLabel = "alla scadenza";
-  if (rule.stop_condition === "AFTER_FIRST_SEND") {
-    stopLabel = "dopo il primo invio";
-  } else if (rule.stop_condition === "ON_STATUS") {
+  if (rule.stop_condition === "ON_STATUS") {
     stopLabel =
       rule.stop_statuses.length > 0
         ? `quando stato = ${rule.stop_statuses.join(" / ")}`
@@ -118,7 +114,7 @@ export function buildRenewalAlertRuleSummary(rule: RenewalAlertRuleRow | null | 
   }
   return [
     "Regola automatica attiva:",
-    `invio ${rule.days_before} giorni prima della scadenza`,
+    `invii progressivi: ${RENEWAL_ALERT_PROGRESSIVE_DAYS.join(" / ")} giorni prima della scadenza`,
     `destinatario: ${recipients.length > 0 ? recipients.join(" + ") : "—"}`,
     `stop: ${stopLabel}`,
   ].join("\n");
@@ -130,16 +126,13 @@ export function buildRenewalAlertRuleLogLabel(rule: RenewalAlertRuleRow | null |
   if (rule.send_to_cliente) recipients.push("Cliente");
   if (rule.send_to_art_tech) recipients.push("Art Tech");
   const stop =
-    rule.stop_condition === "AFTER_FIRST_SEND"
-      ? "stop=dopo primo invio"
-      : rule.stop_condition === "ON_STATUS"
+    rule.stop_condition === "ON_STATUS"
       ? `stop=stato:${rule.stop_statuses.join("|")}`
       : "stop=alla scadenza";
-  return `Regola auto ${rule.days_before}gg • dest=${recipients.join("+") || "—"} • ${stop}`;
+  return `Regola auto ${RENEWAL_ALERT_PROGRESSIVE_DAYS.join("-")}gg • dest=${recipients.join("+") || "—"} • ${stop}`;
 }
 
 export function isValidEmail(value?: string | null) {
   const raw = String(value || "").trim();
   return raw.includes("@") && raw.includes(".");
 }
-

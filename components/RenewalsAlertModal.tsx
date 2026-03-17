@@ -5,7 +5,7 @@ import {
   buildRenewalAlertRuleSummary,
   isValidEmail,
   normalizeRenewalAlertRule,
-  RENEWAL_ALERT_DAY_PRESETS,
+  RENEWAL_ALERT_PROGRESSIVE_DAYS,
   RENEWAL_ALERT_STOP_OPTIONS,
   RENEWAL_ALERT_STOP_STATUS_OPTIONS,
   type RenewalAlertRuleRow,
@@ -38,6 +38,7 @@ type Props = {
   stage: RenewalAlertStage;
   title: string;
   customerEmail: string | null;
+  customerDeliveryMode: "AUTO_CLIENTE" | "MANUALE_INTERNO";
   operators: OperatoreOption[];
   defaultOperatorId: string;
   initialSubject: string;
@@ -59,6 +60,7 @@ export default function RenewalsAlertModal({
   stage,
   title,
   customerEmail,
+  customerDeliveryMode,
   operators,
   defaultOperatorId,
   initialSubject,
@@ -105,10 +107,25 @@ export default function RenewalsAlertModal({
 
   const canUseAutomatic = stage === "stage1";
   const automaticSummary = useMemo(() => buildRenewalAlertRuleSummary(ruleDraft), [ruleDraft]);
+  const customerEmailValid = isValidEmail(customerEmail);
+  const customerAutoBlocked =
+    customerDeliveryMode === "AUTO_CLIENTE" && !customerEmailValid;
+  const customerManualInternal = customerDeliveryMode === "MANUALE_INTERNO";
+  const canUseAutomaticCliente = !customerManualInternal && !customerAutoBlocked;
   const canSendManual =
-    (toCliente && isValidEmail(customerEmail)) ||
+    (toCliente && customerEmailValid) ||
     (toArtTech &&
       (artTechMode === "operatore" ? Boolean(operatoreId) : isValidEmail(manualEmail)));
+
+  useEffect(() => {
+    if (!open || mode !== "AUTOMATICO") return;
+    if (customerManualInternal || customerAutoBlocked) {
+      setRuleDraft((prev) => {
+        if (!prev.send_to_cliente) return prev;
+        return { ...prev, send_to_cliente: false };
+      });
+    }
+  }, [open, mode, customerAutoBlocked, customerManualInternal]);
 
   if (!open) return null;
 
@@ -313,30 +330,67 @@ export default function RenewalsAlertModal({
               {loadingRule ? "Caricamento regola automatica..." : automaticSummary}
             </div>
 
+            <div
+              style={{
+                marginBottom: 12,
+                padding: "10px 12px",
+                borderRadius: 10,
+                border: "1px solid #dbeafe",
+                background: "#eff6ff",
+                fontSize: 12,
+                color: "#1e3a8a",
+                lineHeight: 1.5,
+              }}
+            >
+              Piano automatico progressivo fisso: <strong>{RENEWAL_ALERT_PROGRESSIVE_DAYS.join(" / ")} giorni</strong>.
+            </div>
+
+            {customerAutoBlocked ? (
+              <div
+                style={{
+                  marginBottom: 12,
+                  padding: "10px 12px",
+                  borderRadius: 10,
+                  border: "1px solid #f59e0b",
+                  background: "#fffbeb",
+                  fontSize: 12,
+                  color: "#92400e",
+                }}
+              >
+                Inserire email cliente in scheda cliente per attivare gli avvisi automatici.
+              </div>
+            ) : null}
+
+            {customerManualInternal ? (
+              <div
+                style={{
+                  marginBottom: 12,
+                  padding: "10px 12px",
+                  borderRadius: 10,
+                  border: "1px solid #e5e7eb",
+                  background: "#f9fafb",
+                  fontSize: 12,
+                  color: "#374151",
+                }}
+              >
+                Cliente in modalità manuale interno: gli avvisi automatici cliente sono disattivati.
+              </div>
+            ) : null}
+
             <label style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 10 }}>
               <input
                 type="checkbox"
                 checked={ruleDraft.enabled}
-                onChange={(e) => setRuleDraft((prev) => ({ ...prev, enabled: e.target.checked, mode: "AUTOMATICO" }))}
+                onChange={(e) =>
+                  setRuleDraft((prev) => ({
+                    ...prev,
+                    enabled: e.target.checked,
+                    mode: "AUTOMATICO",
+                    days_before: RENEWAL_ALERT_PROGRESSIVE_DAYS[0],
+                  }))
+                }
               />
               Regola automatica attiva
-            </label>
-
-            <label style={{ display: "block", marginBottom: 10 }}>
-              Giorni prima della scadenza<br />
-              <select
-                value={ruleDraft.days_before}
-                onChange={(e) =>
-                  setRuleDraft((prev) => ({ ...prev, mode: "AUTOMATICO", days_before: Number(e.target.value) }))
-                }
-                style={{ width: "100%", padding: 8 }}
-              >
-                {RENEWAL_ALERT_DAY_PRESETS.map((days) => (
-                  <option key={days} value={days}>
-                    {days} giorni
-                  </option>
-                ))}
-              </select>
             </label>
 
             <div style={{ display: "flex", gap: 12, marginBottom: 10, fontSize: 12, flexWrap: "wrap" }}>
@@ -344,8 +398,14 @@ export default function RenewalsAlertModal({
                 <input
                   type="checkbox"
                   checked={ruleDraft.send_to_cliente}
+                  disabled={!canUseAutomaticCliente}
                   onChange={(e) =>
-                    setRuleDraft((prev) => ({ ...prev, mode: "AUTOMATICO", send_to_cliente: e.target.checked }))
+                    setRuleDraft((prev) => ({
+                      ...prev,
+                      mode: "AUTOMATICO",
+                      days_before: RENEWAL_ALERT_PROGRESSIVE_DAYS[0],
+                      send_to_cliente: e.target.checked && canUseAutomaticCliente,
+                    }))
                   }
                 />
                 Cliente
@@ -355,11 +415,24 @@ export default function RenewalsAlertModal({
                   type="checkbox"
                   checked={ruleDraft.send_to_art_tech}
                   onChange={(e) =>
-                    setRuleDraft((prev) => ({ ...prev, mode: "AUTOMATICO", send_to_art_tech: e.target.checked }))
+                    setRuleDraft((prev) => ({
+                      ...prev,
+                      mode: "AUTOMATICO",
+                      days_before: RENEWAL_ALERT_PROGRESSIVE_DAYS[0],
+                      send_to_art_tech: e.target.checked,
+                    }))
                   }
                 />
                 Art Tech
               </label>
+            </div>
+
+            <div style={{ marginTop: -4, marginBottom: 10, fontSize: 12, opacity: 0.8 }}>
+              {customerManualInternal
+                ? "Destinatario cliente disattivato dalla preferenza cliente: Manuale interno."
+                : customerAutoBlocked
+                ? "Destinatario cliente non attivabile finché manca una email valida in scheda cliente."
+                : `Email cliente da anagrafica: ${customerEmail}`}
             </div>
 
             {ruleDraft.send_to_art_tech && (
@@ -449,7 +522,7 @@ export default function RenewalsAlertModal({
                 }
                 style={{ width: "100%", padding: 8 }}
               >
-                {RENEWAL_ALERT_STOP_OPTIONS.map((option) => (
+                {RENEWAL_ALERT_STOP_OPTIONS.filter((option) => option.value !== "AFTER_FIRST_SEND").map((option) => (
                   <option key={option.value} value={option.value}>
                     {option.label}
                   </option>
@@ -563,4 +636,3 @@ export default function RenewalsAlertModal({
     </div>
   );
 }
-

@@ -77,11 +77,45 @@ function normalizeOptionalHttpUrl(value: unknown) {
   }
 }
 
+const DEFAULT_SCADENZE_DELIVERY_MODE = "AUTO_CLIENTE";
+
+function normalizeScadenzeDeliveryMode(
+  value: unknown
+): "AUTO_CLIENTE" | "MANUALE_INTERNO" {
+  const raw = String(value || "").trim().toUpperCase();
+  return raw === "MANUALE_INTERNO" ? "MANUALE_INTERNO" : "AUTO_CLIENTE";
+}
+
+function isMissingClientiScadenzeDeliveryModeColumnError(error: any) {
+  return String(error?.message || "")
+    .toLowerCase()
+    .includes("scadenze_delivery_mode");
+}
+
+function stripSelectColumn(selectClause: string, columnName: string) {
+  return selectClause
+    .split(",")
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .filter((part) => part !== columnName)
+    .join(",");
+}
+
 const CLIENTI_BASE_SELECT =
   "id,denominazione,denominazione_norm,piva,codice_fiscale,codice_sdi,pec,email,telefono,indirizzo,comune,cap,provincia,paese,codice_interno,attivo";
-const CLIENTI_SELECT_WITH_DRIVE = `${CLIENTI_BASE_SELECT},drive_url`;
+const CLIENTI_SELECT_WITH_OPTIONALS = `${CLIENTI_BASE_SELECT},drive_url,scadenze_delivery_mode`;
 
-async function enrichClientiWithDriveUrl(supabase: any, rows: any[]) {
+function normalizeClienteRow(row: any) {
+  return {
+    ...(row || {}),
+    drive_url: row?.drive_url || null,
+    scadenze_delivery_mode: normalizeScadenzeDeliveryMode(
+      row?.scadenze_delivery_mode || DEFAULT_SCADENZE_DELIVERY_MODE
+    ),
+  };
+}
+
+async function enrichClientiOptionalFields(supabase: any, rows: any[]) {
   const ids = Array.from(
     new Set(
       (rows || [])
@@ -91,25 +125,47 @@ async function enrichClientiWithDriveUrl(supabase: any, rows: any[]) {
   );
   if (ids.length === 0) return rows || [];
 
-  const { data, error } = await supabase
-    .from("clienti_anagrafica")
-    .select("id,drive_url")
-    .in("id", ids);
+  let selectClause = "id,drive_url,scadenze_delivery_mode";
+  let data: any[] | null = null;
+  let error: any = null;
+
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const result = await supabase.from("clienti_anagrafica").select(selectClause).in("id", ids);
+    data = result.data;
+    error = result.error;
+    if (!error) break;
+
+    let nextSelect = selectClause;
+    if (isMissingClientiDriveColumnError(error) && nextSelect.includes("drive_url")) {
+      nextSelect = stripSelectColumn(nextSelect, "drive_url");
+    }
+    if (
+      isMissingClientiScadenzeDeliveryModeColumnError(error) &&
+      nextSelect.includes("scadenze_delivery_mode")
+    ) {
+      nextSelect = stripSelectColumn(nextSelect, "scadenze_delivery_mode");
+    }
+    if (nextSelect === selectClause) break;
+    selectClause = nextSelect || "id";
+  }
 
   if (error) {
-    if (isMissingClientiDriveColumnError(error)) {
-      return (rows || []).map((row: any) => ({ ...row, drive_url: null }));
+    if (
+      isMissingClientiDriveColumnError(error) ||
+      isMissingClientiScadenzeDeliveryModeColumnError(error)
+    ) {
+      return (rows || []).map((row: any) => normalizeClienteRow(row));
     }
     throw error;
   }
 
   const byId = new Map(
-    (data || []).map((row: any) => [String(row?.id || "").trim(), row?.drive_url || null])
+    (data || []).map((row: any) => [String(row?.id || "").trim(), normalizeClienteRow(row)])
   );
 
   return (rows || []).map((row: any) => ({
-    ...row,
-    drive_url: byId.get(String(row?.id || "").trim()) || null,
+    ...normalizeClienteRow(row),
+    ...(byId.get(String(row?.id || "").trim()) || {}),
   }));
 }
 
@@ -163,7 +219,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
   try {
-    data = await enrichClientiWithDriveUrl(supabase, data || []);
+    data = await enrichClientiOptionalFields(supabase, data || []);
   } catch (enrichError: any) {
     return NextResponse.json({ error: enrichError.message }, { status: 500 });
   }
@@ -204,27 +260,48 @@ export async function POST(request: Request) {
     paese: `${body?.paese || ""}`.trim() || null,
     codice_interno: `${body?.codice_interno || ""}`.trim() || null,
     drive_url: driveUrl.value,
+    scadenze_delivery_mode: normalizeScadenzeDeliveryMode(body?.scadenze_delivery_mode),
     attivo: typeof body?.attivo === "boolean" ? body.attivo : true,
   };
-  let warning: string | null = null;
-  let { data, error }: { data: any; error: any } = await supabase
-    .from("clienti_anagrafica")
-    .insert(payload)
-    .select(CLIENTI_SELECT_WITH_DRIVE)
-    .single();
-  if (error && isMissingClientiDriveColumnError(error)) {
-    const { drive_url: _skip, ...legacyPayload } = payload;
-    const fallback = await supabase
+  let warningParts: string[] = [];
+  let mutationPayload = { ...payload };
+  let selectClause = CLIENTI_SELECT_WITH_OPTIONALS;
+  let data: any = null;
+  let error: any = null;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const result = await supabase
       .from("clienti_anagrafica")
-      .insert(legacyPayload)
-      .select(CLIENTI_BASE_SELECT)
+      .insert(mutationPayload)
+      .select(selectClause)
       .single();
-    data = fallback.data;
-    error = fallback.error;
-    if (!error && driveUrl.value) {
-      warning =
-        "Cliente salvato. Il link Drive non e' stato salvato: colonna non disponibile nello schema cache / ambiente non migrato.";
+    data = result.data;
+    error = result.error;
+    if (!error) break;
+
+    let changed = false;
+    if (isMissingClientiDriveColumnError(error) && "drive_url" in mutationPayload) {
+      const { drive_url: _skip, ...legacyPayload } = mutationPayload;
+      mutationPayload = legacyPayload;
+      selectClause = stripSelectColumn(selectClause, "drive_url") || CLIENTI_BASE_SELECT;
+      warningParts.push(
+        "Il link Drive non e' stato salvato: colonna non disponibile nello schema cache / ambiente non migrato."
+      );
+      changed = true;
     }
+    if (
+      isMissingClientiScadenzeDeliveryModeColumnError(error) &&
+      "scadenze_delivery_mode" in mutationPayload
+    ) {
+      const { scadenze_delivery_mode: _skip, ...legacyPayload } = mutationPayload;
+      mutationPayload = legacyPayload;
+      selectClause =
+        stripSelectColumn(selectClause, "scadenze_delivery_mode") || CLIENTI_BASE_SELECT;
+      warningParts.push(
+        "La preferenza invio scadenze non e' stata salvata: colonna non disponibile nello schema cache / ambiente non migrato."
+      );
+      changed = true;
+    }
+    if (!changed) break;
   }
 
   if (error) {
@@ -234,7 +311,11 @@ export async function POST(request: Request) {
     }
     return NextResponse.json({ error: msg }, { status: 500 });
   }
-  return NextResponse.json({ ok: true, data, warning });
+  return NextResponse.json({
+    ok: true,
+    data: normalizeClienteRow(data),
+    warning: warningParts.length > 0 ? warningParts.join(" ") : null,
+  });
 }
 
 export async function PATCH(request: Request) {
@@ -251,7 +332,10 @@ export async function PATCH(request: Request) {
   if (!id) {
     return NextResponse.json({ error: "Id mancante" }, { status: 400 });
   }
-  const driveUrl = normalizeOptionalHttpUrl(body?.drive_url);
+  const hasDriveUrl = Object.prototype.hasOwnProperty.call(body || {}, "drive_url");
+  const driveUrl = hasDriveUrl
+    ? normalizeOptionalHttpUrl(body?.drive_url)
+    : { value: null as string | null, error: null as string | null };
   if (driveUrl.error) {
     return NextResponse.json({ error: driveUrl.error }, { status: 400 });
   }
@@ -270,8 +354,13 @@ export async function PATCH(request: Request) {
     provincia: `${body?.provincia || ""}`.trim() || null,
     paese: `${body?.paese || ""}`.trim() || null,
     codice_interno: `${body?.codice_interno || ""}`.trim() || null,
-    drive_url: driveUrl.value,
   };
+  if (hasDriveUrl) {
+    payload.drive_url = driveUrl.value;
+  }
+  if (Object.prototype.hasOwnProperty.call(body || {}, "scadenze_delivery_mode")) {
+    payload.scadenze_delivery_mode = normalizeScadenzeDeliveryMode(body?.scadenze_delivery_mode);
+  }
 
   if (typeof body?.attivo === "boolean") {
     payload.attivo = body.attivo;
@@ -281,27 +370,46 @@ export async function PATCH(request: Request) {
     payload.denominazione = denominazione;
     payload.denominazione_norm = normalizeDenominazione(denominazione);
   }
-  let warning: string | null = null;
-  let { data, error }: { data: any; error: any } = await supabase
-    .from("clienti_anagrafica")
-    .update(payload)
-    .eq("id", id)
-    .select(CLIENTI_SELECT_WITH_DRIVE)
-    .single();
-  if (error && isMissingClientiDriveColumnError(error)) {
-    const { drive_url: _skip, ...legacyPayload } = payload;
-    const fallback = await supabase
+  let warningParts: string[] = [];
+  let mutationPayload = { ...payload };
+  let selectClause = CLIENTI_SELECT_WITH_OPTIONALS;
+  let data: any = null;
+  let error: any = null;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const result = await supabase
       .from("clienti_anagrafica")
-      .update(legacyPayload)
+      .update(mutationPayload)
       .eq("id", id)
-      .select(CLIENTI_BASE_SELECT)
+      .select(selectClause)
       .single();
-    data = fallback.data;
-    error = fallback.error;
-    if (!error && driveUrl.value) {
-      warning =
-        "Cliente salvato. Il link Drive non e' stato salvato: colonna non disponibile nello schema cache / ambiente non migrato.";
+    data = result.data;
+    error = result.error;
+    if (!error) break;
+
+    let changed = false;
+    if (isMissingClientiDriveColumnError(error) && "drive_url" in mutationPayload) {
+      const { drive_url: _skip, ...legacyPayload } = mutationPayload;
+      mutationPayload = legacyPayload;
+      selectClause = stripSelectColumn(selectClause, "drive_url") || CLIENTI_BASE_SELECT;
+      warningParts.push(
+        "Il link Drive non e' stato salvato: colonna non disponibile nello schema cache / ambiente non migrato."
+      );
+      changed = true;
     }
+    if (
+      isMissingClientiScadenzeDeliveryModeColumnError(error) &&
+      "scadenze_delivery_mode" in mutationPayload
+    ) {
+      const { scadenze_delivery_mode: _skip, ...legacyPayload } = mutationPayload;
+      mutationPayload = legacyPayload;
+      selectClause =
+        stripSelectColumn(selectClause, "scadenze_delivery_mode") || CLIENTI_BASE_SELECT;
+      warningParts.push(
+        "La preferenza invio scadenze non e' stata salvata: colonna non disponibile nello schema cache / ambiente non migrato."
+      );
+      changed = true;
+    }
+    if (!changed) break;
   }
 
   if (error) {
@@ -311,5 +419,9 @@ export async function PATCH(request: Request) {
     }
     return NextResponse.json({ error: msg }, { status: 500 });
   }
-  return NextResponse.json({ ok: true, data, warning });
+  return NextResponse.json({
+    ok: true,
+    data: normalizeClienteRow(data),
+    warning: warningParts.length > 0 ? warningParts.join(" ") : null,
+  });
 }

@@ -3,6 +3,7 @@ export const runtime = "nodejs";
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { sendEmail } from "@/lib/email";
+import { RENEWAL_ALERT_PROGRESSIVE_DAYS } from "@/lib/renewalAlertRules";
 
 type RinnovoRow = {
   id: string;
@@ -40,6 +41,12 @@ type RenewalAlertRuleRow = {
   art_tech_name: string | null;
   stop_condition: "AT_EXPIRY" | "AFTER_FIRST_SEND" | "ON_STATUS";
   stop_statuses: string[];
+};
+
+type ClientePreferenceRow = {
+  id: string;
+  email: string | null;
+  scadenze_delivery_mode?: string | null;
 };
 
 type OperatoreRow = {
@@ -122,6 +129,12 @@ function getDefaultOperatoreByRole(ops: OperatoreRow[], role: string) {
   return ops.find((o) => o.attivo !== false && o.alert_enabled) ?? null;
 }
 
+function normalizeScadenzeDeliveryMode(value?: string | null) {
+  return String(value || "").trim().toUpperCase() === "MANUALE_INTERNO"
+    ? "MANUALE_INTERNO"
+    : "AUTO_CLIENTE";
+}
+
 async function getSystemOperatoreId(supabase: any) {
   type RowId = { id: string };
   const { data: row, error } = await supabase
@@ -180,14 +193,14 @@ export async function GET(request: Request) {
   const withIdRes = await supabase
     .from("rinnovi_servizi")
     .select(selectWithClienteId)
-    .eq("stato", "DA_AVVISARE")
+    .in("stato", ["DA_AVVISARE", "AVVISATO"])
     .order("scadenza", { ascending: true });
 
   if (withIdRes.error && withIdRes.error.message.includes("cliente_id")) {
     const withoutIdRes = await supabase
       .from("rinnovi_servizi")
       .select(selectWithoutClienteId)
-      .eq("stato", "DA_AVVISARE")
+      .in("stato", ["DA_AVVISARE", "AVVISATO"])
       .order("scadenza", { ascending: true });
     rinnovi = (withoutIdRes.data ?? []) as unknown as RinnovoRow[];
     rinnoviErr = withoutIdRes.error ? { message: withoutIdRes.error.message } : null;
@@ -238,14 +251,21 @@ export async function GET(request: Request) {
     )
   );
   const emailByClienteId = new Map<string, string>();
+  const deliveryModeByClienteId = new Map<string, "AUTO_CLIENTE" | "MANUALE_INTERNO">();
   if (clienteIds.length > 0) {
     const { data: clientiRows } = await supabase
       .from("clienti_anagrafica")
-      .select("id, email")
+      .select("id, email, scadenze_delivery_mode")
       .in("id", clienteIds);
-    for (const row of (clientiRows || []) as any[]) {
+    for (const row of (clientiRows || []) as ClientePreferenceRow[]) {
+      const clienteId = String(row.id || "").trim();
+      if (!clienteId) continue;
       const email = String(row.email || "").trim();
-      if (email.includes("@")) emailByClienteId.set(String(row.id), email);
+      deliveryModeByClienteId.set(
+        clienteId,
+        normalizeScadenzeDeliveryMode(row.scadenze_delivery_mode)
+      );
+      if (email.includes("@")) emailByClienteId.set(clienteId, email);
     }
   }
   const grouped = new Map<string, RinnovoRow[]>();
@@ -264,13 +284,42 @@ export async function GET(request: Request) {
     if (!rule) continue;
     const today = new Date();
     today.setHours(0, 0, 0, 0);
+    const checklistIds = Array.from(
+      new Set(
+        list
+          .map((row) => String(row.checklist_id || "").trim())
+          .filter(Boolean)
+      )
+    );
+    const sentKeys = new Set<string>();
+    if (checklistIds.length > 0) {
+      const { data: alertLogs } = await supabase
+        .from("checklist_alert_log")
+        .select("checklist_id, tipo, riferimento, scadenza, destinatario")
+        .in("checklist_id", checklistIds)
+        .eq("canale", "rinnovo_stage1_auto")
+        .eq("trigger", "AUTOMATICO");
+      for (const log of (alertLogs || []) as any[]) {
+        sentKeys.add(
+          [
+            String(log.checklist_id || "").trim(),
+            String(log.tipo || "").trim().toUpperCase(),
+            String(log.riferimento || "").trim(),
+            String(log.scadenza || "").trim(),
+            String(log.destinatario || "").trim(),
+          ].join("::")
+        );
+      }
+    }
+
     const eligible = list.filter((row) => {
       if (!row.scadenza) return false;
       const dt = new Date(row.scadenza);
       dt.setHours(0, 0, 0, 0);
       const diff = Math.ceil((dt.getTime() - today.getTime()) / 86400000);
-      if (diff !== Number(rule.days_before || 0)) return false;
-      if (rule.stop_condition === "AFTER_FIRST_SEND" && row.notify_stage1_sent_at) return false;
+      if (!RENEWAL_ALERT_PROGRESSIVE_DAYS.includes(diff as (typeof RENEWAL_ALERT_PROGRESSIVE_DAYS)[number])) {
+        return false;
+      }
       if (
         rule.stop_condition === "ON_STATUS" &&
         Array.isArray(rule.stop_statuses) &&
@@ -278,6 +327,14 @@ export async function GET(request: Request) {
       ) {
         return false;
       }
+      const sentKey = [
+        String(row.checklist_id || "").trim(),
+        String(row.item_tipo || "").trim().toUpperCase(),
+        String(row.riferimento || "").trim(),
+        String(row.scadenza || "").trim(),
+        `Regola auto ${diff}gg`,
+      ].join("::");
+      if (sentKeys.has(sentKey)) return false;
       return true;
     });
     if (eligible.length === 0) continue;
@@ -301,8 +358,11 @@ export async function GET(request: Request) {
     }
     if (rule.send_to_cliente) {
       const clienteId = String(eligible[0]?.checklists?.cliente_id || eligible[0]?.cliente_id || "").trim();
+      const deliveryMode = clienteId
+        ? deliveryModeByClienteId.get(clienteId) || "AUTO_CLIENTE"
+        : "AUTO_CLIENTE";
       const email = clienteId ? emailByClienteId.get(clienteId) || "" : "";
-      if (email.includes("@")) {
+      if (deliveryMode === "AUTO_CLIENTE" && email.includes("@")) {
         recipients.push({ email, name: "Cliente", operatoreId: null });
       }
     }
@@ -332,12 +392,15 @@ export async function GET(request: Request) {
         return NextResponse.json({ error: errorMsg }, { status: 500 });
       }
       for (const row of eligible) {
+        const rowDate = new Date(String(row.scadenza || ""));
+        rowDate.setHours(0, 0, 0, 0);
+        const diff = Math.ceil((rowDate.getTime() - today.getTime()) / 86400000);
         const { error: logErr } = await supabase.from("checklist_alert_log").insert({
           checklist_id: row.checklist_id,
           tipo: row.item_tipo,
           riferimento: row.riferimento,
           stato: row.stato,
-          destinatario: `Regola auto ${rule.days_before}gg`,
+          destinatario: `Regola auto ${diff}gg`,
           to_operatore_id: recipient.operatoreId,
           to_email: recipient.email,
           to_nome: recipient.name,

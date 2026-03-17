@@ -696,6 +696,10 @@ type OperatoreRow = {
   } | null;
 };
 
+type ClienteScadenzeDeliveryMode = "AUTO_CLIENTE" | "MANUALE_INTERNO";
+
+const DEFAULT_CLIENTE_SCADENZE_DELIVERY_MODE: ClienteScadenzeDeliveryMode = "AUTO_CLIENTE";
+
 type ContrattoRow = {
   id: string;
   cliente: string;
@@ -802,6 +806,9 @@ export default function ClientePage({
   const [clienteDriveDraft, setClienteDriveDraft] = useState("");
   const [clienteDriveEditing, setClienteDriveEditing] = useState(false);
   const [clienteDriveSaving, setClienteDriveSaving] = useState(false);
+  const [clienteScadenzeDeliveryMode, setClienteScadenzeDeliveryMode] =
+    useState<ClienteScadenzeDeliveryMode>(DEFAULT_CLIENTE_SCADENZE_DELIVERY_MODE);
+  const [clienteScadenzeDeliverySaving, setClienteScadenzeDeliverySaving] = useState(false);
   const [selectedPresetId, setSelectedPresetId] = useState<string>("");
   const [tagliandi, setTagliandi] = useState<TagliandoRow[]>([]);
   const [newTagliando, setNewTagliando] = useState({
@@ -973,6 +980,46 @@ export default function ClientePage({
       return parsed.protocol === "http:" || parsed.protocol === "https:";
     } catch {
       return false;
+    }
+  }
+
+  function normalizeClienteScadenzeDeliveryMode(value?: string | null): ClienteScadenzeDeliveryMode {
+    return String(value || "").trim().toUpperCase() === "MANUALE_INTERNO"
+      ? "MANUALE_INTERNO"
+      : "AUTO_CLIENTE";
+  }
+
+  async function saveClienteScadenzeDeliveryMode(nextMode: ClienteScadenzeDeliveryMode) {
+    if (!clienteAnagraficaId) {
+      showToast("❌ Cliente anagrafica non disponibile", "error");
+      return;
+    }
+    setClienteScadenzeDeliverySaving(true);
+    try {
+      const res = await fetch("/api/clienti", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          id: clienteAnagraficaId,
+          scadenze_delivery_mode: nextMode,
+        }),
+      });
+      const json = await res.json().catch(() => ({} as any));
+      if (!res.ok || !json?.ok) {
+        throw new Error(json?.error || "Errore salvataggio preferenza invio scadenze");
+      }
+      const savedMode = normalizeClienteScadenzeDeliveryMode(json?.data?.scadenze_delivery_mode);
+      setClienteScadenzeDeliveryMode(savedMode);
+      if (json?.warning) {
+        showToast(String(json.warning), "error", 4500);
+      } else {
+        showToast("✅ Preferenza invio scadenze salvata", "success");
+      }
+    } catch (err: any) {
+      showToast(`❌ Salvataggio preferenza invio scadenze fallito: ${briefError(err)}`, "error");
+    } finally {
+      setClienteScadenzeDeliverySaving(false);
     }
   }
 
@@ -1348,6 +1395,7 @@ export default function ClientePage({
       setClienteDriveUrl(null);
       setClienteDriveDraft("");
       setClienteDriveEditing(false);
+      setClienteScadenzeDeliveryMode(DEFAULT_CLIENTE_SCADENZE_DELIVERY_MODE);
       setLoading(true);
       setInitialClienteLoadDone(false);
       setError(null);
@@ -1395,6 +1443,9 @@ export default function ClientePage({
           const driveUrl = String((anagData as any)?.drive_url || "").trim();
           setClienteDriveUrl(isValidHttpUrl(driveUrl) ? driveUrl : null);
           setClienteDriveDraft(isValidHttpUrl(driveUrl) ? driveUrl : "");
+          setClienteScadenzeDeliveryMode(
+            normalizeClienteScadenzeDeliveryMode((anagData as any)?.scadenze_delivery_mode)
+          );
         } catch {
           // keep fallback values from URL
         }
@@ -3379,6 +3430,17 @@ export default function ClientePage({
     setRinnoviAlertErr(null);
     setRinnoviAlertOk(null);
     const payload = normalizeRenewalAlertRule(rule, clienteKey, rule.stage);
+    const canSendToClienteAutomatically =
+      clienteScadenzeDeliveryMode === "AUTO_CLIENTE" &&
+      String(clienteAnagraficaEmail || "").includes("@");
+    if (!canSendToClienteAutomatically && payload.send_to_cliente) {
+      payload.send_to_cliente = false;
+      setRinnoviAlertErr(
+        clienteScadenzeDeliveryMode === "MANUALE_INTERNO"
+          ? "Invio automatico cliente disattivato: il cliente è in modalità Manuale interno."
+          : "Inserire email cliente in scheda cliente per attivare gli avvisi automatici."
+      );
+    }
     const { data, error } = await dbFrom("renewal_alert_rules")
       .upsert(payload, { onConflict: "cliente,stage" })
       .select("*")
@@ -5520,6 +5582,73 @@ export default function ClientePage({
       </div>
       <div
         style={{
+          marginTop: 10,
+          padding: "10px 12px",
+          borderRadius: 12,
+          border: "1px solid #e5e7eb",
+          background: "white",
+          display: "flex",
+          alignItems: "center",
+          gap: 10,
+          flexWrap: "wrap",
+        }}
+      >
+        <strong style={{ fontSize: 13 }}>Invio scadenze</strong>
+        <select
+          value={clienteScadenzeDeliveryMode}
+          onChange={(e) =>
+            setClienteScadenzeDeliveryMode(
+              normalizeClienteScadenzeDeliveryMode(e.target.value)
+            )
+          }
+          style={{
+            minWidth: 280,
+            padding: "8px 10px",
+            borderRadius: 8,
+            border: "1px solid #d1d5db",
+            background: "white",
+          }}
+        >
+          <option value="AUTO_CLIENTE">Automatico al cliente</option>
+          <option value="MANUALE_INTERNO">Manuale interno (solo Art Tech)</option>
+        </select>
+        <button
+          type="button"
+          onClick={() => saveClienteScadenzeDeliveryMode(clienteScadenzeDeliveryMode)}
+          disabled={clienteScadenzeDeliverySaving}
+          style={{
+            padding: "8px 12px",
+            borderRadius: 8,
+            border: "1px solid #111",
+            background: "#111",
+            color: "white",
+            cursor: "pointer",
+            opacity: clienteScadenzeDeliverySaving ? 0.7 : 1,
+          }}
+        >
+          {clienteScadenzeDeliverySaving ? "Salvataggio..." : "Salva"}
+        </button>
+        <span style={{ fontSize: 12, opacity: 0.7 }}>
+          Automatico al cliente = invii automatici consentiti verso il cliente. Manuale interno = solo gestione interna Art Tech.
+        </span>
+      </div>
+      {clienteScadenzeDeliveryMode === "AUTO_CLIENTE" && !String(clienteAnagraficaEmail || "").includes("@") ? (
+        <div
+          style={{
+            marginTop: 8,
+            padding: "10px 12px",
+            borderRadius: 10,
+            border: "1px solid #f59e0b",
+            background: "#fffbeb",
+            color: "#92400e",
+            fontSize: 12,
+          }}
+        >
+          Inserire email cliente in scheda cliente per attivare gli avvisi automatici.
+        </div>
+      ) : null}
+      <div
+        style={{
           marginTop: 6,
           padding: "8px 10px",
           borderRadius: 10,
@@ -7068,6 +7197,7 @@ ${rinnovi30ggBreakdown.debugSample
         stage={rinnoviAlertStage}
         title={rinnoviAlertStage === "stage1" ? "Invia avviso scadenza" : "Invia alert fatturazione rinnovi"}
         customerEmail={clienteAnagraficaEmail}
+        customerDeliveryMode={clienteScadenzeDeliveryMode}
         operators={getAlertRecipients()}
         defaultOperatorId={
           rinnoviAlertStage === "stage1"
