@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 
 export default function AdminPage() {
   const [interventiDaChiudereCount, setInterventiDaChiudereCount] = useState(0);
+  const [fattureDaEmettereCount, setFattureDaEmettereCount] = useState(0);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -30,6 +31,30 @@ export default function AdminPage() {
     return () => controller.abort();
   }, []);
 
+  useEffect(() => {
+    const controller = new AbortController();
+
+    async function loadCount() {
+      try {
+        const res = await fetch("/api/fatture/da-emettere", {
+          signal: controller.signal,
+          credentials: "include",
+        });
+        const data = await res.json().catch(() => []);
+        if (!res.ok || !Array.isArray(data)) {
+          setFattureDaEmettereCount(0);
+          return;
+        }
+        setFattureDaEmettereCount(data.length);
+      } catch {
+        setFattureDaEmettereCount(0);
+      }
+    }
+
+    void loadCount();
+    return () => controller.abort();
+  }, []);
+
   const cards = [
     {
       title: "SCADENZE",
@@ -48,8 +73,8 @@ export default function AdminPage() {
     },
     {
       title: "FATTURE DA EMETTERE",
-      description: "Area placeholder per la gestione fatture ancora aperte.",
-      href: null,
+      description: `${fattureDaEmettereCount} fatture da emettere`,
+      href: "/admin/fatture-da-emettere",
     },
   ] as const;
 
