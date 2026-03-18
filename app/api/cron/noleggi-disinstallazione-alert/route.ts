@@ -24,6 +24,15 @@ type NoleggioChecklistRow = {
   data_disinstallazione: string | null;
 };
 
+type RentalAlertRowRaw = {
+  id: string;
+  cliente: string | null;
+  nome_checklist: string | null;
+  stato_progetto: string | null;
+  noleggio_vendita: string | null;
+  data_disinstallazione?: string | null;
+};
+
 function getCronSupabaseClient() {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -119,7 +128,7 @@ export async function GET(request: Request) {
 
   const todayIso = getRomeIsoDay();
 
-  let data: NoleggioChecklistRow[] | null = null;
+  let data: NoleggioChecklistRow[] = [];
   let error: { message: string } | null = null;
 
   let res = await supabase
@@ -140,12 +149,31 @@ export async function GET(request: Request) {
       .order("created_at", { ascending: false });
   }
 
-  data = (res.data || null) as NoleggioChecklistRow[] | null;
   error = res.error ? { message: res.error.message } : null;
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
+
+  const rawRows: RentalAlertRowRaw[] = Array.isArray(res.data)
+    ? res.data.map((row) => ({
+        id: row.id,
+        cliente: row.cliente ?? null,
+        nome_checklist: row.nome_checklist ?? null,
+        stato_progetto: row.stato_progetto ?? null,
+        noleggio_vendita: row.noleggio_vendita ?? null,
+        data_disinstallazione: "data_disinstallazione" in row ? row.data_disinstallazione ?? null : null,
+      }))
+    : [];
+
+  data = rawRows.map((row) => ({
+    id: row.id,
+    cliente: row.cliente,
+    nome_checklist: row.nome_checklist,
+    stato_progetto: row.stato_progetto,
+    noleggio_vendita: row.noleggio_vendita,
+    data_disinstallazione: missingDataDisinstallazione ? null : row.data_disinstallazione ?? null,
+  }));
 
   let operatori: OperatoreRow[];
   try {
@@ -161,9 +189,7 @@ export async function GET(request: Request) {
   }
 
   const systemId = await getSystemOperatoreId(supabase);
-  const rows = ((data || []) as NoleggioChecklistRow[])
-    .map((row) => (missingDataDisinstallazione ? { ...row, data_disinstallazione: null } : row))
-    .filter(
+  const rows = data.filter(
     (row) => String(row.data_disinstallazione || "").trim() !== ""
   );
 
