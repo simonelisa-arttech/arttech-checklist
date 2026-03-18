@@ -133,14 +133,16 @@ const CLIENTI_BASE_SELECT =
   "id,denominazione,denominazione_norm,piva,codice_fiscale,codice_sdi,pec,email,telefono,indirizzo,comune,cap,provincia,paese,codice_interno,attivo";
 const CLIENTI_SELECT_WITH_OPTIONALS = `${CLIENTI_BASE_SELECT},email_secondarie,drive_url,scadenze_delivery_mode`;
 
-function normalizeClienteRow(row: any) {
+function normalizeClienteRow(row: any, options?: { missingScadenzeDeliveryMode?: boolean }) {
   return {
     ...(row || {}),
     email_secondarie: row?.email_secondarie || null,
     drive_url: row?.drive_url || null,
-    scadenze_delivery_mode: normalizeScadenzeDeliveryMode(
-      row?.scadenze_delivery_mode || DEFAULT_SCADENZE_DELIVERY_MODE
-    ),
+    scadenze_delivery_mode: options?.missingScadenzeDeliveryMode
+      ? null
+      : normalizeScadenzeDeliveryMode(
+          row?.scadenze_delivery_mode || DEFAULT_SCADENZE_DELIVERY_MODE
+        ),
   };
 }
 
@@ -157,6 +159,7 @@ async function enrichClientiOptionalFields(supabase: any, rows: any[]) {
   let selectClause = "id,email_secondarie,drive_url,scadenze_delivery_mode";
   let data: any[] | null = null;
   let error: any = null;
+  let missingScadenzeDeliveryMode = false;
 
   for (let attempt = 0; attempt < 3; attempt += 1) {
     const result = await supabase.from("clienti_anagrafica").select(selectClause).in("id", ids);
@@ -178,6 +181,7 @@ async function enrichClientiOptionalFields(supabase: any, rows: any[]) {
       isMissingClientiScadenzeDeliveryModeColumnError(error) &&
       nextSelect.includes("scadenze_delivery_mode")
     ) {
+      missingScadenzeDeliveryMode = true;
       nextSelect = stripSelectColumn(nextSelect, "scadenze_delivery_mode");
     }
     if (nextSelect === selectClause) break;
@@ -190,17 +194,22 @@ async function enrichClientiOptionalFields(supabase: any, rows: any[]) {
       isMissingClientiEmailSecondarieColumnError(error) ||
       isMissingClientiScadenzeDeliveryModeColumnError(error)
     ) {
-      return (rows || []).map((row: any) => normalizeClienteRow(row));
+      return (rows || []).map((row: any) =>
+        normalizeClienteRow(row, { missingScadenzeDeliveryMode })
+      );
     }
     throw error;
   }
 
   const byId = new Map(
-    (data || []).map((row: any) => [String(row?.id || "").trim(), normalizeClienteRow(row)])
+    (data || []).map((row: any) => [
+      String(row?.id || "").trim(),
+      normalizeClienteRow(row, { missingScadenzeDeliveryMode }),
+    ])
   );
 
   return (rows || []).map((row: any) => ({
-    ...normalizeClienteRow(row),
+    ...normalizeClienteRow(row, { missingScadenzeDeliveryMode }),
     ...(byId.get(String(row?.id || "").trim()) || {}),
   }));
 }
@@ -342,6 +351,7 @@ export async function POST(request: Request) {
       isMissingClientiScadenzeDeliveryModeColumnError(error) &&
       "scadenze_delivery_mode" in mutationPayload
     ) {
+      console.warn("[api/clienti][POST] scadenze_delivery_mode column missing, retrying without field");
       const { scadenze_delivery_mode: _skip, ...legacyPayload } = mutationPayload;
       mutationPayload = legacyPayload;
       selectClause =
@@ -469,6 +479,7 @@ export async function PATCH(request: Request) {
       isMissingClientiScadenzeDeliveryModeColumnError(error) &&
       "scadenze_delivery_mode" in mutationPayload
     ) {
+      console.warn("[api/clienti][PATCH] scadenze_delivery_mode column missing, retrying without field");
       const { scadenze_delivery_mode: _skip, ...legacyPayload } = mutationPayload;
       mutationPayload = legacyPayload;
       selectClause =
