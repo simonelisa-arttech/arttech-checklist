@@ -77,12 +77,33 @@ function normalizeProjectStatus(value?: string | null): ProjectStatusFilter | nu
     .trim()
     .toUpperCase()
     .replace(/\s+/g, "_");
+  if (raw === "IN_LAVORAZIONE") return "IN_CORSO";
   if (raw === "IN_CORSO") return "IN_CORSO";
   if (raw === "CONSEGNATO") return "CONSEGNATO";
   if (raw === "RIENTRATO") return "RIENTRATO";
   if (raw === "SOSPESO") return "SOSPESO";
   if (raw === "CHIUSO") return "CHIUSO";
   return null;
+}
+
+function getProjectStatusLabel(project: {
+  stato_progetto?: string | null;
+  noleggio_vendita?: string | null;
+  data_disinstallazione?: string | null;
+}) {
+  const raw = String(project.stato_progetto || "")
+    .trim()
+    .toUpperCase()
+    .replace(/\s+/g, "_");
+  const isNoleggio = String(project.noleggio_vendita || "").trim().toUpperCase() === "NOLEGGIO";
+  const disinstallazione = parseLocalDay(project.data_disinstallazione);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const noleggioAttivo = isNoleggio && (!disinstallazione || disinstallazione >= today);
+
+  if (raw === "CONSEGNATO" && noleggioAttivo) return "CONSEGNATO + IN_CORSO";
+  if (raw === "IN_CORSO" || raw === "IN_LAVORAZIONE") return "IN_LAVORAZIONE";
+  return raw || "—";
 }
 
 function renderStatusBadge(value?: string | null) {
@@ -247,6 +268,7 @@ type Checklist = {
   tipo_struttura: string | null;
   noleggio_vendita: string | null;
   fine_noleggio: string | null;
+  data_disinstallazione?: string | null;
   mercato: string | null;
   modello: string | null;
   stato_progetto: string | null;
@@ -1529,7 +1551,7 @@ export default function Page() {
                         setProjectStatusFilter((prev) => ({ ...prev, IN_CORSO: e.target.checked }))
                       }
                     />
-                    In corso
+                    In lavorazione
                   </label>
                   <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
                     <input
@@ -2389,7 +2411,7 @@ export default function Page() {
                           {c.licenze_dettaglio ?? "—"}
                         </td>
                         <td style={{ padding: "10px 12px", opacity: 0.85 }}>
-                          {c.stato_progetto ?? "—"}
+                          {getProjectStatusLabel(c)}
                         </td>
                         <td style={{ padding: "10px 12px" }}>{renderStatusBadge(c.documenti)}</td>
                         <td style={{ padding: "10px 12px" }}>{renderStatusBadge(c.sezione_1)}</td>

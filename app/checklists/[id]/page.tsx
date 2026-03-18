@@ -573,6 +573,25 @@ function isNoleggioValue(value?: string | null) {
   return String(value || "").trim().toUpperCase() === "NOLEGGIO";
 }
 
+function getChecklistProjectStatusLabel(project: {
+  stato_progetto?: string | null;
+  noleggio_vendita?: string | null;
+  data_disinstallazione?: string | null;
+}) {
+  const raw = String(project.stato_progetto || "")
+    .trim()
+    .toUpperCase()
+    .replace(/\s+/g, "_");
+  const isNoleggio = isNoleggioValue(project.noleggio_vendita);
+  const disinstallazione = parseLocalDay(project.data_disinstallazione);
+  const today = startOfToday();
+  const noleggioAttivo = isNoleggio && (!disinstallazione || disinstallazione >= today);
+
+  if (raw === "CONSEGNATO" && noleggioAttivo) return "CONSEGNATO + IN_CORSO";
+  if (raw === "IN_CORSO" || raw === "IN_LAVORAZIONE") return "IN_LAVORAZIONE";
+  return raw || "—";
+}
+
 function getExpiryStatus(value?: string | null): "ATTIVA" | "SCADUTA" | "—" {
   const dt = parseLocalDay(value);
   if (!dt) return "—";
@@ -5645,17 +5664,24 @@ function buildFormData(c: Checklist): FormData {
             />
             <FieldRow
               label="Stato progetto"
-              view={checklist.stato_progetto || "—"}
+              view={getChecklistProjectStatusLabel(checklist)}
               edit={
                 isEdit ? (
                   <select
-                    value={formData.stato_progetto}
+                    value={
+                      String(formData.stato_progetto || "").trim().toUpperCase() === "IN_CORSO"
+                        ? "IN_LAVORAZIONE"
+                        : formData.stato_progetto
+                    }
                     onChange={(e) =>
-                      setFormData({ ...formData, stato_progetto: e.target.value })
+                      setFormData({
+                        ...formData,
+                        stato_progetto: e.target.value === "IN_LAVORAZIONE" ? "IN_CORSO" : e.target.value,
+                      })
                     }
                     style={{ width: "100%", padding: 10 }}
                   >
-                    <option value="IN_CORSO">IN_CORSO</option>
+                    <option value="IN_LAVORAZIONE">IN_LAVORAZIONE</option>
                     <option value="CONSEGNATO">CONSEGNATO</option>
                     <option value="RIENTRATO">RIENTRATO</option>
                     <option value="CHIUSO">CHIUSO</option>

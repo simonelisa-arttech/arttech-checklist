@@ -56,7 +56,7 @@ export async function GET(request: Request) {
   const { data: checklists, error: checklistsErr } = await auth.adminClient
     .from("checklists")
     .select("id, cliente, nome_checklist, data_prevista, data_tassativa, data_installazione_reale, stato_progetto")
-    .eq("stato_progetto", "IN_CORSO");
+    .in("stato_progetto", ["IN_CORSO", "IN_LAVORAZIONE"]);
 
   if (checklistsErr) {
     return NextResponse.json({ error: checklistsErr.message }, { status: 500 });

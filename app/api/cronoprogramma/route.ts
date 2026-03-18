@@ -225,7 +225,7 @@ export async function POST(request: Request) {
       const id = String((c as any).id || "");
       if (!id) continue;
       checklistById.set(id, c as any);
-      if (String((c as any).stato_progetto || "").toUpperCase() === "IN_CORSO") {
+      if (["IN_CORSO", "IN_LAVORAZIONE"].includes(String((c as any).stato_progetto || "").toUpperCase())) {
         inCorsoChecklistIds.add(id);
       }
     }
@@ -234,7 +234,7 @@ export async function POST(request: Request) {
 
     for (const c of checklists || []) {
       const cc = c as any;
-      if (String(cc.stato_progetto || "").toUpperCase() !== "IN_CORSO") continue;
+      if (!["IN_CORSO", "IN_LAVORAZIONE"].includes(String(cc.stato_progetto || "").toUpperCase())) continue;
       const date = toIsoDay(cc.data_tassativa) || toIsoDay(cc.data_prevista);
       if (!date || date < CUTOFF_DATE) continue;
       timeline.push({
