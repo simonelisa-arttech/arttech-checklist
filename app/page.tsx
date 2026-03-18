@@ -537,6 +537,17 @@ export default function Page() {
     return refId;
   }
 
+  function getCurrentOperatoreDisplayName() {
+    const directName = String(currentOperatoreLabel?.nome || "").trim();
+    if (directName) return directName;
+    const lookup = operatoriLookupById.get(currentOperatoreId || "");
+    const lookupName = String(lookup?.nome || "").trim();
+    if (lookupName) return lookupName;
+    const lookupEmail = String(lookup?.email || "").trim();
+    if (lookupEmail) return lookupEmail;
+    return null;
+  }
+
   const isUltraOrPremium =
     saasPiano.startsWith("SAAS-UL") || saasPiano.startsWith("SAAS-PR");
 
@@ -1132,6 +1143,8 @@ export default function Page() {
         : null,
       created_by_operatore: currentOperatoreId || null,
       updated_by_operatore: currentOperatoreId || null,
+      created_by: getCurrentOperatoreDisplayName(),
+      updated_by: getCurrentOperatoreDisplayName(),
       saas_piano: saasPiano || null,
       saas_scadenza: saasScadenza.trim() ? saasScadenza.trim() : null,
       saas_note: saasNote.trim() ? saasNote.trim() : null,

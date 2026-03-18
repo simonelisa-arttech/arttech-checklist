@@ -431,6 +431,14 @@ function asText(value: unknown): string {
   return String(value);
 }
 
+function normalizeOperatoreDisplayValue(value?: string | null) {
+  const raw = String(value || "").trim();
+  if (!raw) return null;
+  const upper = raw.toUpperCase();
+  if (upper === "ADMIN" || upper === "USER" || upper === "OPERATORE") return null;
+  return raw;
+}
+
 function renderTextOrLink(value?: string | null) {
   const raw = String(value || "").trim();
   if (!raw) return "—";
@@ -1062,6 +1070,16 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
     () => buildClienteEmailList(checklistClienteEmail, checklistClienteEmailSecondarie),
     [checklistClienteEmail, checklistClienteEmailSecondarie]
   );
+  const currentOperatoreDisplayName = useMemo(() => {
+    const fromMap = normalizeOperatoreDisplayValue(operatoriMap.get(currentOperatoreId || "") || null);
+    if (fromMap) return fromMap;
+    const currentAlertOperatore = alertOperatori.find((row) => row.id === currentOperatoreId) || null;
+    const fromAlertName = normalizeOperatoreDisplayValue(currentAlertOperatore?.nome ?? null);
+    if (fromAlertName) return fromAlertName;
+    const fromAlertEmail = normalizeOperatoreDisplayValue(currentAlertOperatore?.email ?? null);
+    if (fromAlertEmail) return fromAlertEmail;
+    return null;
+  }, [alertOperatori, currentOperatoreId, operatoriMap]);
   const [alertFormError, setAlertFormError] = useState<string | null>(null);
   const [alertNotice, setAlertNotice] = useState<string | null>(null);
   const [ruleTask, setRuleTask] = useState<ChecklistTask | null>(null);
@@ -4610,6 +4628,7 @@ function buildFormData(c: Checklist): FormData {
       m2_inclusi: m2Calcolati ?? null,
       m2_allocati: null,
       updated_by_operatore: operatoreId,
+      updated_by: currentOperatoreDisplayName,
       data_prevista: formData.data_prevista.trim()
         ? formData.data_prevista.trim()
         : null,
@@ -5805,24 +5824,24 @@ function buildFormData(c: Checklist): FormData {
             <FieldRow
               label="Creato da"
               view={
-                checklist.created_by_name ??
+                normalizeOperatoreDisplayValue(checklist.created_by_name) ??
                 (checklist.created_by_operatore
-                  ? operatoriMap.get(checklist.created_by_operatore) ??
-                    checklist.created_by ??
+                  ? normalizeOperatoreDisplayValue(operatoriMap.get(checklist.created_by_operatore) ?? null) ??
+                    normalizeOperatoreDisplayValue(checklist.created_by) ??
                     "—"
-                  : checklist.created_by ?? "—")
+                  : normalizeOperatoreDisplayValue(checklist.created_by) ?? "—")
               }
               isEdit={false}
             />
             <FieldRow
               label="Modificato da"
               view={
-                checklist.updated_by_name ??
+                normalizeOperatoreDisplayValue(checklist.updated_by_name) ??
                 (checklist.updated_by_operatore
-                  ? operatoriMap.get(checklist.updated_by_operatore) ??
-                    checklist.updated_by ??
+                  ? normalizeOperatoreDisplayValue(operatoriMap.get(checklist.updated_by_operatore) ?? null) ??
+                    normalizeOperatoreDisplayValue(checklist.updated_by) ??
                     "—"
-                  : checklist.updated_by ?? "—")
+                  : normalizeOperatoreDisplayValue(checklist.updated_by) ?? "—")
               }
               isEdit={false}
             />
