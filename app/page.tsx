@@ -450,6 +450,7 @@ export default function Page() {
     tagliandi: 0,
   });
   const [interventiDaChiudereCount, setInterventiDaChiudereCount] = useState(0);
+  const [interventiEntro7Count, setInterventiEntro7Count] = useState(0);
   const [fattureDaEmettereCount, setFattureDaEmettereCount] = useState(0);
   const [noleggiAttiviCount, setNoleggiAttiviCount] = useState(0);
   const [consegneEntro7Count, setConsegneEntro7Count] = useState(0);
@@ -986,6 +987,20 @@ export default function Page() {
       }
 
       try {
+        const res = await fetch("/api/interventi/entro-7-giorni", {
+          signal: controller.signal,
+          credentials: "include",
+        });
+        const data = await res.json().catch(() => []);
+        if (!isLatest()) return;
+        setInterventiEntro7Count(res.ok && Array.isArray(data) ? data.length : 0);
+      } catch (e: any) {
+        if (e?.name === "AbortError" || controller.signal.aborted) return;
+        if (!isLatest()) return;
+        setInterventiEntro7Count(0);
+      }
+
+      try {
         const res = await fetch("/api/fatture/da-emettere", {
           signal: controller.signal,
           credentials: "include",
@@ -1097,6 +1112,7 @@ export default function Page() {
       setScadenzeEntro7Count(0);
       setScadenzeEntro7Breakdown({ garanzie: 0, licenze: 0, tagliandi: 0 });
       setInterventiDaChiudereCount(0);
+      setInterventiEntro7Count(0);
       setFattureDaEmettereCount(0);
       setNoleggiAttiviCount(0);
       setConsegneEntro7Count(0);
@@ -1568,6 +1584,24 @@ export default function Page() {
                     INTERVENTI DA CHIUDERE
                   </div>
                   <div style={{ marginTop: 6, fontSize: 24, fontWeight: 800 }}>{interventiDaChiudereCount}</div>
+                </Link>
+                <Link
+                  href="/admin/interventi-entro-7-giorni"
+                  style={{
+                    padding: "10px 12px",
+                    borderRadius: 12,
+                    border: "1px solid #fcd34d",
+                    background: "rgba(255,255,255,0.62)",
+                    color: "inherit",
+                    textDecoration: "none",
+                    minWidth: 180,
+                    flex: "0 1 190px",
+                  }}
+                >
+                  <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: 0.2, color: "#6b7280" }}>
+                    INTERVENTI ENTRO 7 GIORNI
+                  </div>
+                  <div style={{ marginTop: 6, fontSize: 24, fontWeight: 800 }}>{interventiEntro7Count}</div>
                 </Link>
                 <Link
                   href="/admin/fatture-da-emettere"
