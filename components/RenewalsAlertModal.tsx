@@ -144,6 +144,7 @@ export default function RenewalsAlertModal({
       onClick={onClose}
     >
       <div
+        data-testid="renewals-alert-modal"
         style={{
           width: "100%",
           maxWidth: 780,
