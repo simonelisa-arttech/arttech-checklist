@@ -3,6 +3,15 @@ import { requireOperatore } from "@/lib/adminAuth";
 
 export const runtime = "nodejs";
 
+function getMissingEmailReason(emailValue?: string | null) {
+  if (emailValue === null || emailValue === undefined) return "NULL" as const;
+  if (emailValue === "") return "EMPTY" as const;
+  const trimmed = String(emailValue).trim();
+  if (!trimmed) return "SOLO_SPAZI" as const;
+  if (!trimmed.includes("@")) return "NO_AT" as const;
+  return null;
+}
+
 export async function GET(request: Request) {
   const auth = await requireOperatore(request);
   if (!auth.ok) return auth.response;
@@ -18,9 +27,7 @@ export async function GET(request: Request) {
   const count = ((data || []) as Array<{ email?: string | null; attivo?: boolean | null }>).reduce(
     (total, row) => {
       if (row.attivo === false) return total;
-      const email = String(row.email || "").trim();
-      const hasValidEmail = email.includes("@");
-      return hasValidEmail ? total : total + 1;
+      return getMissingEmailReason(row.email) ? total + 1 : total;
     },
     0
   );
