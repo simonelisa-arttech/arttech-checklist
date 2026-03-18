@@ -452,6 +452,8 @@ export default function Page() {
   const [interventiDaChiudereCount, setInterventiDaChiudereCount] = useState(0);
   const [fattureDaEmettereCount, setFattureDaEmettereCount] = useState(0);
   const [noleggiAttiviCount, setNoleggiAttiviCount] = useState(0);
+  const [consegneEntro7Count, setConsegneEntro7Count] = useState(0);
+  const [smontaggiEntro7Count, setSmontaggiEntro7Count] = useState(0);
   const [clientiMissingEmailCount, setClientiMissingEmailCount] = useState(0);
   const [showMissingEmailInfo, setShowMissingEmailInfo] = useState(false);
   const [expandedSaasNoteId, setExpandedSaasNoteId] = useState<string | null>(null);
@@ -1011,6 +1013,34 @@ export default function Page() {
         setNoleggiAttiviCount(0);
       }
 
+      try {
+        const res = await fetch("/api/consegne/entro-7-giorni", {
+          signal: controller.signal,
+          credentials: "include",
+        });
+        const data = await res.json().catch(() => []);
+        if (!isLatest()) return;
+        setConsegneEntro7Count(res.ok && Array.isArray(data) ? data.length : 0);
+      } catch (e: any) {
+        if (e?.name === "AbortError" || controller.signal.aborted) return;
+        if (!isLatest()) return;
+        setConsegneEntro7Count(0);
+      }
+
+      try {
+        const res = await fetch("/api/noleggi/smontaggi-entro-7-giorni", {
+          signal: controller.signal,
+          credentials: "include",
+        });
+        const data = await res.json().catch(() => []);
+        if (!isLatest()) return;
+        setSmontaggiEntro7Count(res.ok && Array.isArray(data) ? data.length : 0);
+      } catch (e: any) {
+        if (e?.name === "AbortError" || controller.signal.aborted) return;
+        if (!isLatest()) return;
+        setSmontaggiEntro7Count(0);
+      }
+
       let opRes: Response;
       try {
         opRes = await fetch("/api/operatori", { signal: controller.signal });
@@ -1069,6 +1099,8 @@ export default function Page() {
       setInterventiDaChiudereCount(0);
       setFattureDaEmettereCount(0);
       setNoleggiAttiviCount(0);
+      setConsegneEntro7Count(0);
+      setSmontaggiEntro7Count(0);
       setClientiMissingEmailCount(0);
     } finally {
       if (!isLatest()) return;
@@ -1572,6 +1604,42 @@ export default function Page() {
                     NOLEGGI ATTIVI
                   </div>
                   <div style={{ marginTop: 6, fontSize: 24, fontWeight: 800 }}>{noleggiAttiviCount}</div>
+                </Link>
+                <Link
+                  href="/admin/consegne-entro-7-giorni"
+                  style={{
+                    padding: "10px 12px",
+                    borderRadius: 12,
+                    border: "1px solid #fcd34d",
+                    background: "rgba(255,255,255,0.62)",
+                    color: "inherit",
+                    textDecoration: "none",
+                    minWidth: 180,
+                    flex: "0 1 190px",
+                  }}
+                >
+                  <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: 0.2, color: "#6b7280" }}>
+                    CONSEGNE ENTRO 7 GIORNI
+                  </div>
+                  <div style={{ marginTop: 6, fontSize: 24, fontWeight: 800 }}>{consegneEntro7Count}</div>
+                </Link>
+                <Link
+                  href="/admin/smontaggi-noleggi-entro-7-giorni"
+                  style={{
+                    padding: "10px 12px",
+                    borderRadius: 12,
+                    border: "1px solid #fcd34d",
+                    background: "rgba(255,255,255,0.62)",
+                    color: "inherit",
+                    textDecoration: "none",
+                    minWidth: 180,
+                    flex: "0 1 190px",
+                  }}
+                >
+                  <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: 0.2, color: "#6b7280" }}>
+                    SMONTAGGI NOLEGGI ENTRO 7 GIORNI
+                  </div>
+                  <div style={{ marginTop: 6, fontSize: 24, fontWeight: 800 }}>{smontaggiEntro7Count}</div>
                 </Link>
               </div>
             </div>
