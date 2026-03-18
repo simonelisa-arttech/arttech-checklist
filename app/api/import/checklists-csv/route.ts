@@ -124,6 +124,52 @@ function parseOptionalDate(value: string | undefined) {
   return trimmed;
 }
 
+function normalizeClienteDenominazione(value: string) {
+  return value
+    .toLowerCase()
+    .trim()
+    .replace(/\s+/g, " ")
+    .replace(/[^\p{L}\p{N}\s]/gu, "");
+}
+
+async function ensureClienteAnagraficaRow(supabaseAdmin: ReturnType<typeof getSupabaseAdmin>, cliente: string) {
+  const denominazione = String(cliente || "").trim();
+  if (!denominazione) return null;
+  const denominazioneNorm = normalizeClienteDenominazione(denominazione);
+
+  const { data: existingRows, error: existingErr } = await supabaseAdmin
+    .from("clienti_anagrafica")
+    .select("id, denominazione")
+    .eq("denominazione_norm", denominazioneNorm)
+    .limit(1);
+  if (existingErr) throw existingErr;
+
+  const existing = (existingRows || [])[0] as { id?: string | null; denominazione?: string | null } | undefined;
+  if (existing?.id) {
+    return {
+      id: String(existing.id),
+      denominazione: String(existing.denominazione || denominazione).trim() || denominazione,
+    };
+  }
+
+  const { data: inserted, error: insertErr } = await supabaseAdmin
+    .from("clienti_anagrafica")
+    .insert({
+      denominazione,
+      denominazione_norm: denominazioneNorm,
+      attivo: true,
+      email: null,
+    } as any)
+    .select("id, denominazione")
+    .single();
+  if (insertErr) throw insertErr;
+
+  return {
+    id: String(inserted?.id || "").trim(),
+    denominazione: String(inserted?.denominazione || denominazione).trim() || denominazione,
+  };
+}
+
 function splitSerials(value: string | undefined) {
   return Array.from(
     new Set(
@@ -311,14 +357,20 @@ export async function POST(request: Request) {
       );
       const licenzaScadenza = parseOptionalDate(getRowValue(row, "licenza_scadenza"));
       const tagliandoScadenza = parseOptionalDate(getRowValue(row, "tagliando_prossima_scadenza"));
+      const clienteRow = await ensureClienteAnagraficaRow(supabaseAdmin, cliente);
+      const clienteDenominazione = clienteRow?.denominazione || cliente;
 
-      const duplicate = await existsActiveChecklistDuplicate(supabaseAdmin, nomeChecklist, cliente);
+      const duplicate = await existsActiveChecklistDuplicate(
+        supabaseAdmin,
+        nomeChecklist,
+        clienteDenominazione
+      );
       if (duplicate) {
         skipped += 1;
         errors.push({
           row: rowNumber,
           nome_checklist: nomeChecklist,
-          cliente,
+          cliente: clienteDenominazione,
           error: "Esiste già un progetto attivo con questo nome per questo cliente",
         });
         continue;
@@ -326,7 +378,8 @@ export async function POST(request: Request) {
 
       const payload = {
         nome_checklist: nomeChecklist,
-        cliente,
+        cliente: clienteDenominazione,
+        cliente_id: clienteRow?.id || null,
         impianto_descrizione: parseOptionalText(getRowValue(row, "descrizione_impianto")),
         stato_progetto: parseOptionalText(getRowValue(row, "stato_progetto")),
         data_prevista: parseOptionalDate(getRowValue(row, "data_installazione_prevista", "data_prevista")),

@@ -2,6 +2,7 @@
 
 import {
   useEffect,
+  useMemo,
   useRef,
   useState,
   type CSSProperties,
@@ -18,6 +19,7 @@ import InterventiBlock from "@/components/InterventiBlock";
 import RenewalsAlertModal from "@/components/RenewalsAlertModal";
 import RenewalsBlock from "@/components/RenewalsBlock";
 import Toast from "@/components/Toast";
+import { buildClienteEmailList } from "@/lib/clientiEmail";
 import type { InterventoRow } from "@/lib/interventi";
 import {
   getDefaultRenewalAlertRule,
@@ -181,6 +183,10 @@ type ChecklistDocument = {
 
 function isMissingClienteScadenzeDeliveryModeColumnError(error: any) {
   return String(error?.message || "").toLowerCase().includes("scadenze_delivery_mode");
+}
+
+function isMissingClienteEmailSecondarieColumnError(error: any) {
+  return String(error?.message || "").toLowerCase().includes("email_secondarie");
 }
 
 type ChecklistTaskDocument = {
@@ -1035,9 +1041,16 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
   const [alertManualName, setAlertManualName] = useState("");
   const [alertToCliente, setAlertToCliente] = useState(false);
   const [checklistClienteEmail, setChecklistClienteEmail] = useState<string | null>(null);
+  const [checklistClienteEmailSecondarie, setChecklistClienteEmailSecondarie] = useState<
+    string | null
+  >(null);
   const [checklistCustomerDeliveryMode, setChecklistCustomerDeliveryMode] = useState<
     "AUTO_CLIENTE" | "MANUALE_INTERNO"
   >("AUTO_CLIENTE");
+  const checklistClienteEmails = useMemo(
+    () => buildClienteEmailList(checklistClienteEmail, checklistClienteEmailSecondarie),
+    [checklistClienteEmail, checklistClienteEmailSecondarie]
+  );
   const [alertFormError, setAlertFormError] = useState<string | null>(null);
   const [alertNotice, setAlertNotice] = useState<string | null>(null);
   const [ruleTask, setRuleTask] = useState<ChecklistTask | null>(null);
@@ -2479,7 +2492,7 @@ function buildFormData(c: Checklist): FormData {
         setProjectRinnoviAlertErr("Inserisci un'email Art Tech valida.");
         return;
       }
-      if (payload.toCliente && !String(checklistClienteEmail || "").includes("@")) {
+      if (payload.toCliente && checklistClienteEmails.length === 0) {
         setProjectRinnoviAlertErr("Cliente senza email valida in anagrafica.");
         return;
       }
@@ -2509,12 +2522,14 @@ function buildFormData(c: Checklist): FormData {
           toOperatoreId: null,
         });
       }
-      if (payload.toCliente && checklistClienteEmail) {
-        recipients.push({
-          toEmail: checklistClienteEmail,
-          toNome: "Cliente",
-          toOperatoreId: null,
-        });
+      if (payload.toCliente) {
+        for (const email of checklistClienteEmails) {
+          recipients.push({
+            toEmail: email,
+            toNome: "Cliente",
+            toOperatoreId: null,
+          });
+        }
       }
       const dedup = new Map<string, { toEmail: string; toNome: string | null; toOperatoreId: string | null }>();
       for (const recipient of recipients) {
@@ -3064,16 +3079,21 @@ function buildFormData(c: Checklist): FormData {
 
     const clienteKey = String(headChecklist.cliente ?? "").trim();
     setChecklistClienteEmail(null);
+    setChecklistClienteEmailSecondarie(null);
     setChecklistCustomerDeliveryMode("AUTO_CLIENTE");
     if (headChecklist.cliente_id) {
       let { data: clienteRows, error: clienteErr } = await db<any[]>({
         table: "clienti_anagrafica",
         op: "select",
-        select: "email, scadenze_delivery_mode",
+        select: "email, email_secondarie, scadenze_delivery_mode",
         filter: { id: headChecklist.cliente_id },
         limit: 1,
       });
-      if (clienteErr && isMissingClienteScadenzeDeliveryModeColumnError(clienteErr)) {
+      if (
+        clienteErr &&
+        (isMissingClienteScadenzeDeliveryModeColumnError(clienteErr) ||
+          isMissingClienteEmailSecondarieColumnError(clienteErr))
+      ) {
         const fallback = await db<any[]>({
           table: "clienti_anagrafica",
           op: "select",
@@ -3090,6 +3110,8 @@ function buildFormData(c: Checklist): FormData {
       const clienteRow = (clienteRows?.[0] as any) || null;
       const mail = String(clienteRow?.email || "").trim();
       setChecklistClienteEmail(mail && mail.includes("@") ? mail : null);
+      const secondaryEmails = String(clienteRow?.email_secondarie || "").trim();
+      setChecklistClienteEmailSecondarie(secondaryEmails || null);
       setChecklistCustomerDeliveryMode(
         String(clienteRow?.scadenze_delivery_mode || "").trim().toUpperCase() === "MANUALE_INTERNO"
           ? "MANUALE_INTERNO"
@@ -3705,7 +3727,7 @@ function buildFormData(c: Checklist): FormData {
       setAlertFormError("Il destinatario non ha un'email configurata.");
       return;
     }
-    if (alertToCliente && !String(checklistClienteEmail || "").includes("@")) {
+    if (alertToCliente && checklistClienteEmails.length === 0) {
       setAlertFormError("Cliente senza email valida in anagrafica.");
       return;
     }
@@ -3800,12 +3822,14 @@ function buildFormData(c: Checklist): FormData {
         toOperatoreId: alertDestinatarioId || null,
       });
     }
-    if (alertToCliente && checklistClienteEmail) {
-      recipients.push({
-        toEmail: checklistClienteEmail,
-        toNome: "Cliente",
-        toOperatoreId: null,
-      });
+    if (alertToCliente) {
+      for (const email of checklistClienteEmails) {
+        recipients.push({
+          toEmail: email,
+          toNome: "Cliente",
+          toOperatoreId: null,
+        });
+      }
     }
     const dedup = new Map<string, { toEmail: string; toNome: string | null; toOperatoreId: string | null }>();
     for (const r of recipients) {
@@ -6591,6 +6615,7 @@ function buildFormData(c: Checklist): FormData {
         stage={projectRinnoviAlertStage}
         title={projectRinnoviAlertStage === "stage1" ? "Invia avviso scadenza" : "Invia avviso fatturazione"}
         customerEmail={checklistClienteEmail}
+        customerEmails={checklistClienteEmails}
         customerDeliveryMode={checklistCustomerDeliveryMode || "AUTO_CLIENTE"}
         operators={getProjectAlertRecipients()}
         defaultOperatorId=""
@@ -8163,7 +8188,7 @@ function buildFormData(c: Checklist): FormData {
             </label>
             {alertToCliente && (
               <div style={{ fontSize: 12, opacity: 0.8, marginBottom: 10 }}>
-                Cliente {checklistClienteEmail ? "selezionato" : "senza email valida in anagrafica"}
+                Cliente {checklistClienteEmails.length > 0 ? "selezionato" : "senza email valida in anagrafica"}
               </div>
             )}
             <label style={{ display: "block", marginBottom: 10 }}>

@@ -38,6 +38,7 @@ type Props = {
   stage: RenewalAlertStage;
   title: string;
   customerEmail: string | null;
+  customerEmails?: string[];
   customerDeliveryMode: "AUTO_CLIENTE" | "MANUALE_INTERNO";
   operators: OperatoreOption[];
   defaultOperatorId: string;
@@ -60,6 +61,7 @@ export default function RenewalsAlertModal({
   stage,
   title,
   customerEmail,
+  customerEmails = [],
   customerDeliveryMode,
   operators,
   defaultOperatorId,
@@ -107,7 +109,21 @@ export default function RenewalsAlertModal({
 
   const canUseAutomatic = stage === "stage1";
   const automaticSummary = useMemo(() => buildRenewalAlertRuleSummary(ruleDraft), [ruleDraft]);
-  const customerEmailValid = isValidEmail(customerEmail);
+  const normalizedCustomerEmails = useMemo(() => {
+    const dedup = new Map<string, string>();
+    for (const email of customerEmails) {
+      const normalized = String(email || "").trim();
+      if (!isValidEmail(normalized)) continue;
+      const key = normalized.toLowerCase();
+      if (!dedup.has(key)) dedup.set(key, normalized);
+    }
+    if (dedup.size === 0) {
+      const fallback = String(customerEmail || "").trim();
+      if (isValidEmail(fallback)) dedup.set(fallback.toLowerCase(), fallback);
+    }
+    return Array.from(dedup.values());
+  }, [customerEmail, customerEmails]);
+  const customerEmailValid = normalizedCustomerEmails.length > 0;
   const customerAutoBlocked =
     customerDeliveryMode === "AUTO_CLIENTE" && !customerEmailValid;
   const customerManualInternal = customerDeliveryMode === "MANUALE_INTERNO";
@@ -205,7 +221,7 @@ export default function RenewalsAlertModal({
           }}
         >
           <strong>Email cliente da anagrafica:</strong>{" "}
-          {customerEmailValid ? customerEmail : "mancante o non valida"}
+          {customerEmailValid ? normalizedCustomerEmails.join(", ") : "mancante o non valida"}
           {!customerEmailValid ? " · modifica dalla scheda cliente." : ""}
         </div>
 

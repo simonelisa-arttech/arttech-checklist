@@ -2,6 +2,7 @@ export const runtime = "nodejs";
 
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { buildClienteEmailList } from "@/lib/clientiEmail";
 import { sendEmail } from "@/lib/email";
 import { RENEWAL_ALERT_PROGRESSIVE_DAYS } from "@/lib/renewalAlertRules";
 
@@ -45,13 +46,14 @@ type RenewalAlertRuleRow = {
 
 type ClientePreferenceRow = {
   id: string;
-  email: string | null;
+  emails: string[];
   scadenze_delivery_mode?: string | null;
 };
 
 type ClientePreferenceRowRaw = {
   id?: unknown;
   email?: unknown;
+  email_secondarie?: unknown;
   scadenze_delivery_mode?: unknown;
 };
 
@@ -143,6 +145,10 @@ function normalizeScadenzeDeliveryMode(value?: string | null) {
 
 function isMissingClientiScadenzeDeliveryModeColumnError(error: any) {
   return String(error?.message || "").toLowerCase().includes("scadenze_delivery_mode");
+}
+
+function isMissingClientiEmailSecondarieColumnError(error: any) {
+  return String(error?.message || "").toLowerCase().includes("email_secondarie");
 }
 
 function stripSelectColumn(selectClause: string, columnName: string) {
@@ -269,13 +275,13 @@ export async function GET(request: Request) {
         .filter(Boolean)
     )
   );
-  const emailByClienteId = new Map<string, string>();
+  const emailsByClienteId = new Map<string, string[]>();
   const deliveryModeByClienteId = new Map<string, "AUTO_CLIENTE" | "MANUALE_INTERNO">();
   if (clienteIds.length > 0) {
-    let selectClause = "id, email, scadenze_delivery_mode";
+    let selectClause = "id, email, email_secondarie, scadenze_delivery_mode";
     let clientiRows: ClientePreferenceRow[] | null = null;
     let clientiErr: any = null;
-    for (let attempt = 0; attempt < 2; attempt += 1) {
+    for (let attempt = 0; attempt < 3; attempt += 1) {
       const result = await supabase
         .from("clienti_anagrafica")
         .select(selectClause)
@@ -285,12 +291,22 @@ export async function GET(request: Request) {
         const rowsData = Array.isArray(result.data) ? (result.data as ClientePreferenceRowRaw[]) : [];
         clientiRows = rowsData.map((row) => ({
           id: String(row.id || "").trim(),
-          email: typeof row.email === "string" ? row.email : null,
+          emails: buildClienteEmailList(
+            typeof row.email === "string" ? row.email : null,
+            typeof row.email_secondarie === "string" ? row.email_secondarie : null
+          ),
           scadenze_delivery_mode:
             typeof row.scadenze_delivery_mode === "string" ? row.scadenze_delivery_mode : null,
         }));
       }
       if (!clientiErr) break;
+      if (
+        isMissingClientiEmailSecondarieColumnError(clientiErr) &&
+        selectClause.includes("email_secondarie")
+      ) {
+        selectClause = stripSelectColumn(selectClause, "email_secondarie") || "id, email";
+        continue;
+      }
       if (
         isMissingClientiScadenzeDeliveryModeColumnError(clientiErr) &&
         selectClause.includes("scadenze_delivery_mode")
@@ -306,12 +322,11 @@ export async function GET(request: Request) {
     for (const row of (clientiRows || []) as ClientePreferenceRow[]) {
       const clienteId = String(row.id || "").trim();
       if (!clienteId) continue;
-      const email = String(row.email || "").trim();
       deliveryModeByClienteId.set(
         clienteId,
         normalizeScadenzeDeliveryMode(row.scadenze_delivery_mode)
       );
-      if (email.includes("@")) emailByClienteId.set(clienteId, email);
+      if (row.emails.length > 0) emailsByClienteId.set(clienteId, row.emails);
     }
   }
   const grouped = new Map<string, RinnovoRow[]>();
@@ -407,9 +422,11 @@ export async function GET(request: Request) {
       const deliveryMode = clienteId
         ? deliveryModeByClienteId.get(clienteId) || "AUTO_CLIENTE"
         : "AUTO_CLIENTE";
-      const email = clienteId ? emailByClienteId.get(clienteId) || "" : "";
-      if (deliveryMode === "AUTO_CLIENTE" && email.includes("@")) {
-        recipients.push({ email, name: "Cliente", operatoreId: null });
+      const emails = clienteId ? emailsByClienteId.get(clienteId) || [] : [];
+      if (deliveryMode === "AUTO_CLIENTE") {
+        for (const email of emails) {
+          recipients.push({ email, name: "Cliente", operatoreId: null });
+        }
       }
     }
     const dedupRecipients = Array.from(

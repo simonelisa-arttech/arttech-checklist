@@ -261,6 +261,56 @@ function extractAccessTokenFromAuthCookieValue(raw: string) {
   return "";
 }
 
+function normalizeClienteDenominazione(value: unknown) {
+  return String(value || "")
+    .toLowerCase()
+    .trim()
+    .replace(/\s+/g, " ")
+    .replace(/[^\p{L}\p{N}\s]/gu, "");
+}
+
+async function ensureClienteAnagraficaRow(
+  supabaseAdmin: ReturnType<typeof getSupabaseAdmin>,
+  denominazioneValue: unknown
+) {
+  const denominazione = String(denominazioneValue || "").trim();
+  if (!denominazione) return null;
+  const denominazioneNorm = normalizeClienteDenominazione(denominazione);
+  if (!denominazioneNorm) return null;
+
+  const { data: existingRows, error: existingErr } = await supabaseAdmin
+    .from("clienti_anagrafica")
+    .select("id, denominazione")
+    .eq("denominazione_norm", denominazioneNorm)
+    .limit(1);
+  if (existingErr) throw existingErr;
+
+  const existing = (existingRows || [])[0] as { id?: string | null; denominazione?: string | null } | undefined;
+  if (existing?.id) {
+    return {
+      id: String(existing.id),
+      denominazione: String(existing.denominazione || denominazione).trim() || denominazione,
+    };
+  }
+
+  const { data: inserted, error: insertErr } = await supabaseAdmin
+    .from("clienti_anagrafica")
+    .insert({
+      denominazione,
+      denominazione_norm: denominazioneNorm,
+      attivo: true,
+      email: null,
+    } as any)
+    .select("id, denominazione")
+    .single();
+  if (insertErr) throw insertErr;
+
+  return {
+    id: String(inserted?.id || "").trim(),
+    denominazione: String(inserted?.denominazione || denominazione).trim() || denominazione,
+  };
+}
+
 function getAccessTokenFromCookieHeader(cookieHeader: string | null) {
   const cookies = parseCookieHeader(cookieHeader);
 
@@ -527,6 +577,39 @@ export async function POST(request: Request) {
       }
 
       if (
+        table === "clienti_anagrafica" &&
+        select !== "*" &&
+        (msg.includes("email_secondarie") ||
+          msg.includes("drive_url") ||
+          msg.includes("scadenze_delivery_mode")) &&
+        msg.includes("does not exist")
+      ) {
+        let retrySelect = select;
+        if (msg.includes("email_secondarie")) {
+          retrySelect = stripSelectColumn(retrySelect, "email_secondarie");
+        }
+        if (msg.includes("drive_url")) {
+          retrySelect = stripSelectColumn(retrySelect, "drive_url");
+        }
+        if (msg.includes("scadenze_delivery_mode")) {
+          retrySelect = stripSelectColumn(retrySelect, "scadenze_delivery_mode");
+        }
+        let retryQ: any = supabaseAdmin.from(table).select(retrySelect || "*");
+        for (const [k, v] of Object.entries(filter)) retryQ = retryQ.eq(k, v);
+        for (const [k, v] of Object.entries(filterIn)) retryQ = retryQ.in(k, v as any[]);
+        for (const o of order) retryQ = retryQ.order(o.col, { ascending: o.asc !== false });
+        if (normalizedLimit > 0) retryQ = retryQ.limit(normalizedLimit);
+        const retry = await retryQ;
+        data = (retry.data || []).map((row: any) => ({
+          ...row,
+          email_secondarie: row?.email_secondarie || null,
+          drive_url: row?.drive_url || null,
+          scadenze_delivery_mode: row?.scadenze_delivery_mode || null,
+        }));
+        error = retry.error;
+      }
+
+      if (
         table === "rinnovi_servizi" &&
         select !== "*" &&
         msg.includes("rinnovi_servizi.riferimento") &&
@@ -556,6 +639,14 @@ export async function POST(request: Request) {
         const nomeChecklist = asTrimmedText(row.nome_checklist);
         const cliente = asTrimmedText(row.cliente);
         if (!nomeChecklist || !cliente) continue;
+
+        const clienteRow = await ensureClienteAnagraficaRow(supabaseAdmin, cliente);
+        if (clienteRow?.id && !asTrimmedText(row.cliente_id)) {
+          row.cliente_id = clienteRow.id;
+        }
+        if (clienteRow?.denominazione) {
+          row.cliente = clienteRow.denominazione;
+        }
 
         const { data: duplicateRows, error: duplicateErr } = await supabaseAdmin
           .from("checklists")

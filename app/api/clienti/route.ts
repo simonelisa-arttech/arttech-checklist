@@ -2,6 +2,7 @@ export const runtime = "nodejs";
 
 import { NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import { normalizeEmailSecondarieInput } from "@/lib/clientiEmail";
 import { isMissingClientiDriveColumnError } from "@/lib/clientiDrive";
 
 type RateLimitEntry = { count: number; resetAt: number };
@@ -15,6 +16,7 @@ type ClienteMutationPayload = {
   codice_sdi?: string | null;
   pec?: string | null;
   email?: string | null;
+  email_secondarie?: string | null;
   telefono?: string | null;
   indirizzo?: string | null;
   comune?: string | null;
@@ -112,6 +114,12 @@ function isMissingClientiScadenzeDeliveryModeColumnError(error: any) {
     .includes("scadenze_delivery_mode");
 }
 
+function isMissingClientiEmailSecondarieColumnError(error: any) {
+  return String(error?.message || "")
+    .toLowerCase()
+    .includes("email_secondarie");
+}
+
 function stripSelectColumn(selectClause: string, columnName: string) {
   return selectClause
     .split(",")
@@ -123,11 +131,12 @@ function stripSelectColumn(selectClause: string, columnName: string) {
 
 const CLIENTI_BASE_SELECT =
   "id,denominazione,denominazione_norm,piva,codice_fiscale,codice_sdi,pec,email,telefono,indirizzo,comune,cap,provincia,paese,codice_interno,attivo";
-const CLIENTI_SELECT_WITH_OPTIONALS = `${CLIENTI_BASE_SELECT},drive_url,scadenze_delivery_mode`;
+const CLIENTI_SELECT_WITH_OPTIONALS = `${CLIENTI_BASE_SELECT},email_secondarie,drive_url,scadenze_delivery_mode`;
 
 function normalizeClienteRow(row: any) {
   return {
     ...(row || {}),
+    email_secondarie: row?.email_secondarie || null,
     drive_url: row?.drive_url || null,
     scadenze_delivery_mode: normalizeScadenzeDeliveryMode(
       row?.scadenze_delivery_mode || DEFAULT_SCADENZE_DELIVERY_MODE
@@ -145,7 +154,7 @@ async function enrichClientiOptionalFields(supabase: any, rows: any[]) {
   );
   if (ids.length === 0) return rows || [];
 
-  let selectClause = "id,drive_url,scadenze_delivery_mode";
+  let selectClause = "id,email_secondarie,drive_url,scadenze_delivery_mode";
   let data: any[] | null = null;
   let error: any = null;
 
@@ -160,6 +169,12 @@ async function enrichClientiOptionalFields(supabase: any, rows: any[]) {
       nextSelect = stripSelectColumn(nextSelect, "drive_url");
     }
     if (
+      isMissingClientiEmailSecondarieColumnError(error) &&
+      nextSelect.includes("email_secondarie")
+    ) {
+      nextSelect = stripSelectColumn(nextSelect, "email_secondarie");
+    }
+    if (
       isMissingClientiScadenzeDeliveryModeColumnError(error) &&
       nextSelect.includes("scadenze_delivery_mode")
     ) {
@@ -172,6 +187,7 @@ async function enrichClientiOptionalFields(supabase: any, rows: any[]) {
   if (error) {
     if (
       isMissingClientiDriveColumnError(error) ||
+      isMissingClientiEmailSecondarieColumnError(error) ||
       isMissingClientiScadenzeDeliveryModeColumnError(error)
     ) {
       return (rows || []).map((row: any) => normalizeClienteRow(row));
@@ -264,6 +280,10 @@ export async function POST(request: Request) {
   if (driveUrl.error) {
     return NextResponse.json({ error: driveUrl.error }, { status: 400 });
   }
+  const secondaryEmails = normalizeEmailSecondarieInput(body?.email_secondarie);
+  if (secondaryEmails.error) {
+    return NextResponse.json({ error: secondaryEmails.error }, { status: 400 });
+  }
   const payload: ClienteMutationPayload = {
     denominazione,
     denominazione_norm: normalizeDenominazione(denominazione),
@@ -272,6 +292,7 @@ export async function POST(request: Request) {
     codice_sdi: `${body?.codice_sdi || ""}`.trim() || null,
     pec: `${body?.pec || ""}`.trim() || null,
     email: `${body?.email || ""}`.trim() || null,
+    email_secondarie: secondaryEmails.value,
     telefono: `${body?.telefono || ""}`.trim() || null,
     indirizzo: `${body?.indirizzo || ""}`.trim() || null,
     comune: `${body?.comune || ""}`.trim() || null,
@@ -305,6 +326,15 @@ export async function POST(request: Request) {
       selectClause = stripSelectColumn(selectClause, "drive_url") || CLIENTI_BASE_SELECT;
       warningParts.push(
         "Il link Drive non e' stato salvato: colonna non disponibile nello schema cache / ambiente non migrato."
+      );
+      changed = true;
+    }
+    if (isMissingClientiEmailSecondarieColumnError(error) && "email_secondarie" in mutationPayload) {
+      const { email_secondarie: _skip, ...legacyPayload } = mutationPayload;
+      mutationPayload = legacyPayload;
+      selectClause = stripSelectColumn(selectClause, "email_secondarie") || CLIENTI_BASE_SELECT;
+      warningParts.push(
+        "Le email secondarie non sono state salvate: colonna non disponibile nello schema cache / ambiente non migrato."
       );
       changed = true;
     }
@@ -359,6 +389,13 @@ export async function PATCH(request: Request) {
   if (driveUrl.error) {
     return NextResponse.json({ error: driveUrl.error }, { status: 400 });
   }
+  const hasSecondaryEmails = Object.prototype.hasOwnProperty.call(body || {}, "email_secondarie");
+  const secondaryEmails = hasSecondaryEmails
+    ? normalizeEmailSecondarieInput(body?.email_secondarie)
+    : { value: null as string | null, error: null as string | null };
+  if (secondaryEmails.error) {
+    return NextResponse.json({ error: secondaryEmails.error }, { status: 400 });
+  }
 
   const denominazione = body?.denominazione != null ? `${body.denominazione}`.trim() : "";
   const payload: ClienteMutationPayload = {
@@ -377,6 +414,9 @@ export async function PATCH(request: Request) {
   };
   if (hasDriveUrl) {
     payload.drive_url = driveUrl.value;
+  }
+  if (hasSecondaryEmails) {
+    payload.email_secondarie = secondaryEmails.value;
   }
   if (Object.prototype.hasOwnProperty.call(body || {}, "scadenze_delivery_mode")) {
     payload.scadenze_delivery_mode = normalizeScadenzeDeliveryMode(body?.scadenze_delivery_mode);
@@ -413,6 +453,15 @@ export async function PATCH(request: Request) {
       selectClause = stripSelectColumn(selectClause, "drive_url") || CLIENTI_BASE_SELECT;
       warningParts.push(
         "Il link Drive non e' stato salvato: colonna non disponibile nello schema cache / ambiente non migrato."
+      );
+      changed = true;
+    }
+    if (isMissingClientiEmailSecondarieColumnError(error) && "email_secondarie" in mutationPayload) {
+      const { email_secondarie: _skip, ...legacyPayload } = mutationPayload;
+      mutationPayload = legacyPayload;
+      selectClause = stripSelectColumn(selectClause, "email_secondarie") || CLIENTI_BASE_SELECT;
+      warningParts.push(
+        "Le email secondarie non sono state salvate: colonna non disponibile nello schema cache / ambiente non migrato."
       );
       changed = true;
     }

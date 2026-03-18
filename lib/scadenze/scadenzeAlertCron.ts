@@ -1,4 +1,5 @@
 import type { ScadenzaAgendaRow } from "@/lib/scadenze/buildScadenzeAgenda";
+import { buildClienteEmailList } from "@/lib/clientiEmail";
 
 export const SCADENZE_ALERT_STEPS = [30, 15, 7] as const;
 export const SCADENZE_ALERT_STOP_STATUSES = new Set([
@@ -25,7 +26,7 @@ export type OperatoreRow = {
 export type ClienteDeliveryPreferenceRow = {
   id: string;
   denominazione: string | null;
-  email: string | null;
+  emails: string[];
   scadenze_delivery_mode: ScadenzeDeliveryMode;
 };
 
@@ -241,8 +242,8 @@ export async function getSystemOperatoreId(supabase: any) {
 }
 
 export async function loadClienteDeliveryPreferences(supabase: any) {
-  let selectClause = "id, denominazione, email, scadenze_delivery_mode";
-  for (let attempt = 0; attempt < 2; attempt += 1) {
+  let selectClause = "id, denominazione, email, email_secondarie, scadenze_delivery_mode";
+  for (let attempt = 0; attempt < 3; attempt += 1) {
     const { data, error } = await supabase.from("clienti_anagrafica").select(selectClause);
     if (!error) {
       const byId = new Map<string, ClienteDeliveryPreferenceRow>();
@@ -251,7 +252,7 @@ export async function loadClienteDeliveryPreferences(supabase: any) {
         const normalized = {
           id: String(row?.id || "").trim(),
           denominazione: row?.denominazione || null,
-          email: row?.email || null,
+          emails: buildClienteEmailList(row?.email || null, row?.email_secondarie || null),
           scadenze_delivery_mode: normalizeScadenzeDeliveryMode(row?.scadenze_delivery_mode),
         } satisfies ClienteDeliveryPreferenceRow;
         if (normalized.id) byId.set(normalized.id, normalized);
@@ -259,6 +260,13 @@ export async function loadClienteDeliveryPreferences(supabase: any) {
         if (key) byName.set(key, normalized);
       }
       return { byId, byName };
+    }
+    if (
+      selectClause.includes("email_secondarie") &&
+      String(error.message || "").toLowerCase().includes("email_secondarie")
+    ) {
+      selectClause = "id, denominazione, email, scadenze_delivery_mode";
+      continue;
     }
     if (
       selectClause.includes("scadenze_delivery_mode") &&

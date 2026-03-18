@@ -9,6 +9,11 @@ import InterventiBlock from "@/components/InterventiBlock";
 import RenewalsAlertModal from "@/components/RenewalsAlertModal";
 import RenewalsBlock from "@/components/RenewalsBlock";
 import Toast from "@/components/Toast";
+import {
+  buildClienteEmailList,
+  formatClienteEmailList,
+  normalizeEmailSecondarieInput,
+} from "@/lib/clientiEmail";
 import type { InterventoRow } from "@/lib/interventi";
 import { calcM2FromDimensioni } from "@/lib/parseDimensioni";
 import {
@@ -801,7 +806,12 @@ export default function ClientePage({
   const [editScadenzaErr, setEditScadenzaErr] = useState<string | null>(null);
   const [alertTemplates, setAlertTemplates] = useState<AlertMessageTemplate[]>([]);
   const [clienteAnagraficaEmail, setClienteAnagraficaEmail] = useState<string | null>(null);
+  const [clienteAnagraficaEmailSecondarie, setClienteAnagraficaEmailSecondarie] = useState<
+    string | null
+  >(null);
   const [clienteAnagraficaEmailDraft, setClienteAnagraficaEmailDraft] = useState("");
+  const [clienteAnagraficaEmailSecondarieDraft, setClienteAnagraficaEmailSecondarieDraft] =
+    useState("");
   const [clienteAnagraficaEmailSaving, setClienteAnagraficaEmailSaving] = useState(false);
   const [clienteAnagraficaId, setClienteAnagraficaId] = useState<string | null>(null);
   const [clienteDriveUrl, setClienteDriveUrl] = useState<string | null>(null);
@@ -811,6 +821,10 @@ export default function ClientePage({
   const [clienteScadenzeDeliveryMode, setClienteScadenzeDeliveryMode] =
     useState<ClienteScadenzeDeliveryMode>(DEFAULT_CLIENTE_SCADENZE_DELIVERY_MODE);
   const [clienteScadenzeDeliverySaving, setClienteScadenzeDeliverySaving] = useState(false);
+  const clienteAnagraficaEmails = useMemo(
+    () => buildClienteEmailList(clienteAnagraficaEmail, clienteAnagraficaEmailSecondarie),
+    [clienteAnagraficaEmail, clienteAnagraficaEmailSecondarie]
+  );
   const [selectedPresetId, setSelectedPresetId] = useState<string>("");
   const [tagliandi, setTagliandi] = useState<TagliandoRow[]>([]);
   const [newTagliando, setNewTagliando] = useState({
@@ -991,19 +1005,94 @@ export default function ClientePage({
       : "AUTO_CLIENTE";
   }
 
-  async function saveClienteScadenzeDeliveryMode(nextMode: ClienteScadenzeDeliveryMode) {
-    if (!clienteAnagraficaId) {
-      showToast("❌ Cliente anagrafica non disponibile", "error");
-      return;
+  function normalizeClienteLookupKey(value?: string | null) {
+    return String(value || "")
+      .toLowerCase()
+      .trim()
+      .replace(/\s+/g, " ")
+      .replace(/[^\p{L}\p{N}\s]/gu, "");
+  }
+
+  function applyClienteAnagraficaData(row: any) {
+    const anagId = String(row?.id || "").trim();
+    if (anagId) setClienteAnagraficaId(anagId);
+    const fullName = String(row?.denominazione || "").trim();
+    if (fullName) setCliente(fullName);
+    const mail = String(row?.email || "").trim();
+    setClienteAnagraficaEmail(mail && mail.includes("@") ? mail : null);
+    setClienteAnagraficaEmailDraft(mail);
+    const secondary = String(row?.email_secondarie || "").trim();
+    setClienteAnagraficaEmailSecondarie(secondary || null);
+    setClienteAnagraficaEmailSecondarieDraft(secondary);
+    const driveUrl = String(row?.drive_url || "").trim();
+    setClienteDriveUrl(isValidHttpUrl(driveUrl) ? driveUrl : null);
+    setClienteDriveDraft(isValidHttpUrl(driveUrl) ? driveUrl : "");
+    setClienteScadenzeDeliveryMode(
+      normalizeClienteScadenzeDeliveryMode(row?.scadenze_delivery_mode)
+    );
+    return anagId;
+  }
+
+  async function ensureClienteAnagraficaRecord(overrides?: Record<string, any>) {
+    if (clienteAnagraficaId) return clienteAnagraficaId;
+
+    const targetName = String(overrides?.denominazione || cliente || "").trim();
+    if (!targetName) throw new Error("Cliente anagrafica non disponibile");
+
+    const searchRes = await fetch(
+      `/api/clienti?q=${encodeURIComponent(targetName)}&limit=20&include_inactive=1`,
+      {
+        cache: "no-store",
+        credentials: "include",
+      }
+    );
+    const searchJson = await searchRes.json().catch(() => ({} as any));
+    if (searchRes.ok) {
+      const list = Array.isArray(searchJson?.data) ? searchJson.data : [];
+      const exact = list.find(
+        (row: any) =>
+          normalizeClienteLookupKey(row?.denominazione) === normalizeClienteLookupKey(targetName)
+      );
+      if (exact?.id) {
+        return applyClienteAnagraficaData(exact);
+      }
     }
+
+    const createRes = await fetch("/api/clienti", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({
+        denominazione: targetName,
+        attivo: true,
+        email: clienteAnagraficaEmailDraft.trim() || null,
+        email_secondarie: clienteAnagraficaEmailSecondarieDraft.trim() || null,
+        drive_url: clienteDriveDraft.trim() || null,
+        scadenze_delivery_mode: clienteScadenzeDeliveryMode,
+        ...(overrides || {}),
+      }),
+    });
+    const createJson = await createRes.json().catch(() => ({} as any));
+    if (!createRes.ok || !createJson?.ok || !createJson?.data) {
+      throw new Error(createJson?.error || "Errore creazione anagrafica cliente");
+    }
+    return applyClienteAnagraficaData(createJson.data);
+  }
+
+  async function saveClienteScadenzeDeliveryMode(nextMode: ClienteScadenzeDeliveryMode) {
     setClienteScadenzeDeliverySaving(true);
     try {
+      const id =
+        clienteAnagraficaId ||
+        (await ensureClienteAnagraficaRecord({
+          scadenze_delivery_mode: nextMode,
+        }));
       const res = await fetch("/api/clienti", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
         body: JSON.stringify({
-          id: clienteAnagraficaId,
+          id,
           scadenze_delivery_mode: nextMode,
         }),
       });
@@ -1026,24 +1115,32 @@ export default function ClientePage({
   }
 
   async function saveClienteEmail() {
-    if (!clienteAnagraficaId) {
-      showToast("❌ Cliente anagrafica non disponibile", "error");
-      return;
-    }
     const nextValue = clienteAnagraficaEmailDraft.trim();
     if (nextValue && !nextValue.includes("@")) {
       showToast("❌ Inserisci un'email cliente valida oppure lascia vuoto", "error");
       return;
     }
+    const secondaryEmails = normalizeEmailSecondarieInput(clienteAnagraficaEmailSecondarieDraft);
+    if (secondaryEmails.error) {
+      showToast(`❌ ${secondaryEmails.error}`, "error");
+      return;
+    }
     setClienteAnagraficaEmailSaving(true);
     try {
+      const id =
+        clienteAnagraficaId ||
+        (await ensureClienteAnagraficaRecord({
+          email: nextValue || null,
+          email_secondarie: secondaryEmails.value,
+        }));
       const res = await fetch("/api/clienti", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
         body: JSON.stringify({
-          id: clienteAnagraficaId,
+          id,
           email: nextValue || null,
+          email_secondarie: secondaryEmails.value,
         }),
       });
       const json = await res.json().catch(() => ({} as any));
@@ -1053,7 +1150,10 @@ export default function ClientePage({
       const savedEmail = String(json?.data?.email || "").trim();
       setClienteAnagraficaEmail(savedEmail && savedEmail.includes("@") ? savedEmail : null);
       setClienteAnagraficaEmailDraft(savedEmail);
-      showToast("✅ Email cliente salvata", "success");
+      const savedSecondary = String(json?.data?.email_secondarie || "").trim();
+      setClienteAnagraficaEmailSecondarie(savedSecondary || null);
+      setClienteAnagraficaEmailSecondarieDraft(savedSecondary);
+      showToast("✅ Email cliente salvate", "success");
     } catch (err: any) {
       showToast(`❌ Salvataggio email cliente fallito: ${briefError(err)}`, "error");
     } finally {
@@ -1062,10 +1162,6 @@ export default function ClientePage({
   }
 
   async function saveClienteDriveUrl() {
-    if (!clienteAnagraficaId) {
-      showToast("❌ Cliente anagrafica non disponibile", "error");
-      return;
-    }
     const nextValue = clienteDriveDraft.trim();
     if (nextValue && !isValidHttpUrl(nextValue)) {
       showToast("❌ Il link Drive cliente deve essere un URL http/https valido", "error");
@@ -1073,12 +1169,17 @@ export default function ClientePage({
     }
     setClienteDriveSaving(true);
     try {
+      const id =
+        clienteAnagraficaId ||
+        (await ensureClienteAnagraficaRecord({
+          drive_url: nextValue || null,
+        }));
       const res = await fetch("/api/clienti", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
         body: JSON.stringify({
-          id: clienteAnagraficaId,
+          id,
           drive_url: nextValue || null,
         }),
       });
@@ -1429,7 +1530,9 @@ export default function ClientePage({
       let displayCliente = decoded.trim();
       setCliente(displayCliente);
       setClienteAnagraficaEmail(null);
+      setClienteAnagraficaEmailSecondarie(null);
       setClienteAnagraficaEmailDraft("");
+      setClienteAnagraficaEmailSecondarieDraft("");
       setClienteAnagraficaId(null);
       setClienteDriveUrl(null);
       setClienteDriveDraft("");
@@ -1461,31 +1564,26 @@ export default function ClientePage({
         try {
           if (isPerfEnabled()) console.time(`[perf][cliente][mount#${mountRun}] fetch /api/clienti`);
           perfCountFetch("GET /api/clienti");
-          const anagRes = await fetch(`/api/clienti?q=${encodeURIComponent(clienteKey)}&limit=1`, {
+          const anagRes = await fetch(`/api/clienti?q=${encodeURIComponent(clienteKey)}&limit=20`, {
             cache: "no-store",
             credentials: "include",
           });
           const anagJson = await anagRes.json().catch(() => ({} as any));
           if (isPerfEnabled()) console.timeEnd(`[perf][cliente][mount#${mountRun}] fetch /api/clienti`);
-          const anagData = Array.isArray(anagJson?.data) ? anagJson.data[0] : null;
-          const anagId = String((anagData as any)?.id || "").trim();
-          if (anagId) {
-            setClienteAnagraficaId(anagId);
+          const anagList = Array.isArray(anagJson?.data) ? anagJson.data : [];
+          const anagData =
+            anagList.find(
+              (row: any) =>
+                normalizeClienteLookupKey(row?.denominazione) === normalizeClienteLookupKey(clienteKey)
+            ) || null;
+          if (anagData) {
+            applyClienteAnagraficaData(anagData);
+            const fullName = String((anagData as any)?.denominazione || "").trim();
+            if (fullName) {
+              displayCliente = fullName;
+              setCliente(fullName);
+            }
           }
-          const fullName = String((anagData as any)?.denominazione || "").trim();
-          if (fullName) {
-            displayCliente = fullName;
-            setCliente(fullName);
-          }
-          const mail = String((anagData as any)?.email || "").trim();
-          setClienteAnagraficaEmail(mail && mail.includes("@") ? mail : null);
-          setClienteAnagraficaEmailDraft(mail);
-          const driveUrl = String((anagData as any)?.drive_url || "").trim();
-          setClienteDriveUrl(isValidHttpUrl(driveUrl) ? driveUrl : null);
-          setClienteDriveDraft(isValidHttpUrl(driveUrl) ? driveUrl : "");
-          setClienteScadenzeDeliveryMode(
-            normalizeClienteScadenzeDeliveryMode((anagData as any)?.scadenze_delivery_mode)
-          );
         } catch {
           // keep fallback values from URL
         }
@@ -4287,7 +4385,7 @@ export default function ClientePage({
         setRinnoviAlertErr("Inserisci un'email valida.");
         return;
       }
-      if (payload.toCliente && !String(clienteAnagraficaEmail || "").includes("@")) {
+      if (payload.toCliente && clienteAnagraficaEmails.length === 0) {
         setRinnoviAlertErr("Nessuna email valida trovata nell'anagrafica cliente.");
         return;
       }
@@ -4322,12 +4420,14 @@ export default function ClientePage({
           toOperatoreId: null,
         });
       }
-      if (payload.toCliente && clienteAnagraficaEmail) {
-        recipients.push({
-          toEmail: clienteAnagraficaEmail,
-          toNome: "Cliente",
-          toOperatoreId: null,
-        });
+      if (payload.toCliente) {
+        for (const email of clienteAnagraficaEmails) {
+          recipients.push({
+            toEmail: email,
+            toNome: "Cliente",
+            toOperatoreId: null,
+          });
+        }
       }
       const dedupMap = new Map<string, { toEmail: string; toNome: string | null; toOperatoreId: string | null }>();
       for (const recipient of recipients) {
@@ -5539,7 +5639,20 @@ export default function ClientePage({
         <input
           value={clienteAnagraficaEmailDraft}
           onChange={(e) => setClienteAnagraficaEmailDraft(e.target.value)}
-          placeholder="Nessuna email cliente"
+          placeholder="Email principale cliente"
+          style={{
+            flex: "1 1 320px",
+            minWidth: 240,
+            padding: "8px 10px",
+            borderRadius: 8,
+            border: "1px solid #d1d5db",
+          }}
+        />
+        <textarea
+          value={clienteAnagraficaEmailSecondarieDraft}
+          onChange={(e) => setClienteAnagraficaEmailSecondarieDraft(e.target.value)}
+          placeholder="Email secondarie cliente (una per riga o separate da virgola)"
+          rows={3}
           style={{
             flex: "1 1 320px",
             minWidth: 240,
@@ -5565,7 +5678,10 @@ export default function ClientePage({
           {clienteAnagraficaEmailSaving ? "Salvataggio..." : "Salva"}
         </button>
         <span style={{ fontSize: 12, opacity: 0.7 }}>
-          Email usata come source of truth per gli avvisi cliente di Scadenze e Rinnovi.
+          Email principale e secondarie in anagrafica sono la source of truth per gli avvisi cliente di Scadenze e Rinnovi.
+        </span>
+        <span style={{ fontSize: 12, opacity: 0.7 }}>
+          Destinatari cliente correnti: {formatClienteEmailList(clienteAnagraficaEmail, clienteAnagraficaEmailSecondarie) || "nessuno"}
         </span>
       </div>
       <div
@@ -5718,7 +5834,7 @@ export default function ClientePage({
           Automatico al cliente = invii automatici consentiti verso il cliente. Manuale interno = solo gestione interna Art Tech.
         </span>
       </div>
-      {clienteScadenzeDeliveryMode === "AUTO_CLIENTE" && !String(clienteAnagraficaEmail || "").includes("@") ? (
+      {clienteScadenzeDeliveryMode === "AUTO_CLIENTE" && clienteAnagraficaEmails.length === 0 ? (
         <div
           style={{
             marginTop: 8,
@@ -7283,6 +7399,7 @@ ${rinnovi30ggBreakdown.debugSample
         stage={rinnoviAlertStage}
         title={rinnoviAlertStage === "stage1" ? "Invia avviso scadenza" : "Invia alert fatturazione rinnovi"}
         customerEmail={clienteAnagraficaEmail}
+        customerEmails={clienteAnagraficaEmails}
         customerDeliveryMode={clienteScadenzeDeliveryMode}
         operators={getAlertRecipients()}
         defaultOperatorId={

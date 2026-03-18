@@ -161,8 +161,7 @@ export async function GET(request: Request) {
         });
       }
     } else {
-      const email = String(prefs?.email || "").trim();
-      if (email.includes("@")) {
+      for (const email of prefs?.emails || []) {
         recipients.push({
           email,
           name: first.cliente || "Cliente",
