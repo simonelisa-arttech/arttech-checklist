@@ -582,7 +582,7 @@ export async function POST(request: Request) {
         (msg.includes("email_secondarie") ||
           msg.includes("drive_url") ||
           msg.includes("scadenze_delivery_mode")) &&
-        msg.includes("does not exist")
+        (msg.includes("does not exist") || msg.includes("schema cache") || msg.includes("column"))
       ) {
         let retrySelect = select;
         if (msg.includes("email_secondarie")) {
