@@ -1400,7 +1400,8 @@ export default function Page() {
             <div
               style={{
                 display: "grid",
-                gap: 12,
+                gridTemplateColumns: "minmax(0, 2.2fr) minmax(220px, 1fr)",
+                gap: 16,
                 padding: "12px 14px",
                 borderRadius: 12,
                 border: "1px solid #f59e0b",
@@ -1413,6 +1414,7 @@ export default function Page() {
                   href={`/scadenze?from=${toDateInputValue(new Date())}&to=${toDateInputValue(new Date(Date.now() + 7 * 86400000))}`}
                   style={{
                     display: "block",
+                    minWidth: 0,
                     color: "inherit",
                     textDecoration: "none",
                     fontWeight: 700,
@@ -1430,7 +1432,18 @@ export default function Page() {
               ) : null}
 
               {clientiMissingEmailCount > 0 ? (
-                <div style={{ display: "grid", gap: 8, justifyItems: "start" }}>
+                <div
+                  style={{
+                    display: "grid",
+                    gap: 8,
+                    alignContent: "start",
+                    justifyItems: "start",
+                    minWidth: 0,
+                  }}
+                >
+                  <div style={{ fontSize: 12, fontWeight: 900, letterSpacing: 0.3 }}>
+                    CLIENTI SENZA EMAIL
+                  </div>
                   <button
                     type="button"
                     onClick={() => setShowMissingEmailInfo((prev) => !prev)}
@@ -1446,6 +1459,7 @@ export default function Page() {
                       fontSize: 12,
                       fontWeight: 700,
                       cursor: "pointer",
+                      whiteSpace: "nowrap",
                     }}
                     aria-expanded={showMissingEmailInfo}
                     aria-controls="missing-email-info"
