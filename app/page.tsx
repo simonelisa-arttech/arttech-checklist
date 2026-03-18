@@ -1459,7 +1459,6 @@ export default function Page() {
                 href={`/scadenze?from=${toDateInputValue(new Date())}&to=${toDateInputValue(new Date(Date.now() + 7 * 86400000))}`}
                 style={{
                   display: "block",
-                  minWidth: 0,
                   color: "inherit",
                   textDecoration: "none",
                   fontWeight: 700,
@@ -1468,35 +1467,30 @@ export default function Page() {
                 <div
                   style={{
                     display: "grid",
-                    gridTemplateColumns: "minmax(0, 1.6fr) minmax(180px, 0.9fr)",
-                    gap: 16,
-                    alignItems: "center",
-                    minWidth: 0,
+                    gap: 10,
                   }}
                 >
-                  <div style={{ minWidth: 0 }}>
-                    <div style={{ fontSize: 13, fontWeight: 900, letterSpacing: 0.4 }}>SCADENZE IN ARRIVO</div>
-                    <div style={{ marginTop: 4, fontSize: 28, lineHeight: 1.1 }}>
-                      ⚠ {scadenzeEntro7Count}
-                    </div>
-                    <div style={{ marginTop: 2, fontSize: 14, fontWeight: 700 }}>
-                      scadenze entro 7 giorni
-                    </div>
-                  </div>
                   <div
                     style={{
                       display: "grid",
-                      gap: 6,
-                      alignContent: "start",
-                      justifyItems: "start",
-                      minWidth: 0,
-                      fontSize: 13,
-                      fontWeight: 700,
+                      gap: 8,
                     }}
                   >
-                    <div>Garanzie: {scadenzeEntro7Breakdown.garanzie}</div>
-                    <div>Licenze: {scadenzeEntro7Breakdown.licenze}</div>
-                    <div>Tagliandi: {scadenzeEntro7Breakdown.tagliandi}</div>
+                    <div style={{ fontSize: 13, fontWeight: 900, letterSpacing: 0.4 }}>SCADENZE IN ARRIVO</div>
+                    <div style={{ fontSize: 32, lineHeight: 1.05 }}>⚠ {scadenzeEntro7Count}</div>
+                    <div style={{ fontSize: 14, fontWeight: 700 }}>scadenze entro 7 giorni</div>
+                    <div
+                      style={{
+                        display: "grid",
+                        gap: 4,
+                        fontSize: 13,
+                        fontWeight: 700,
+                      }}
+                    >
+                      <div>Garanzie: {scadenzeEntro7Breakdown.garanzie}</div>
+                      <div>Licenze: {scadenzeEntro7Breakdown.licenze}</div>
+                      <div>Tagliandi: {scadenzeEntro7Breakdown.tagliandi}</div>
+                    </div>
                   </div>
                 </div>
               </Link>
