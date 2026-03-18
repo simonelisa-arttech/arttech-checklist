@@ -60,21 +60,6 @@ export default function LogoutButton() {
           {operatoreLabel}
         </div>
       ) : null}
-      <Link
-        href="/admin"
-        style={{
-          padding: "8px 12px",
-          borderRadius: 10,
-          border: "1px solid #ddd",
-          background: "white",
-          cursor: "pointer",
-          textDecoration: "none",
-          color: "inherit",
-          fontWeight: 600,
-        }}
-      >
-        ADMIN
-      </Link>
       {canAccessSettings ? (
         <Link
           href="/impostazioni"

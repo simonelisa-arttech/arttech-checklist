@@ -449,6 +449,9 @@ export default function Page() {
     licenze: 0,
     tagliandi: 0,
   });
+  const [interventiDaChiudereCount, setInterventiDaChiudereCount] = useState(0);
+  const [fattureDaEmettereCount, setFattureDaEmettereCount] = useState(0);
+  const [noleggiAttiviCount, setNoleggiAttiviCount] = useState(0);
   const [clientiMissingEmailCount, setClientiMissingEmailCount] = useState(0);
   const [showMissingEmailInfo, setShowMissingEmailInfo] = useState(false);
   const [expandedSaasNoteId, setExpandedSaasNoteId] = useState<string | null>(null);
@@ -955,6 +958,48 @@ export default function Page() {
         setClientiMissingEmailCount(0);
       }
 
+      try {
+        const res = await fetch("/api/interventi/da-chiudere", {
+          signal: controller.signal,
+          credentials: "include",
+        });
+        const data = await res.json().catch(() => []);
+        if (!isLatest()) return;
+        setInterventiDaChiudereCount(res.ok && Array.isArray(data) ? data.length : 0);
+      } catch (e: any) {
+        if (e?.name === "AbortError" || controller.signal.aborted) return;
+        if (!isLatest()) return;
+        setInterventiDaChiudereCount(0);
+      }
+
+      try {
+        const res = await fetch("/api/fatture/da-emettere", {
+          signal: controller.signal,
+          credentials: "include",
+        });
+        const data = await res.json().catch(() => []);
+        if (!isLatest()) return;
+        setFattureDaEmettereCount(res.ok && Array.isArray(data) ? data.length : 0);
+      } catch (e: any) {
+        if (e?.name === "AbortError" || controller.signal.aborted) return;
+        if (!isLatest()) return;
+        setFattureDaEmettereCount(0);
+      }
+
+      try {
+        const res = await fetch("/api/noleggi/attivi", {
+          signal: controller.signal,
+          credentials: "include",
+        });
+        const data = await res.json().catch(() => []);
+        if (!isLatest()) return;
+        setNoleggiAttiviCount(res.ok && Array.isArray(data) ? data.length : 0);
+      } catch (e: any) {
+        if (e?.name === "AbortError" || controller.signal.aborted) return;
+        if (!isLatest()) return;
+        setNoleggiAttiviCount(0);
+      }
+
       let opRes: Response;
       try {
         opRes = await fetch("/api/operatori", { signal: controller.signal });
@@ -1010,6 +1055,10 @@ export default function Page() {
       setDashboardLoadError(message);
       setScadenzeEntro7Count(0);
       setScadenzeEntro7Breakdown({ garanzie: 0, licenze: 0, tagliandi: 0 });
+      setInterventiDaChiudereCount(0);
+      setFattureDaEmettereCount(0);
+      setNoleggiAttiviCount(0);
+      setClientiMissingEmailCount(0);
     } finally {
       if (!isLatest()) return;
       setLoading(false);
@@ -1446,6 +1495,117 @@ export default function Page() {
               </Link>
             </div>
           )}
+          <div
+            style={{
+              marginTop: scadenzeEntro7Count > 0 ? 10 : 0,
+              display: "flex",
+              gap: 10,
+              flexWrap: "wrap",
+              alignItems: "stretch",
+            }}
+          >
+            <Link
+              href="/admin/interventi-da-chiudere"
+              style={{
+                padding: "10px 12px",
+                borderRadius: 12,
+                border: "1px solid #e5e7eb",
+                background: "white",
+                color: "inherit",
+                textDecoration: "none",
+                minWidth: 180,
+              }}
+            >
+              <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: 0.2, color: "#6b7280" }}>
+                INTERVENTI DA CHIUDERE
+              </div>
+              <div style={{ marginTop: 6, fontSize: 24, fontWeight: 800 }}>{interventiDaChiudereCount}</div>
+            </Link>
+            <Link
+              href="/admin/fatture-da-emettere"
+              style={{
+                padding: "10px 12px",
+                borderRadius: 12,
+                border: "1px solid #e5e7eb",
+                background: "white",
+                color: "inherit",
+                textDecoration: "none",
+                minWidth: 180,
+              }}
+            >
+              <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: 0.2, color: "#6b7280" }}>
+                FATTURE DA EMETTERE
+              </div>
+              <div style={{ marginTop: 6, fontSize: 24, fontWeight: 800 }}>{fattureDaEmettereCount}</div>
+            </Link>
+            <Link
+              href="/admin/noleggi-attivi"
+              style={{
+                padding: "10px 12px",
+                borderRadius: 12,
+                border: "1px solid #e5e7eb",
+                background: "white",
+                color: "inherit",
+                textDecoration: "none",
+                minWidth: 180,
+              }}
+            >
+              <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: 0.2, color: "#6b7280" }}>
+                NOLEGGI ATTIVI
+              </div>
+              <div style={{ marginTop: 6, fontSize: 24, fontWeight: 800 }}>{noleggiAttiviCount}</div>
+            </Link>
+            <div
+              style={{
+                padding: "10px 12px",
+                borderRadius: 12,
+                border: "1px solid #e5e7eb",
+                background: "white",
+                minWidth: 180,
+                display: "grid",
+                gap: 8,
+              }}
+            >
+              <button
+                type="button"
+                onClick={() => setShowMissingEmailInfo((prev) => !prev)}
+                style={{
+                  display: "grid",
+                  gap: 6,
+                  justifyItems: "start",
+                  padding: 0,
+                  border: 0,
+                  background: "transparent",
+                  color: "inherit",
+                  cursor: "pointer",
+                  textAlign: "left",
+                }}
+                aria-expanded={showMissingEmailInfo}
+                aria-controls="dashboard-missing-email-info"
+              >
+                <span style={{ fontSize: 12, fontWeight: 800, letterSpacing: 0.2, color: "#6b7280" }}>
+                  CLIENTI SENZA EMAIL
+                </span>
+                <span style={{ fontSize: 24, fontWeight: 800 }}>{clientiMissingEmailCount}</span>
+              </button>
+              {showMissingEmailInfo ? (
+                <div
+                  id="dashboard-missing-email-info"
+                  style={{
+                    fontSize: 12,
+                    lineHeight: 1.45,
+                    color: "#92400e",
+                    background: "#fffbeb",
+                    border: "1px solid #fcd34d",
+                    borderRadius: 10,
+                    padding: "8px 10px",
+                  }}
+                >
+                  {clientiMissingEmailCount} clienti senza email: gli avvisi automatici al cliente non possono partire.
+                </div>
+              ) : null}
+            </div>
+          </div>
           {loading ? (
             <div>Caricamento…</div>
           ) : items.length === 0 ? (
