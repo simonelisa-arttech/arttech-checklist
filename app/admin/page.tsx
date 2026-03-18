@@ -11,11 +11,36 @@ type AdminCard = {
 };
 
 export default function AdminPage() {
+  const [noleggiAttiviCount, setNoleggiAttiviCount] = useState(0);
   const [interventiDaChiudereCount, setInterventiDaChiudereCount] = useState(0);
   const [fattureDaEmettereCount, setFattureDaEmettereCount] = useState(0);
   const [scadenzeCount, setScadenzeCount] = useState(0);
   const [clientiMissingEmailCount, setClientiMissingEmailCount] = useState(0);
   const [hoveredCard, setHoveredCard] = useState<string | null>(null);
+
+  useEffect(() => {
+    const controller = new AbortController();
+
+    async function loadCount() {
+      try {
+        const res = await fetch("/api/noleggi/attivi", {
+          signal: controller.signal,
+          credentials: "include",
+        });
+        const data = await res.json().catch(() => []);
+        if (!res.ok || !Array.isArray(data)) {
+          setNoleggiAttiviCount(0);
+          return;
+        }
+        setNoleggiAttiviCount(data.length);
+      } catch {
+        setNoleggiAttiviCount(0);
+      }
+    }
+
+    void loadCount();
+    return () => controller.abort();
+  }, []);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -131,6 +156,12 @@ export default function AdminPage() {
       count: fattureDaEmettereCount,
       description: "Progetti completati pronti per fatturazione",
       href: "/admin/fatture-da-emettere",
+    },
+    {
+      title: "NOLEGGI ATTIVI",
+      count: noleggiAttiviCount,
+      description: "Noleggi consegnati ancora attivi o vicini alla disinstallazione",
+      href: "/admin/noleggi-attivi",
     },
     {
       title: "SCADENZE",
