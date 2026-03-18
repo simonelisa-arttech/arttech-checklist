@@ -120,6 +120,51 @@ function isMissingClientiEmailSecondarieColumnError(error: any) {
     .includes("email_secondarie");
 }
 
+function isOptionalClientiColumnSelectError(error: any) {
+  const msg = String(error?.message || "").toLowerCase();
+  return msg.includes("does not exist") || msg.includes("column") || msg.includes("schema cache");
+}
+
+function stripClientiOptionalColumns(selectClause: string, error: any) {
+  const msg = String(error?.message || "").toLowerCase();
+  const shouldStripAll =
+    isOptionalClientiColumnSelectError(error) &&
+    !msg.includes("drive_url") &&
+    !msg.includes("email_secondarie") &&
+    !msg.includes("scadenze_delivery_mode");
+
+  let nextSelect = selectClause;
+  let missingDriveUrl = false;
+  let missingEmailSecondarie = false;
+  let missingScadenzeDeliveryMode = false;
+
+  if ((shouldStripAll || isMissingClientiDriveColumnError(error)) && nextSelect.includes("drive_url")) {
+    nextSelect = stripSelectColumn(nextSelect, "drive_url");
+    missingDriveUrl = true;
+  }
+  if (
+    (shouldStripAll || isMissingClientiEmailSecondarieColumnError(error)) &&
+    nextSelect.includes("email_secondarie")
+  ) {
+    nextSelect = stripSelectColumn(nextSelect, "email_secondarie");
+    missingEmailSecondarie = true;
+  }
+  if (
+    (shouldStripAll || isMissingClientiScadenzeDeliveryModeColumnError(error)) &&
+    nextSelect.includes("scadenze_delivery_mode")
+  ) {
+    nextSelect = stripSelectColumn(nextSelect, "scadenze_delivery_mode");
+    missingScadenzeDeliveryMode = true;
+  }
+
+  return {
+    nextSelect,
+    missingDriveUrl,
+    missingEmailSecondarie,
+    missingScadenzeDeliveryMode,
+  };
+}
+
 function stripSelectColumn(selectClause: string, columnName: string) {
   return selectClause
     .split(",")
@@ -167,23 +212,10 @@ async function enrichClientiOptionalFields(supabase: any, rows: any[]) {
     error = result.error;
     if (!error) break;
 
-    let nextSelect = selectClause;
-    if (isMissingClientiDriveColumnError(error) && nextSelect.includes("drive_url")) {
-      nextSelect = stripSelectColumn(nextSelect, "drive_url");
-    }
-    if (
-      isMissingClientiEmailSecondarieColumnError(error) &&
-      nextSelect.includes("email_secondarie")
-    ) {
-      nextSelect = stripSelectColumn(nextSelect, "email_secondarie");
-    }
-    if (
-      isMissingClientiScadenzeDeliveryModeColumnError(error) &&
-      nextSelect.includes("scadenze_delivery_mode")
-    ) {
-      missingScadenzeDeliveryMode = true;
-      nextSelect = stripSelectColumn(nextSelect, "scadenze_delivery_mode");
-    }
+    const fallback = stripClientiOptionalColumns(selectClause, error);
+    let nextSelect = fallback.nextSelect;
+    missingScadenzeDeliveryMode =
+      missingScadenzeDeliveryMode || fallback.missingScadenzeDeliveryMode;
     if (nextSelect === selectClause) break;
     selectClause = nextSelect || "id";
   }
@@ -272,24 +304,16 @@ export async function GET(request: Request) {
     error = result.error;
     if (!error) break;
 
-    const msg = String(error?.message || "").toLowerCase();
-    if (!msg.includes("does not exist") && !msg.includes("column") && !msg.includes("schema cache")) {
+    if (!isOptionalClientiColumnSelectError(error)) {
       break;
     }
 
-    let nextSelect = selectClause;
-    if (isMissingClientiScadenzeDeliveryModeColumnError(error) && nextSelect.includes("scadenze_delivery_mode")) {
-      missingScadenzeDeliveryMode = true;
-      nextSelect = stripSelectColumn(nextSelect, "scadenze_delivery_mode");
-    }
-    if (isMissingClientiEmailSecondarieColumnError(error) && nextSelect.includes("email_secondarie")) {
-      missingEmailSecondarie = true;
-      nextSelect = stripSelectColumn(nextSelect, "email_secondarie");
-    }
-    if (isMissingClientiDriveColumnError(error) && nextSelect.includes("drive_url")) {
-      missingDriveUrl = true;
-      nextSelect = stripSelectColumn(nextSelect, "drive_url");
-    }
+    const fallback = stripClientiOptionalColumns(selectClause, error);
+    const nextSelect = fallback.nextSelect;
+    missingScadenzeDeliveryMode =
+      missingScadenzeDeliveryMode || fallback.missingScadenzeDeliveryMode;
+    missingEmailSecondarie = missingEmailSecondarie || fallback.missingEmailSecondarie;
+    missingDriveUrl = missingDriveUrl || fallback.missingDriveUrl;
     if (nextSelect === selectClause) break;
     selectClause = nextSelect || CLIENTI_BASE_SELECT;
   }
@@ -371,7 +395,8 @@ export async function POST(request: Request) {
     if (!error) break;
 
     let changed = false;
-    if (isMissingClientiDriveColumnError(error) && "drive_url" in mutationPayload) {
+    const stripAllOptionals = isOptionalClientiColumnSelectError(error);
+    if ((stripAllOptionals || isMissingClientiDriveColumnError(error)) && "drive_url" in mutationPayload) {
       const { drive_url: _skip, ...legacyPayload } = mutationPayload;
       mutationPayload = legacyPayload;
       selectClause = stripSelectColumn(selectClause, "drive_url") || CLIENTI_BASE_SELECT;
@@ -380,7 +405,10 @@ export async function POST(request: Request) {
       );
       changed = true;
     }
-    if (isMissingClientiEmailSecondarieColumnError(error) && "email_secondarie" in mutationPayload) {
+    if (
+      (stripAllOptionals || isMissingClientiEmailSecondarieColumnError(error)) &&
+      "email_secondarie" in mutationPayload
+    ) {
       const { email_secondarie: _skip, ...legacyPayload } = mutationPayload;
       mutationPayload = legacyPayload;
       selectClause = stripSelectColumn(selectClause, "email_secondarie") || CLIENTI_BASE_SELECT;
@@ -390,7 +418,7 @@ export async function POST(request: Request) {
       changed = true;
     }
     if (
-      isMissingClientiScadenzeDeliveryModeColumnError(error) &&
+      (stripAllOptionals || isMissingClientiScadenzeDeliveryModeColumnError(error)) &&
       "scadenze_delivery_mode" in mutationPayload
     ) {
       console.warn("[api/clienti][POST] scadenze_delivery_mode column missing, retrying without field");
@@ -499,7 +527,8 @@ export async function PATCH(request: Request) {
     if (!error) break;
 
     let changed = false;
-    if (isMissingClientiDriveColumnError(error) && "drive_url" in mutationPayload) {
+    const stripAllOptionals = isOptionalClientiColumnSelectError(error);
+    if ((stripAllOptionals || isMissingClientiDriveColumnError(error)) && "drive_url" in mutationPayload) {
       const { drive_url: _skip, ...legacyPayload } = mutationPayload;
       mutationPayload = legacyPayload;
       selectClause = stripSelectColumn(selectClause, "drive_url") || CLIENTI_BASE_SELECT;
@@ -508,7 +537,10 @@ export async function PATCH(request: Request) {
       );
       changed = true;
     }
-    if (isMissingClientiEmailSecondarieColumnError(error) && "email_secondarie" in mutationPayload) {
+    if (
+      (stripAllOptionals || isMissingClientiEmailSecondarieColumnError(error)) &&
+      "email_secondarie" in mutationPayload
+    ) {
       const { email_secondarie: _skip, ...legacyPayload } = mutationPayload;
       mutationPayload = legacyPayload;
       selectClause = stripSelectColumn(selectClause, "email_secondarie") || CLIENTI_BASE_SELECT;
@@ -518,7 +550,7 @@ export async function PATCH(request: Request) {
       changed = true;
     }
     if (
-      isMissingClientiScadenzeDeliveryModeColumnError(error) &&
+      (stripAllOptionals || isMissingClientiScadenzeDeliveryModeColumnError(error)) &&
       "scadenze_delivery_mode" in mutationPayload
     ) {
       console.warn("[api/clienti][PATCH] scadenze_delivery_mode column missing, retrying without field");
