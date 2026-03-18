@@ -3442,7 +3442,7 @@ function buildFormData(c: Checklist): FormData {
         `${String(item.codice || "").trim()} — ${String(item.descrizione || "—").trim() || "—"}`,
     }));
   const isNoleggioProject = isNoleggioValue(
-    isEdit && formData ? formData.noleggio_vendita : checklist.noleggio_vendita
+    editMode && formData ? formData.noleggio_vendita : checklist.noleggio_vendita
   );
 
   const renderCronoOperativiSection = (
