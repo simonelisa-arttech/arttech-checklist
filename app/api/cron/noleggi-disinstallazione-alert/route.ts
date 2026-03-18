@@ -131,7 +131,7 @@ export async function GET(request: Request) {
   let data: NoleggioChecklistRow[] = [];
   let error: { message: string } | null = null;
 
-  let res = await supabase
+  let res: any = await supabase
     .from("checklists")
     .select("id, cliente, nome_checklist, stato_progetto, noleggio_vendita, data_disinstallazione")
     .eq("stato_progetto", "CONSEGNATO")
