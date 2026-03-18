@@ -1142,6 +1142,7 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         cache: "no-store",
+        credentials: "include",
         body: JSON.stringify(payload),
       });
       const json = await res.json().catch(() => ({} as any));
@@ -2683,28 +2684,40 @@ function buildFormData(c: Checklist): FormData {
     perfCountFetch("GET /api/checklists/:id/documents");
     perfCountFetch("POST /api/db asset_serials");
 
-    const tasksPromise = fetch(`/api/checklists/${id}/tasks`, { cache: "no-store" }).then(async (res) => {
+    const tasksPromise = fetch(`/api/checklists/${id}/tasks`, {
+      cache: "no-store",
+      credentials: "include",
+    }).then(async (res) => {
       const json = await res.json().catch(() => ({}));
       return {
         data: (json?.tasks as any[]) || [],
         error: res.ok ? null : { message: json?.error || "Errore caricamento task" },
       };
     });
-    const licenzePromise = fetch(`/api/checklists/${id}/licenses`, { cache: "no-store" }).then(async (res) => {
+    const licenzePromise = fetch(`/api/checklists/${id}/licenses`, {
+      cache: "no-store",
+      credentials: "include",
+    }).then(async (res) => {
       const json = await res.json().catch(() => ({}));
       return {
         data: (json?.licenses as any[]) || [],
         error: res.ok ? null : { message: json?.error || "Errore caricamento licenze" },
       };
     });
-    const tagliandiPromise = fetch(`/api/checklists/${id}/tagliandi`, { cache: "no-store" }).then(async (res) => {
+    const tagliandiPromise = fetch(`/api/checklists/${id}/tagliandi`, {
+      cache: "no-store",
+      credentials: "include",
+    }).then(async (res) => {
       const json = await res.json().catch(() => ({}));
       return {
         data: (json?.tagliandi as any[]) || [],
         error: res.ok ? null : { message: json?.error || "Errore caricamento tagliandi" },
       };
     });
-    const docsPromise = fetch(`/api/checklists/${id}/documents`, { cache: "no-store" }).then(async (res) => {
+    const docsPromise = fetch(`/api/checklists/${id}/documents`, {
+      cache: "no-store",
+      credentials: "include",
+    }).then(async (res) => {
       const json = await res.json().catch(() => ({}));
       return {
         data: (json?.documents as any[]) || [],
@@ -2715,6 +2728,7 @@ function buildFormData(c: Checklist): FormData {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       cache: "no-store",
+      credentials: "include",
       body: JSON.stringify({
         table: "asset_serials",
         op: "select",
