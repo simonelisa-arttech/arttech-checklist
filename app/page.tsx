@@ -1455,36 +1455,49 @@ export default function Page() {
                 color: "#92400e",
               }}
             >
-              <Link
-                href={`/scadenze?from=${toDateInputValue(new Date())}&to=${toDateInputValue(new Date(Date.now() + 7 * 86400000))}`}
+              <div
                 style={{
-                  display: "block",
-                  color: "inherit",
-                  textDecoration: "none",
-                  fontWeight: 700,
+                  display: "flex",
+                  flexWrap: "wrap",
+                  gap: 10,
+                  alignItems: "stretch",
                 }}
               >
-                <div
+                <Link
+                  href={`/scadenze?from=${toDateInputValue(new Date())}&to=${toDateInputValue(new Date(Date.now() + 7 * 86400000))}`}
                   style={{
-                    display: "grid",
-                    gap: 10,
+                    flex: "1 1 360px",
+                    minWidth: 280,
+                    padding: "12px 14px",
+                    borderRadius: 12,
+                    border: "1px solid #fcd34d",
+                    background: "rgba(255,255,255,0.62)",
+                    color: "inherit",
+                    textDecoration: "none",
                   }}
                 >
                   <div
                     style={{
-                      display: "grid",
-                      gap: 8,
+                      display: "flex",
+                      flexWrap: "wrap",
+                      gap: 18,
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      height: "100%",
                     }}
                   >
-                    <div style={{ fontSize: 13, fontWeight: 900, letterSpacing: 0.4 }}>SCADENZE IN ARRIVO</div>
-                    <div style={{ fontSize: 32, lineHeight: 1.05 }}>⚠ {scadenzeEntro7Count}</div>
-                    <div style={{ fontSize: 14, fontWeight: 700 }}>scadenze entro 7 giorni</div>
+                    <div style={{ display: "grid", gap: 6 }}>
+                      <div style={{ fontSize: 13, fontWeight: 900, letterSpacing: 0.4 }}>SCADENZE IN ARRIVO</div>
+                      <div style={{ fontSize: 32, lineHeight: 1.05 }}>⚠ {scadenzeEntro7Count}</div>
+                      <div style={{ fontSize: 14, fontWeight: 700 }}>scadenze entro 7 giorni</div>
+                    </div>
                     <div
                       style={{
                         display: "grid",
                         gap: 4,
                         fontSize: 13,
                         fontWeight: 700,
+                        minWidth: 120,
                       }}
                     >
                       <div>Garanzie: {scadenzeEntro7Breakdown.garanzie}</div>
@@ -1492,16 +1505,7 @@ export default function Page() {
                       <div>Tagliandi: {scadenzeEntro7Breakdown.tagliandi}</div>
                     </div>
                   </div>
-                </div>
-              </Link>
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "repeat(2, minmax(180px, 1fr))",
-                  gap: 10,
-                  marginTop: 14,
-                }}
-              >
+                </Link>
                 <Link
                   href="/admin/interventi-da-chiudere"
                   style={{
@@ -1511,6 +1515,8 @@ export default function Page() {
                     background: "rgba(255,255,255,0.62)",
                     color: "inherit",
                     textDecoration: "none",
+                    minWidth: 180,
+                    flex: "0 1 190px",
                   }}
                 >
                   <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: 0.2, color: "#6b7280" }}>
@@ -1527,6 +1533,8 @@ export default function Page() {
                     background: "rgba(255,255,255,0.62)",
                     color: "inherit",
                     textDecoration: "none",
+                    minWidth: 180,
+                    flex: "0 1 190px",
                   }}
                 >
                   <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: 0.2, color: "#6b7280" }}>
@@ -1543,6 +1551,8 @@ export default function Page() {
                     background: "rgba(255,255,255,0.62)",
                     color: "inherit",
                     textDecoration: "none",
+                    minWidth: 180,
+                    flex: "0 1 190px",
                   }}
                 >
                   <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: 0.2, color: "#6b7280" }}>
@@ -1550,55 +1560,6 @@ export default function Page() {
                   </div>
                   <div style={{ marginTop: 6, fontSize: 24, fontWeight: 800 }}>{noleggiAttiviCount}</div>
                 </Link>
-                <div
-                  style={{
-                    padding: "10px 12px",
-                    borderRadius: 12,
-                    border: "1px solid #fcd34d",
-                    background: "rgba(255,255,255,0.62)",
-                    display: "grid",
-                    gap: 8,
-                  }}
-                >
-                  <button
-                    type="button"
-                    onClick={() => setShowMissingEmailInfo((prev) => !prev)}
-                    style={{
-                      display: "grid",
-                      gap: 6,
-                      justifyItems: "start",
-                      padding: 0,
-                      border: 0,
-                      background: "transparent",
-                      color: "inherit",
-                      cursor: "pointer",
-                      textAlign: "left",
-                    }}
-                    aria-expanded={showMissingEmailInfo}
-                    aria-controls="dashboard-missing-email-info"
-                  >
-                    <span style={{ fontSize: 12, fontWeight: 800, letterSpacing: 0.2, color: "#6b7280" }}>
-                      CLIENTI SENZA EMAIL
-                    </span>
-                    <span style={{ fontSize: 24, fontWeight: 800 }}>{clientiMissingEmailCount}</span>
-                  </button>
-                  {showMissingEmailInfo ? (
-                    <div
-                      id="dashboard-missing-email-info"
-                      style={{
-                        fontSize: 12,
-                        lineHeight: 1.45,
-                        color: "#92400e",
-                        background: "#fffbeb",
-                        border: "1px solid #fcd34d",
-                        borderRadius: 10,
-                        padding: "8px 10px",
-                      }}
-                    >
-                      {clientiMissingEmailCount} clienti senza email: gli avvisi automatici al cliente non possono partire.
-                    </div>
-                  ) : null}
-                </div>
               </div>
             </div>
           )}
