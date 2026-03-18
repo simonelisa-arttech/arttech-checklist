@@ -450,6 +450,7 @@ export default function Page() {
     tagliandi: 0,
   });
   const [clientiMissingEmailCount, setClientiMissingEmailCount] = useState(0);
+  const [showMissingEmailInfo, setShowMissingEmailInfo] = useState(false);
   const [expandedSaasNoteId, setExpandedSaasNoteId] = useState<string | null>(null);
   const [serialsByChecklistId, setSerialsByChecklistId] = useState<
     Record<string, { seriali: string[] }>
@@ -1420,21 +1421,47 @@ export default function Page() {
             </Link>
           )}
           {clientiMissingEmailCount > 0 && (
-            <div
-              style={{
-                marginTop: scadenzeEntro7Count > 0 ? 10 : 0,
-                padding: "12px 14px",
-                borderRadius: 12,
-                border: "1px solid #f59e0b",
-                background: "#fffbeb",
-                color: "#92400e",
-                fontWeight: 700,
-              }}
-            >
-              <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: 0.3 }}>EMAIL CLIENTI MANCANTI</div>
-              <div style={{ marginTop: 4, fontSize: 20 }}>
-                ⚠ {clientiMissingEmailCount} clienti senza email → avvisi automatici disattivati
-              </div>
+            <div style={{ marginTop: scadenzeEntro7Count > 0 ? 10 : 0, display: "grid", gap: 8, justifyItems: "start" }}>
+              <button
+                type="button"
+                onClick={() => setShowMissingEmailInfo((prev) => !prev)}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 8,
+                  padding: "8px 12px",
+                  borderRadius: 999,
+                  border: "1px solid #f59e0b",
+                  background: "#fff7ed",
+                  color: "#9a3412",
+                  fontSize: 13,
+                  fontWeight: 700,
+                  cursor: "pointer",
+                  boxShadow: "0 1px 4px rgba(154,52,18,0.08)",
+                }}
+                aria-expanded={showMissingEmailInfo}
+                aria-controls="missing-email-info"
+              >
+                <span aria-hidden="true">⚠</span>
+                <span>{clientiMissingEmailCount} clienti senza email</span>
+              </button>
+              {showMissingEmailInfo && (
+                <div
+                  id="missing-email-info"
+                  style={{
+                    maxWidth: 520,
+                    padding: "10px 12px",
+                    borderRadius: 12,
+                    border: "1px solid #fdba74",
+                    background: "#fffaf0",
+                    color: "#9a3412",
+                    fontSize: 13,
+                    lineHeight: 1.45,
+                  }}
+                >
+                  {clientiMissingEmailCount} clienti senza email: gli avvisi automatici al cliente non possono partire.
+                </div>
+              )}
             </div>
           )}
           {loading ? (
