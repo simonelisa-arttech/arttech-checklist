@@ -232,10 +232,10 @@ export async function GET(request: Request) {
   const qNorm = normalizeDenominazione(q);
   const includeInactive = url.searchParams.get("include_inactive") === "1";
 
-  const buildQuery = () => {
+  const buildQuery = (selectClause: string) => {
     let query = supabase
       .from("clienti_anagrafica")
-      .select(CLIENTI_BASE_SELECT)
+      .select(selectClause)
       .order("denominazione", { ascending: true })
       .range(offset, offset + limit - 1);
 
@@ -259,16 +259,58 @@ export async function GET(request: Request) {
     return query;
   };
 
-  let { data, error } = await buildQuery();
+  let selectClause = CLIENTI_SELECT_WITH_OPTIONALS;
+  let missingScadenzeDeliveryMode = false;
+  let missingEmailSecondarie = false;
+  let missingDriveUrl = false;
+  let data: any[] | null = null;
+  let error: any = null;
+
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    const result = await buildQuery(selectClause);
+    data = result.data;
+    error = result.error;
+    if (!error) break;
+
+    const msg = String(error?.message || "").toLowerCase();
+    if (!msg.includes("does not exist") && !msg.includes("column") && !msg.includes("schema cache")) {
+      break;
+    }
+
+    let nextSelect = selectClause;
+    if (isMissingClientiScadenzeDeliveryModeColumnError(error) && nextSelect.includes("scadenze_delivery_mode")) {
+      missingScadenzeDeliveryMode = true;
+      nextSelect = stripSelectColumn(nextSelect, "scadenze_delivery_mode");
+    }
+    if (isMissingClientiEmailSecondarieColumnError(error) && nextSelect.includes("email_secondarie")) {
+      missingEmailSecondarie = true;
+      nextSelect = stripSelectColumn(nextSelect, "email_secondarie");
+    }
+    if (isMissingClientiDriveColumnError(error) && nextSelect.includes("drive_url")) {
+      missingDriveUrl = true;
+      nextSelect = stripSelectColumn(nextSelect, "drive_url");
+    }
+    if (nextSelect === selectClause) break;
+    selectClause = nextSelect || CLIENTI_BASE_SELECT;
+  }
+
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
-  try {
-    data = await enrichClientiOptionalFields(supabase, data || []);
-  } catch (enrichError: any) {
-    return NextResponse.json({ error: enrichError.message }, { status: 500 });
-  }
-  return NextResponse.json({ ok: true, data: data || [] });
+
+  const normalized = ((data || []) as any[]).map((row) =>
+    normalizeClienteRow(
+      {
+        ...row,
+        email_secondarie: missingEmailSecondarie ? null : row?.email_secondarie ?? null,
+        drive_url: missingDriveUrl ? null : row?.drive_url ?? null,
+        scadenze_delivery_mode: missingScadenzeDeliveryMode ? null : row?.scadenze_delivery_mode ?? null,
+      },
+      { missingScadenzeDeliveryMode }
+    )
+  );
+
+  return NextResponse.json({ ok: true, data: normalized });
 }
 
 export async function POST(request: Request) {
