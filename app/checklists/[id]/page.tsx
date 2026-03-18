@@ -189,6 +189,17 @@ function isMissingClienteEmailSecondarieColumnError(error: any) {
   return String(error?.message || "").toLowerCase().includes("email_secondarie");
 }
 
+function isOptionalClienteAnagraficaColumnReadError(error: any) {
+  const msg = String(error?.message || "").toLowerCase();
+  return (
+    msg.includes("does not exist") ||
+    msg.includes("column") ||
+    msg.includes("schema cache") ||
+    isMissingClienteScadenzeDeliveryModeColumnError(error) ||
+    isMissingClienteEmailSecondarieColumnError(error)
+  );
+}
+
 type ChecklistTaskDocument = {
   id: string;
   checklist_id: string;
@@ -3089,11 +3100,7 @@ function buildFormData(c: Checklist): FormData {
         filter: { id: headChecklist.cliente_id },
         limit: 1,
       });
-      if (
-        clienteErr &&
-        (isMissingClienteScadenzeDeliveryModeColumnError(clienteErr) ||
-          isMissingClienteEmailSecondarieColumnError(clienteErr))
-      ) {
+      if (clienteErr && isOptionalClienteAnagraficaColumnReadError(clienteErr)) {
         const fallback = await db<any[]>({
           table: "clienti_anagrafica",
           op: "select",
