@@ -1396,12 +1396,9 @@ export default function Page() {
               {dashboardLoadError}
             </div>
           )}
-          {(scadenzeEntro7Count > 0 || clientiMissingEmailCount > 0) && (
+          {scadenzeEntro7Count > 0 && (
             <div
               style={{
-                display: "grid",
-                gridTemplateColumns: "minmax(0, 2.2fr) minmax(220px, 1fr)",
-                gap: 16,
                 padding: "12px 14px",
                 borderRadius: 12,
                 border: "1px solid #f59e0b",
@@ -1409,83 +1406,44 @@ export default function Page() {
                 color: "#92400e",
               }}
             >
-              {scadenzeEntro7Count > 0 ? (
-                <Link
-                  href={`/scadenze?from=${toDateInputValue(new Date())}&to=${toDateInputValue(new Date(Date.now() + 7 * 86400000))}`}
-                  style={{
-                    display: "block",
-                    minWidth: 0,
-                    color: "inherit",
-                    textDecoration: "none",
-                    fontWeight: 700,
-                  }}
-                >
+              <Link
+                href={`/scadenze?from=${toDateInputValue(new Date())}&to=${toDateInputValue(new Date(Date.now() + 7 * 86400000))}`}
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "minmax(0, 1.8fr) minmax(180px, 0.9fr)",
+                  gap: 16,
+                  alignItems: "center",
+                  minWidth: 0,
+                  color: "inherit",
+                  textDecoration: "none",
+                  fontWeight: 700,
+                }}
+              >
+                <div style={{ minWidth: 0 }}>
                   <div style={{ fontSize: 13, fontWeight: 900, letterSpacing: 0.4 }}>SCADENZE IN ARRIVO</div>
-                  <div style={{ marginTop: 4, fontSize: 22 }}>
-                    ⚠ {scadenzeEntro7Count} scadenze entro 7 giorni
+                  <div style={{ marginTop: 4, fontSize: 28, lineHeight: 1.1 }}>
+                    ⚠ {scadenzeEntro7Count}
                   </div>
-                  <div style={{ marginTop: 6, fontSize: 12, fontWeight: 600, opacity: 0.9 }}>
-                    Garanzie: {scadenzeEntro7Breakdown.garanzie} · Licenze: {scadenzeEntro7Breakdown.licenze} ·
-                    {" "}Tagliandi: {scadenzeEntro7Breakdown.tagliandi}
+                  <div style={{ marginTop: 2, fontSize: 14, fontWeight: 700 }}>
+                    scadenze entro 7 giorni
                   </div>
-                </Link>
-              ) : null}
-
-              {clientiMissingEmailCount > 0 ? (
+                </div>
                 <div
                   style={{
                     display: "grid",
-                    gap: 8,
+                    gap: 6,
                     alignContent: "start",
                     justifyItems: "start",
                     minWidth: 0,
+                    fontSize: 13,
+                    fontWeight: 700,
                   }}
                 >
-                  <div style={{ fontSize: 12, fontWeight: 900, letterSpacing: 0.3 }}>
-                    CLIENTI SENZA EMAIL
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setShowMissingEmailInfo((prev) => !prev)}
-                    style={{
-                      display: "inline-flex",
-                      alignItems: "center",
-                      gap: 8,
-                      padding: "6px 10px",
-                      borderRadius: 999,
-                      border: "1px solid #fdba74",
-                      background: "#fff7ed",
-                      color: "#9a3412",
-                      fontSize: 12,
-                      fontWeight: 700,
-                      cursor: "pointer",
-                      whiteSpace: "nowrap",
-                    }}
-                    aria-expanded={showMissingEmailInfo}
-                    aria-controls="missing-email-info"
-                  >
-                    <span aria-hidden="true">⚠</span>
-                    <span>{clientiMissingEmailCount} clienti senza email</span>
-                  </button>
-                  {showMissingEmailInfo && (
-                    <div
-                      id="missing-email-info"
-                      style={{
-                        maxWidth: 520,
-                        padding: "10px 12px",
-                        borderRadius: 12,
-                        border: "1px solid #fdba74",
-                        background: "#fffaf0",
-                        color: "#9a3412",
-                        fontSize: 13,
-                        lineHeight: 1.45,
-                      }}
-                    >
-                      {clientiMissingEmailCount} clienti senza email: gli avvisi automatici al cliente non possono partire.
-                    </div>
-                  )}
+                  <div>Garanzie: {scadenzeEntro7Breakdown.garanzie}</div>
+                  <div>Licenze: {scadenzeEntro7Breakdown.licenze}</div>
+                  <div>Tagliandi: {scadenzeEntro7Breakdown.tagliandi}</div>
                 </div>
-              ) : null}
+              </Link>
             </div>
           )}
           {loading ? (
