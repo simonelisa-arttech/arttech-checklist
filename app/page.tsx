@@ -1396,72 +1396,82 @@ export default function Page() {
               {dashboardLoadError}
             </div>
           )}
-          {scadenzeEntro7Count > 0 && (
-            <Link
-              href={`/scadenze?from=${toDateInputValue(new Date())}&to=${toDateInputValue(new Date(Date.now() + 7 * 86400000))}`}
+          {(scadenzeEntro7Count > 0 || clientiMissingEmailCount > 0) && (
+            <div
               style={{
-                display: "block",
+                display: "grid",
+                gap: 12,
                 padding: "12px 14px",
                 borderRadius: 12,
                 border: "1px solid #f59e0b",
                 background: "#fffbeb",
                 color: "#92400e",
-                textDecoration: "none",
-                fontWeight: 700,
               }}
             >
-              <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: 0.3 }}>SCADENZE IN ARRIVO</div>
-              <div style={{ marginTop: 4, fontSize: 20 }}>
-                ⚠ {scadenzeEntro7Count} scadenze entro 7 giorni
-              </div>
-              <div style={{ marginTop: 6, fontSize: 12, fontWeight: 600, opacity: 0.9 }}>
-                Garanzie: {scadenzeEntro7Breakdown.garanzie} · Licenze: {scadenzeEntro7Breakdown.licenze} ·
-                {" "}Tagliandi: {scadenzeEntro7Breakdown.tagliandi}
-              </div>
-            </Link>
-          )}
-          {clientiMissingEmailCount > 0 && (
-            <div style={{ marginTop: scadenzeEntro7Count > 0 ? 10 : 0, display: "grid", gap: 8, justifyItems: "start" }}>
-              <button
-                type="button"
-                onClick={() => setShowMissingEmailInfo((prev) => !prev)}
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 8,
-                  padding: "8px 12px",
-                  borderRadius: 999,
-                  border: "1px solid #f59e0b",
-                  background: "#fff7ed",
-                  color: "#9a3412",
-                  fontSize: 13,
-                  fontWeight: 700,
-                  cursor: "pointer",
-                  boxShadow: "0 1px 4px rgba(154,52,18,0.08)",
-                }}
-                aria-expanded={showMissingEmailInfo}
-                aria-controls="missing-email-info"
-              >
-                <span aria-hidden="true">⚠</span>
-                <span>{clientiMissingEmailCount} clienti senza email</span>
-              </button>
-              {showMissingEmailInfo && (
-                <div
-                  id="missing-email-info"
+              {scadenzeEntro7Count > 0 ? (
+                <Link
+                  href={`/scadenze?from=${toDateInputValue(new Date())}&to=${toDateInputValue(new Date(Date.now() + 7 * 86400000))}`}
                   style={{
-                    maxWidth: 520,
-                    padding: "10px 12px",
-                    borderRadius: 12,
-                    border: "1px solid #fdba74",
-                    background: "#fffaf0",
-                    color: "#9a3412",
-                    fontSize: 13,
-                    lineHeight: 1.45,
+                    display: "block",
+                    color: "inherit",
+                    textDecoration: "none",
+                    fontWeight: 700,
                   }}
                 >
-                  {clientiMissingEmailCount} clienti senza email: gli avvisi automatici al cliente non possono partire.
+                  <div style={{ fontSize: 13, fontWeight: 900, letterSpacing: 0.4 }}>SCADENZE IN ARRIVO</div>
+                  <div style={{ marginTop: 4, fontSize: 22 }}>
+                    ⚠ {scadenzeEntro7Count} scadenze entro 7 giorni
+                  </div>
+                  <div style={{ marginTop: 6, fontSize: 12, fontWeight: 600, opacity: 0.9 }}>
+                    Garanzie: {scadenzeEntro7Breakdown.garanzie} · Licenze: {scadenzeEntro7Breakdown.licenze} ·
+                    {" "}Tagliandi: {scadenzeEntro7Breakdown.tagliandi}
+                  </div>
+                </Link>
+              ) : null}
+
+              {clientiMissingEmailCount > 0 ? (
+                <div style={{ display: "grid", gap: 8, justifyItems: "start" }}>
+                  <button
+                    type="button"
+                    onClick={() => setShowMissingEmailInfo((prev) => !prev)}
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      gap: 8,
+                      padding: "6px 10px",
+                      borderRadius: 999,
+                      border: "1px solid #fdba74",
+                      background: "#fff7ed",
+                      color: "#9a3412",
+                      fontSize: 12,
+                      fontWeight: 700,
+                      cursor: "pointer",
+                    }}
+                    aria-expanded={showMissingEmailInfo}
+                    aria-controls="missing-email-info"
+                  >
+                    <span aria-hidden="true">⚠</span>
+                    <span>{clientiMissingEmailCount} clienti senza email</span>
+                  </button>
+                  {showMissingEmailInfo && (
+                    <div
+                      id="missing-email-info"
+                      style={{
+                        maxWidth: 520,
+                        padding: "10px 12px",
+                        borderRadius: 12,
+                        border: "1px solid #fdba74",
+                        background: "#fffaf0",
+                        color: "#9a3412",
+                        fontSize: 13,
+                        lineHeight: 1.45,
+                      }}
+                    >
+                      {clientiMissingEmailCount} clienti senza email: gli avvisi automatici al cliente non possono partire.
+                    </div>
+                  )}
                 </div>
-              )}
+              ) : null}
             </div>
           )}
           {loading ? (
