@@ -135,6 +135,19 @@ function normalizeScadenzeDeliveryMode(value?: string | null) {
     : "AUTO_CLIENTE";
 }
 
+function isMissingClientiScadenzeDeliveryModeColumnError(error: any) {
+  return String(error?.message || "").toLowerCase().includes("scadenze_delivery_mode");
+}
+
+function stripSelectColumn(selectClause: string, columnName: string) {
+  return selectClause
+    .split(",")
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .filter((part) => part !== columnName)
+    .join(",");
+}
+
 async function getSystemOperatoreId(supabase: any) {
   type RowId = { id: string };
   const { data: row, error } = await supabase
@@ -253,10 +266,29 @@ export async function GET(request: Request) {
   const emailByClienteId = new Map<string, string>();
   const deliveryModeByClienteId = new Map<string, "AUTO_CLIENTE" | "MANUALE_INTERNO">();
   if (clienteIds.length > 0) {
-    const { data: clientiRows } = await supabase
-      .from("clienti_anagrafica")
-      .select("id, email, scadenze_delivery_mode")
-      .in("id", clienteIds);
+    let selectClause = "id, email, scadenze_delivery_mode";
+    let clientiRows: ClientePreferenceRow[] | null = null;
+    let clientiErr: any = null;
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const result = await supabase
+        .from("clienti_anagrafica")
+        .select(selectClause)
+        .in("id", clienteIds);
+      clientiRows = (result.data || []) as ClientePreferenceRow[];
+      clientiErr = result.error;
+      if (!clientiErr) break;
+      if (
+        isMissingClientiScadenzeDeliveryModeColumnError(clientiErr) &&
+        selectClause.includes("scadenze_delivery_mode")
+      ) {
+        selectClause = stripSelectColumn(selectClause, "scadenze_delivery_mode") || "id, email";
+        continue;
+      }
+      break;
+    }
+    if (clientiErr) {
+      return NextResponse.json({ error: clientiErr.message }, { status: 500 });
+    }
     for (const row of (clientiRows || []) as ClientePreferenceRow[]) {
       const clienteId = String(row.id || "").trim();
       if (!clienteId) continue;

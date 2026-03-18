@@ -192,6 +192,22 @@ export default function RenewalsAlertModal({
           </select>
         </label>
 
+        <div
+          style={{
+            marginBottom: 12,
+            padding: "10px 12px",
+            borderRadius: 10,
+            border: customerEmailValid ? "1px solid #e5e7eb" : "1px solid #f59e0b",
+            background: customerEmailValid ? "#f9fafb" : "#fffbeb",
+            fontSize: 12,
+            color: customerEmailValid ? "#374151" : "#92400e",
+          }}
+        >
+          <strong>Email cliente da anagrafica:</strong>{" "}
+          {customerEmailValid ? customerEmail : "mancante o non valida"}
+          {!customerEmailValid ? " · modifica dalla scheda cliente." : ""}
+        </div>
+
         {mode === "MANUALE" ? (
           <>
             <div style={{ display: "flex", gap: 12, marginBottom: 10, fontSize: 12, flexWrap: "wrap" }}>
@@ -246,7 +262,7 @@ export default function RenewalsAlertModal({
 
             {toCliente && (
               <div style={{ marginTop: -4, marginBottom: 10, fontSize: 12, opacity: 0.8 }}>
-                Cliente {isValidEmail(customerEmail) ? "selezionato" : "senza email valida in anagrafica"}
+                Cliente {customerEmailValid ? "selezionato" : "senza email valida in anagrafica"}
               </div>
             )}
 

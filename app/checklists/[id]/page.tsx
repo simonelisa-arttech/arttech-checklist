@@ -170,6 +170,10 @@ type ChecklistDocument = {
   uploaded_by_operatore: string | null;
 };
 
+function isMissingClienteScadenzeDeliveryModeColumnError(error: any) {
+  return String(error?.message || "").toLowerCase().includes("scadenze_delivery_mode");
+}
+
 type ChecklistTaskDocument = {
   id: string;
   checklist_id: string;
@@ -2924,13 +2928,27 @@ function buildFormData(c: Checklist): FormData {
     setChecklistClienteEmail(null);
     setChecklistCustomerDeliveryMode("AUTO_CLIENTE");
     if (headChecklist.cliente_id) {
-      const { data: clienteRows } = await db<any[]>({
+      let { data: clienteRows, error: clienteErr } = await db<any[]>({
         table: "clienti_anagrafica",
         op: "select",
         select: "email, scadenze_delivery_mode",
         filter: { id: headChecklist.cliente_id },
         limit: 1,
       });
+      if (clienteErr && isMissingClienteScadenzeDeliveryModeColumnError(clienteErr)) {
+        const fallback = await db<any[]>({
+          table: "clienti_anagrafica",
+          op: "select",
+          select: "email",
+          filter: { id: headChecklist.cliente_id },
+          limit: 1,
+        });
+        clienteRows = fallback.data;
+        clienteErr = fallback.error;
+      }
+      if (clienteErr) {
+        console.error("Errore caricamento anagrafica cliente checklist", clienteErr);
+      }
       const clienteRow = (clienteRows?.[0] as any) || null;
       const mail = String(clienteRow?.email || "").trim();
       setChecklistClienteEmail(mail && mail.includes("@") ? mail : null);

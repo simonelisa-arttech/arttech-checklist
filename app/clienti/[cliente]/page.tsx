@@ -801,6 +801,8 @@ export default function ClientePage({
   const [editScadenzaErr, setEditScadenzaErr] = useState<string | null>(null);
   const [alertTemplates, setAlertTemplates] = useState<AlertMessageTemplate[]>([]);
   const [clienteAnagraficaEmail, setClienteAnagraficaEmail] = useState<string | null>(null);
+  const [clienteAnagraficaEmailDraft, setClienteAnagraficaEmailDraft] = useState("");
+  const [clienteAnagraficaEmailSaving, setClienteAnagraficaEmailSaving] = useState(false);
   const [clienteAnagraficaId, setClienteAnagraficaId] = useState<string | null>(null);
   const [clienteDriveUrl, setClienteDriveUrl] = useState<string | null>(null);
   const [clienteDriveDraft, setClienteDriveDraft] = useState("");
@@ -1020,6 +1022,42 @@ export default function ClientePage({
       showToast(`❌ Salvataggio preferenza invio scadenze fallito: ${briefError(err)}`, "error");
     } finally {
       setClienteScadenzeDeliverySaving(false);
+    }
+  }
+
+  async function saveClienteEmail() {
+    if (!clienteAnagraficaId) {
+      showToast("❌ Cliente anagrafica non disponibile", "error");
+      return;
+    }
+    const nextValue = clienteAnagraficaEmailDraft.trim();
+    if (nextValue && !nextValue.includes("@")) {
+      showToast("❌ Inserisci un'email cliente valida oppure lascia vuoto", "error");
+      return;
+    }
+    setClienteAnagraficaEmailSaving(true);
+    try {
+      const res = await fetch("/api/clienti", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          id: clienteAnagraficaId,
+          email: nextValue || null,
+        }),
+      });
+      const json = await res.json().catch(() => ({} as any));
+      if (!res.ok || !json?.ok) {
+        throw new Error(json?.error || "Errore salvataggio email cliente");
+      }
+      const savedEmail = String(json?.data?.email || "").trim();
+      setClienteAnagraficaEmail(savedEmail && savedEmail.includes("@") ? savedEmail : null);
+      setClienteAnagraficaEmailDraft(savedEmail);
+      showToast("✅ Email cliente salvata", "success");
+    } catch (err: any) {
+      showToast(`❌ Salvataggio email cliente fallito: ${briefError(err)}`, "error");
+    } finally {
+      setClienteAnagraficaEmailSaving(false);
     }
   }
 
@@ -1391,6 +1429,7 @@ export default function ClientePage({
       let displayCliente = decoded.trim();
       setCliente(displayCliente);
       setClienteAnagraficaEmail(null);
+      setClienteAnagraficaEmailDraft("");
       setClienteAnagraficaId(null);
       setClienteDriveUrl(null);
       setClienteDriveDraft("");
@@ -1440,6 +1479,7 @@ export default function ClientePage({
           }
           const mail = String((anagData as any)?.email || "").trim();
           setClienteAnagraficaEmail(mail && mail.includes("@") ? mail : null);
+          setClienteAnagraficaEmailDraft(mail);
           const driveUrl = String((anagData as any)?.drive_url || "").trim();
           setClienteDriveUrl(isValidHttpUrl(driveUrl) ? driveUrl : null);
           setClienteDriveDraft(isValidHttpUrl(driveUrl) ? driveUrl : "");
@@ -5481,6 +5521,52 @@ export default function ClientePage({
         }}
       >
         <h2 style={{ margin: 0 }}>Cliente: {cliente}</h2>
+      </div>
+      <div
+        style={{
+          marginTop: 4,
+          padding: "10px 12px",
+          borderRadius: 12,
+          border: "1px solid #e5e7eb",
+          background: "white",
+          display: "flex",
+          alignItems: "center",
+          gap: 10,
+          flexWrap: "wrap",
+        }}
+      >
+        <strong style={{ fontSize: 13 }}>Email cliente</strong>
+        <input
+          value={clienteAnagraficaEmailDraft}
+          onChange={(e) => setClienteAnagraficaEmailDraft(e.target.value)}
+          placeholder="Nessuna email cliente"
+          style={{
+            flex: "1 1 320px",
+            minWidth: 240,
+            padding: "8px 10px",
+            borderRadius: 8,
+            border: "1px solid #d1d5db",
+          }}
+        />
+        <button
+          type="button"
+          onClick={saveClienteEmail}
+          disabled={clienteAnagraficaEmailSaving}
+          style={{
+            padding: "8px 12px",
+            borderRadius: 8,
+            border: "1px solid #111",
+            background: "#111",
+            color: "white",
+            cursor: "pointer",
+            opacity: clienteAnagraficaEmailSaving ? 0.7 : 1,
+          }}
+        >
+          {clienteAnagraficaEmailSaving ? "Salvataggio..." : "Salva"}
+        </button>
+        <span style={{ fontSize: 12, opacity: 0.7 }}>
+          Email usata come source of truth per gli avvisi cliente di Scadenze e Rinnovi.
+        </span>
       </div>
       <div
         style={{
