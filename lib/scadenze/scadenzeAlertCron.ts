@@ -261,16 +261,22 @@ export async function loadClienteDeliveryPreferences(supabase: any) {
       }
       return { byId, byName };
     }
+    const msg = String(error.message || "").toLowerCase();
+    const isOptionalColumnReadError =
+      msg.includes("does not exist") || msg.includes("column") || msg.includes("schema cache");
+    if (!isOptionalColumnReadError) {
+      throw error;
+    }
     if (
       selectClause.includes("email_secondarie") &&
-      String(error.message || "").toLowerCase().includes("email_secondarie")
+      msg.includes("email_secondarie")
     ) {
       selectClause = "id, denominazione, email, scadenze_delivery_mode";
       continue;
     }
     if (
       selectClause.includes("scadenze_delivery_mode") &&
-      String(error.message || "").toLowerCase().includes("scadenze_delivery_mode")
+      msg.includes("scadenze_delivery_mode")
     ) {
       selectClause = "id, denominazione, email";
       continue;

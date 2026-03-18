@@ -300,6 +300,12 @@ export async function GET(request: Request) {
         }));
       }
       if (!clientiErr) break;
+      const msg = String(clientiErr?.message || "").toLowerCase();
+      const isOptionalColumnReadError =
+        msg.includes("does not exist") || msg.includes("column") || msg.includes("schema cache");
+      if (!isOptionalColumnReadError) {
+        break;
+      }
       if (
         isMissingClientiEmailSecondarieColumnError(clientiErr) &&
         selectClause.includes("email_secondarie")
