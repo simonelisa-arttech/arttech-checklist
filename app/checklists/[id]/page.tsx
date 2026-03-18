@@ -578,6 +578,21 @@ function getChecklistProjectStatusLabel(project: {
   noleggio_vendita?: string | null;
   data_disinstallazione?: string | null;
 }) {
+  const { isNoleggioAttivo } = getChecklistNoleggioState(project);
+  const raw = String(project.stato_progetto || "")
+    .trim()
+    .toUpperCase()
+    .replace(/\s+/g, "_");
+  if (raw === "CONSEGNATO" && isNoleggioAttivo) return "CONSEGNATO + IN_CORSO";
+  if (raw === "IN_CORSO" || raw === "IN_LAVORAZIONE") return "IN_LAVORAZIONE";
+  return raw || "—";
+}
+
+function getChecklistNoleggioState(project: {
+  stato_progetto?: string | null;
+  noleggio_vendita?: string | null;
+  data_disinstallazione?: string | null;
+}) {
   const raw = String(project.stato_progetto || "")
     .trim()
     .toUpperCase()
@@ -585,11 +600,18 @@ function getChecklistProjectStatusLabel(project: {
   const isNoleggio = isNoleggioValue(project.noleggio_vendita);
   const disinstallazione = parseLocalDay(project.data_disinstallazione);
   const today = startOfToday();
-  const noleggioAttivo = isNoleggio && (!disinstallazione || disinstallazione >= today);
+  const inSevenDays = new Date(today);
+  inSevenDays.setDate(inSevenDays.getDate() + 7);
 
-  if (raw === "CONSEGNATO" && noleggioAttivo) return "CONSEGNATO + IN_CORSO";
-  if (raw === "IN_CORSO" || raw === "IN_LAVORAZIONE") return "IN_LAVORAZIONE";
-  return raw || "—";
+  const isNoleggioAttivo =
+    raw === "CONSEGNATO" && isNoleggio && (!disinstallazione || disinstallazione >= today);
+  const disinstallazioneImminente =
+    isNoleggioAttivo &&
+    !!disinstallazione &&
+    disinstallazione >= today &&
+    disinstallazione <= inSevenDays;
+
+  return { isNoleggioAttivo, disinstallazioneImminente };
 }
 
 function getExpiryStatus(value?: string | null): "ATTIVA" | "SCADUTA" | "—" {
@@ -5664,7 +5686,41 @@ function buildFormData(c: Checklist): FormData {
             />
             <FieldRow
               label="Stato progetto"
-              view={getChecklistProjectStatusLabel(checklist)}
+              view={
+                <div style={{ display: "flex", flexDirection: "column", gap: 6, alignItems: "flex-start" }}>
+                  <span>{getChecklistProjectStatusLabel(checklist)}</span>
+                  {getChecklistNoleggioState(checklist).isNoleggioAttivo ? (
+                    <span
+                      style={{
+                        display: "inline-block",
+                        padding: "2px 8px",
+                        borderRadius: 999,
+                        fontSize: 12,
+                        fontWeight: 700,
+                        background: "#dbeafe",
+                        color: "#1d4ed8",
+                      }}
+                    >
+                      NOLEGGIO ATTIVO
+                    </span>
+                  ) : null}
+                  {getChecklistNoleggioState(checklist).disinstallazioneImminente ? (
+                    <span
+                      style={{
+                        display: "inline-block",
+                        padding: "2px 8px",
+                        borderRadius: 999,
+                        fontSize: 12,
+                        fontWeight: 700,
+                        background: "#ffedd5",
+                        color: "#c2410c",
+                      }}
+                    >
+                      ⚠ Disinstallazione imminente
+                    </span>
+                  ) : null}
+                </div>
+              }
               edit={
                 isEdit ? (
                   <select

@@ -91,7 +91,22 @@ function getProjectStatusLabel(project: {
   noleggio_vendita?: string | null;
   data_disinstallazione?: string | null;
 }) {
+  const { isNoleggioAttivo } = getProjectNoleggioState(project);
   const raw = String(project.stato_progetto || "")
+    .trim()
+    .toUpperCase()
+    .replace(/\s+/g, "_");
+  if (raw === "CONSEGNATO" && isNoleggioAttivo) return "CONSEGNATO + IN_CORSO";
+  if (raw === "IN_CORSO" || raw === "IN_LAVORAZIONE") return "IN_LAVORAZIONE";
+  return raw || "—";
+}
+
+function getProjectNoleggioState(project: {
+  stato_progetto?: string | null;
+  noleggio_vendita?: string | null;
+  data_disinstallazione?: string | null;
+}) {
+  const stato = String(project.stato_progetto || "")
     .trim()
     .toUpperCase()
     .replace(/\s+/g, "_");
@@ -99,11 +114,18 @@ function getProjectStatusLabel(project: {
   const disinstallazione = parseLocalDay(project.data_disinstallazione);
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  const noleggioAttivo = isNoleggio && (!disinstallazione || disinstallazione >= today);
+  const inSevenDays = new Date(today);
+  inSevenDays.setDate(inSevenDays.getDate() + 7);
 
-  if (raw === "CONSEGNATO" && noleggioAttivo) return "CONSEGNATO + IN_CORSO";
-  if (raw === "IN_CORSO" || raw === "IN_LAVORAZIONE") return "IN_LAVORAZIONE";
-  return raw || "—";
+  const isNoleggioAttivo =
+    stato === "CONSEGNATO" && isNoleggio && (!disinstallazione || disinstallazione >= today);
+  const disinstallazioneImminente =
+    isNoleggioAttivo &&
+    !!disinstallazione &&
+    disinstallazione >= today &&
+    disinstallazione <= inSevenDays;
+
+  return { isNoleggioAttivo, disinstallazioneImminente };
 }
 
 function renderStatusBadge(value?: string | null) {
@@ -2411,7 +2433,39 @@ export default function Page() {
                           {c.licenze_dettaglio ?? "—"}
                         </td>
                         <td style={{ padding: "10px 12px", opacity: 0.85 }}>
-                          {getProjectStatusLabel(c)}
+                          <div style={{ display: "flex", flexDirection: "column", gap: 6, alignItems: "flex-start" }}>
+                            <span>{getProjectStatusLabel(c)}</span>
+                            {getProjectNoleggioState(c).isNoleggioAttivo ? (
+                              <span
+                                style={{
+                                  display: "inline-block",
+                                  padding: "2px 8px",
+                                  borderRadius: 999,
+                                  fontSize: 12,
+                                  fontWeight: 700,
+                                  background: "#dbeafe",
+                                  color: "#1d4ed8",
+                                }}
+                              >
+                                NOLEGGIO ATTIVO
+                              </span>
+                            ) : null}
+                            {getProjectNoleggioState(c).disinstallazioneImminente ? (
+                              <span
+                                style={{
+                                  display: "inline-block",
+                                  padding: "2px 8px",
+                                  borderRadius: 999,
+                                  fontSize: 12,
+                                  fontWeight: 700,
+                                  background: "#ffedd5",
+                                  color: "#c2410c",
+                                }}
+                              >
+                                ⚠ Disinstallazione imminente
+                              </span>
+                            ) : null}
+                          </div>
                         </td>
                         <td style={{ padding: "10px 12px" }}>{renderStatusBadge(c.documenti)}</td>
                         <td style={{ padding: "10px 12px" }}>{renderStatusBadge(c.sezione_1)}</td>

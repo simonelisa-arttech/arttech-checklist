@@ -11,6 +11,7 @@ function normalizeProjectStatus(value?: string | null): ProjectStatus | null {
     .trim()
     .toUpperCase()
     .replace(/\s+/g, "_");
+  if (raw === "IN_LAVORAZIONE") return "IN_CORSO";
   if (raw === "IN_CORSO") return "IN_CORSO";
   if (raw === "CONSEGNATO") return "CONSEGNATO";
   if (raw === "RIENTRATO") return "RIENTRATO";
@@ -70,7 +71,7 @@ export async function GET(request: Request) {
       m2_calcolati, m2_inclusi, m2_allocati,
       data_prevista, data_tassativa, tipo_impianto, impianto_indirizzo, impianto_codice, impianto_descrizione,
       dimensioni, impianto_quantita, numero_facce, passo, note, tipo_struttura,
-      noleggio_vendita, fine_noleggio, mercato, modello, stato_progetto, data_installazione_reale,
+      noleggio_vendita, fine_noleggio, data_disinstallazione, mercato, modello, stato_progetto, data_installazione_reale,
       garanzia_stato, garanzia_scadenza, created_at, updated_at
     `;
 
