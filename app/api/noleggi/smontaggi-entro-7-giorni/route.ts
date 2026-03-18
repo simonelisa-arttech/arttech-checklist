@@ -63,8 +63,13 @@ export async function GET(request: Request) {
         data_disinstallazione: missingDataDisinstallazione ? null : toIsoDay(raw.data_disinstallazione ?? null),
       };
     })
-    .filter((row) => row.data_disinstallazione && row.data_disinstallazione >= todayIso && row.data_disinstallazione <= inSevenDaysIso)
-    .sort((a, b) => {
+    .filter(
+      (row: any) =>
+        row.data_disinstallazione &&
+        row.data_disinstallazione >= todayIso &&
+        row.data_disinstallazione <= inSevenDaysIso
+    )
+    .sort((a: any, b: any) => {
       const byDate = String(a.data_disinstallazione).localeCompare(String(b.data_disinstallazione));
       if (byDate !== 0) return byDate;
       return `${a.cliente} ${a.nome_checklist}`.localeCompare(`${b.cliente} ${b.nome_checklist}`);
