@@ -1,6 +1,14 @@
 "use client";
 
-import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type CSSProperties,
+  type Dispatch,
+  type ReactNode,
+  type SetStateAction,
+} from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import ConfigMancante from "@/components/ConfigMancante";
@@ -60,6 +68,7 @@ type Checklist = {
   tipo_struttura: string | null;
   noleggio_vendita: string | null;
   fine_noleggio: string | null;
+  data_disinstallazione: string | null;
   mercato: string | null;
   modello: string | null;
   stato_progetto: string | null;
@@ -272,6 +281,7 @@ type FormData = {
   tipo_struttura: string;
   noleggio_vendita: string;
   fine_noleggio: string;
+  data_disinstallazione: string;
   mercato: string;
   modello: string;
   stato_progetto: string;
@@ -345,6 +355,20 @@ type CronoOperativiMeta = {
   commerciale_art_tech_nome?: string | null;
   commerciale_art_tech_contatto?: string | null;
 };
+
+type CronoOperativiFormState = {
+  personale_previsto: string;
+  mezzi: string;
+  descrizione_attivita: string;
+  indirizzo: string;
+  orario: string;
+  referente_cliente_nome: string;
+  referente_cliente_contatto: string;
+  commerciale_art_tech_nome: string;
+  commerciale_art_tech_contatto: string;
+};
+
+type CronoOperativiRowKind = "INSTALLAZIONE" | "DISINSTALLAZIONE";
 
 type AlertTemplate = {
   id: string;
@@ -519,7 +543,7 @@ function startOfToday() {
   return today;
 }
 
-const EMPTY_CRONO_OPERATIVI = {
+const EMPTY_CRONO_OPERATIVI: CronoOperativiFormState = {
   personale_previsto: "",
   mezzi: "",
   descrizione_attivita: "",
@@ -543,6 +567,10 @@ function extractCronoOperativi(meta?: CronoOperativiMeta | null) {
     commerciale_art_tech_nome: String(meta?.commerciale_art_tech_nome || ""),
     commerciale_art_tech_contatto: String(meta?.commerciale_art_tech_contatto || ""),
   };
+}
+
+function isNoleggioValue(value?: string | null) {
+  return String(value || "").trim().toUpperCase() === "NOLEGGIO";
 }
 
 function getExpiryStatus(value?: string | null): "ATTIVA" | "SCADUTA" | "—" {
@@ -1040,6 +1068,13 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
   const [cronoOperativiSaving, setCronoOperativiSaving] = useState(false);
   const [cronoOperativiError, setCronoOperativiError] = useState<string | null>(null);
   const [cronoOperativiNotice, setCronoOperativiNotice] = useState<string | null>(null);
+  const [cronoDisinstallazioneMeta, setCronoDisinstallazioneMeta] =
+    useState<CronoOperativiMeta | null>(null);
+  const [cronoDisinstallazioneForm, setCronoDisinstallazioneForm] =
+    useState<CronoOperativiFormState>(EMPTY_CRONO_OPERATIVI);
+  const [cronoDisinstallazioneSaving, setCronoDisinstallazioneSaving] = useState(false);
+  const [cronoDisinstallazioneError, setCronoDisinstallazioneError] = useState<string | null>(null);
+  const [cronoDisinstallazioneNotice, setCronoDisinstallazioneNotice] = useState<string | null>(null);
   const [rinnoviFilterDaAvvisare, setRinnoviFilterDaAvvisare] = useState(false);
   const [rinnoviFilterScaduti, setRinnoviFilterScaduti] = useState(false);
   const [rinnoviFilterDaFatturare, setRinnoviFilterDaFatturare] = useState(false);
@@ -1351,6 +1386,7 @@ function buildFormData(c: Checklist): FormData {
       tipo_struttura: asText(c.tipo_struttura),
       noleggio_vendita: asText(c.noleggio_vendita),
       fine_noleggio: toDateInput(c.fine_noleggio),
+      data_disinstallazione: toDateInput(c.data_disinstallazione),
       mercato: asText(c.mercato),
       modello: asText(c.modello),
       stato_progetto: asText(c.stato_progetto) || "IN_CORSO",
@@ -2573,6 +2609,8 @@ function buildFormData(c: Checklist): FormData {
   async function loadCronoOperativi(checklistId: string) {
     setCronoOperativiError(null);
     setCronoOperativiNotice(null);
+    setCronoDisinstallazioneError(null);
+    setCronoDisinstallazioneNotice(null);
     try {
       perfCountFetch("POST /api/cronoprogramma load");
       const res = await fetch("/api/cronoprogramma", {
@@ -2580,7 +2618,10 @@ function buildFormData(c: Checklist): FormData {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           action: "load",
-          rows: [{ row_kind: "INSTALLAZIONE", row_ref_id: checklistId }],
+          rows: [
+            { row_kind: "INSTALLAZIONE", row_ref_id: checklistId },
+            { row_kind: "DISINSTALLAZIONE", row_ref_id: checklistId },
+          ],
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -2588,24 +2629,41 @@ function buildFormData(c: Checklist): FormData {
         setCronoOperativiError(String(data?.error || "Errore caricamento dati operativi"));
         setCronoOperativiMeta(null);
         setCronoOperativiForm(EMPTY_CRONO_OPERATIVI);
+        setCronoDisinstallazioneError(String(data?.error || "Errore caricamento dati operativi"));
+        setCronoDisinstallazioneMeta(null);
+        setCronoDisinstallazioneForm(EMPTY_CRONO_OPERATIVI);
         return;
       }
-      const key = `INSTALLAZIONE:${checklistId}`;
-      const nextMeta = ((data?.meta || {}) as Record<string, CronoOperativiMeta>)[key] || null;
-      setCronoOperativiMeta(nextMeta);
-      setCronoOperativiForm(extractCronoOperativi(nextMeta));
+      const metaByKey = (data?.meta || {}) as Record<string, CronoOperativiMeta>;
+      const installMeta = metaByKey[`INSTALLAZIONE:${checklistId}`] || null;
+      const disinstallMeta = metaByKey[`DISINSTALLAZIONE:${checklistId}`] || null;
+      setCronoOperativiMeta(installMeta);
+      setCronoOperativiForm(extractCronoOperativi(installMeta));
+      setCronoDisinstallazioneMeta(disinstallMeta);
+      setCronoDisinstallazioneForm(extractCronoOperativi(disinstallMeta));
     } catch (e: any) {
       setCronoOperativiError(String(e?.message || "Errore caricamento dati operativi"));
       setCronoOperativiMeta(null);
       setCronoOperativiForm(EMPTY_CRONO_OPERATIVI);
+      setCronoDisinstallazioneError(String(e?.message || "Errore caricamento dati operativi"));
+      setCronoDisinstallazioneMeta(null);
+      setCronoDisinstallazioneForm(EMPTY_CRONO_OPERATIVI);
     }
   }
 
-  async function saveCronoOperativi() {
+  async function saveCronoOperativiBlock(
+    rowKind: CronoOperativiRowKind,
+    form: CronoOperativiFormState,
+    setSaving: Dispatch<SetStateAction<boolean>>,
+    setError: Dispatch<SetStateAction<string | null>>,
+    setNotice: Dispatch<SetStateAction<string | null>>,
+    setMeta: Dispatch<SetStateAction<CronoOperativiMeta | null>>,
+    setForm: Dispatch<SetStateAction<CronoOperativiFormState>>
+  ) {
     if (!id) return;
-    setCronoOperativiSaving(true);
-    setCronoOperativiError(null);
-    setCronoOperativiNotice(null);
+    setSaving(true);
+    setError(null);
+    setNotice(null);
     try {
       perfCountFetch("POST /api/cronoprogramma set_operativi");
       const res = await fetch("/api/cronoprogramma", {
@@ -2613,24 +2671,49 @@ function buildFormData(c: Checklist): FormData {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           action: "set_operativi",
-          row_kind: "INSTALLAZIONE",
+          row_kind: rowKind,
           row_ref_id: id,
-          ...cronoOperativiForm,
+          ...form,
         }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setCronoOperativiError(String(data?.error || "Errore salvataggio dati operativi"));
+        setError(String(data?.error || "Errore salvataggio dati operativi"));
         return;
       }
-      setCronoOperativiMeta((data?.meta || null) as CronoOperativiMeta | null);
-      setCronoOperativiForm(extractCronoOperativi((data?.meta || null) as CronoOperativiMeta | null));
-      setCronoOperativiNotice("Dati operativi salvati.");
+      const nextMeta = (data?.meta || null) as CronoOperativiMeta | null;
+      setMeta(nextMeta);
+      setForm(extractCronoOperativi(nextMeta));
+      setNotice("Dati operativi salvati.");
     } catch (e: any) {
-      setCronoOperativiError(String(e?.message || "Errore salvataggio dati operativi"));
+      setError(String(e?.message || "Errore salvataggio dati operativi"));
     } finally {
-      setCronoOperativiSaving(false);
+      setSaving(false);
     }
+  }
+
+  async function saveCronoOperativi() {
+    return saveCronoOperativiBlock(
+      "INSTALLAZIONE",
+      cronoOperativiForm,
+      setCronoOperativiSaving,
+      setCronoOperativiError,
+      setCronoOperativiNotice,
+      setCronoOperativiMeta,
+      setCronoOperativiForm
+    );
+  }
+
+  async function saveCronoDisinstallazione() {
+    return saveCronoOperativiBlock(
+      "DISINSTALLAZIONE",
+      cronoDisinstallazioneForm,
+      setCronoDisinstallazioneSaving,
+      setCronoDisinstallazioneError,
+      setCronoDisinstallazioneNotice,
+      setCronoDisinstallazioneMeta,
+      setCronoDisinstallazioneForm
+    );
   }
 
   async function load(id: string) {
@@ -3358,6 +3441,151 @@ function buildFormData(c: Checklist): FormData {
       label:
         `${String(item.codice || "").trim()} — ${String(item.descrizione || "—").trim() || "—"}`,
     }));
+  const isNoleggioProject = isNoleggioValue(
+    isEdit && formData ? formData.noleggio_vendita : checklist.noleggio_vendita
+  );
+
+  const renderCronoOperativiSection = (
+    title: string,
+    form: CronoOperativiFormState,
+    setForm: Dispatch<SetStateAction<CronoOperativiFormState>>,
+    onSave: () => void,
+    saving: boolean,
+    meta: CronoOperativiMeta | null,
+    errorMessage: string | null,
+    notice: string | null
+  ) => (
+    <div
+      style={{
+        border: "1px solid #eee",
+        borderRadius: 12,
+        padding: 12,
+        background: "#fff",
+      }}
+    >
+      <div style={{ fontWeight: 800, marginBottom: 10 }}>{title}</div>
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(2, minmax(280px, 1fr))",
+          gap: 10,
+        }}
+      >
+        <div>
+          <div style={{ fontSize: 12, marginBottom: 4 }}>Personale previsto / incarico</div>
+          <textarea
+            value={form.personale_previsto}
+            onChange={(e) => setForm((prev) => ({ ...prev, personale_previsto: e.target.value }))}
+            style={{ width: "100%", minHeight: 70, padding: 8 }}
+          />
+        </div>
+        <div>
+          <div style={{ fontSize: 12, marginBottom: 4 }}>Mezzi</div>
+          <textarea
+            value={form.mezzi}
+            onChange={(e) => setForm((prev) => ({ ...prev, mezzi: e.target.value }))}
+            style={{ width: "100%", minHeight: 70, padding: 8 }}
+          />
+        </div>
+        <div>
+          <div style={{ fontSize: 12, marginBottom: 4 }}>Descrizione attività</div>
+          <textarea
+            value={form.descrizione_attivita}
+            onChange={(e) => setForm((prev) => ({ ...prev, descrizione_attivita: e.target.value }))}
+            style={{ width: "100%", minHeight: 70, padding: 8 }}
+          />
+        </div>
+        <div>
+          <div style={{ fontSize: 12, marginBottom: 4 }}>Indirizzo</div>
+          <textarea
+            value={form.indirizzo}
+            onChange={(e) => setForm((prev) => ({ ...prev, indirizzo: e.target.value }))}
+            style={{ width: "100%", minHeight: 70, padding: 8 }}
+          />
+        </div>
+        <div>
+          <div style={{ fontSize: 12, marginBottom: 4 }}>Orario</div>
+          <input
+            value={form.orario}
+            onChange={(e) => setForm((prev) => ({ ...prev, orario: e.target.value }))}
+            style={{ width: "100%", padding: 8 }}
+          />
+        </div>
+        <div>
+          <div style={{ fontSize: 12, marginBottom: 4 }}>Referente cliente</div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+            <input
+              value={form.referente_cliente_nome}
+              onChange={(e) =>
+                setForm((prev) => ({ ...prev, referente_cliente_nome: e.target.value }))
+              }
+              placeholder="Nome"
+              style={{ width: "100%", padding: 8 }}
+            />
+            <input
+              value={form.referente_cliente_contatto}
+              onChange={(e) =>
+                setForm((prev) => ({ ...prev, referente_cliente_contatto: e.target.value }))
+              }
+              placeholder="Contatto"
+              style={{ width: "100%", padding: 8 }}
+            />
+          </div>
+        </div>
+        <div>
+          <div style={{ fontSize: 12, marginBottom: 4 }}>Commerciale Art Tech</div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+            <input
+              value={form.commerciale_art_tech_nome}
+              onChange={(e) =>
+                setForm((prev) => ({ ...prev, commerciale_art_tech_nome: e.target.value }))
+              }
+              placeholder="Nome"
+              style={{ width: "100%", padding: 8 }}
+            />
+            <input
+              value={form.commerciale_art_tech_contatto}
+              onChange={(e) =>
+                setForm((prev) => ({ ...prev, commerciale_art_tech_contatto: e.target.value }))
+              }
+              placeholder="Contatto"
+              style={{ width: "100%", padding: 8 }}
+            />
+          </div>
+        </div>
+      </div>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10 }}>
+        <button
+          type="button"
+          onClick={onSave}
+          disabled={saving}
+          style={{
+            padding: "8px 12px",
+            borderRadius: 8,
+            border: "1px solid #111",
+            background: saving ? "#f3f4f6" : "#111",
+            color: saving ? "#111" : "white",
+            cursor: saving ? "not-allowed" : "pointer",
+            fontWeight: 700,
+          }}
+        >
+          {saving ? "Salvataggio..." : "Salva dati operativi"}
+        </button>
+        {meta?.updated_at ? (
+          <span style={{ fontSize: 12, opacity: 0.75 }}>
+            Ultimo aggiornamento: {new Date(meta.updated_at).toLocaleString("it-IT")}
+            {meta.updated_by_nome ? ` · ${meta.updated_by_nome}` : ""}
+          </span>
+        ) : null}
+      </div>
+      {errorMessage ? (
+        <div style={{ marginTop: 8, fontSize: 12, color: "#b91c1c" }}>{errorMessage}</div>
+      ) : null}
+      {notice ? (
+        <div style={{ marginTop: 8, fontSize: 12, color: "#166534" }}>{notice}</div>
+      ) : null}
+    </div>
+  );
   const serialiControllo = assetSerials.filter((s) => s.tipo === "CONTROLLO");
   const serialiModuli = assetSerials.filter((s) => s.tipo === "MODULO_LED");
   const m2Persisted = (() => {
@@ -4348,6 +4576,9 @@ function buildFormData(c: Checklist): FormData {
       fine_noleggio: formData.fine_noleggio.trim()
         ? formData.fine_noleggio.trim()
         : null,
+      data_disinstallazione: formData.data_disinstallazione.trim()
+        ? formData.data_disinstallazione.trim()
+        : null,
       mercato: formData.mercato.trim() ? formData.mercato.trim() : null,
       modello: formData.modello.trim() ? formData.modello.trim() : null,
       stato_progetto: formData.stato_progetto.trim()
@@ -4390,6 +4621,15 @@ function buildFormData(c: Checklist): FormData {
           details.includes("operatori"))
       );
     };
+    const isDataDisinstallazioneMissing = (err: any) => {
+      const msg = `${err?.message || ""}`.toLowerCase();
+      const code = `${err?.code || ""}`.toLowerCase();
+      return (
+        code === "pgrst204" ||
+        (msg.includes("data_disinstallazione") && msg.includes("does not exist")) ||
+        (msg.includes("data_disinstallazione") && msg.includes("column"))
+      );
+    };
 
     const tryUpdate = async (payloadUpdate: Partial<typeof payload>) => {
       return dbFrom("checklists").update(payloadUpdate).eq("id", id);
@@ -4422,6 +4662,13 @@ function buildFormData(c: Checklist): FormData {
         ? (({ magazzino_drive_url: _skip, ...rest }) => rest)(payload)
         : payload;
       const { updated_by_operatore, ...legacyPayload } = sourcePayload;
+      ({ error: errUpdate } = await tryUpdate(legacyPayload));
+    }
+    if (errUpdate && isDataDisinstallazioneMissing(errUpdate)) {
+      const sourcePayload = driveFallbackUsed
+        ? (({ magazzino_drive_url: _skip, ...rest }) => rest)(payload)
+        : payload;
+      const { data_disinstallazione, ...legacyPayload } = sourcePayload;
       ({ error: errUpdate } = await tryUpdate(legacyPayload));
     }
 
@@ -5763,6 +6010,29 @@ function buildFormData(c: Checklist): FormData {
               }
               isEdit={isEdit}
             />
+            {isNoleggioProject ? (
+              <FieldRow
+                label="Data disinstallazione"
+                view={
+                  checklist.data_disinstallazione
+                    ? new Date(checklist.data_disinstallazione).toLocaleDateString()
+                    : "—"
+                }
+                edit={
+                  isEdit ? (
+                    <input
+                      type="date"
+                      value={formData.data_disinstallazione}
+                      onChange={(e) =>
+                        setFormData({ ...formData, data_disinstallazione: e.target.value })
+                      }
+                      style={{ width: "100%", padding: 10 }}
+                    />
+                  ) : undefined
+                }
+                isEdit={isEdit}
+              />
+            ) : null}
             <FieldRow
               label="Garanzia scadenza"
               view={
@@ -6208,136 +6478,30 @@ function buildFormData(c: Checklist): FormData {
       )}
       <div style={mainSectionStyle}>
         <div style={mainSectionTitleStyle}>Dati operativi / cronoprogramma</div>
-          <div
-            style={{
-              display: "grid",
-              gridTemplateColumns: "repeat(2, minmax(280px, 1fr))",
-              gap: 10,
-            }}
-          >
-            <div>
-              <div style={{ fontSize: 12, marginBottom: 4 }}>Personale previsto / incarico</div>
-              <textarea
-                value={cronoOperativiForm.personale_previsto}
-                onChange={(e) =>
-                  setCronoOperativiForm((prev) => ({ ...prev, personale_previsto: e.target.value }))
-                }
-                style={{ width: "100%", minHeight: 70, padding: 8 }}
-              />
-            </div>
-            <div>
-              <div style={{ fontSize: 12, marginBottom: 4 }}>Mezzi</div>
-              <textarea
-                value={cronoOperativiForm.mezzi}
-                onChange={(e) => setCronoOperativiForm((prev) => ({ ...prev, mezzi: e.target.value }))}
-                style={{ width: "100%", minHeight: 70, padding: 8 }}
-              />
-            </div>
-            <div>
-              <div style={{ fontSize: 12, marginBottom: 4 }}>Descrizione attività</div>
-              <textarea
-                value={cronoOperativiForm.descrizione_attivita}
-                onChange={(e) =>
-                  setCronoOperativiForm((prev) => ({ ...prev, descrizione_attivita: e.target.value }))
-                }
-                style={{ width: "100%", minHeight: 70, padding: 8 }}
-              />
-            </div>
-            <div>
-              <div style={{ fontSize: 12, marginBottom: 4 }}>Indirizzo</div>
-              <textarea
-                value={cronoOperativiForm.indirizzo}
-                onChange={(e) =>
-                  setCronoOperativiForm((prev) => ({ ...prev, indirizzo: e.target.value }))
-                }
-                style={{ width: "100%", minHeight: 70, padding: 8 }}
-              />
-            </div>
-            <div>
-              <div style={{ fontSize: 12, marginBottom: 4 }}>Orario</div>
-              <input
-                value={cronoOperativiForm.orario}
-                onChange={(e) => setCronoOperativiForm((prev) => ({ ...prev, orario: e.target.value }))}
-                style={{ width: "100%", padding: 8 }}
-              />
-            </div>
-            <div>
-              <div style={{ fontSize: 12, marginBottom: 4 }}>Referente cliente</div>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-                <input
-                  value={cronoOperativiForm.referente_cliente_nome}
-                  onChange={(e) =>
-                    setCronoOperativiForm((prev) => ({ ...prev, referente_cliente_nome: e.target.value }))
-                  }
-                  placeholder="Nome"
-                  style={{ width: "100%", padding: 8 }}
-                />
-                <input
-                  value={cronoOperativiForm.referente_cliente_contatto}
-                  onChange={(e) =>
-                    setCronoOperativiForm((prev) => ({ ...prev, referente_cliente_contatto: e.target.value }))
-                  }
-                  placeholder="Contatto"
-                  style={{ width: "100%", padding: 8 }}
-                />
-              </div>
-            </div>
-            <div>
-              <div style={{ fontSize: 12, marginBottom: 4 }}>Commerciale Art Tech</div>
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-                <input
-                  value={cronoOperativiForm.commerciale_art_tech_nome}
-                  onChange={(e) =>
-                    setCronoOperativiForm((prev) => ({ ...prev, commerciale_art_tech_nome: e.target.value }))
-                  }
-                  placeholder="Nome"
-                  style={{ width: "100%", padding: 8 }}
-                />
-                <input
-                  value={cronoOperativiForm.commerciale_art_tech_contatto}
-                  onChange={(e) =>
-                    setCronoOperativiForm((prev) => ({
-                      ...prev,
-                      commerciale_art_tech_contatto: e.target.value,
-                    }))
-                  }
-                  placeholder="Contatto"
-                  style={{ width: "100%", padding: 8 }}
-                />
-              </div>
-            </div>
-          </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10 }}>
-            <button
-              type="button"
-              onClick={saveCronoOperativi}
-              disabled={cronoOperativiSaving}
-              style={{
-                padding: "8px 12px",
-                borderRadius: 8,
-                border: "1px solid #111",
-                background: cronoOperativiSaving ? "#f3f4f6" : "#111",
-                color: cronoOperativiSaving ? "#111" : "white",
-                cursor: cronoOperativiSaving ? "not-allowed" : "pointer",
-                fontWeight: 700,
-              }}
-            >
-              {cronoOperativiSaving ? "Salvataggio..." : "Salva dati operativi"}
-            </button>
-            {cronoOperativiMeta?.updated_at ? (
-              <span style={{ fontSize: 12, opacity: 0.75 }}>
-                Ultimo aggiornamento:{" "}
-                {new Date(cronoOperativiMeta.updated_at).toLocaleString("it-IT")}
-                {cronoOperativiMeta.updated_by_nome ? ` · ${cronoOperativiMeta.updated_by_nome}` : ""}
-              </span>
-            ) : null}
-          </div>
-          {cronoOperativiError ? (
-            <div style={{ marginTop: 8, fontSize: 12, color: "#b91c1c" }}>{cronoOperativiError}</div>
-          ) : null}
-          {cronoOperativiNotice ? (
-            <div style={{ marginTop: 8, fontSize: 12, color: "#166534" }}>{cronoOperativiNotice}</div>
-          ) : null}
+        <div style={{ display: "grid", gap: 12 }}>
+          {renderCronoOperativiSection(
+            "BLOCCO INSTALLAZIONE",
+            cronoOperativiForm,
+            setCronoOperativiForm,
+            saveCronoOperativi,
+            cronoOperativiSaving,
+            cronoOperativiMeta,
+            cronoOperativiError,
+            cronoOperativiNotice
+          )}
+          {isNoleggioProject
+            ? renderCronoOperativiSection(
+                "BLOCCO DISINSTALLAZIONE",
+                cronoDisinstallazioneForm,
+                setCronoDisinstallazioneForm,
+                saveCronoDisinstallazione,
+                cronoDisinstallazioneSaving,
+                cronoDisinstallazioneMeta,
+                cronoDisinstallazioneError,
+                cronoDisinstallazioneNotice
+              )
+            : null}
+        </div>
       </div>
       <RenewalsAlertModal
         open={projectRinnoviAlertOpen}

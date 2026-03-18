@@ -4,7 +4,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 
-type RowKind = "INSTALLAZIONE" | "INTERVENTO" | "CHECKLIST_TASK";
+type RowKind = "INSTALLAZIONE" | "DISINSTALLAZIONE" | "INTERVENTO" | "CHECKLIST_TASK";
 type RowRef = { row_kind: RowKind; row_ref_id: string };
 type OperativiInput = {
   personale_previsto?: string | null;
@@ -34,7 +34,12 @@ function rowKey(rowKind: string, rowRefId: string) {
 }
 
 function isValidRowKind(value: string): value is RowKind {
-  return value === "INSTALLAZIONE" || value === "INTERVENTO" || value === "CHECKLIST_TASK";
+  return (
+    value === "INSTALLAZIONE" ||
+    value === "DISINSTALLAZIONE" ||
+    value === "INTERVENTO" ||
+    value === "CHECKLIST_TASK"
+  );
 }
 
 function toIsoDay(value?: string | null) {
@@ -299,7 +304,11 @@ export async function POST(request: Request) {
     }
 
     const installazioneIds = Array.from(
-      new Set(normalizedRows.filter((r) => r.row_kind === "INSTALLAZIONE").map((r) => r.row_ref_id))
+      new Set(
+        normalizedRows
+          .filter((r) => r.row_kind === "INSTALLAZIONE" || r.row_kind === "DISINSTALLAZIONE")
+          .map((r) => r.row_ref_id)
+      )
     );
     const interventoIds = Array.from(
       new Set(normalizedRows.filter((r) => r.row_kind === "INTERVENTO").map((r) => r.row_ref_id))
@@ -309,15 +318,13 @@ export async function POST(request: Request) {
     if (installazioneIds.length > 0) {
       const { data: checklistRows, error: checklistErr } = await supabaseAdmin
         .from("checklists")
-        .select("id, stato_progetto")
+        .select("id")
         .in("id", installazioneIds as any);
       if (checklistErr) {
         return NextResponse.json({ error: checklistErr.message }, { status: 500 });
       }
       for (const row of checklistRows || []) {
-        if (String((row as any).stato_progetto || "").toUpperCase() === "IN_CORSO") {
-          allowedInstallazioni.add(String((row as any).id));
-        }
+        allowedInstallazioni.add(String((row as any).id));
       }
     }
 
@@ -354,7 +361,9 @@ export async function POST(request: Request) {
     }
 
     normalizedRows = normalizedRows.filter((r) => {
-      if (r.row_kind === "INSTALLAZIONE") return allowedInstallazioni.has(r.row_ref_id);
+      if (r.row_kind === "INSTALLAZIONE" || r.row_kind === "DISINSTALLAZIONE") {
+        return allowedInstallazioni.has(r.row_ref_id);
+      }
       if (r.row_kind === "INTERVENTO") return allowedInterventi.has(r.row_ref_id);
       if (r.row_kind === "CHECKLIST_TASK") return true;
       return false;
@@ -436,7 +445,7 @@ export async function POST(request: Request) {
     const rowKind = String(body?.row_kind || "").trim().toUpperCase();
     const rowRefId = String(body?.row_ref_id || "").trim();
     const fatto = Boolean(body?.fatto);
-    if (!(rowKind === "INSTALLAZIONE" || rowKind === "INTERVENTO") || !rowRefId) {
+    if (!(rowKind === "INSTALLAZIONE" || rowKind === "DISINSTALLAZIONE" || rowKind === "INTERVENTO") || !rowRefId) {
       return NextResponse.json({ error: "row_kind/row_ref_id non validi" }, { status: 400 });
     }
 
@@ -468,7 +477,7 @@ export async function POST(request: Request) {
     const rowKind = String(body?.row_kind || "").trim().toUpperCase();
     const rowRefId = String(body?.row_ref_id || "").trim();
     const hidden = Boolean(body?.hidden);
-    if (!(rowKind === "INSTALLAZIONE" || rowKind === "INTERVENTO") || !rowRefId) {
+    if (!(rowKind === "INSTALLAZIONE" || rowKind === "DISINSTALLAZIONE" || rowKind === "INTERVENTO") || !rowRefId) {
       return NextResponse.json({ error: "row_kind/row_ref_id non validi" }, { status: 400 });
     }
 
@@ -499,7 +508,7 @@ export async function POST(request: Request) {
   if (action === "set_operativi") {
     const rowKind = String(body?.row_kind || "").trim().toUpperCase();
     const rowRefId = String(body?.row_ref_id || "").trim();
-    if (!(rowKind === "INSTALLAZIONE" || rowKind === "INTERVENTO") || !rowRefId) {
+    if (!(rowKind === "INSTALLAZIONE" || rowKind === "DISINSTALLAZIONE" || rowKind === "INTERVENTO") || !rowRefId) {
       return NextResponse.json({ error: "row_kind/row_ref_id non validi" }, { status: 400 });
     }
 
