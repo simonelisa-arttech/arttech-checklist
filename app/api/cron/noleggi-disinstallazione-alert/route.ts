@@ -156,7 +156,7 @@ export async function GET(request: Request) {
   }
 
   const rawRows: RentalAlertRowRaw[] = Array.isArray(res.data)
-    ? res.data.map((row) => ({
+    ? res.data.map((row: any) => ({
         id: row.id,
         cliente: row.cliente ?? null,
         nome_checklist: row.nome_checklist ?? null,
