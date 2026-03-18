@@ -49,6 +49,12 @@ type ClientePreferenceRow = {
   scadenze_delivery_mode?: string | null;
 };
 
+type ClientePreferenceRowRaw = {
+  id?: unknown;
+  email?: unknown;
+  scadenze_delivery_mode?: unknown;
+};
+
 type OperatoreRow = {
   id: string;
   nome: string | null;
@@ -274,8 +280,16 @@ export async function GET(request: Request) {
         .from("clienti_anagrafica")
         .select(selectClause)
         .in("id", clienteIds);
-      clientiRows = (result.data || []) as ClientePreferenceRow[];
       clientiErr = result.error;
+      if (!clientiErr) {
+        const rowsData = Array.isArray(result.data) ? (result.data as ClientePreferenceRowRaw[]) : [];
+        clientiRows = rowsData.map((row) => ({
+          id: String(row.id || "").trim(),
+          email: typeof row.email === "string" ? row.email : null,
+          scadenze_delivery_mode:
+            typeof row.scadenze_delivery_mode === "string" ? row.scadenze_delivery_mode : null,
+        }));
+      }
       if (!clientiErr) break;
       if (
         isMissingClientiScadenzeDeliveryModeColumnError(clientiErr) &&
