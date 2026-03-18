@@ -119,12 +119,29 @@ export async function GET(request: Request) {
 
   const todayIso = getRomeIsoDay();
 
-  const { data, error } = await supabase
+  let data: NoleggioChecklistRow[] | null = null;
+  let error: { message: string } | null = null;
+
+  let res = await supabase
     .from("checklists")
     .select("id, cliente, nome_checklist, stato_progetto, noleggio_vendita, data_disinstallazione")
     .eq("stato_progetto", "CONSEGNATO")
     .eq("noleggio_vendita", "NOLEGGIO")
     .order("data_disinstallazione", { ascending: true });
+
+  let missingDataDisinstallazione = false;
+  if (res.error && String(res.error.message || "").toLowerCase().includes("data_disinstallazione")) {
+    missingDataDisinstallazione = true;
+    res = await supabase
+      .from("checklists")
+      .select("id, cliente, nome_checklist, stato_progetto, noleggio_vendita")
+      .eq("stato_progetto", "CONSEGNATO")
+      .eq("noleggio_vendita", "NOLEGGIO")
+      .order("created_at", { ascending: false });
+  }
+
+  data = (res.data || null) as NoleggioChecklistRow[] | null;
+  error = res.error ? { message: res.error.message } : null;
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
@@ -144,7 +161,9 @@ export async function GET(request: Request) {
   }
 
   const systemId = await getSystemOperatoreId(supabase);
-  const rows = ((data || []) as NoleggioChecklistRow[]).filter(
+  const rows = ((data || []) as NoleggioChecklistRow[])
+    .map((row) => (missingDataDisinstallazione ? { ...row, data_disinstallazione: null } : row))
+    .filter(
     (row) => String(row.data_disinstallazione || "").trim() !== ""
   );
 

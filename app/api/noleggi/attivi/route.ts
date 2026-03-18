@@ -32,7 +32,10 @@ export async function GET(request: Request) {
   inSevenDays.setDate(inSevenDays.getDate() + 7);
   const inSevenDaysIso = inSevenDays.toISOString().slice(0, 10);
 
-  const { data, error } = await auth.adminClient
+  let data: ChecklistRow[] | null = null;
+  let error: { message: string } | null = null;
+
+  let res = await auth.adminClient
     .from("checklists")
     .select("id, cliente, nome_checklist, stato_progetto, noleggio_vendita, data_disinstallazione")
     .eq("stato_progetto", "CONSEGNATO")
@@ -40,11 +43,26 @@ export async function GET(request: Request) {
     .order("data_disinstallazione", { ascending: true, nullsFirst: true })
     .order("created_at", { ascending: false });
 
+  let missingDataDisinstallazione = false;
+  if (res.error && String(res.error.message || "").toLowerCase().includes("data_disinstallazione")) {
+    missingDataDisinstallazione = true;
+    res = await auth.adminClient
+      .from("checklists")
+      .select("id, cliente, nome_checklist, stato_progetto, noleggio_vendita")
+      .eq("stato_progetto", "CONSEGNATO")
+      .eq("noleggio_vendita", "NOLEGGIO")
+      .order("created_at", { ascending: false });
+  }
+
+  data = (res.data || null) as ChecklistRow[] | null;
+  error = res.error ? { message: res.error.message } : null;
+
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
   const rows = ((data || []) as ChecklistRow[])
+    .map((row) => (missingDataDisinstallazione ? { ...row, data_disinstallazione: null } : row))
     .map((row) => {
       const dataDisinstallazione = toIsoDay(row.data_disinstallazione);
       const isNoleggioAttivo = !dataDisinstallazione || dataDisinstallazione >= todayIso;

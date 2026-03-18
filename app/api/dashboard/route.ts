@@ -64,15 +64,19 @@ export async function GET(request: Request) {
     );
   }
 
-  const checklistFields = `
+  const checklistFieldsBase = `
       id, cliente, cliente_id, nome_checklist, proforma, magazzino_importazione,
       created_by_operatore, updated_by_operatore,
       tipo_saas, saas_piano, saas_scadenza, saas_stato, saas_tipo, saas_note,
       m2_calcolati, m2_inclusi, m2_allocati,
       data_prevista, data_tassativa, tipo_impianto, impianto_indirizzo, impianto_codice, impianto_descrizione,
       dimensioni, impianto_quantita, numero_facce, passo, note, tipo_struttura,
-      noleggio_vendita, fine_noleggio, data_disinstallazione, mercato, modello, stato_progetto, data_installazione_reale,
+      noleggio_vendita, fine_noleggio, mercato, modello, stato_progetto, data_installazione_reale,
       garanzia_stato, garanzia_scadenza, created_at, updated_at
+    `;
+  let checklistFields = `
+      ${checklistFieldsBase},
+      data_disinstallazione
     `;
 
   const baseSelect = `
@@ -100,15 +104,48 @@ export async function GET(request: Request) {
 
   let checklists: any[] | null = null;
   let checklistsErr: any = null;
-  const joinRes = await supabaseAdmin
-    .from("checklists")
-    .select(joinSelect)
-    .order("created_at", { ascending: false });
+  let missingDataDisinstallazione = false;
+
+  const loadChecklists = async (withJoin: boolean) => {
+    const selectClause = withJoin
+      ? `
+      ${checklistFields},
+      clienti_anagrafica:cliente_id(denominazione),
+      checklist_documents:checklist_documents (
+        id,
+        tipo,
+        filename,
+        storage_path,
+        uploaded_at
+      )
+    `
+      : `
+      ${checklistFields},
+      checklist_documents:checklist_documents (
+        id,
+        tipo,
+        filename,
+        storage_path,
+        uploaded_at
+      )
+    `;
+    return supabaseAdmin.from("checklists").select(selectClause).order("created_at", { ascending: false });
+  };
+
+  let joinRes = await loadChecklists(true);
+  if (joinRes.error && String(joinRes.error.message || "").toLowerCase().includes("data_disinstallazione")) {
+    missingDataDisinstallazione = true;
+    checklistFields = checklistFieldsBase;
+    joinRes = await loadChecklists(true);
+  }
+
   if (joinRes.error) {
-    const legacyRes = await supabaseAdmin
-      .from("checklists")
-      .select(baseSelect)
-      .order("created_at", { ascending: false });
+    let legacyRes = await loadChecklists(false);
+    if (legacyRes.error && String(legacyRes.error.message || "").toLowerCase().includes("data_disinstallazione")) {
+      missingDataDisinstallazione = true;
+      checklistFields = checklistFieldsBase;
+      legacyRes = await loadChecklists(false);
+    }
     checklists = legacyRes.data as any[] | null;
     checklistsErr = legacyRes.error;
   } else {
@@ -123,6 +160,9 @@ export async function GET(request: Request) {
   }
 
   let filteredChecklists = checklists || [];
+  if (missingDataDisinstallazione) {
+    filteredChecklists = filteredChecklists.map((row: any) => ({ ...row, data_disinstallazione: null }));
+  }
   if (statuses.length > 0) {
     filteredChecklists = filteredChecklists.filter((c: any) => {
       const status = normalizeProjectStatus(c?.stato_progetto);
