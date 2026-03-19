@@ -834,13 +834,13 @@ export default function CronoprogrammaPage() {
             style={{
               display: "grid",
               gridTemplateColumns:
-                "110px 110px 110px 240px 220px 260px 140px 130px 120px 260px 260px 220px 260px 160px 140px 300px 300px 120px",
+                "110px 110px 180px 240px 220px 260px 140px 130px 120px 260px 260px 220px 260px 160px 140px 300px 300px 120px",
               gap: 12,
               padding: "10px 12px",
               fontWeight: 700,
               background: "#fafafa",
               borderBottom: "1px solid #eee",
-              minWidth: 3860,
+              minWidth: 3930,
             }}
           >
             <button
@@ -859,7 +859,7 @@ export default function CronoprogrammaPage() {
             >
               Data tassativa {sortBy === "data_tassativa" ? (sortDir === "asc" ? "↑" : "↓") : ""}
             </button>
-            <div style={{ paddingRight: 18 }}>Evento</div>
+            <div style={{ paddingRight: 18, whiteSpace: "nowrap" }}>Evento</div>
             <div style={{ paddingLeft: 6 }}>Cliente</div>
             <div>Progetto</div>
             <div>Dettaglio</div>
@@ -893,19 +893,19 @@ export default function CronoprogrammaPage() {
                 style={{
                   display: "grid",
                   gridTemplateColumns:
-                    "110px 110px 110px 240px 220px 260px 140px 130px 120px 260px 260px 220px 260px 160px 140px 300px 300px 120px",
+                    "110px 110px 180px 240px 220px 260px 140px 130px 120px 260px 260px 220px 260px 160px 140px 300px 300px 120px",
                   gap: 12,
                   padding: "10px 12px",
                   borderBottom: "1px solid #f3f4f6",
                   alignItems: "start",
                   opacity: hidden && showHidden ? 0.6 : 1,
                   fontStyle: hidden && showHidden ? "italic" : "normal",
-                  minWidth: 3860,
+                  minWidth: 3930,
                 }}
               >
                 <div>{r.data_prevista ? new Date(r.data_prevista).toLocaleDateString("it-IT") : "—"}</div>
                 <div>{r.data_tassativa ? new Date(r.data_tassativa).toLocaleDateString("it-IT") : "—"}</div>
-                <div style={{ paddingRight: 18 }}>{r.kind}</div>
+                <div style={{ paddingRight: 18, whiteSpace: "nowrap" }}>{r.kind}</div>
                 <div style={{ paddingLeft: 6 }}>{r.cliente}</div>
                 <div>
                   {r.checklist_id ? (
