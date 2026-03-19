@@ -1594,7 +1594,7 @@ export default function Page() {
                 style={{
                   flex: "1 1 360px",
                   minWidth: 280,
-                  padding: "12px 14px",
+                  padding: "10px 14px",
                   borderRadius: 12,
                   border: "1px solid #fcd34d",
                   background: "rgba(255,255,255,0.62)",
@@ -1604,7 +1604,7 @@ export default function Page() {
                 <div
                   style={{
                     display: "grid",
-                    gap: 12,
+                    gap: 10,
                     height: "100%",
                   }}
                 >
@@ -1652,8 +1652,16 @@ export default function Page() {
                       })}
                     </div>
                   </div>
-                  <div style={{ display: "grid", gap: 10, alignContent: "start" }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <div
+                    style={{
+                      display: "flex",
+                      gap: 18,
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      flexWrap: "wrap",
+                    }}
+                  >
+                    <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 150 }}>
                       <div style={{ fontSize: 30, lineHeight: 1 }}>⚠</div>
                       <div style={{ display: "grid", gap: 2 }}>
                         <div style={{ fontSize: 32, lineHeight: 1.05, fontWeight: 900 }}>
@@ -1670,6 +1678,7 @@ export default function Page() {
                         gap: 4,
                         fontSize: 13,
                         fontWeight: 700,
+                        minWidth: 120,
                       }}
                     >
                       <div>Garanzie: {selectedScadenzeSummary.breakdown.garanzie}</div>
