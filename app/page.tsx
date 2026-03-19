@@ -1311,12 +1311,12 @@ export default function Page() {
         15: { count: 0, breakdown: { ...EMPTY_SCADENZE_BREAKDOWN }, overdueCount: 0 },
         30: { count: 0, breakdown: { ...EMPTY_SCADENZE_BREAKDOWN }, overdueCount: 0 },
       });
-      setInterventiDaChiudereCount(0);
-      setInterventiEntro7Count(0);
+      setInterventiDaChiudereSummary({ count: 0, overdue: 0 });
+      setInterventiEntro7Summary({ count: 0, overdue: 0 });
       setFattureDaEmettereCount(0);
       setNoleggiAttiviCount(0);
-      setConsegneEntro7Count(0);
-      setSmontaggiEntro7Count(0);
+      setConsegneEntro7Summary({ count: 0, overdue: 0 });
+      setSmontaggiEntro7Summary({ count: 0, overdue: 0 });
       setClientiMissingEmailCount(0);
     } finally {
       if (!isLatest()) return;

@@ -2,6 +2,19 @@
 
 ## Aggiornamento rapido (19 marzo 2026)
 
+- `fix: dashboard old setter names` in corso locale.
+- `app/page.tsx`
+  - nel catch/reset del `load()` dashboard erano rimasti setter legacy:
+    - `setInterventiDaChiudereCount`
+    - `setInterventiEntro7Count`
+    - `setConsegneEntro7Count`
+    - `setSmontaggiEntro7Count`
+  - ora il reset usa solo gli state summary correnti:
+    - `setInterventiDaChiudereSummary`
+    - `setInterventiEntro7Summary`
+    - `setConsegneEntro7Summary`
+    - `setSmontaggiEntro7Summary`
+
 - `fix: dashboard scadenze overdueCount fallback` in corso locale.
 - `app/page.tsx`
   - `DashboardScadenzeSummary` richiede `count`, `breakdown` e `overdueCount`
