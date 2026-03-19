@@ -64,6 +64,13 @@ const EMPTY_SCADENZE_BREAKDOWN: DashboardScadenzeBreakdown = {
   saasAltro: 0,
 };
 
+function buildScadenzeLink(days: number) {
+  const from = new Date();
+  const to = new Date(from);
+  to.setDate(to.getDate() + days);
+  return `/scadenze?from=${toDateInputValue(from)}&to=${toDateInputValue(to)}`;
+}
+
 function matchesSingleSaasService(row: Checklist, filter: SaasServiceFilter) {
   const piano = String(row.saas_piano || "")
     .trim()
@@ -794,6 +801,7 @@ export default function Page() {
   }, [items, addInterventoCliente]);
 
   const selectedScadenzeSummary = scadenzeByPeriod[scadenzePeriodDays];
+  const cockpitCardHeight = 124;
   const shortcutCardStyle = {
     display: "flex",
     flexDirection: "column" as const,
@@ -807,7 +815,8 @@ export default function Page() {
     color: "inherit",
     textDecoration: "none",
     minWidth: 180,
-    minHeight: 112,
+    minHeight: cockpitCardHeight,
+    height: cockpitCardHeight,
     flex: "1 1 190px",
     maxWidth: 220,
   };
@@ -1602,7 +1611,9 @@ export default function Page() {
                   style={{
                     flex: "1 1 360px",
                     minWidth: 280,
-                    padding: "10px 14px",
+                    minHeight: cockpitCardHeight,
+                    height: cockpitCardHeight,
+                    padding: "8px 12px",
                     borderRadius: 12,
                     border: "1px solid #fcd34d",
                     background: "rgba(255,255,255,0.62)",
@@ -1612,7 +1623,7 @@ export default function Page() {
                   <div
                     style={{
                       display: "grid",
-                      gap: 10,
+                      gap: 6,
                       height: "100%",
                     }}
                   >
@@ -1644,13 +1655,13 @@ export default function Page() {
                               type="button"
                               onClick={() => setScadenzePeriodDays(days)}
                               style={{
-                                border: "none",
-                                borderRadius: 999,
-                                padding: "5px 10px",
-                                background: active ? "#f59e0b" : "transparent",
-                                color: active ? "white" : "#92400e",
-                                fontWeight: 800,
-                                fontSize: 12,
+                              border: "none",
+                              borderRadius: 999,
+                              padding: "4px 9px",
+                              background: active ? "#f59e0b" : "transparent",
+                              color: active ? "white" : "#92400e",
+                              fontWeight: 800,
+                              fontSize: 12,
                                 cursor: "pointer",
                               }}
                             >
@@ -1663,10 +1674,11 @@ export default function Page() {
                     <div
                       style={{
                         display: "flex",
-                        gap: 18,
+                        gap: 14,
                         alignItems: "center",
                         justifyContent: "space-between",
                         flexWrap: "wrap",
+                        flex: 1,
                       }}
                     >
                       <div
@@ -1687,19 +1699,19 @@ export default function Page() {
                           }}
                         >
                           <div style={{ fontSize: 30, lineHeight: 1 }}>⚠</div>
-                          <div style={{ fontSize: 32, lineHeight: 1.05, fontWeight: 900 }}>
+                          <div style={{ fontSize: 30, lineHeight: 1, fontWeight: 900 }}>
                             {selectedScadenzeSummary.count}
                           </div>
                         </div>
-                        <div style={{ fontSize: 14, fontWeight: 700 }}>
+                        <div style={{ fontSize: 13, fontWeight: 700 }}>
                           Totale entro {scadenzePeriodDays} giorni
                         </div>
                       </div>
                       <div
                         style={{
                           display: "grid",
-                          gap: 4,
-                          fontSize: 13,
+                          gap: 3,
+                          fontSize: 12,
                           fontWeight: 700,
                           minWidth: 135,
                         }}
@@ -1711,10 +1723,10 @@ export default function Page() {
                       </div>
                     </div>
                     <Link
-                      href={`/scadenze?from=${toDateInputValue(new Date())}&to=${toDateInputValue(new Date(Date.now() + scadenzePeriodDays * 86400000))}`}
+                      href={buildScadenzeLink(scadenzePeriodDays)}
                       style={{
                         justifySelf: "start",
-                        fontSize: 12,
+                        fontSize: 11,
                         fontWeight: 800,
                         color: "#92400e",
                         textDecoration: "underline",
@@ -1734,12 +1746,12 @@ export default function Page() {
                   </div>
                 </Link>
                 <Link
-                  href="/admin/interventi-entro-7-giorni"
+                  href="/admin/noleggi-attivi"
                   style={shortcutCardStyle}
                 >
-                  <div style={shortcutCardTitleStyle}>INTERVENTI ENTRO 7 GIORNI</div>
+                  <div style={shortcutCardTitleStyle}>NOLEGGI ATTIVI</div>
                   <div style={shortcutCardNumberWrapStyle}>
-                    <div style={shortcutCardNumberStyle}>{interventiEntro7Count}</div>
+                    <div style={shortcutCardNumberStyle}>{noleggiAttiviCount}</div>
                   </div>
                 </Link>
                 <Link
@@ -1761,12 +1773,12 @@ export default function Page() {
                 }}
               >
                 <Link
-                  href="/admin/noleggi-attivi"
+                  href="/admin/interventi-entro-7-giorni"
                   style={shortcutCardStyle}
                 >
-                  <div style={shortcutCardTitleStyle}>NOLEGGI ATTIVI</div>
+                  <div style={shortcutCardTitleStyle}>INTERVENTI ENTRO 7 GIORNI</div>
                   <div style={shortcutCardNumberWrapStyle}>
-                    <div style={shortcutCardNumberStyle}>{noleggiAttiviCount}</div>
+                    <div style={shortcutCardNumberStyle}>{interventiEntro7Count}</div>
                   </div>
                 </Link>
                 <Link
