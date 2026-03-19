@@ -2,6 +2,14 @@
 
 ## Aggiornamento rapido (19 marzo 2026)
 
+- `feat: cronoprogramma mostra disinstallazioni noleggio + preset periodo` in corso locale.
+- Causa reale:
+  - `app/api/cronoprogramma/route.ts` riconosceva `DISINSTALLAZIONE` solo per meta/commenti
+  - il loader `load_events` non selezionava `data_disinstallazione` e generava solo eventi `INSTALLAZIONE` e `INTERVENTO`
+  - `app/cronoprogramma/page.tsx` filtrava/tipizzava solo `INSTALLAZIONE | INTERVENTO`
+- Correzione:
+  - i progetti `NOLEGGIO` con `data_disinstallazione` e stato `IN_CORSO` / `IN_LAVORAZIONE` / `CONSEGNATO` entrano ora come evento `DISINSTALLAZIONE`
+  - aggiunti preset rapidi `7 / 15 / 30 giorni` sul filtro date del cronoprogramma, compatibili con il filtro manuale
 - `fix: separa scadenze servizi da noleggi` in corso locale.
 - Dashboard `SCADENZE IN ARRIVO` e pagina `/scadenze` usano entrambe `GET /api/scadenze`, che delega a `lib/scadenze/buildScadenzeAgenda.ts`.
 - Causa reale mixed domain:

@@ -65,6 +65,10 @@ function cleanText(v: unknown) {
   return s ? s : null;
 }
 
+function normalizeUpper(value: unknown) {
+  return String(value || "").trim().toUpperCase();
+}
+
 function toOperativiPayload(input: OperativiInput) {
   return {
     personale_previsto: cleanText(input?.personale_previsto),
@@ -185,10 +189,26 @@ export async function POST(request: Request) {
   if (action === "load_events") {
     const CUTOFF_DATE = "2026-01-01";
 
-    const { data: checklists, error: cErr } = await supabaseAdmin
-      .from("checklists")
-      .select("id, cliente, nome_checklist, proforma, data_prevista, data_tassativa, stato_progetto, noleggio_vendita, tipo_impianto")
-      .order("created_at", { ascending: false });
+    let checklists: any[] | null = null;
+    let cErr: any = null;
+    {
+      const res = await supabaseAdmin
+        .from("checklists")
+        .select(
+          "id, cliente, nome_checklist, proforma, data_prevista, data_tassativa, data_disinstallazione, stato_progetto, noleggio_vendita, tipo_impianto"
+        )
+        .order("created_at", { ascending: false });
+      checklists = res.data as any[] | null;
+      cErr = res.error;
+    }
+    if (cErr && String(cErr.message || "").toLowerCase().includes("data_disinstallazione")) {
+      const res = await supabaseAdmin
+        .from("checklists")
+        .select("id, cliente, nome_checklist, proforma, data_prevista, data_tassativa, stato_progetto, noleggio_vendita, tipo_impianto")
+        .order("created_at", { ascending: false });
+      checklists = (res.data as any[] | null)?.map((row) => ({ ...row, data_disinstallazione: null })) ?? [];
+      cErr = res.error;
+    }
     if (cErr) return NextResponse.json({ error: cErr.message }, { status: 500 });
 
     let interventi: any[] | null = null;
@@ -225,7 +245,7 @@ export async function POST(request: Request) {
       const id = String((c as any).id || "");
       if (!id) continue;
       checklistById.set(id, c as any);
-      if (["IN_CORSO", "IN_LAVORAZIONE"].includes(String((c as any).stato_progetto || "").toUpperCase())) {
+      if (["IN_CORSO", "IN_LAVORAZIONE"].includes(normalizeUpper((c as any).stato_progetto))) {
         inCorsoChecklistIds.add(id);
       }
     }
@@ -234,24 +254,54 @@ export async function POST(request: Request) {
 
     for (const c of checklists || []) {
       const cc = c as any;
-      if (!["IN_CORSO", "IN_LAVORAZIONE"].includes(String(cc.stato_progetto || "").toUpperCase())) continue;
-      const date = toIsoDay(cc.data_tassativa) || toIsoDay(cc.data_prevista);
-      if (!date || date < CUTOFF_DATE) continue;
-      timeline.push({
-        kind: "INSTALLAZIONE",
-        id: `install:${cc.id}`,
-        row_ref_id: cc.id,
-        data_prevista: toIsoDay(cc.data_prevista) || date,
-        data_tassativa: toIsoDay(cc.data_tassativa) || date,
-        cliente: String(cc.cliente || "—"),
-        checklist_id: cc.id,
-        progetto: String(cc.nome_checklist || cc.id),
-        proforma: cc.proforma ?? null,
-        tipologia: String(cc.noleggio_vendita || "INSTALLAZIONE").toUpperCase(),
-        descrizione: [cc.tipo_impianto || "", cc.noleggio_vendita || ""].filter(Boolean).join(" · ") || "Installazione pianificata",
-        stato: "PIANIFICATA",
-        fatto: false,
-      });
+      const statoProgetto = normalizeUpper(cc.stato_progetto);
+      const isNoleggio = normalizeUpper(cc.noleggio_vendita) === "NOLEGGIO";
+
+      if (["IN_CORSO", "IN_LAVORAZIONE"].includes(statoProgetto)) {
+        const date = toIsoDay(cc.data_tassativa) || toIsoDay(cc.data_prevista);
+        if (date && date >= CUTOFF_DATE) {
+          timeline.push({
+            kind: "INSTALLAZIONE",
+            id: `install:${cc.id}`,
+            row_ref_id: cc.id,
+            data_prevista: toIsoDay(cc.data_prevista) || date,
+            data_tassativa: toIsoDay(cc.data_tassativa) || date,
+            cliente: String(cc.cliente || "—"),
+            checklist_id: cc.id,
+            progetto: String(cc.nome_checklist || cc.id),
+            proforma: cc.proforma ?? null,
+            tipologia: normalizeUpper(cc.noleggio_vendita || "INSTALLAZIONE"),
+            descrizione:
+              [cc.tipo_impianto || "", cc.noleggio_vendita || ""].filter(Boolean).join(" · ") ||
+              "Installazione pianificata",
+            stato: "PIANIFICATA",
+            fatto: false,
+          });
+        }
+      }
+
+      if (isNoleggio && ["IN_CORSO", "IN_LAVORAZIONE", "CONSEGNATO"].includes(statoProgetto)) {
+        const disinstallDate = toIsoDay(cc.data_disinstallazione);
+        if (disinstallDate && disinstallDate >= CUTOFF_DATE) {
+          timeline.push({
+            kind: "DISINSTALLAZIONE",
+            id: `disinstall:${cc.id}`,
+            row_ref_id: cc.id,
+            data_prevista: disinstallDate,
+            data_tassativa: disinstallDate,
+            cliente: String(cc.cliente || "—"),
+            checklist_id: cc.id,
+            progetto: String(cc.nome_checklist || cc.id),
+            proforma: cc.proforma ?? null,
+            tipologia: "NOLEGGIO",
+            descrizione:
+              [cc.tipo_impianto || "", "SMONTAGGIO NOLEGGIO"].filter(Boolean).join(" · ") ||
+              "Smontaggio noleggio pianificato",
+            stato: "PIANIFICATA",
+            fatto: false,
+          });
+        }
+      }
     }
 
     for (const i of interventi || []) {

@@ -6,7 +6,7 @@ import ConfigMancante from "@/components/ConfigMancante";
 import { isSupabaseConfigured } from "@/lib/supabaseClient";
 
 type TimelineRow = {
-  kind: "INSTALLAZIONE" | "INTERVENTO";
+  kind: "INSTALLAZIONE" | "DISINSTALLAZIONE" | "INTERVENTO";
   id: string;
   row_ref_id: string;
   data_prevista: string;
@@ -95,8 +95,12 @@ function inferInterventoTipologia(text?: string | null) {
   return "INTERVENTO";
 }
 
-function getRowKey(rowKind: "INSTALLAZIONE" | "INTERVENTO", rowRefId: string) {
+function getRowKey(rowKind: "INSTALLAZIONE" | "DISINSTALLAZIONE" | "INTERVENTO", rowRefId: string) {
   return `${rowKind}:${rowRefId}`;
+}
+
+function toIsoDate(value: Date) {
+  return value.toISOString().slice(0, 10);
 }
 
 function normalizePersonaleText(value?: string | null) {
@@ -190,7 +194,8 @@ export default function CronoprogrammaPage() {
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
   const [clienteFilter, setClienteFilter] = useState("TUTTI");
-  const [kindFilter, setKindFilter] = useState<"TUTTI" | "INSTALLAZIONE" | "INTERVENTO">("TUTTI");
+  const [kindFilter, setKindFilter] = useState<"TUTTI" | "INSTALLAZIONE" | "DISINSTALLAZIONE" | "INTERVENTO">("TUTTI");
+  const [quickRangeDays, setQuickRangeDays] = useState<7 | 15 | 30 | null>(null);
   const [showFatto, setShowFatto] = useState(false);
   const [showHidden, setShowHidden] = useState(false);
   const [q, setQ] = useState("");
@@ -428,6 +433,16 @@ export default function CronoprogrammaPage() {
     setToDate(to.toISOString().slice(0, 10));
   }, []);
 
+  function applyQuickRange(days: 7 | 15 | 30) {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const to = new Date(today.getTime());
+    to.setDate(to.getDate() + days);
+    setFromDate(toIsoDate(today));
+    setToDate(toIsoDate(to));
+    setQuickRangeDays(days);
+  }
+
   useEffect(() => {
     (async () => {
       setLoading(true);
@@ -646,7 +661,10 @@ export default function CronoprogrammaPage() {
           <input
             type="date"
             value={fromDate}
-            onChange={(e) => setFromDate(e.target.value)}
+            onChange={(e) => {
+              setFromDate(e.target.value);
+              setQuickRangeDays(null);
+            }}
             style={{ width: "100%", padding: 8 }}
           />
         </label>
@@ -656,7 +674,10 @@ export default function CronoprogrammaPage() {
           <input
             type="date"
             value={toDate}
-            onChange={(e) => setToDate(e.target.value)}
+            onChange={(e) => {
+              setToDate(e.target.value);
+              setQuickRangeDays(null);
+            }}
             style={{ width: "100%", padding: 8 }}
           />
         </label>
@@ -686,6 +707,7 @@ export default function CronoprogrammaPage() {
           >
             <option value="TUTTI">Tutti</option>
             <option value="INSTALLAZIONE">Installazioni</option>
+            <option value="DISINSTALLAZIONE">Smontaggi noleggio</option>
             <option value="INTERVENTO">Interventi</option>
           </select>
         </label>
@@ -715,6 +737,29 @@ export default function CronoprogrammaPage() {
             ))}
           </datalist>
         </label>
+      </div>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
+        {[7, 15, 30].map((days) => {
+          const active = quickRangeDays === days;
+          return (
+            <button
+              key={days}
+              type="button"
+              onClick={() => applyQuickRange(days as 7 | 15 | 30)}
+              style={{
+                padding: "8px 12px",
+                borderRadius: 999,
+                border: active ? "1px solid #111" : "1px solid #ddd",
+                background: active ? "#111" : "white",
+                color: active ? "white" : "#111",
+                cursor: "pointer",
+                fontWeight: 700,
+              }}
+            >
+              {days} giorni
+            </button>
+          );
+        })}
       </div>
       <label style={{ display: "inline-flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
         <input

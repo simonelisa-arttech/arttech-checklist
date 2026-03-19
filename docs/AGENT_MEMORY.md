@@ -1,5 +1,18 @@
 # AGENT MEMORY — Snapshot Operativo
 
+## Snapshot 2026-03-19 - Cronoprogramma disinstallazioni noleggio
+- `app/api/cronoprogramma/route.ts` genera ora anche eventi `DISINSTALLAZIONE` per checklist `NOLEGGIO` con `data_disinstallazione` valorizzata.
+- Stati ammessi per la visibilita dello smontaggio noleggio:
+  - `IN_CORSO`
+  - `IN_LAVORAZIONE`
+  - `CONSEGNATO`
+- `app/cronoprogramma/page.tsx` supporta ora il tipo evento `DISINSTALLAZIONE` in rendering e filtri.
+- Aggiunti preset rapidi periodo:
+  - `7 giorni`
+  - `15 giorni`
+  - `30 giorni`
+- I preset impostano range `oggi -> oggi + N` senza rimuovere la possibilita di modificare manualmente `Da` e `A`.
+
 ## Snapshot 2026-03-19 - Separazione scadenze servizi vs noleggi
 - `lib/scadenze/buildScadenzeAgenda.ts` resta source of truth condivisa per dashboard e pagina `/scadenze`.
 - Correzione dominio:
