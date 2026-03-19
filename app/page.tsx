@@ -1609,11 +1609,11 @@ export default function Page() {
               >
                 <div
                   style={{
-                    flex: "1 1 360px",
-                    minWidth: 280,
+                    flex: "2 1 520px",
+                    minWidth: 420,
                     minHeight: cockpitCardHeight,
                     height: cockpitCardHeight,
-                    padding: "8px 12px",
+                    padding: "10px 14px",
                     borderRadius: 12,
                     border: "1px solid #fcd34d",
                     background: "rgba(255,255,255,0.62)",
@@ -1633,8 +1633,8 @@ export default function Page() {
                       style={{
                         display: "flex",
                         flexWrap: "wrap",
-                        gap: 8,
-                        alignItems: "flex-start",
+                        gap: 12,
+                        alignItems: "center",
                         justifyContent: "space-between",
                       }}
                     >
@@ -1659,6 +1659,7 @@ export default function Page() {
                           border: "1px solid #fcd34d",
                           background: "rgba(255,255,255,0.8)",
                           gap: 4,
+                          marginLeft: "auto",
                         }}
                       >
                         {([7, 15, 30] as const).map((days) => {
@@ -1688,8 +1689,8 @@ export default function Page() {
                     <div
                       style={{
                         display: "grid",
-                        gridTemplateColumns: "minmax(120px, 1fr) minmax(120px, 1fr)",
-                        gap: 12,
+                        gridTemplateColumns: "minmax(180px, 1.1fr) minmax(180px, 1fr)",
+                        gap: 18,
                         alignItems: "center",
                         flex: 1,
                         minHeight: 0,
@@ -1699,7 +1700,7 @@ export default function Page() {
                         style={{
                           display: "grid",
                           gap: 4,
-                          minWidth: 150,
+                          minWidth: 0,
                           justifyItems: "center",
                           textAlign: "center",
                         }}
@@ -1724,7 +1725,7 @@ export default function Page() {
                       <div
                         style={{
                           display: "grid",
-                          gap: 3,
+                          gap: 4,
                           fontSize: 12,
                           fontWeight: 700,
                           minWidth: 0,
