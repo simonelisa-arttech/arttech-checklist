@@ -1173,8 +1173,11 @@ export default function Page() {
       const message = String(e?.message || "Errore caricamento dashboard");
       console.error("Errore caricamento dashboard", e);
       setDashboardLoadError(message);
-      setScadenzeEntro7Count(0);
-      setScadenzeEntro7Breakdown({ garanzie: 0, licenze: 0, tagliandi: 0 });
+      setScadenzeByPeriod({
+        7: { count: 0, breakdown: { ...EMPTY_SCADENZE_BREAKDOWN } },
+        15: { count: 0, breakdown: { ...EMPTY_SCADENZE_BREAKDOWN } },
+        30: { count: 0, breakdown: { ...EMPTY_SCADENZE_BREAKDOWN } },
+      });
       setInterventiDaChiudereCount(0);
       setInterventiEntro7Count(0);
       setFattureDaEmettereCount(0);
