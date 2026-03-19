@@ -801,7 +801,7 @@ export default function Page() {
   }, [items, addInterventoCliente]);
 
   const selectedScadenzeSummary = scadenzeByPeriod[scadenzePeriodDays];
-  const cockpitCardHeight = 124;
+  const cockpitCardHeight = 118;
   const shortcutCardStyle = {
     display: "flex",
     flexDirection: "column" as const,
@@ -1624,9 +1624,9 @@ export default function Page() {
                   <div
                     style={{
                       display: "grid",
-                      gap: 8,
+                      gap: 10,
                       height: "100%",
-                      gridTemplateRows: "auto 1fr",
+                      gridTemplateRows: "auto auto 1fr",
                     }}
                   >
                     <div
@@ -1689,54 +1689,42 @@ export default function Page() {
                     <div
                       style={{
                         display: "grid",
-                        gridTemplateColumns: "minmax(180px, 1.1fr) minmax(180px, 1fr)",
-                        gap: 18,
-                        alignItems: "center",
-                        flex: 1,
+                        gap: 4,
+                        justifyItems: "start",
+                        alignContent: "start",
                         minHeight: 0,
                       }}
                     >
                       <div
                         style={{
-                          display: "grid",
-                          gap: 4,
-                          minWidth: 0,
-                          justifyItems: "center",
-                          textAlign: "center",
+                          fontSize: 30,
+                          lineHeight: 1,
+                          fontWeight: 900,
                         }}
                       >
-                        <div
-                          style={{
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            gap: 10,
-                          }}
-                        >
-                          <div style={{ fontSize: 30, lineHeight: 1 }}>⚠</div>
-                          <div style={{ fontSize: 30, lineHeight: 1, fontWeight: 900 }}>
-                            {selectedScadenzeSummary.count}
-                          </div>
-                        </div>
-                        <div style={{ fontSize: 13, fontWeight: 700 }}>
-                          Totale entro {scadenzePeriodDays} giorni
-                        </div>
+                        {selectedScadenzeSummary.count}
                       </div>
-                      <div
-                        style={{
-                          display: "grid",
-                          gap: 4,
-                          fontSize: 12,
-                          fontWeight: 700,
-                          minWidth: 0,
-                          alignContent: "center",
-                        }}
-                      >
+                      <div style={{ fontSize: 13, fontWeight: 700 }}>
+                        Totale entro {scadenzePeriodDays} giorni
+                      </div>
+                    </div>
+                    <div
+                      style={{
+                        display: "flex",
+                        flexWrap: "wrap",
+                        gap: 12,
+                        alignItems: "center",
+                        fontSize: 12,
+                        fontWeight: 700,
+                        minHeight: 0,
+                      }}
+                    >
+                      <div style={{ whiteSpace: "nowrap" }}>
                         <div>Garanzie: {selectedScadenzeSummary.breakdown.garanzie}</div>
-                        <div>Licenze: {selectedScadenzeSummary.breakdown.licenze}</div>
-                        <div>Tagliandi: {selectedScadenzeSummary.breakdown.tagliandi}</div>
-                        <div>SaaS / Altro: {selectedScadenzeSummary.breakdown.saasAltro}</div>
                       </div>
+                      <div style={{ whiteSpace: "nowrap" }}>Licenze: {selectedScadenzeSummary.breakdown.licenze}</div>
+                      <div style={{ whiteSpace: "nowrap" }}>Tagliandi: {selectedScadenzeSummary.breakdown.tagliandi}</div>
+                      <div style={{ whiteSpace: "nowrap" }}>SaaS: {selectedScadenzeSummary.breakdown.saasAltro}</div>
                     </div>
                   </div>
                 </div>
@@ -1758,15 +1746,6 @@ export default function Page() {
                     <div style={shortcutCardNumberStyle}>{noleggiAttiviCount}</div>
                   </div>
                 </Link>
-                <Link
-                  href="/admin/fatture-da-emettere"
-                  style={shortcutCardStyle}
-                >
-                  <div style={shortcutCardTitleStyle}>FATTURE DA EMETTERE</div>
-                  <div style={shortcutCardNumberWrapStyle}>
-                    <div style={shortcutCardNumberStyle}>{fattureDaEmettereCount}</div>
-                  </div>
-                </Link>
               </div>
               <div
                 style={{
@@ -1776,6 +1755,15 @@ export default function Page() {
                   alignItems: "stretch",
                 }}
               >
+                <Link
+                  href="/admin/fatture-da-emettere"
+                  style={shortcutCardStyle}
+                >
+                  <div style={shortcutCardTitleStyle}>FATTURE DA EMETTERE</div>
+                  <div style={shortcutCardNumberWrapStyle}>
+                    <div style={shortcutCardNumberStyle}>{fattureDaEmettereCount}</div>
+                  </div>
+                </Link>
                 <Link
                   href="/admin/interventi-entro-7-giorni"
                   style={shortcutCardStyle}
