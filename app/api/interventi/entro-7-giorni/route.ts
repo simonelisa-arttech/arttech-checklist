@@ -50,7 +50,7 @@ export async function GET(request: Request) {
   inSevenDays.setDate(inSevenDays.getDate() + 7);
   const inSevenDaysIso = inSevenDays.toISOString().slice(0, 10);
 
-  let res = await auth.adminClient
+  let res: any = await auth.adminClient
     .from("saas_interventi")
     .select(
       "id, cliente, checklist_id, data, data_tassativa, descrizione, stato_intervento, fatturazione_stato, checklist:checklists(id, nome_checklist)"
@@ -75,7 +75,7 @@ export async function GET(request: Request) {
   }
 
   const rows = ((res.data || []) as InterventoRow[])
-    .map((row: InterventoRow) => ({
+    .map((row: any) => ({
       id: row.id,
       cliente: row.cliente || "—",
       progetto: row.checklist?.nome_checklist || row.descrizione || "—",
