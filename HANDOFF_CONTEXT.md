@@ -2,6 +2,28 @@
 
 ## Aggiornamento rapido (19 marzo 2026)
 
+- `feat: regole globali avvisi scadenze` in corso locale.
+- Distinzione riallineata:
+  - `scadenze_alert_global_rules` = regole globali automatiche per tipo scadenza
+  - `alert_message_templates` = preset riusabili / default delle regole globali / override locali
+  - `renewal_alert_rules` = override cliente sul flusso automatico gia esistente
+- UI:
+  - nuova pagina `Impostazioni -> Regole globali avvisi`
+  - pagina `Preset avvisi` resa piu esplicita su tipo scadenza associato e uso reale
+  - popup `Scadenze e Rinnovi` semplificato:
+    - rimosso il flag ridondante `regola automatica attiva`
+    - `Automatico` mostra la regola globale del tipo scadenza
+    - `Override locale` gestisce preset/testo/destinatari solo per l'invio singolo
+- Cron:
+  - `GET /api/cron/scadenze-alert` usa ora `scadenze_alert_global_rules`
+  - grouping per `cliente + tipo scadenza + step`
+  - step supportati: `30 / 15 / 7 / 1`
+  - eventuale preset default della regola globale viene applicato al subject/body
+  - il log continua su `checklist_alert_log`, quindi `Ultimo invio` resta alimentato automaticamente
+- DB:
+  - aggiunta migration `scripts/20260319_add_scadenze_alert_global_rules.sql`
+  - da eseguire manualmente in Supabase prima di usare la nuova pagina impostazioni
+
 - `fix: persistenza data_disinstallazione + ripristino cockpit dashboard` in corso locale.
 - Causa reale `data_disinstallazione`:
   - nel save checklist `app/checklists/[id]/page.tsx` esisteva un fallback che rimuoveva silenziosamente `data_disinstallazione` dal payload su errore compatibilita schema

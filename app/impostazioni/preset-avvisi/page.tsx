@@ -4,6 +4,12 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { isSupabaseConfigured } from "@/lib/supabaseClient";
 import ConfigMancante from "@/components/ConfigMancante";
+import {
+  getAlertTemplateAssociationLabel,
+  getAlertTemplateUsageLabel,
+  SCADENZE_ALERT_DEFAULT_TEMPLATE_TRIGGERS,
+  SCADENZE_ALERT_DEFAULT_TEMPLATE_TYPES,
+} from "@/lib/scadenzeAlertConfig";
 
 type AlertTemplate = {
   id: string;
@@ -39,8 +45,8 @@ const EMPTY_TEMPLATE: AlertTemplate = {
   updated_at: null,
 };
 
-const TIPO_OPTIONS = ["LICENZA", "TAGLIANDO", "GENERICO"];
-const TRIGGER_OPTIONS = ["MANUALE", "60GG", "30GG", "15GG"];
+const TIPO_OPTIONS = [...SCADENZE_ALERT_DEFAULT_TEMPLATE_TYPES];
+const TRIGGER_OPTIONS = [...SCADENZE_ALERT_DEFAULT_TEMPLATE_TRIGGERS];
 
 export default function PresetAvvisiPage() {
   if (!isSupabaseConfigured) {
@@ -262,7 +268,7 @@ export default function PresetAvvisiPage() {
         <div>
           <h1 style={{ margin: 0, fontSize: 32 }}>Preset avvisi</h1>
           <div style={{ marginTop: 4, fontSize: 12, opacity: 0.7 }}>
-            Gestione template per email avvisi (LICENZA / TAGLIANDO / GENERICO)
+            Preset messaggi per licenze, tagliandi, garanzie, SaaS e override locali.
           </div>
         </div>
         <Link
@@ -278,6 +284,19 @@ export default function PresetAvvisiPage() {
           }}
         >
           ← Operatori
+        </Link>
+        <Link
+          href="/impostazioni/regole-globali-avvisi"
+          style={{
+            padding: "6px 10px",
+            borderRadius: 10,
+            border: "1px solid #ddd",
+            textDecoration: "none",
+            color: "inherit",
+            background: "white",
+          }}
+        >
+          Regole globali
         </Link>
         <Link
           href="/"
@@ -397,7 +416,7 @@ export default function PresetAvvisiPage() {
               style={{
                 display: "grid",
                 gridTemplateColumns:
-                  "minmax(240px, 2fr) minmax(260px, 1.6fr) minmax(120px, 0.8fr) minmax(120px, 0.8fr) 110px minmax(180px, 1fr) minmax(200px, 1fr)",
+                  "minmax(220px, 1.8fr) minmax(220px, 1.4fr) minmax(130px, 0.8fr) minmax(170px, 1fr) minmax(120px, 0.8fr) 110px minmax(170px, 1fr) minmax(200px, 1fr)",
                 padding: "10px 12px",
                 fontWeight: 700,
                 background: "#fafafa",
@@ -409,6 +428,7 @@ export default function PresetAvvisiPage() {
               <div>Titolo</div>
               <div>Codice</div>
               <div>Tipo</div>
+              <div>Tipo scadenza</div>
               <div>Trigger</div>
               <div>Attivo</div>
               <div>Updated</div>
@@ -429,7 +449,7 @@ export default function PresetAvvisiPage() {
                     style={{
                       display: "grid",
                       gridTemplateColumns:
-                        "minmax(240px, 2fr) minmax(260px, 1.6fr) minmax(120px, 0.8fr) minmax(120px, 0.8fr) 110px minmax(180px, 1fr) minmax(200px, 1fr)",
+                        "minmax(220px, 1.8fr) minmax(220px, 1.4fr) minmax(130px, 0.8fr) minmax(170px, 1fr) minmax(120px, 0.8fr) 110px minmax(170px, 1fr) minmax(200px, 1fr)",
                       padding: "10px 12px",
                       borderBottom: "1px solid #f1f1f1",
                       fontSize: 13,
@@ -449,6 +469,10 @@ export default function PresetAvvisiPage() {
                       {row.codice || "—"}
                     </div>
                     <div style={{ fontWeight: 600 }}>{row.tipo || "—"}</div>
+                    <div style={{ lineHeight: 1.3 }}>
+                      <div style={{ fontWeight: 600 }}>{getAlertTemplateAssociationLabel(row.tipo)}</div>
+                      <div style={{ fontSize: 11, opacity: 0.7 }}>{getAlertTemplateUsageLabel(row.tipo)}</div>
+                    </div>
                     <div style={{ fontWeight: 600 }}>{row.trigger || "—"}</div>
                     <div>
                       <span

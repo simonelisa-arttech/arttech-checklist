@@ -100,7 +100,7 @@ export function normalizeRenewalAlertRule(
 
 export function buildRenewalAlertRuleSummary(rule: RenewalAlertRuleRow | null | undefined) {
   if (!rule || rule.mode !== "AUTOMATICO" || !rule.enabled) {
-    return "Regola automatica non attiva.";
+    return "Nessun override cliente salvato.";
   }
   const recipients: string[] = [];
   if (rule.send_to_cliente) recipients.push("Cliente");
@@ -113,7 +113,7 @@ export function buildRenewalAlertRuleSummary(rule: RenewalAlertRuleRow | null | 
         : "al cambio stato";
   }
   return [
-    "Regola automatica attiva:",
+    "Override cliente attivo:",
     `invii progressivi: ${RENEWAL_ALERT_PROGRESSIVE_DAYS.join(" / ")} giorni prima della scadenza`,
     `destinatario: ${recipients.length > 0 ? recipients.join(" + ") : "—"}`,
     `stop: ${stopLabel}`,

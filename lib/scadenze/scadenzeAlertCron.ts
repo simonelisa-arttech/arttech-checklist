@@ -1,7 +1,7 @@
 import type { ScadenzaAgendaRow } from "@/lib/scadenze/buildScadenzeAgenda";
 import { buildClienteEmailList } from "@/lib/clientiEmail";
 
-export const SCADENZE_ALERT_STEPS = [30, 15, 7] as const;
+export const SCADENZE_ALERT_STEPS = [30, 15, 7, 1] as const;
 export const SCADENZE_ALERT_STOP_STATUSES = new Set([
   "CONFERMATO",
   "CONFERMATA",
@@ -106,7 +106,12 @@ export function isStoppedScadenza(row: ScadenzaAgendaRow) {
 }
 
 export function isAlertSupportedSource(row: ScadenzaAgendaRow) {
-  return row.source === "garanzie" || row.source === "licenze" || row.source === "tagliandi";
+  return (
+    row.source === "garanzie" ||
+    row.source === "licenze" ||
+    row.source === "tagliandi" ||
+    row.source === "saas"
+  );
 }
 
 export function getScadenzaLogReference(row: ScadenzaAgendaRow) {

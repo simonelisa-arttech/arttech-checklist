@@ -148,6 +148,12 @@ const TABLE_RULES: Record<
     orderCols: ["created_at", "updated_at"],
     requiredEqAnyOf: ["id", "cliente"],
   },
+  scadenze_alert_global_rules: {
+    ops: ["select", "insert", "update", "upsert"],
+    filterCols: ["id", "tipo_scadenza", "attivo"],
+    orderCols: ["created_at", "updated_at", "tipo_scadenza"],
+    allowNoFilterSelect: true,
+  },
   checklist_task_templates: {
     ops: ["select"],
     filterCols: ["id", "target", "attivo", "sezione", "titolo"],

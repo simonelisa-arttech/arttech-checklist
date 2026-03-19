@@ -2,6 +2,10 @@ export const runtime = "nodejs";
 
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import {
+  SCADENZE_ALERT_DEFAULT_TEMPLATE_TRIGGERS,
+  SCADENZE_ALERT_DEFAULT_TEMPLATE_TYPES,
+} from "@/lib/scadenzeAlertConfig";
 
 type AlertTemplatePayload = {
   id?: string;
@@ -14,8 +18,8 @@ type AlertTemplatePayload = {
   attivo: boolean;
 };
 
-const ALLOWED_TIPI = new Set(["LICENZA", "TAGLIANDO", "GENERICO"]);
-const ALLOWED_TRIGGER = new Set(["MANUALE", "60GG", "30GG", "15GG"]);
+const ALLOWED_TIPI = new Set(SCADENZE_ALERT_DEFAULT_TEMPLATE_TYPES);
+const ALLOWED_TRIGGER = new Set(SCADENZE_ALERT_DEFAULT_TEMPLATE_TRIGGERS);
 
 type RateLimitEntry = { count: number; resetAt: number };
 const rateLimitMap = new Map<string, RateLimitEntry>();

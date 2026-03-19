@@ -101,6 +101,19 @@ export default function ImpostazioniPage() {
         >
           Preset avvisi
         </Link>
+        <Link
+          href="/impostazioni/regole-globali-avvisi"
+          style={{
+            padding: "12px 16px",
+            borderRadius: 12,
+            border: "1px solid #ddd",
+            background: "white",
+            textDecoration: "none",
+            color: "inherit",
+          }}
+        >
+          Regole globali avvisi
+        </Link>
       </div>
     </div>
   );

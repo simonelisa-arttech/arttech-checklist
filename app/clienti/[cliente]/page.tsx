@@ -1307,7 +1307,7 @@ export default function ClientePage({
   function alertKeyForLogRow(row: any) {
     const tipo = String(row?.tipo || "LICENZA").toUpperCase();
     const checklistId = row?.checklist_id ?? null;
-    if (tipo === "TAGLIANDO" || tipo === "LICENZA") {
+    if (tipo === "TAGLIANDO" || tipo === "LICENZA" || tipo === "GARANZIA") {
       return `${tipo}::${checklistId || "NULL"}::${tipo}`;
     }
     return alertKey(tipo, checklistId, row?.riferimento ?? null);
@@ -1319,6 +1319,9 @@ export default function ClientePage({
     }
     if (r.source === "licenze") {
       return `LICENZA::${r.checklist_id || "NULL"}::LICENZA`;
+    }
+    if (String(r.item_tipo || r.tipo || "").toUpperCase() === "GARANZIA") {
+      return `GARANZIA::${r.checklist_id || "NULL"}::GARANZIA`;
     }
     return alertKey(r.item_tipo ?? null, r.checklist_id ?? null, r.riferimento ?? null);
   }
@@ -3584,13 +3587,13 @@ export default function ClientePage({
       .select("*")
       .single();
     if (error) {
-      setRinnoviAlertErr(`Errore salvataggio regola automatica: ${error.message}`);
+      setRinnoviAlertErr(`Errore salvataggio override cliente: ${error.message}`);
       setRinnoviAlertRuleSaving(false);
       return;
     }
     const saved = normalizeRenewalAlertRule((data as any) || payload, clienteKey, rule.stage);
     setRinnoviAlertRule(saved);
-    setRinnoviAlertOk("✅ Regola automatica salvata.");
+    setRinnoviAlertOk("✅ Override cliente salvato.");
     setRinnoviAlertRuleSaving(false);
   }
 
@@ -7396,6 +7399,7 @@ ${rinnovi30ggBreakdown.debugSample
       <RenewalsAlertModal
         open={rinnoviAlertOpen}
         cliente={cliente || ""}
+        contextTipo={rinnoviAlertItems[0]?.item_tipo || rinnoviAlertItems[0]?.tipo || null}
         stage={rinnoviAlertStage}
         title={rinnoviAlertStage === "stage1" ? "Invia avviso scadenza" : "Invia alert fatturazione rinnovi"}
         customerEmail={clienteAnagraficaEmail}

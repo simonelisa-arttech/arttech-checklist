@@ -1,5 +1,27 @@
 # AGENT MEMORY — Snapshot Operativo
 
+## Snapshot 2026-03-19 - Regole globali avvisi scadenze
+- Nuova distinzione di dominio per il blocco `Scadenze & Rinnovi`:
+  - `scadenze_alert_global_rules`: regole globali automatiche per tipo scadenza (`LICENZA`, `TAGLIANDO`, `GARANZIA`, `SAAS`)
+  - `alert_message_templates`: preset riusabili, associabili ai tipi scadenza o usabili come override locale
+  - `renewal_alert_rules`: override cliente per i flussi automatici cliente/stage gia esistenti
+- Nuova pagina impostazioni:
+  - `app/impostazioni/regole-globali-avvisi/page.tsx`
+  - raggiungibile da `Impostazioni`
+- Pagina `Preset avvisi` resa piu chiara:
+  - espone il tipo scadenza associato
+  - distingue meglio i preset collegabili a regole globali dagli override locali
+- Popup condiviso `components/RenewalsAlertModal.tsx`:
+  - elimina la ridondanza `Automatico` + `regola automatica attiva`
+  - mostra la regola globale del tipo scadenza
+  - distingue `Override locale` da `Override cliente`
+- Cron automatico scadenze:
+  - `GET /api/cron/scadenze-alert` legge ora `scadenze_alert_global_rules`
+  - raggruppa per `cliente + tipo scadenza + step`
+  - supporta step `30 / 15 / 7 / 1`
+  - usa eventuale preset/default text della regola globale
+  - continua a loggare su `checklist_alert_log`, quindi alimenta anche `Ultimo invio`
+
 ## Snapshot 2026-03-19 - Fix persistenza data_disinstallazione e cockpit dashboard
 - `app/checklists/[id]/page.tsx`
   - rimosso il fallback che eliminava `data_disinstallazione` dal payload di update checklist

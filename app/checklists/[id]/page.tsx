@@ -762,7 +762,7 @@ function alertKey(tipo?: string | null, checklistId?: string | null, riferimento
 function alertKeyForLogRow(row: any) {
   const tipo = String(row?.tipo || "").toUpperCase();
   const checklistId = row?.checklist_id ?? null;
-  if (tipo === "TAGLIANDO" || tipo === "LICENZA") {
+  if (tipo === "TAGLIANDO" || tipo === "LICENZA" || tipo === "GARANZIA") {
     return `${tipo}::${checklistId || "NULL"}::${tipo}`;
   }
   return alertKey(tipo, checklistId, row?.riferimento ?? null);
@@ -774,6 +774,9 @@ function alertKeyForProjectRow(row: ProjectRenewalRow) {
   }
   if (row.source === "licenza" || row.source === "licenze") {
     return `LICENZA::${row.checklist_id || "NULL"}::LICENZA`;
+  }
+  if (String(row.item_tipo || row.tipo || "").toUpperCase() === "GARANZIA") {
+    return `GARANZIA::${row.checklist_id || "NULL"}::GARANZIA`;
   }
   return alertKey(row.item_tipo ?? row.tipo ?? null, row.checklist_id ?? null, row.riferimento ?? null);
 }
@@ -2400,14 +2403,14 @@ function buildFormData(c: Checklist): FormData {
       .select("*")
       .single();
     if (error) {
-      setProjectRinnoviAlertErr(`Errore salvataggio regola automatica: ${error.message}`);
+      setProjectRinnoviAlertErr(`Errore salvataggio override cliente: ${error.message}`);
       setProjectRinnoviAlertRuleSaving(false);
       return;
     }
     setProjectRinnoviAlertRule(
       normalizeRenewalAlertRule((data as any) || payload, clienteKey, rule.stage)
     );
-    setProjectRinnoviAlertOk("✅ Regola automatica salvata.");
+    setProjectRinnoviAlertOk("✅ Override cliente salvato.");
     setProjectRinnoviAlertRuleSaving(false);
   }
 
@@ -6635,6 +6638,7 @@ function buildFormData(c: Checklist): FormData {
       <RenewalsAlertModal
         open={projectRinnoviAlertOpen}
         cliente={checklist?.cliente || ""}
+        contextTipo={projectRinnoviAlertItems[0]?.item_tipo || projectRinnoviAlertItems[0]?.tipo || null}
         stage={projectRinnoviAlertStage}
         title={projectRinnoviAlertStage === "stage1" ? "Invia avviso scadenza" : "Invia avviso fatturazione"}
         customerEmail={checklistClienteEmail}

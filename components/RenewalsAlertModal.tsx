@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { dbFrom } from "@/lib/clientDbBroker";
 import {
   buildRenewalAlertRuleSummary,
   isValidEmail,
@@ -11,6 +12,13 @@ import {
   type RenewalAlertRuleRow,
   type RenewalAlertStage,
 } from "@/lib/renewalAlertRules";
+import {
+  buildScadenzaAlertGlobalRuleSummary,
+  normalizeScadenzaAlertGlobalRule,
+  normalizeScadenzaAlertRuleType,
+  renderTemplateText,
+  type ScadenzaAlertGlobalRuleRow,
+} from "@/lib/scadenzeAlertConfig";
 
 type OperatoreOption = {
   id: string;
@@ -35,6 +43,7 @@ type ManualSubmitPayload = {
 type Props = {
   open: boolean;
   cliente: string;
+  contextTipo?: string | null;
   stage: RenewalAlertStage;
   title: string;
   customerEmail: string | null;
@@ -63,6 +72,7 @@ export default function RenewalsAlertModal({
   customerEmail,
   customerEmails = [],
   customerDeliveryMode,
+  contextTipo = null,
   operators,
   defaultOperatorId,
   initialSubject,
@@ -77,6 +87,15 @@ export default function RenewalsAlertModal({
   onSubmitManual,
   onSaveRule,
 }: Props) {
+  type AlertTemplatePreset = {
+    id: string;
+    titolo: string | null;
+    tipo: string | null;
+    trigger: string | null;
+    subject_template: string | null;
+    body_template: string | null;
+    attivo: boolean | null;
+  };
   const [mode, setMode] = useState<"MANUALE" | "AUTOMATICO">("MANUALE");
   const [toCliente, setToCliente] = useState(false);
   const [toArtTech, setToArtTech] = useState(true);
@@ -90,6 +109,10 @@ export default function RenewalsAlertModal({
   const [ruleDraft, setRuleDraft] = useState<RenewalAlertRuleRow>(
     normalizeRenewalAlertRule(rule, cliente, stage)
   );
+  const [presetTemplates, setPresetTemplates] = useState<AlertTemplatePreset[]>([]);
+  const [selectedPresetId, setSelectedPresetId] = useState("");
+  const [globalRule, setGlobalRule] = useState<ScadenzaAlertGlobalRuleRow | null>(null);
+  const [loadingGlobalRule, setLoadingGlobalRule] = useState(false);
 
   useEffect(() => {
     if (!open) return;
@@ -104,11 +127,70 @@ export default function RenewalsAlertModal({
     setSubject(initialSubject);
     setMessage(initialMessage);
     setSendEmail(true);
+    setSelectedPresetId("");
     setRuleDraft(normalizedRule);
   }, [open, rule, cliente, stage, defaultOperatorId, initialSubject, initialMessage]);
 
+  const normalizedTipo = useMemo(
+    () => normalizeScadenzaAlertRuleType(contextTipo),
+    [contextTipo]
+  );
+
+  useEffect(() => {
+    let alive = true;
+    if (!open) return;
+    setLoadingGlobalRule(Boolean(normalizedTipo));
+    (async () => {
+      const [templatesRes, globalRuleRes] = await Promise.all([
+        dbFrom("alert_message_templates")
+          .select("id,titolo,tipo,trigger,subject_template,body_template,attivo")
+          .eq("attivo", true)
+          .order("titolo", { ascending: true }),
+        normalizedTipo
+          ? dbFrom("scadenze_alert_global_rules")
+              .select("*")
+              .eq("tipo_scadenza", normalizedTipo)
+              .limit(1)
+              .maybeSingle()
+          : Promise.resolve({ data: null, error: null }),
+      ]);
+      if (!alive) return;
+      if (!templatesRes.error) {
+        setPresetTemplates(((templatesRes.data as any[]) || []) as AlertTemplatePreset[]);
+      }
+      if (normalizedTipo) {
+        setLoadingGlobalRule(false);
+        if (!globalRuleRes.error) {
+          setGlobalRule(
+            normalizeScadenzaAlertGlobalRule((globalRuleRes.data as any) || null, normalizedTipo)
+          );
+        } else {
+          setGlobalRule(null);
+        }
+      } else {
+        setGlobalRule(null);
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [open, normalizedTipo]);
+
   const canUseAutomatic = stage === "stage1";
   const automaticSummary = useMemo(() => buildRenewalAlertRuleSummary(ruleDraft), [ruleDraft]);
+  const filteredPresets = useMemo(() => {
+    return presetTemplates.filter((template) => {
+      const tipo = String(template.tipo || "").toUpperCase();
+      if (!normalizedTipo) return true;
+      return tipo === normalizedTipo || tipo === "GENERICO";
+    });
+  }, [presetTemplates, normalizedTipo]);
+  const globalRuleTemplateTitle = useMemo(() => {
+    if (!globalRule?.default_template_id) return null;
+    return (
+      presetTemplates.find((template) => template.id === globalRule.default_template_id)?.titolo || null
+    );
+  }, [globalRule, presetTemplates]);
   const normalizedCustomerEmails = useMemo(() => {
     const dedup = new Map<string, string>();
     for (const email of customerEmails) {
@@ -204,8 +286,8 @@ export default function RenewalsAlertModal({
             }
             style={{ width: "100%", padding: 8 }}
           >
-            <option value="MANUALE">MANUALE</option>
-            {canUseAutomatic && <option value="AUTOMATICO">AUTOMATICO</option>}
+            <option value="MANUALE">OVERRIDE LOCALE</option>
+            {canUseAutomatic && <option value="AUTOMATICO">USA REGOLA GLOBALE / OVERRIDE CLIENTE</option>}
           </select>
         </label>
 
@@ -227,6 +309,58 @@ export default function RenewalsAlertModal({
 
         {mode === "MANUALE" ? (
           <>
+            <div
+              style={{
+                whiteSpace: "pre-line",
+                fontSize: 12,
+                color: "#374151",
+                background: "#f8fafc",
+                border: "1px solid #e5e7eb",
+                borderRadius: 10,
+                padding: 10,
+                marginBottom: 12,
+              }}
+            >
+              Override locale per questa scadenza: preset, testo, modalità invio e destinatari scelti qui valgono solo per questo invio manuale e non modificano la regola globale.
+            </div>
+
+            {filteredPresets.length > 0 ? (
+              <label style={{ display: "block", marginBottom: 10 }}>
+                Preset avviso<br />
+                <select
+                  value={selectedPresetId}
+                  onChange={(e) => {
+                    const nextId = e.target.value;
+                    setSelectedPresetId(nextId);
+                    const preset = filteredPresets.find((item) => item.id === nextId) || null;
+                    if (!preset) return;
+                    setSubject(
+                      renderTemplateText(preset.subject_template, {
+                        cliente,
+                        tipo_scadenza: normalizedTipo || "",
+                        stage,
+                      }) || initialSubject
+                    );
+                    setMessage(
+                      renderTemplateText(preset.body_template, {
+                        cliente,
+                        tipo_scadenza: normalizedTipo || "",
+                        stage,
+                      }) || initialMessage
+                    );
+                  }}
+                  style={{ width: "100%", padding: 8 }}
+                >
+                  <option value="">— Nessun preset —</option>
+                  {filteredPresets.map((preset) => (
+                    <option key={preset.id} value={preset.id}>
+                      {preset.titolo || preset.id}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
+
             <div style={{ display: "flex", gap: 12, marginBottom: 10, fontSize: 12, flexWrap: "wrap" }}>
               <label style={{ display: "flex", gap: 6, alignItems: "center" }}>
                 <input
@@ -365,6 +499,23 @@ export default function RenewalsAlertModal({
 
             <div
               style={{
+                whiteSpace: "pre-line",
+                fontSize: 12,
+                color: "#1e3a8a",
+                background: "#eff6ff",
+                border: "1px solid #dbeafe",
+                borderRadius: 10,
+                padding: 10,
+                marginBottom: 12,
+              }}
+            >
+              {loadingGlobalRule
+                ? "Caricamento regola globale..."
+                : buildScadenzaAlertGlobalRuleSummary(globalRule, globalRuleTemplateTitle)}
+            </div>
+
+            <div
+              style={{
                 marginBottom: 12,
                 padding: "10px 12px",
                 borderRadius: 10,
@@ -375,7 +526,7 @@ export default function RenewalsAlertModal({
                 lineHeight: 1.5,
               }}
             >
-              Piano automatico progressivo fisso: <strong>{RENEWAL_ALERT_PROGRESSIVE_DAYS.join(" / ")} giorni</strong>.
+              La <strong>regola globale</strong> definisce step, destinatari e preset di default per il tipo di scadenza. Il pannello sotto salva solo un <strong>override cliente</strong> per questa anagrafica; per un invio singolo usa invece <strong>Override locale</strong>.
             </div>
 
             {customerAutoBlocked ? (
@@ -410,21 +561,9 @@ export default function RenewalsAlertModal({
               </div>
             ) : null}
 
-            <label style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 10 }}>
-              <input
-                type="checkbox"
-                checked={ruleDraft.enabled}
-                onChange={(e) =>
-                  setRuleDraft((prev) => ({
-                    ...prev,
-                    enabled: e.target.checked,
-                    mode: "AUTOMATICO",
-                    days_before: RENEWAL_ALERT_PROGRESSIVE_DAYS[0],
-                  }))
-                }
-              />
-              Regola automatica attiva
-            </label>
+            <div style={{ marginBottom: 10, fontSize: 12, fontWeight: 700 }}>
+              Override cliente (opzionale)
+            </div>
 
             <div style={{ display: "flex", gap: 12, marginBottom: 10, fontSize: 12, flexWrap: "wrap" }}>
               <label style={{ display: "flex", gap: 6, alignItems: "center" }}>
@@ -632,10 +771,18 @@ export default function RenewalsAlertModal({
           ) : (
             <button
               type="button"
-              onClick={() => onSaveRule({ ...ruleDraft, cliente, stage, mode: "AUTOMATICO" })}
+              onClick={() =>
+                onSaveRule({
+                  ...ruleDraft,
+                  cliente,
+                  stage,
+                  mode: "AUTOMATICO",
+                  enabled: true,
+                  days_before: RENEWAL_ALERT_PROGRESSIVE_DAYS[0],
+                })
+              }
               disabled={
                 ruleSaving ||
-                !ruleDraft.enabled ||
                 (!ruleDraft.send_to_cliente && !ruleDraft.send_to_art_tech) ||
                 (ruleDraft.send_to_art_tech &&
                   ruleDraft.art_tech_mode === "OPERATORE" &&
@@ -652,13 +799,12 @@ export default function RenewalsAlertModal({
                 color: "white",
                 opacity:
                   ruleSaving ||
-                  !ruleDraft.enabled ||
                   (!ruleDraft.send_to_cliente && !ruleDraft.send_to_art_tech)
                     ? 0.6
                     : 1,
               }}
             >
-              {ruleSaving ? "Salvataggio..." : "Salva regola automatica"}
+              {ruleSaving ? "Salvataggio..." : "Salva override cliente"}
             </button>
           )}
         </div>
