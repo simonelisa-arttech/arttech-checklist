@@ -444,6 +444,7 @@ export default function Page() {
   >(new Map());
   const [operatoreAssociationError, setOperatoreAssociationError] = useState<string | null>(null);
   const [scadenzeEntro7Count, setScadenzeEntro7Count] = useState(0);
+  const [scadenzeEntro30Count, setScadenzeEntro30Count] = useState(0);
   const [scadenzeEntro7Breakdown, setScadenzeEntro7Breakdown] = useState<DashboardScadenzeBreakdown>({
     garanzie: 0,
     licenze: 0,
@@ -920,6 +921,9 @@ export default function Page() {
       const toDate = new Date(today);
       toDate.setDate(toDate.getDate() + 7);
       const to = toDateInputValue(toDate);
+      const toDate30 = new Date(today);
+      toDate30.setDate(toDate30.getDate() + 30);
+      const to30 = toDateInputValue(toDate30);
       try {
         const scadenzeRes = await fetch(`/api/scadenze?from=${from}&to=${to}`, {
           signal: controller.signal,
@@ -952,6 +956,23 @@ export default function Page() {
         if (!isLatest()) return;
         setScadenzeEntro7Count(0);
         setScadenzeEntro7Breakdown({ garanzie: 0, licenze: 0, tagliandi: 0 });
+      }
+      try {
+        const scadenze30Res = await fetch(`/api/scadenze?from=${from}&to=${to30}`, {
+          signal: controller.signal,
+          credentials: "include",
+        });
+        const scadenze30Data = await scadenze30Res.json().catch(() => ({}));
+        if (!isLatest()) return;
+        if (scadenze30Res.ok && typeof scadenze30Data?.count === "number") {
+          setScadenzeEntro30Count(scadenze30Data.count);
+        } else {
+          setScadenzeEntro30Count(0);
+        }
+      } catch (e: any) {
+        if (e?.name === "AbortError" || controller.signal.aborted) return;
+        if (!isLatest()) return;
+        setScadenzeEntro30Count(0);
       }
 
       try {
@@ -1550,6 +1571,7 @@ export default function Page() {
                     <div style={{ fontSize: 13, fontWeight: 900, letterSpacing: 0.4 }}>SCADENZE IN ARRIVO</div>
                     <div style={{ fontSize: 32, lineHeight: 1.05 }}>⚠ {scadenzeEntro7Count}</div>
                     <div style={{ fontSize: 14, fontWeight: 700 }}>scadenze entro 7 giorni</div>
+                    <div style={{ fontSize: 13, fontWeight: 700 }}>entro 30 giorni: {scadenzeEntro30Count}</div>
                   </div>
                   <div
                     style={{
@@ -1569,6 +1591,11 @@ export default function Page() {
               <Link
                 href="/admin/interventi-da-chiudere"
                 style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  justifyContent: "center",
+                  alignItems: "center",
+                  textAlign: "center",
                   padding: "10px 12px",
                   borderRadius: 12,
                   border: "1px solid #fcd34d",
@@ -1587,6 +1614,11 @@ export default function Page() {
               <Link
                 href="/admin/interventi-entro-7-giorni"
                 style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  justifyContent: "center",
+                  alignItems: "center",
+                  textAlign: "center",
                   padding: "10px 12px",
                   borderRadius: 12,
                   border: "1px solid #fcd34d",
@@ -1605,6 +1637,11 @@ export default function Page() {
               <Link
                 href="/admin/fatture-da-emettere"
                 style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  justifyContent: "center",
+                  alignItems: "center",
+                  textAlign: "center",
                   padding: "10px 12px",
                   borderRadius: 12,
                   border: "1px solid #fcd34d",
@@ -1623,6 +1660,11 @@ export default function Page() {
               <Link
                 href="/admin/noleggi-attivi"
                 style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  justifyContent: "center",
+                  alignItems: "center",
+                  textAlign: "center",
                   padding: "10px 12px",
                   borderRadius: 12,
                   border: "1px solid #fcd34d",
@@ -1641,6 +1683,11 @@ export default function Page() {
               <Link
                 href="/admin/consegne-entro-7-giorni"
                 style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  justifyContent: "center",
+                  alignItems: "center",
+                  textAlign: "center",
                   padding: "10px 12px",
                   borderRadius: 12,
                   border: "1px solid #fcd34d",
@@ -1659,6 +1706,11 @@ export default function Page() {
               <Link
                 href="/admin/smontaggi-noleggi-entro-7-giorni"
                 style={{
+                  display: "flex",
+                  flexDirection: "column",
+                  justifyContent: "center",
+                  alignItems: "center",
+                  textAlign: "center",
                   padding: "10px 12px",
                   borderRadius: 12,
                   border: "1px solid #fcd34d",
@@ -1688,6 +1740,7 @@ export default function Page() {
                   gap: 10,
                   alignItems: "center",
                   flexWrap: "wrap",
+                  marginTop: 24,
                 }}
               >
                 <input
