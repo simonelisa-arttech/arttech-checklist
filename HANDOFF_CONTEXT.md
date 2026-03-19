@@ -2,6 +2,15 @@
 
 ## Aggiornamento rapido (19 marzo 2026)
 
+- `fix: remove cast newIntervento to editIntervento` in corso locale.
+- `app/clienti/[cliente]/page.tsx`
+  - `extractClienteInterventoOperativi(...)` era tipizzata su `typeof editIntervento`
+  - nel salvataggio nuovo intervento c'era quindi un cast forzato `newIntervento as typeof editIntervento`
+  - fix minimale:
+    - introdotto tipo base condiviso `ClienteInterventoOperativiInput`
+    - `extractClienteInterventoOperativi(...)` accetta ora quello shape comune
+    - rimosso il cast forzato sul salvataggio del nuovo intervento
+
 - `fix: cliente scadenze item_tipo al posto di tipo` in corso locale.
 - `app/clienti/[cliente]/page.tsx`
   - `ScadenzaItem` espone il campo reale `item_tipo`

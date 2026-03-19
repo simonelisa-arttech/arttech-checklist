@@ -1004,7 +1004,19 @@ export default function ClientePage({
     commercialeArtTechContatto: "",
   });
 
-  function extractClienteInterventoOperativi(form: typeof editIntervento) {
+  type ClienteInterventoOperativiInput = {
+    personalePrevisto: string;
+    mezzi: string;
+    descrizioneAttivita: string;
+    indirizzo: string;
+    orario: string;
+    referenteClienteNome: string;
+    referenteClienteContatto: string;
+    commercialeArtTechNome: string;
+    commercialeArtTechContatto: string;
+  };
+
+  function extractClienteInterventoOperativi(form: ClienteInterventoOperativiInput) {
     return {
       personale_previsto: form.personalePrevisto,
       mezzi: form.mezzi,
@@ -3367,7 +3379,7 @@ export default function ClientePage({
       try {
         await saveInterventoOperativi(
           inserted.id,
-          extractClienteInterventoOperativi(newIntervento as typeof editIntervento)
+          extractClienteInterventoOperativi(newIntervento)
         );
       } catch (e: any) {
         operativiSaveError =
