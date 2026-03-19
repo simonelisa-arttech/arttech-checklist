@@ -2,6 +2,14 @@
 
 ## Aggiornamento rapido (19 marzo 2026)
 
+- `fix: cliente scadenze item_tipo al posto di tipo` in corso locale.
+- `app/clienti/[cliente]/page.tsx`
+  - `ScadenzaItem` espone il campo reale `item_tipo`
+  - erano rimasti accessi a `r.tipo` su oggetti `ScadenzaItem`, causando il build error TypeScript
+  - fix minimale:
+    - `getAlertKeyForRow()` usa solo `item_tipo`
+    - `RenewalsAlertModal` riceve `contextTipo` da `item_tipo`
+
 - `fix: type reset newProjectIntervento` in corso locale.
 - `app/checklists/[id]/page.tsx`
   - `ProjectInterventoForm` era stato esteso con i campi operativi condivisi

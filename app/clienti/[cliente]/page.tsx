@@ -1356,7 +1356,7 @@ export default function ClientePage({
     if (r.source === "licenze") {
       return `LICENZA::${r.checklist_id || "NULL"}::LICENZA`;
     }
-    if (String(r.item_tipo || r.tipo || "").toUpperCase() === "GARANZIA") {
+    if (String(r.item_tipo || "").toUpperCase() === "GARANZIA") {
       return `GARANZIA::${r.checklist_id || "NULL"}::GARANZIA`;
     }
     return alertKey(r.item_tipo ?? null, r.checklist_id ?? null, r.riferimento ?? null);
@@ -7512,7 +7512,7 @@ ${rinnovi30ggBreakdown.debugSample
       <RenewalsAlertModal
         open={rinnoviAlertOpen}
         cliente={cliente || ""}
-        contextTipo={rinnoviAlertItems[0]?.item_tipo || rinnoviAlertItems[0]?.tipo || null}
+        contextTipo={rinnoviAlertItems[0]?.item_tipo || null}
         stage={rinnoviAlertStage}
         title={rinnoviAlertStage === "stage1" ? "Invia avviso scadenza" : "Invia alert fatturazione rinnovi"}
         customerEmail={clienteAnagraficaEmail}
