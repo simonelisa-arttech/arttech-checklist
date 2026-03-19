@@ -49,6 +49,7 @@ type DashboardScadenzeBreakdown = {
   garanzie: number;
   licenze: number;
   tagliandi: number;
+  saasAltro: number;
 };
 
 type DashboardScadenzeSummary = {
@@ -60,6 +61,7 @@ const EMPTY_SCADENZE_BREAKDOWN: DashboardScadenzeBreakdown = {
   garanzie: 0,
   licenze: 0,
   tagliandi: 0,
+  saasAltro: 0,
 };
 
 function matchesSingleSaasService(row: Checklist, filter: SaasServiceFilter) {
@@ -806,7 +808,8 @@ export default function Page() {
     textDecoration: "none",
     minWidth: 180,
     minHeight: 112,
-    flex: "0 1 190px",
+    flex: "1 1 190px",
+    maxWidth: 220,
   };
   const shortcutCardTitleStyle = {
     fontSize: 12,
@@ -974,12 +977,16 @@ export default function Page() {
       const buildScadenzeBreakdown = (rows: any[]): DashboardScadenzeBreakdown =>
         rows.reduce(
           (acc: DashboardScadenzeBreakdown, row: any) => {
+            const tipo = String(row?.tipo || "")
+              .trim()
+              .toUpperCase();
             const source = String(row?.source || "")
               .trim()
               .toLowerCase();
-            if (source === "garanzie") acc.garanzie += 1;
-            if (source === "licenze") acc.licenze += 1;
-            if (source === "tagliandi") acc.tagliandi += 1;
+            if (tipo === "GARANZIA" || source === "garanzie") acc.garanzie += 1;
+            else if (tipo === "LICENZA" || source === "licenze") acc.licenze += 1;
+            else if (tipo === "TAGLIANDO" || source === "tagliandi") acc.tagliandi += 1;
+            else acc.saasAltro += 1;
             return acc;
           },
           { ...EMPTY_SCADENZE_BREAKDOWN }
@@ -1582,178 +1589,205 @@ export default function Page() {
               color: "#92400e",
             }}
           >
-            <div
-              style={{
-                display: "flex",
-                flexWrap: "wrap",
-                gap: 10,
-                alignItems: "stretch",
-              }}
-            >
+            <div style={{ display: "grid", gap: 10 }}>
               <div
                 style={{
-                  flex: "1 1 360px",
-                  minWidth: 280,
-                  padding: "10px 14px",
-                  borderRadius: 12,
-                  border: "1px solid #fcd34d",
-                  background: "rgba(255,255,255,0.62)",
-                  color: "inherit",
+                  display: "flex",
+                  flexWrap: "wrap",
+                  gap: 10,
+                  alignItems: "stretch",
                 }}
               >
                 <div
                   style={{
-                    display: "grid",
-                    gap: 10,
-                    height: "100%",
+                    flex: "1 1 360px",
+                    minWidth: 280,
+                    padding: "10px 14px",
+                    borderRadius: 12,
+                    border: "1px solid #fcd34d",
+                    background: "rgba(255,255,255,0.62)",
+                    color: "inherit",
                   }}
                 >
                   <div
                     style={{
-                      display: "flex",
-                      flexWrap: "wrap",
+                      display: "grid",
                       gap: 10,
-                      alignItems: "center",
-                      justifyContent: "space-between",
+                      height: "100%",
                     }}
                   >
-                    <div style={{ fontSize: 13, fontWeight: 900, letterSpacing: 0.4 }}>SCADENZE IN ARRIVO</div>
                     <div
                       style={{
-                        display: "inline-flex",
-                        padding: 3,
-                        borderRadius: 999,
-                        border: "1px solid #fcd34d",
-                        background: "rgba(255,255,255,0.8)",
-                        gap: 4,
+                        display: "flex",
+                        flexWrap: "wrap",
+                        gap: 10,
+                        alignItems: "center",
+                        justifyContent: "space-between",
                       }}
                     >
-                      {([7, 15, 30] as const).map((days) => {
-                        const active = scadenzePeriodDays === days;
-                        return (
-                          <button
-                            key={days}
-                            type="button"
-                            onClick={() => setScadenzePeriodDays(days)}
-                            style={{
-                              border: "none",
-                              borderRadius: 999,
-                              padding: "5px 10px",
-                              background: active ? "#f59e0b" : "transparent",
-                              color: active ? "white" : "#92400e",
-                              fontWeight: 800,
-                              fontSize: 12,
-                              cursor: "pointer",
-                            }}
-                          >
-                            {days} giorni
-                          </button>
-                        );
-                      })}
+                      <div style={{ fontSize: 13, fontWeight: 900, letterSpacing: 0.4 }}>SCADENZE IN ARRIVO</div>
+                      <div
+                        style={{
+                          display: "inline-flex",
+                          padding: 3,
+                          borderRadius: 999,
+                          border: "1px solid #fcd34d",
+                          background: "rgba(255,255,255,0.8)",
+                          gap: 4,
+                        }}
+                      >
+                        {([7, 15, 30] as const).map((days) => {
+                          const active = scadenzePeriodDays === days;
+                          return (
+                            <button
+                              key={days}
+                              type="button"
+                              onClick={() => setScadenzePeriodDays(days)}
+                              style={{
+                                border: "none",
+                                borderRadius: 999,
+                                padding: "5px 10px",
+                                background: active ? "#f59e0b" : "transparent",
+                                color: active ? "white" : "#92400e",
+                                fontWeight: 800,
+                                fontSize: 12,
+                                cursor: "pointer",
+                              }}
+                            >
+                              {days} giorni
+                            </button>
+                          );
+                        })}
+                      </div>
                     </div>
-                  </div>
-                  <div
-                    style={{
-                      display: "flex",
-                      gap: 18,
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                      flexWrap: "wrap",
-                    }}
-                  >
-                    <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 150 }}>
-                      <div style={{ fontSize: 30, lineHeight: 1 }}>⚠</div>
-                      <div style={{ display: "grid", gap: 2 }}>
-                        <div style={{ fontSize: 32, lineHeight: 1.05, fontWeight: 900 }}>
-                          {selectedScadenzeSummary.count}
+                    <div
+                      style={{
+                        display: "flex",
+                        gap: 18,
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        flexWrap: "wrap",
+                      }}
+                    >
+                      <div
+                        style={{
+                          display: "grid",
+                          gap: 4,
+                          minWidth: 150,
+                          justifyItems: "center",
+                          textAlign: "center",
+                        }}
+                      >
+                        <div
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            gap: 10,
+                          }}
+                        >
+                          <div style={{ fontSize: 30, lineHeight: 1 }}>⚠</div>
+                          <div style={{ fontSize: 32, lineHeight: 1.05, fontWeight: 900 }}>
+                            {selectedScadenzeSummary.count}
+                          </div>
                         </div>
                         <div style={{ fontSize: 14, fontWeight: 700 }}>
                           Totale entro {scadenzePeriodDays} giorni
                         </div>
                       </div>
+                      <div
+                        style={{
+                          display: "grid",
+                          gap: 4,
+                          fontSize: 13,
+                          fontWeight: 700,
+                          minWidth: 135,
+                        }}
+                      >
+                        <div>Garanzie: {selectedScadenzeSummary.breakdown.garanzie}</div>
+                        <div>Licenze: {selectedScadenzeSummary.breakdown.licenze}</div>
+                        <div>Tagliandi: {selectedScadenzeSummary.breakdown.tagliandi}</div>
+                        <div>SaaS / Altro: {selectedScadenzeSummary.breakdown.saasAltro}</div>
+                      </div>
                     </div>
-                    <div
+                    <Link
+                      href={`/scadenze?from=${toDateInputValue(new Date())}&to=${toDateInputValue(new Date(Date.now() + scadenzePeriodDays * 86400000))}`}
                       style={{
-                        display: "grid",
-                        gap: 4,
-                        fontSize: 13,
-                        fontWeight: 700,
-                        minWidth: 120,
+                        justifySelf: "start",
+                        fontSize: 12,
+                        fontWeight: 800,
+                        color: "#92400e",
+                        textDecoration: "underline",
                       }}
                     >
-                      <div>Garanzie: {selectedScadenzeSummary.breakdown.garanzie}</div>
-                      <div>Licenze: {selectedScadenzeSummary.breakdown.licenze}</div>
-                      <div>Tagliandi: {selectedScadenzeSummary.breakdown.tagliandi}</div>
-                    </div>
+                      Apri elenco scadenze
+                    </Link>
                   </div>
-                  <Link
-                    href={`/scadenze?from=${toDateInputValue(new Date())}&to=${toDateInputValue(new Date(Date.now() + scadenzePeriodDays * 86400000))}`}
-                    style={{
-                      justifySelf: "start",
-                      fontSize: 12,
-                      fontWeight: 800,
-                      color: "#92400e",
-                      textDecoration: "underline",
-                    }}
-                  >
-                    Apri elenco scadenze
-                  </Link>
                 </div>
+                <Link
+                  href="/admin/interventi-da-chiudere"
+                  style={shortcutCardStyle}
+                >
+                  <div style={shortcutCardTitleStyle}>INTERVENTI DA CHIUDERE</div>
+                  <div style={shortcutCardNumberWrapStyle}>
+                    <div style={shortcutCardNumberStyle}>{interventiDaChiudereCount}</div>
+                  </div>
+                </Link>
+                <Link
+                  href="/admin/interventi-entro-7-giorni"
+                  style={shortcutCardStyle}
+                >
+                  <div style={shortcutCardTitleStyle}>INTERVENTI ENTRO 7 GIORNI</div>
+                  <div style={shortcutCardNumberWrapStyle}>
+                    <div style={shortcutCardNumberStyle}>{interventiEntro7Count}</div>
+                  </div>
+                </Link>
+                <Link
+                  href="/admin/fatture-da-emettere"
+                  style={shortcutCardStyle}
+                >
+                  <div style={shortcutCardTitleStyle}>FATTURE DA EMETTERE</div>
+                  <div style={shortcutCardNumberWrapStyle}>
+                    <div style={shortcutCardNumberStyle}>{fattureDaEmettereCount}</div>
+                  </div>
+                </Link>
               </div>
-              <Link
-                href="/admin/interventi-da-chiudere"
-                style={shortcutCardStyle}
+              <div
+                style={{
+                  display: "flex",
+                  flexWrap: "wrap",
+                  gap: 10,
+                  alignItems: "stretch",
+                }}
               >
-                <div style={shortcutCardTitleStyle}>INTERVENTI DA CHIUDERE</div>
-                <div style={shortcutCardNumberWrapStyle}>
-                  <div style={shortcutCardNumberStyle}>{interventiDaChiudereCount}</div>
-                </div>
-              </Link>
-              <Link
-                href="/admin/interventi-entro-7-giorni"
-                style={shortcutCardStyle}
-              >
-                <div style={shortcutCardTitleStyle}>INTERVENTI ENTRO 7 GIORNI</div>
-                <div style={shortcutCardNumberWrapStyle}>
-                  <div style={shortcutCardNumberStyle}>{interventiEntro7Count}</div>
-                </div>
-              </Link>
-              <Link
-                href="/admin/fatture-da-emettere"
-                style={shortcutCardStyle}
-              >
-                <div style={shortcutCardTitleStyle}>FATTURE DA EMETTERE</div>
-                <div style={shortcutCardNumberWrapStyle}>
-                  <div style={shortcutCardNumberStyle}>{fattureDaEmettereCount}</div>
-                </div>
-              </Link>
-              <Link
-                href="/admin/noleggi-attivi"
-                style={shortcutCardStyle}
-              >
-                <div style={shortcutCardTitleStyle}>NOLEGGI ATTIVI</div>
-                <div style={shortcutCardNumberWrapStyle}>
-                  <div style={shortcutCardNumberStyle}>{noleggiAttiviCount}</div>
-                </div>
-              </Link>
-              <Link
-                href="/admin/consegne-entro-7-giorni"
-                style={shortcutCardStyle}
-              >
-                <div style={shortcutCardTitleStyle}>CONSEGNE ENTRO 7 GIORNI</div>
-                <div style={shortcutCardNumberWrapStyle}>
-                  <div style={shortcutCardNumberStyle}>{consegneEntro7Count}</div>
-                </div>
-              </Link>
-              <Link
-                href="/admin/smontaggi-noleggi-entro-7-giorni"
-                style={shortcutCardStyle}
-              >
-                <div style={shortcutCardTitleStyle}>SMONTAGGI NOLEGGI ENTRO 7 GIORNI</div>
-                <div style={shortcutCardNumberWrapStyle}>
-                  <div style={shortcutCardNumberStyle}>{smontaggiEntro7Count}</div>
-                </div>
-              </Link>
+                <Link
+                  href="/admin/noleggi-attivi"
+                  style={shortcutCardStyle}
+                >
+                  <div style={shortcutCardTitleStyle}>NOLEGGI ATTIVI</div>
+                  <div style={shortcutCardNumberWrapStyle}>
+                    <div style={shortcutCardNumberStyle}>{noleggiAttiviCount}</div>
+                  </div>
+                </Link>
+                <Link
+                  href="/admin/consegne-entro-7-giorni"
+                  style={shortcutCardStyle}
+                >
+                  <div style={shortcutCardTitleStyle}>CONSEGNE ENTRO 7 GIORNI</div>
+                  <div style={shortcutCardNumberWrapStyle}>
+                    <div style={shortcutCardNumberStyle}>{consegneEntro7Count}</div>
+                  </div>
+                </Link>
+                <Link
+                  href="/admin/smontaggi-noleggi-entro-7-giorni"
+                  style={shortcutCardStyle}
+                >
+                  <div style={shortcutCardTitleStyle}>SMONTAGGI NOLEGGI ENTRO 7 GIORNI</div>
+                  <div style={shortcutCardNumberWrapStyle}>
+                    <div style={shortcutCardNumberStyle}>{smontaggiEntro7Count}</div>
+                  </div>
+                </Link>
+              </div>
             </div>
           </div>
           {loading ? (
