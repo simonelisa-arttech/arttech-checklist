@@ -1618,25 +1618,39 @@ export default function Page() {
                     border: "1px solid #fcd34d",
                     background: "rgba(255,255,255,0.62)",
                     color: "inherit",
+                    overflow: "hidden",
                   }}
                 >
                   <div
                     style={{
                       display: "grid",
-                      gap: 6,
+                      gap: 8,
                       height: "100%",
+                      gridTemplateRows: "auto 1fr",
                     }}
                   >
                     <div
                       style={{
                         display: "flex",
                         flexWrap: "wrap",
-                        gap: 10,
-                        alignItems: "center",
+                        gap: 8,
+                        alignItems: "flex-start",
                         justifyContent: "space-between",
                       }}
                     >
-                      <div style={{ fontSize: 13, fontWeight: 900, letterSpacing: 0.4 }}>SCADENZE IN ARRIVO</div>
+                      <Link
+                        href={buildScadenzeLink(scadenzePeriodDays)}
+                        style={{
+                          fontSize: 13,
+                          fontWeight: 900,
+                          letterSpacing: 0.4,
+                          color: "#92400e",
+                          textDecoration: "none",
+                          cursor: "pointer",
+                        }}
+                      >
+                        SCADENZE IN ARRIVO
+                      </Link>
                       <div
                         style={{
                           display: "inline-flex",
@@ -1655,13 +1669,13 @@ export default function Page() {
                               type="button"
                               onClick={() => setScadenzePeriodDays(days)}
                               style={{
-                              border: "none",
-                              borderRadius: 999,
-                              padding: "4px 9px",
-                              background: active ? "#f59e0b" : "transparent",
-                              color: active ? "white" : "#92400e",
-                              fontWeight: 800,
-                              fontSize: 12,
+                                border: "none",
+                                borderRadius: 999,
+                                padding: "4px 9px",
+                                background: active ? "#f59e0b" : "transparent",
+                                color: active ? "white" : "#92400e",
+                                fontWeight: 800,
+                                fontSize: 12,
                                 cursor: "pointer",
                               }}
                             >
@@ -1673,12 +1687,12 @@ export default function Page() {
                     </div>
                     <div
                       style={{
-                        display: "flex",
-                        gap: 14,
+                        display: "grid",
+                        gridTemplateColumns: "minmax(120px, 1fr) minmax(120px, 1fr)",
+                        gap: 12,
                         alignItems: "center",
-                        justifyContent: "space-between",
-                        flexWrap: "wrap",
                         flex: 1,
+                        minHeight: 0,
                       }}
                     >
                       <div
@@ -1713,7 +1727,8 @@ export default function Page() {
                           gap: 3,
                           fontSize: 12,
                           fontWeight: 700,
-                          minWidth: 135,
+                          minWidth: 0,
+                          alignContent: "center",
                         }}
                       >
                         <div>Garanzie: {selectedScadenzeSummary.breakdown.garanzie}</div>
@@ -1722,18 +1737,6 @@ export default function Page() {
                         <div>SaaS / Altro: {selectedScadenzeSummary.breakdown.saasAltro}</div>
                       </div>
                     </div>
-                    <Link
-                      href={buildScadenzeLink(scadenzePeriodDays)}
-                      style={{
-                        justifySelf: "start",
-                        fontSize: 11,
-                        fontWeight: 800,
-                        color: "#92400e",
-                        textDecoration: "underline",
-                      }}
-                    >
-                      Apri elenco scadenze
-                    </Link>
                   </div>
                 </div>
                 <Link
