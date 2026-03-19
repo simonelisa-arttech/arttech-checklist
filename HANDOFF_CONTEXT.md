@@ -2,6 +2,15 @@
 
 ## Aggiornamento rapido (19 marzo 2026)
 
+- `fix: typing tipo alert-templates` in corso locale.
+- `app/api/alert-templates/route.ts`
+  - il payload `tipo` era tipizzato genericamente come `string | null`
+  - il build TypeScript falliva perche il client Supabase si aspetta la union dominio `LICENZA | TAGLIANDO | GARANZIA | SAAS`
+  - fix minimale:
+    - `tipo` tipizzato come `ScadenzaAlertRuleType | null`
+    - `ALLOWED_TIPI` riallineato a `SCADENZE_ALERT_RULE_TYPES`
+    - aggiunta `normalizeTipo()` per convertire l'input stringa al tipo corretto senza cambiare la logica runtime
+
 - `fix: interventi aperti non visibili in interventi da chiudere` in corso locale.
 - Causa reale:
   - `app/api/interventi/da-chiudere/route.ts` escludeva alcune righe usando `fatturazione_stato` come filtro forte

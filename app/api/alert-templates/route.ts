@@ -4,21 +4,22 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import {
   SCADENZE_ALERT_DEFAULT_TEMPLATE_TRIGGERS,
-  SCADENZE_ALERT_DEFAULT_TEMPLATE_TYPES,
+  SCADENZE_ALERT_RULE_TYPES,
+  type ScadenzaAlertRuleType,
 } from "@/lib/scadenzeAlertConfig";
 
 type AlertTemplatePayload = {
   id?: string;
   codice: string | null;
   titolo: string | null;
-  tipo: string | null;
+  tipo: ScadenzaAlertRuleType | null;
   trigger: string | null;
   subject_template: string | null;
   body_template: string | null;
   attivo: boolean;
 };
 
-const ALLOWED_TIPI = new Set(SCADENZE_ALERT_DEFAULT_TEMPLATE_TYPES);
+const ALLOWED_TIPI = new Set<ScadenzaAlertRuleType>(SCADENZE_ALERT_RULE_TYPES);
 const ALLOWED_TRIGGER = new Set(SCADENZE_ALERT_DEFAULT_TEMPLATE_TRIGGERS);
 
 type RateLimitEntry = { count: number; resetAt: number };
@@ -78,6 +79,17 @@ function getSupabaseClient() {
   return createClient(supabaseUrl, supabaseKey);
 }
 
+function normalizeTipo(value?: string | null): ScadenzaAlertRuleType | null {
+  const raw = String(value || "")
+    .trim()
+    .toUpperCase();
+  if (raw === "LICENZA") return "LICENZA";
+  if (raw === "TAGLIANDO") return "TAGLIANDO";
+  if (raw === "GARANZIA") return "GARANZIA";
+  if (raw === "SAAS") return "SAAS";
+  return null;
+}
+
 const SELECT_FIELDS =
   "id,codice,titolo,tipo,trigger,subject_template,body_template,attivo,created_at,updated_at";
 
@@ -119,7 +131,7 @@ export async function POST(request: Request) {
   const payload: AlertTemplatePayload = {
     codice: body.codice?.trim() || null,
     titolo: body.titolo?.trim() || null,
-    tipo: body.tipo?.trim() || null,
+    tipo: normalizeTipo(body.tipo),
     trigger: body.trigger?.trim() || null,
     subject_template: body.subject_template ?? null,
     body_template: body.body_template ?? null,
@@ -170,7 +182,7 @@ export async function PATCH(request: Request) {
     id: body.id,
     codice: body.codice?.trim() || null,
     titolo: body.titolo?.trim() || null,
-    tipo: body.tipo?.trim() || null,
+    tipo: normalizeTipo(body.tipo),
     trigger: body.trigger?.trim() || null,
     subject_template: body.subject_template ?? null,
     body_template: body.body_template ?? null,
