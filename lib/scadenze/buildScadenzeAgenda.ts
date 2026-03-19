@@ -56,6 +56,7 @@ type ChecklistBaseRow = {
   cliente: string | null;
   cliente_id: string | null;
   nome_checklist: string | null;
+  noleggio_vendita: string | null;
   garanzia_scadenza: string | null;
   garanzia_stato: string | null;
   saas_piano: string | null;
@@ -146,6 +147,10 @@ function normalizeString(value?: string | null) {
 
 function normalizeUpper(value?: string | null) {
   return normalizeString(value).toUpperCase();
+}
+
+function isNoleggioChecklist(value?: string | null) {
+  return normalizeUpper(value) === "NOLEGGIO";
 }
 
 function normalizeTipo(
@@ -341,7 +346,7 @@ export async function buildScadenzeAgenda(
     supabase
       .from("checklists")
       .select(
-        "id, cliente, cliente_id, nome_checklist, garanzia_scadenza, garanzia_stato, saas_piano, saas_scadenza, saas_note, saas_tipo"
+        "id, cliente, cliente_id, nome_checklist, noleggio_vendita, garanzia_scadenza, garanzia_stato, saas_piano, saas_scadenza, saas_note, saas_tipo"
       ),
     fetchRinnoviRows(supabase),
     supabase.from("tagliandi").select("id, cliente, checklist_id, scadenza, stato, note, modalita"),
@@ -363,10 +368,17 @@ export async function buildScadenzeAgenda(
   const tagliandiRows = (tagliandi || []) as TagliandoRow[];
   const licenseRows = (licenses || []) as LicenseRow[];
   const contrattiRows = (contratti || []) as ContrattoRow[];
+  const noleggioChecklistIds = new Set(
+    checklistRows
+      .filter((row) => isNoleggioChecklist(row.noleggio_vendita))
+      .map((row) => normalizeString(row.id))
+      .filter(Boolean)
+  );
   const maps = getChecklistMaps(checklistRows);
 
   const rinnoviMapped: ScadenzaAgendaRow[] = rinnoviRows
     .filter((r) => normalizeUpper(r.item_tipo) !== "LICENZA")
+    .filter((r) => !noleggioChecklistIds.has(normalizeString(r.checklist_id)))
     .map((r) => {
       const ctx = getChecklistContext(maps, r.checklist_id, r.cliente);
       const normalizedTipo = normalizeTipo(r.item_tipo, r.subtipo);
@@ -413,6 +425,7 @@ export async function buildScadenzeAgenda(
   );
 
   const garanzieMapped: ScadenzaAgendaRow[] = checklistRows
+    .filter((c) => !isNoleggioChecklist(c.noleggio_vendita))
     .filter((c) => normalizeString(c.garanzia_scadenza))
     .filter((c) => !rinnoviGaranziaChecklistIds.has(normalizeString(c.id)))
     .map((c) => ({
@@ -446,6 +459,7 @@ export async function buildScadenzeAgenda(
     }));
 
   const saasMapped: ScadenzaAgendaRow[] = checklistRows
+    .filter((c) => !isNoleggioChecklist(c.noleggio_vendita))
     .filter((c) => {
       const piano = normalizeUpper(c.saas_piano);
       return !!piano && !piano.startsWith("SAAS-UL");
@@ -480,72 +494,76 @@ export async function buildScadenzeAgenda(
       raw_id: c.id,
     }));
 
-  const tagliandiMapped: ScadenzaAgendaRow[] = tagliandiRows.map((t) => {
-    const ctx = getChecklistContext(maps, t.checklist_id, t.cliente);
-    return {
-      id: `tagliandi:${t.id}`,
-      origine: "tagliandi",
-      source: "tagliandi",
-      cliente: normalizeString(t.cliente) || ctx?.cliente || null,
-      cliente_id: ctx?.cliente_id || null,
-      checklist_id: t.checklist_id || null,
-      progetto: ctx?.nome_checklist || null,
-      tipo: "TAGLIANDO",
-      sottotipo: null,
-      riferimento: t.note || "Tagliando annuale",
-      descrizione: t.note || null,
-      scadenza: t.scadenza || null,
-      stato: t.stato || null,
-      workflow_stato: getWorkflowStato(
-        {
-          source: "tagliandi",
-          item_tipo: "TAGLIANDO",
-          stato: t.stato,
-          checklist_id: t.checklist_id,
-          scadenza: t.scadenza,
-          cliente: t.cliente,
-        },
-        rinnoviRows
-      ),
-      fatturazione: t.modalita || null,
-      note: t.note || null,
-      raw_id: t.id,
-    };
-  });
+  const tagliandiMapped: ScadenzaAgendaRow[] = tagliandiRows
+    .filter((t) => !noleggioChecklistIds.has(normalizeString(t.checklist_id)))
+    .map((t) => {
+      const ctx = getChecklistContext(maps, t.checklist_id, t.cliente);
+      return {
+        id: `tagliandi:${t.id}`,
+        origine: "tagliandi",
+        source: "tagliandi",
+        cliente: normalizeString(t.cliente) || ctx?.cliente || null,
+        cliente_id: ctx?.cliente_id || null,
+        checklist_id: t.checklist_id || null,
+        progetto: ctx?.nome_checklist || null,
+        tipo: "TAGLIANDO",
+        sottotipo: null,
+        riferimento: t.note || "Tagliando annuale",
+        descrizione: t.note || null,
+        scadenza: t.scadenza || null,
+        stato: t.stato || null,
+        workflow_stato: getWorkflowStato(
+          {
+            source: "tagliandi",
+            item_tipo: "TAGLIANDO",
+            stato: t.stato,
+            checklist_id: t.checklist_id,
+            scadenza: t.scadenza,
+            cliente: t.cliente,
+          },
+          rinnoviRows
+        ),
+        fatturazione: t.modalita || null,
+        note: t.note || null,
+        raw_id: t.id,
+      };
+    });
 
-  const licenzeMapped: ScadenzaAgendaRow[] = licenseRows.map((l) => {
-    const ctx = getChecklistContext(maps, l.checklist_id, null);
-    const stato = l.status || l.stato || (l.scadenza ? "DA_AVVISARE" : null);
-    return {
-      id: `licenses:${l.id}`,
-      origine: "licenses",
-      source: "licenze",
-      cliente: ctx?.cliente || null,
-      cliente_id: ctx?.cliente_id || null,
-      checklist_id: l.checklist_id || null,
-      progetto: ctx?.nome_checklist || null,
-      tipo: "LICENZA",
-      sottotipo: normalizeString(l.tipo) || null,
-      riferimento: buildLicenseReference(l),
-      descrizione: l.note || null,
-      scadenza: l.scadenza || null,
-      stato,
-      workflow_stato: getWorkflowStato(
-        {
-          source: "licenze",
-          item_tipo: "LICENZA",
-          stato,
-          checklist_id: l.checklist_id,
-          scadenza: l.scadenza,
-          cliente: ctx?.cliente,
-        },
-        rinnoviRows
-      ),
-      fatturazione: null,
-      note: l.note || null,
-      raw_id: l.id,
-    };
-  });
+  const licenzeMapped: ScadenzaAgendaRow[] = licenseRows
+    .filter((l) => !noleggioChecklistIds.has(normalizeString(l.checklist_id)))
+    .map((l) => {
+      const ctx = getChecklistContext(maps, l.checklist_id, null);
+      const stato = l.status || l.stato || (l.scadenza ? "DA_AVVISARE" : null);
+      return {
+        id: `licenses:${l.id}`,
+        origine: "licenses",
+        source: "licenze",
+        cliente: ctx?.cliente || null,
+        cliente_id: ctx?.cliente_id || null,
+        checklist_id: l.checklist_id || null,
+        progetto: ctx?.nome_checklist || null,
+        tipo: "LICENZA",
+        sottotipo: normalizeString(l.tipo) || null,
+        riferimento: buildLicenseReference(l),
+        descrizione: l.note || null,
+        scadenza: l.scadenza || null,
+        stato,
+        workflow_stato: getWorkflowStato(
+          {
+            source: "licenze",
+            item_tipo: "LICENZA",
+            stato,
+            checklist_id: l.checklist_id,
+            scadenza: l.scadenza,
+            cliente: ctx?.cliente,
+          },
+          rinnoviRows
+        ),
+        fatturazione: null,
+        note: l.note || null,
+        raw_id: l.id,
+      };
+    });
 
   const contrattiMapped: ScadenzaAgendaRow[] = contrattiRows.map((c) => {
     const normalizedTipo = normalizeTipo("SAAS_ULTRA", "ULTRA");

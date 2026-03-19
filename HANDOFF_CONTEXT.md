@@ -2,6 +2,14 @@
 
 ## Aggiornamento rapido (19 marzo 2026)
 
+- `fix: separa scadenze servizi da noleggi` in corso locale.
+- Dashboard `SCADENZE IN ARRIVO` e pagina `/scadenze` usano entrambe `GET /api/scadenze`, che delega a `lib/scadenze/buildScadenzeAgenda.ts`.
+- Causa reale mixed domain:
+  - il builder aggregava anche righe collegate a checklist con `noleggio_vendita = 'NOLEGGIO'`
+  - il count dashboard e la pagina `/scadenze` ereditavano quindi anche scadenze appartenenti al dominio noleggio
+- Correzione mirata nel builder condiviso:
+  - escluse dall'agenda scadenze le righe `garanzie`, `saas`, `tagliandi`, `licenze`, `rinnovi_servizi` collegate a checklist `NOLEGGIO`
+  - invariato il flusso separato `GET /api/noleggi/smontaggi-entro-7-giorni`
 - `fix: riallinea vincolo row_kind note task cronoprogramma` in corso locale.
 - Causa reale errore note task:
   - UI `Storico note task` e API `/api/cronoprogramma` inviano gia `row_kind = 'CHECKLIST_TASK'`

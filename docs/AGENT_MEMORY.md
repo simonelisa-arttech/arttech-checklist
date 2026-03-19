@@ -1,5 +1,15 @@
 # AGENT MEMORY — Snapshot Operativo
 
+## Snapshot 2026-03-19 - Separazione scadenze servizi vs noleggi
+- `lib/scadenze/buildScadenzeAgenda.ts` resta source of truth condivisa per dashboard e pagina `/scadenze`.
+- Correzione dominio:
+  - l'agenda scadenze esclude ora le righe collegate a checklist con `noleggio_vendita = 'NOLEGGIO'`
+  - esclusione applicata a `garanzie`, `saas`, `tagliandi`, `licenze`, `rinnovi_servizi` con `checklist_id` di noleggio
+- Separazione confermata:
+  - `SCADENZE IN ARRIVO` usa solo scadenze servizi/tecniche
+  - `/scadenze` non mostra piu noleggi/smontaggi
+  - `SMONTAGGI NOLEGGI ENTRO 7 GIORNI` resta servito da endpoint dedicato `/api/noleggi/smontaggi-entro-7-giorni`
+
 ## Snapshot 2026-03-11 - Handoff stabile + Drive cliente
 - Handoff aggiornato con istruzioni operative minime prima di nuovi sviluppi.
 - Scadenze aggregate:
