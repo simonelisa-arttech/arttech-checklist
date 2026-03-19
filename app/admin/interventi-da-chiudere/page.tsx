@@ -5,10 +5,14 @@ import { useEffect, useMemo, useState } from "react";
 
 type InterventoDaChiudereRow = {
   id: string;
+  checklist_id: string | null;
   nome_checklist: string;
   cliente: string;
-  data_installazione: string | null;
-  percentuale_completamento: number;
+  data_intervento: string | null;
+  ticket_no: string | null;
+  descrizione: string;
+  stato_intervento: string | null;
+  fatturazione_stato: string | null;
 };
 
 function formatDate(value?: string | null) {
@@ -16,6 +20,11 @@ function formatDate(value?: string | null) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
   return date.toLocaleDateString("it-IT");
+}
+
+function formatStatus(value?: string | null) {
+  const raw = String(value || "").trim().toUpperCase().replace(/\s+/g, "_");
+  return raw || "—";
 }
 
 export default function InterventiDaChiuderePage() {
@@ -64,7 +73,7 @@ export default function InterventiDaChiuderePage() {
         <div>
           <h1 style={{ margin: 0, fontSize: 34, whiteSpace: "nowrap" }}>INTERVENTI DA CHIUDERE</h1>
           <div style={{ marginTop: 4, fontSize: 13, opacity: 0.7 }}>
-            Progetti in corso con task aperte e data installazione scaduta o odierna.
+            Solo interventi reali presenti in archivio e ancora aperti.
           </div>
         </div>
         <Link
@@ -111,7 +120,7 @@ export default function InterventiDaChiuderePage() {
           <div
             style={{
               display: "grid",
-              gridTemplateColumns: "1.3fr 1.6fr 1fr 0.7fr 0.7fr",
+              gridTemplateColumns: "1.2fr 1.3fr 1fr 1.5fr 0.9fr 0.7fr",
               gap: 12,
               padding: "12px 14px",
               background: "#f9fafb",
@@ -121,20 +130,21 @@ export default function InterventiDaChiuderePage() {
           >
             <div>Cliente</div>
             <div>Progetto</div>
-            <div>Data installazione</div>
-            <div>%</div>
+            <div>Data intervento</div>
+            <div>Descrizione / Ticket</div>
+            <div>Stato</div>
             <div>Apri</div>
           </div>
 
           {rows.map((row) => {
-            const isToday = row.data_installazione === todayIso;
-            const isPast = !!row.data_installazione && row.data_installazione < todayIso;
-            const background = isPast && row.percentuale_completamento < 100
+            const isToday = row.data_intervento === todayIso;
+            const isPast = !!row.data_intervento && row.data_intervento < todayIso;
+            const background = isPast
               ? "#fef2f2"
               : isToday
               ? "#fff7ed"
               : "white";
-            const color = isPast && row.percentuale_completamento < 100
+            const color = isPast
               ? "#991b1b"
               : isToday
               ? "#9a3412"
@@ -145,7 +155,7 @@ export default function InterventiDaChiuderePage() {
                 key={row.id}
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "1.3fr 1.6fr 1fr 0.7fr 0.7fr",
+                  gridTemplateColumns: "1.2fr 1.3fr 1fr 1.5fr 0.9fr 0.7fr",
                   gap: 12,
                   padding: "12px 14px",
                   borderTop: "1px solid #f3f4f6",
@@ -156,24 +166,34 @@ export default function InterventiDaChiuderePage() {
               >
                 <div>{row.cliente}</div>
                 <div style={{ fontWeight: 600 }}>{row.nome_checklist}</div>
-                <div>{formatDate(row.data_installazione)}</div>
-                <div>{Math.round(row.percentuale_completamento)}%</div>
+                <div>{formatDate(row.data_intervento)}</div>
                 <div>
-                  <Link
-                    href={`/checklists/${row.id}`}
-                    style={{
-                      display: "inline-block",
-                      padding: "6px 10px",
-                      borderRadius: 8,
-                      border: "1px solid #d1d5db",
-                      background: "white",
-                      textDecoration: "none",
-                      color: "inherit",
-                      fontWeight: 600,
-                    }}
-                  >
-                    Apri
-                  </Link>
+                  <div>{row.descrizione}</div>
+                  <div style={{ fontSize: 12, opacity: 0.7 }}>
+                    Ticket: {row.ticket_no || "—"}
+                  </div>
+                </div>
+                <div>{formatStatus(row.stato_intervento)}</div>
+                <div>
+                  {row.checklist_id ? (
+                    <Link
+                      href={`/checklists/${row.checklist_id}`}
+                      style={{
+                        display: "inline-block",
+                        padding: "6px 10px",
+                        borderRadius: 8,
+                        border: "1px solid #d1d5db",
+                        background: "white",
+                        textDecoration: "none",
+                        color: "inherit",
+                        fontWeight: 600,
+                      }}
+                    >
+                      Apri
+                    </Link>
+                  ) : (
+                    <span style={{ fontSize: 12, opacity: 0.65 }}>—</span>
+                  )}
                 </div>
               </div>
             );

@@ -2,6 +2,16 @@
 
 ## Aggiornamento rapido (19 marzo 2026)
 
+- `fix: pagina interventi da chiudere` in corso locale.
+- Causa reale:
+  - `app/api/interventi/da-chiudere/route.ts` non usava il dominio interventi reale
+  - costruiva la lista da checklist `IN_CORSO` con task aperte e data installazione scaduta/odierna
+  - quindi comparivano progetti senza alcun intervento reale in `saas_interventi`
+- Correzione:
+  - la route usa ora solo record `saas_interventi`
+  - inclusi soltanto interventi non chiusi / non fatturati
+  - la pagina admin mostra dati coerenti con il dominio: cliente, progetto, data intervento, descrizione/ticket, stato, apri checklist
+
 - `ui: top scrollbar blocco interventi` in corso locale.
 - `components/InterventiBlock.tsx` usa ora:
   - scrollbar orizzontale alta sempre visibile

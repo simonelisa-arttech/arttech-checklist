@@ -3,24 +3,20 @@ import { requireOperatore } from "@/lib/adminAuth";
 
 export const runtime = "nodejs";
 
-type ChecklistRow = {
+type InterventoRow = {
   id: string;
   cliente: string | null;
-  nome_checklist: string | null;
-  data_prevista: string | null;
-  data_tassativa: string | null;
-  data_installazione_reale: string | null;
-  stato_progetto: string | null;
-};
-
-type TaskRow = {
   checklist_id: string | null;
-  stato: string | null;
-};
-
-type SectionRow = {
-  checklist_id: string | null;
-  pct_complessivo: number | null;
+  ticket_no?: string | null;
+  data: string | null;
+  data_tassativa?: string | null;
+  descrizione: string | null;
+  stato_intervento: string | null;
+  fatturazione_stato: string | null;
+  checklist?: {
+    id: string | null;
+    nome_checklist: string | null;
+  } | null;
 };
 
 function toIsoDay(value?: string | null) {
@@ -32,104 +28,79 @@ function toIsoDay(value?: string | null) {
   return date.toISOString().slice(0, 10);
 }
 
-function getInstallDate(row: ChecklistRow) {
-  return (
-    toIsoDay(row.data_installazione_reale) ||
-    toIsoDay(row.data_tassativa) ||
-    toIsoDay(row.data_prevista)
-  );
+function normalizeStatus(value?: string | null) {
+  return String(value || "").trim().toUpperCase().replace(/\s+/g, "_");
 }
 
-function isCompletedTask(stato?: string | null) {
-  const normalized = String(stato || "").trim().toUpperCase().replace(/\s+/g, "_");
-  return normalized === "OK" || normalized === "NON_NECESSARIO";
+function isOpenIntervento(row: InterventoRow) {
+  const stato = normalizeStatus(row.stato_intervento);
+  const fatturazione = normalizeStatus(row.fatturazione_stato);
+  if (stato === "CHIUSO") return false;
+  if (fatturazione === "CHIUSO" || fatturazione === "FATTURATO") return false;
+  return true;
 }
 
 export async function GET(request: Request) {
   const auth = await requireOperatore(request);
   if (!auth.ok) return auth.response;
 
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const todayIso = today.toISOString().slice(0, 10);
+  let res: any = await auth.adminClient
+    .from("saas_interventi")
+    .select(
+      "id, cliente, checklist_id, ticket_no, data, data_tassativa, descrizione, stato_intervento, fatturazione_stato, checklist:checklists(id, nome_checklist)"
+    )
+    .order("data_tassativa", { ascending: true, nullsFirst: false })
+    .order("data", { ascending: true, nullsFirst: false });
 
-  const { data: checklists, error: checklistsErr } = await auth.adminClient
-    .from("checklists")
-    .select("id, cliente, nome_checklist, data_prevista, data_tassativa, data_installazione_reale, stato_progetto")
-    .in("stato_progetto", ["IN_CORSO", "IN_LAVORAZIONE"]);
-
-  if (checklistsErr) {
-    return NextResponse.json({ error: checklistsErr.message }, { status: 500 });
-  }
-
-  const checklistRows = (checklists || []) as ChecklistRow[];
-  const checklistIds = checklistRows.map((row) => row.id).filter(Boolean);
-  if (checklistIds.length === 0) {
-    return NextResponse.json([]);
-  }
-
-  const [{ data: tasks, error: tasksErr }, { data: sections, error: sectionsErr }] = await Promise.all([
-    auth.adminClient
-      .from("checklist_tasks")
-      .select("checklist_id, stato")
-      .in("checklist_id", checklistIds),
-    auth.adminClient
-      .from("checklist_sections_view")
-      .select("checklist_id, pct_complessivo")
-      .in("checklist_id", checklistIds),
-  ]);
-
-  if (tasksErr) {
-    return NextResponse.json({ error: tasksErr.message }, { status: 500 });
-  }
-  if (sectionsErr) {
-    return NextResponse.json({ error: sectionsErr.message }, { status: 500 });
-  }
-
-  const taskStats = new Map<string, { total: number; completed: number }>();
-  for (const row of (tasks || []) as TaskRow[]) {
-    const checklistId = String(row.checklist_id || "").trim();
-    if (!checklistId) continue;
-    const stats = taskStats.get(checklistId) || { total: 0, completed: 0 };
-    stats.total += 1;
-    if (isCompletedTask(row.stato)) stats.completed += 1;
-    taskStats.set(checklistId, stats);
-  }
-
-  const pctByChecklistId = new Map<string, number>();
-  for (const row of (sections || []) as SectionRow[]) {
-    const checklistId = String(row.checklist_id || "").trim();
-    if (!checklistId) continue;
-    if (typeof row.pct_complessivo === "number" && Number.isFinite(row.pct_complessivo)) {
-      pctByChecklistId.set(checklistId, row.pct_complessivo);
+  if (res.error && String(res.error.message || "").toLowerCase().includes("data_tassativa")) {
+    res = await auth.adminClient
+      .from("saas_interventi")
+      .select(
+        "id, cliente, checklist_id, ticket_no, data, descrizione, stato_intervento, fatturazione_stato, checklist:checklists(id, nome_checklist)"
+      )
+      .order("data", { ascending: true, nullsFirst: false });
+    if (!res.error) {
+      res.data = ((res.data || []) as any[]).map((row: any) => ({ ...row, data_tassativa: null }));
     }
   }
 
-  const result = checklistRows
-    .map((row) => {
-      const installDate = getInstallDate(row);
-      const stats = taskStats.get(row.id) || { total: 0, completed: 0 };
-      const percentuale =
-        pctByChecklistId.get(row.id) ??
-        (stats.total > 0 ? Math.round((stats.completed / stats.total) * 100) : 0);
-      return {
-        id: row.id,
-        nome_checklist: row.nome_checklist || "—",
-        cliente: row.cliente || "—",
-        data_installazione: installDate,
-        percentuale_completamento: percentuale,
-        total_tasks: stats.total,
-        open_tasks: Math.max(0, stats.total - stats.completed),
-      };
-    })
-    .filter((row) => row.data_installazione && row.data_installazione <= todayIso)
-    .filter((row) => row.total_tasks > 0 && row.open_tasks > 0)
-    .sort((a, b) => {
-      const byDate = String(a.data_installazione).localeCompare(String(b.data_installazione));
-      if (byDate !== 0) return byDate;
-      return `${a.cliente} ${a.nome_checklist}`.localeCompare(`${b.cliente} ${b.nome_checklist}`);
-    })
-    .map(({ total_tasks: _total, open_tasks: _open, ...row }) => row);
+  if (res.error && String(res.error.message || "").toLowerCase().includes("ticket_no")) {
+    res = await auth.adminClient
+      .from("saas_interventi")
+      .select(
+        "id, cliente, checklist_id, data, data_tassativa, descrizione, stato_intervento, fatturazione_stato, checklist:checklists(id, nome_checklist)"
+      )
+      .order("data_tassativa", { ascending: true, nullsFirst: false })
+      .order("data", { ascending: true, nullsFirst: false });
+    if (!res.error) {
+      res.data = ((res.data || []) as any[]).map((row: any) => ({ ...row, ticket_no: null }));
+    }
+  }
 
-  return NextResponse.json(result);
+  if (res.error) {
+    return NextResponse.json({ error: res.error.message }, { status: 500 });
+  }
+
+  const rows = ((res.data || []) as InterventoRow[])
+    .filter((row) => isOpenIntervento(row))
+    .map((row) => ({
+      id: row.id,
+      checklist_id: row.checklist?.id || row.checklist_id || null,
+      cliente: row.cliente || "—",
+      nome_checklist: row.checklist?.nome_checklist || "—",
+      data_intervento: toIsoDay(row.data_tassativa) || toIsoDay(row.data),
+      ticket_no: row.ticket_no || null,
+      descrizione: row.descrizione || "—",
+      stato_intervento: row.stato_intervento || "APERTO",
+      fatturazione_stato: row.fatturazione_stato || null,
+    }))
+    .sort((a, b) => {
+      const byDate = String(a.data_intervento || "").localeCompare(String(b.data_intervento || ""));
+      if (byDate !== 0) return byDate;
+      return `${a.cliente} ${a.nome_checklist} ${a.descrizione}`.localeCompare(
+        `${b.cliente} ${b.nome_checklist} ${b.descrizione}`
+      );
+    });
+
+  return NextResponse.json(rows);
 }
