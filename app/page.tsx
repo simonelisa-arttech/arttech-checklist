@@ -1702,6 +1702,8 @@ export default function Page() {
                           gap: 4,
                           minWidth: 140,
                           alignContent: "center",
+                          justifyItems: "center",
+                          textAlign: "center",
                         }}
                       >
                         <div
