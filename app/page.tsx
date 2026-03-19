@@ -1624,9 +1624,9 @@ export default function Page() {
                   <div
                     style={{
                       display: "grid",
-                      gap: 10,
+                      gap: 8,
                       height: "100%",
-                      gridTemplateRows: "auto auto 1fr",
+                      gridTemplateRows: "auto 1fr",
                     }}
                   >
                     <div
@@ -1688,43 +1688,53 @@ export default function Page() {
                     </div>
                     <div
                       style={{
-                        display: "grid",
-                        gap: 4,
-                        justifyItems: "start",
-                        alignContent: "start",
+                        display: "flex",
+                        flexWrap: "wrap",
+                        gap: 14,
+                        alignItems: "center",
+                        justifyContent: "space-between",
                         minHeight: 0,
                       }}
                     >
                       <div
                         style={{
-                          fontSize: 30,
-                          lineHeight: 1,
-                          fontWeight: 900,
+                          display: "grid",
+                          gap: 4,
+                          minWidth: 140,
+                          alignContent: "center",
                         }}
                       >
-                        {selectedScadenzeSummary.count}
+                        <div
+                          style={{
+                            fontSize: 30,
+                            lineHeight: 1,
+                            fontWeight: 900,
+                          }}
+                        >
+                          {selectedScadenzeSummary.count}
+                        </div>
+                        <div style={{ fontSize: 13, fontWeight: 700 }}>
+                          Totale entro {scadenzePeriodDays} giorni
+                        </div>
                       </div>
-                      <div style={{ fontSize: 13, fontWeight: 700 }}>
-                        Totale entro {scadenzePeriodDays} giorni
+                      <div
+                        style={{
+                          display: "flex",
+                          flexWrap: "wrap",
+                          gap: 12,
+                          alignItems: "center",
+                          justifyContent: "flex-end",
+                          fontSize: 12,
+                          fontWeight: 700,
+                          minWidth: 0,
+                          flex: 1,
+                        }}
+                      >
+                        <div style={{ whiteSpace: "nowrap" }}>Garanzie: {selectedScadenzeSummary.breakdown.garanzie}</div>
+                        <div style={{ whiteSpace: "nowrap" }}>Licenze: {selectedScadenzeSummary.breakdown.licenze}</div>
+                        <div style={{ whiteSpace: "nowrap" }}>Tagliandi: {selectedScadenzeSummary.breakdown.tagliandi}</div>
+                        <div style={{ whiteSpace: "nowrap" }}>SaaS: {selectedScadenzeSummary.breakdown.saasAltro}</div>
                       </div>
-                    </div>
-                    <div
-                      style={{
-                        display: "flex",
-                        flexWrap: "wrap",
-                        gap: 12,
-                        alignItems: "center",
-                        fontSize: 12,
-                        fontWeight: 700,
-                        minHeight: 0,
-                      }}
-                    >
-                      <div style={{ whiteSpace: "nowrap" }}>
-                        <div>Garanzie: {selectedScadenzeSummary.breakdown.garanzie}</div>
-                      </div>
-                      <div style={{ whiteSpace: "nowrap" }}>Licenze: {selectedScadenzeSummary.breakdown.licenze}</div>
-                      <div style={{ whiteSpace: "nowrap" }}>Tagliandi: {selectedScadenzeSummary.breakdown.tagliandi}</div>
-                      <div style={{ whiteSpace: "nowrap" }}>SaaS: {selectedScadenzeSummary.breakdown.saasAltro}</div>
                     </div>
                   </div>
                 </div>
