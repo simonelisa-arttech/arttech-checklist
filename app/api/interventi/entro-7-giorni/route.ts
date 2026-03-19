@@ -42,6 +42,8 @@ function isRelevantIntervento(row: InterventoRow) {
 export async function GET(request: Request) {
   const auth = await requireOperatore(request);
   if (!auth.ok) return auth.response;
+  const url = new URL(request.url);
+  const overdueOnly = url.searchParams.get("overdue") === "1";
 
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -84,7 +86,11 @@ export async function GET(request: Request) {
       stato_intervento: row.stato_intervento || null,
       fatturazione_stato: row.fatturazione_stato || null,
     }))
-    .filter((row: any) => !!row.data_intervento && row.data_intervento >= todayIso && row.data_intervento <= inSevenDaysIso)
+    .filter((row: any) =>
+      overdueOnly
+        ? !!row.data_intervento && row.data_intervento < todayIso
+        : !!row.data_intervento && row.data_intervento >= todayIso && row.data_intervento <= inSevenDaysIso
+    )
     .filter((row: any) =>
       isRelevantIntervento({
         id: row.id,

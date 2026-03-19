@@ -2,6 +2,20 @@
 
 ## Aggiornamento rapido (19 marzo 2026)
 
+- `ui: cockpit dashboard overdue counts` in corso locale.
+- Layout cockpit riallineato:
+  - riga 1: `SCADENZE IN ARRIVO` + `FATTURE DA EMETTERE`
+  - riga 2: `INTERVENTI DA CHIUDERE` + `INTERVENTI ENTRO 7 GIORNI` + `CONSEGNE ENTRO 7 GIORNI` + `SMONTAGGI NOLEGGI ENTRO 7 GIORNI` + `NOLEGGI ATTIVI`
+- Conteggi secondari aggiunti nel cockpit:
+  - `Scadute non gestite` per `SCADENZE`
+  - `In ritardo / Scadute` per interventi, consegne e smontaggi
+- Route estese con query non breaking `?overdue=1`:
+  - `/api/interventi/entro-7-giorni`
+  - `/api/consegne/entro-7-giorni`
+  - `/api/noleggi/smontaggi-entro-7-giorni`
+- Regola:
+  - un elemento nel passato continua a comparire nel cockpit finche non entra in uno stato finale coerente col dominio
+
 - `feat: regole globali avvisi scadenze` in corso locale.
 - Distinzione riallineata:
   - `scadenze_alert_global_rules` = regole globali automatiche per tipo scadenza

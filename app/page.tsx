@@ -55,6 +55,12 @@ type DashboardScadenzeBreakdown = {
 type DashboardScadenzeSummary = {
   count: number;
   breakdown: DashboardScadenzeBreakdown;
+  overdueCount: number;
+};
+
+type DashboardMetricSummary = {
+  count: number;
+  overdue: number;
 };
 
 const EMPTY_SCADENZE_BREAKDOWN: DashboardScadenzeBreakdown = {
@@ -465,16 +471,28 @@ export default function Page() {
   const [operatoreAssociationError, setOperatoreAssociationError] = useState<string | null>(null);
   const [scadenzePeriodDays, setScadenzePeriodDays] = useState<7 | 15 | 30>(7);
   const [scadenzeByPeriod, setScadenzeByPeriod] = useState<Record<7 | 15 | 30, DashboardScadenzeSummary>>({
-    7: { count: 0, breakdown: { ...EMPTY_SCADENZE_BREAKDOWN } },
-    15: { count: 0, breakdown: { ...EMPTY_SCADENZE_BREAKDOWN } },
-    30: { count: 0, breakdown: { ...EMPTY_SCADENZE_BREAKDOWN } },
+    7: { count: 0, breakdown: { ...EMPTY_SCADENZE_BREAKDOWN }, overdueCount: 0 },
+    15: { count: 0, breakdown: { ...EMPTY_SCADENZE_BREAKDOWN }, overdueCount: 0 },
+    30: { count: 0, breakdown: { ...EMPTY_SCADENZE_BREAKDOWN }, overdueCount: 0 },
   });
-  const [interventiDaChiudereCount, setInterventiDaChiudereCount] = useState(0);
-  const [interventiEntro7Count, setInterventiEntro7Count] = useState(0);
+  const [interventiDaChiudereSummary, setInterventiDaChiudereSummary] = useState<DashboardMetricSummary>({
+    count: 0,
+    overdue: 0,
+  });
+  const [interventiEntro7Summary, setInterventiEntro7Summary] = useState<DashboardMetricSummary>({
+    count: 0,
+    overdue: 0,
+  });
   const [fattureDaEmettereCount, setFattureDaEmettereCount] = useState(0);
   const [noleggiAttiviCount, setNoleggiAttiviCount] = useState(0);
-  const [consegneEntro7Count, setConsegneEntro7Count] = useState(0);
-  const [smontaggiEntro7Count, setSmontaggiEntro7Count] = useState(0);
+  const [consegneEntro7Summary, setConsegneEntro7Summary] = useState<DashboardMetricSummary>({
+    count: 0,
+    overdue: 0,
+  });
+  const [smontaggiEntro7Summary, setSmontaggiEntro7Summary] = useState<DashboardMetricSummary>({
+    count: 0,
+    overdue: 0,
+  });
   const [clientiMissingEmailCount, setClientiMissingEmailCount] = useState(0);
   const [showMissingEmailInfo, setShowMissingEmailInfo] = useState(false);
   const [expandedSaasNoteId, setExpandedSaasNoteId] = useState<string | null>(null);
@@ -801,7 +819,7 @@ export default function Page() {
   }, [items, addInterventoCliente]);
 
   const selectedScadenzeSummary = scadenzeByPeriod[scadenzePeriodDays];
-  const cockpitCardHeight = 118;
+  const cockpitCardHeight = 128;
   const shortcutCardStyle = {
     display: "flex",
     flexDirection: "column" as const,
@@ -826,7 +844,7 @@ export default function Page() {
     letterSpacing: 0.2,
     color: "#6b7280",
     width: "100%",
-    height: 34,
+    minHeight: 34,
     display: "flex",
     alignItems: "center",
     justifyContent: "center",
@@ -844,6 +862,44 @@ export default function Page() {
     fontWeight: 800,
     lineHeight: 1,
   };
+  const shortcutCardBadgeStyle = {
+    fontSize: 11,
+    fontWeight: 700,
+    color: "#92400e",
+    minHeight: 16,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    whiteSpace: "nowrap" as const,
+  };
+
+  function isScadenzaNotManaged(row: any) {
+    const workflow = String(row?.workflow_stato || row?.stato || "")
+      .trim()
+      .toUpperCase()
+      .replace(/\s+/g, "_");
+    return !["CONFERMATO", "FATTURATO", "NON_RINNOVATO", "ANNULLATO", "CHIUSO"].includes(workflow);
+  }
+
+  function renderCockpitMetricCard(
+    href: string,
+    title: string,
+    count: number,
+    secondaryLabel?: string,
+    secondaryValue?: number
+  ) {
+    return (
+      <Link href={href} style={shortcutCardStyle}>
+        <div style={shortcutCardTitleStyle}>{title}</div>
+        <div style={shortcutCardNumberWrapStyle}>
+          <div style={shortcutCardNumberStyle}>{count}</div>
+        </div>
+        <div style={shortcutCardBadgeStyle}>
+          {secondaryLabel ? `${secondaryLabel}: ${secondaryValue ?? 0}` : "\u00A0"}
+        </div>
+      </Link>
+    );
+  }
 
   async function load() {
     const requestSeq = ++loadRequestSeqRef.current;
@@ -1012,25 +1068,55 @@ export default function Page() {
             });
             const json = await res.json().catch(() => ({}));
             if (!res.ok || typeof json?.count !== "number") {
-              return [days, { count: 0, breakdown: { ...EMPTY_SCADENZE_BREAKDOWN } }] as const;
+              return [days, { count: 0, breakdown: { ...EMPTY_SCADENZE_BREAKDOWN }, overdueCount: 0 }] as const;
             }
             const rows = Array.isArray(json?.data) ? json.data : [];
-            return [days, { count: json.count, breakdown: buildScadenzeBreakdown(rows) }] as const;
+            return [days, { count: json.count, breakdown: buildScadenzeBreakdown(rows), overdueCount: 0 }] as const;
           })
         );
+        const yesterday = new Date(today);
+        yesterday.setDate(yesterday.getDate() - 1);
+        const overdueRes = await fetch(`/api/scadenze?to=${toDateInputValue(yesterday)}`, {
+          signal: controller.signal,
+          credentials: "include",
+        });
+        const overdueJson = await overdueRes.json().catch(() => ({}));
+        const overdueRows = overdueRes.ok && Array.isArray(overdueJson?.data) ? overdueJson.data : [];
+        const overdueCount = overdueRows.filter((row: any) => isScadenzaNotManaged(row)).length;
         if (!isLatest()) return;
         setScadenzeByPeriod({
-          7: summaries.find(([days]) => days === 7)?.[1] || { count: 0, breakdown: { ...EMPTY_SCADENZE_BREAKDOWN } },
-          15: summaries.find(([days]) => days === 15)?.[1] || { count: 0, breakdown: { ...EMPTY_SCADENZE_BREAKDOWN } },
-          30: summaries.find(([days]) => days === 30)?.[1] || { count: 0, breakdown: { ...EMPTY_SCADENZE_BREAKDOWN } },
+          7: {
+            ...(summaries.find(([days]) => days === 7)?.[1] || {
+              count: 0,
+              breakdown: { ...EMPTY_SCADENZE_BREAKDOWN },
+              overdueCount: 0,
+            }),
+            overdueCount,
+          },
+          15: {
+            ...(summaries.find(([days]) => days === 15)?.[1] || {
+              count: 0,
+              breakdown: { ...EMPTY_SCADENZE_BREAKDOWN },
+              overdueCount: 0,
+            }),
+            overdueCount,
+          },
+          30: {
+            ...(summaries.find(([days]) => days === 30)?.[1] || {
+              count: 0,
+              breakdown: { ...EMPTY_SCADENZE_BREAKDOWN },
+              overdueCount: 0,
+            }),
+            overdueCount,
+          },
         });
       } catch (e: any) {
         if (e?.name === "AbortError" || controller.signal.aborted) return;
         if (!isLatest()) return;
         setScadenzeByPeriod({
-          7: { count: 0, breakdown: { ...EMPTY_SCADENZE_BREAKDOWN } },
-          15: { count: 0, breakdown: { ...EMPTY_SCADENZE_BREAKDOWN } },
-          30: { count: 0, breakdown: { ...EMPTY_SCADENZE_BREAKDOWN } },
+          7: { count: 0, breakdown: { ...EMPTY_SCADENZE_BREAKDOWN }, overdueCount: 0 },
+          15: { count: 0, breakdown: { ...EMPTY_SCADENZE_BREAKDOWN }, overdueCount: 0 },
+          30: { count: 0, breakdown: { ...EMPTY_SCADENZE_BREAKDOWN }, overdueCount: 0 },
         });
       }
 
@@ -1059,25 +1145,36 @@ export default function Page() {
         });
         const data = await res.json().catch(() => []);
         if (!isLatest()) return;
-        setInterventiDaChiudereCount(res.ok && Array.isArray(data) ? data.length : 0);
+        const count = res.ok && Array.isArray(data) ? data.length : 0;
+        setInterventiDaChiudereSummary({ count, overdue: count });
       } catch (e: any) {
         if (e?.name === "AbortError" || controller.signal.aborted) return;
         if (!isLatest()) return;
-        setInterventiDaChiudereCount(0);
+        setInterventiDaChiudereSummary({ count: 0, overdue: 0 });
       }
 
       try {
-        const res = await fetch("/api/interventi/entro-7-giorni", {
-          signal: controller.signal,
-          credentials: "include",
-        });
+        const [res, overdueRes] = await Promise.all([
+          fetch("/api/interventi/entro-7-giorni", {
+            signal: controller.signal,
+            credentials: "include",
+          }),
+          fetch("/api/interventi/entro-7-giorni?overdue=1", {
+            signal: controller.signal,
+            credentials: "include",
+          }),
+        ]);
         const data = await res.json().catch(() => []);
+        const overdueData = await overdueRes.json().catch(() => []);
         if (!isLatest()) return;
-        setInterventiEntro7Count(res.ok && Array.isArray(data) ? data.length : 0);
+        setInterventiEntro7Summary({
+          count: res.ok && Array.isArray(data) ? data.length : 0,
+          overdue: overdueRes.ok && Array.isArray(overdueData) ? overdueData.length : 0,
+        });
       } catch (e: any) {
         if (e?.name === "AbortError" || controller.signal.aborted) return;
         if (!isLatest()) return;
-        setInterventiEntro7Count(0);
+        setInterventiEntro7Summary({ count: 0, overdue: 0 });
       }
 
       try {
@@ -1109,31 +1206,51 @@ export default function Page() {
       }
 
       try {
-        const res = await fetch("/api/consegne/entro-7-giorni", {
-          signal: controller.signal,
-          credentials: "include",
-        });
+        const [res, overdueRes] = await Promise.all([
+          fetch("/api/consegne/entro-7-giorni", {
+            signal: controller.signal,
+            credentials: "include",
+          }),
+          fetch("/api/consegne/entro-7-giorni?overdue=1", {
+            signal: controller.signal,
+            credentials: "include",
+          }),
+        ]);
         const data = await res.json().catch(() => []);
+        const overdueData = await overdueRes.json().catch(() => []);
         if (!isLatest()) return;
-        setConsegneEntro7Count(res.ok && Array.isArray(data) ? data.length : 0);
+        setConsegneEntro7Summary({
+          count: res.ok && Array.isArray(data) ? data.length : 0,
+          overdue: overdueRes.ok && Array.isArray(overdueData) ? overdueData.length : 0,
+        });
       } catch (e: any) {
         if (e?.name === "AbortError" || controller.signal.aborted) return;
         if (!isLatest()) return;
-        setConsegneEntro7Count(0);
+        setConsegneEntro7Summary({ count: 0, overdue: 0 });
       }
 
       try {
-        const res = await fetch("/api/noleggi/smontaggi-entro-7-giorni", {
-          signal: controller.signal,
-          credentials: "include",
-        });
+        const [res, overdueRes] = await Promise.all([
+          fetch("/api/noleggi/smontaggi-entro-7-giorni", {
+            signal: controller.signal,
+            credentials: "include",
+          }),
+          fetch("/api/noleggi/smontaggi-entro-7-giorni?overdue=1", {
+            signal: controller.signal,
+            credentials: "include",
+          }),
+        ]);
         const data = await res.json().catch(() => []);
+        const overdueData = await overdueRes.json().catch(() => []);
         if (!isLatest()) return;
-        setSmontaggiEntro7Count(res.ok && Array.isArray(data) ? data.length : 0);
+        setSmontaggiEntro7Summary({
+          count: res.ok && Array.isArray(data) ? data.length : 0,
+          overdue: overdueRes.ok && Array.isArray(overdueData) ? overdueData.length : 0,
+        });
       } catch (e: any) {
         if (e?.name === "AbortError" || controller.signal.aborted) return;
         if (!isLatest()) return;
-        setSmontaggiEntro7Count(0);
+        setSmontaggiEntro7Summary({ count: 0, overdue: 0 });
       }
 
       let opRes: Response;
@@ -1601,8 +1718,8 @@ export default function Page() {
             <div style={{ display: "grid", gap: 10 }}>
               <div
                 style={{
-                  display: "flex",
-                  flexWrap: "wrap",
+                  display: "grid",
+                  gridTemplateColumns: "minmax(420px, 1fr) minmax(220px, 0.38fr)",
                   gap: 10,
                   alignItems: "stretch",
                 }}
@@ -1628,15 +1745,15 @@ export default function Page() {
                       height: "100%",
                       gridTemplateRows: "auto 1fr",
                     }}
-                  >
-                    <div
-                      style={{
-                        display: "flex",
-                        flexWrap: "wrap",
-                        gap: 12,
-                        alignItems: "center",
-                        justifyContent: "space-between",
-                      }}
+                    >
+                      <div
+                        style={{
+                          display: "flex",
+                          flexWrap: "wrap",
+                          gap: 12,
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                        }}
                     >
                       <Link
                         href={buildScadenzeLink(scadenzePeriodDays)}
@@ -1718,6 +1835,9 @@ export default function Page() {
                         <div style={{ fontSize: 13, fontWeight: 700 }}>
                           Totale entro {scadenzePeriodDays} giorni
                         </div>
+                        <div style={shortcutCardBadgeStyle}>
+                          Scadute non gestite: {selectedScadenzeSummary.overdueCount}
+                        </div>
                       </div>
                       <div
                         style={{
@@ -1740,69 +1860,53 @@ export default function Page() {
                     </div>
                   </div>
                 </div>
-                <Link
-                  href="/admin/interventi-da-chiudere"
-                  style={shortcutCardStyle}
-                >
-                  <div style={shortcutCardTitleStyle}>INTERVENTI DA CHIUDERE</div>
-                  <div style={shortcutCardNumberWrapStyle}>
-                    <div style={shortcutCardNumberStyle}>{interventiDaChiudereCount}</div>
-                  </div>
-                </Link>
-                <Link
-                  href="/admin/noleggi-attivi"
-                  style={shortcutCardStyle}
-                >
-                  <div style={shortcutCardTitleStyle}>NOLEGGI ATTIVI</div>
-                  <div style={shortcutCardNumberWrapStyle}>
-                    <div style={shortcutCardNumberStyle}>{noleggiAttiviCount}</div>
-                  </div>
-                </Link>
+                {renderCockpitMetricCard(
+                  "/admin/fatture-da-emettere",
+                  "FATTURE DA EMETTERE",
+                  fattureDaEmettereCount
+                )}
               </div>
               <div
                 style={{
-                  display: "flex",
-                  flexWrap: "wrap",
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
                   gap: 10,
                   alignItems: "stretch",
                 }}
               >
-                <Link
-                  href="/admin/fatture-da-emettere"
-                  style={shortcutCardStyle}
-                >
-                  <div style={shortcutCardTitleStyle}>FATTURE DA EMETTERE</div>
-                  <div style={shortcutCardNumberWrapStyle}>
-                    <div style={shortcutCardNumberStyle}>{fattureDaEmettereCount}</div>
-                  </div>
-                </Link>
-                <Link
-                  href="/admin/interventi-entro-7-giorni"
-                  style={shortcutCardStyle}
-                >
-                  <div style={shortcutCardTitleStyle}>INTERVENTI ENTRO 7 GIORNI</div>
-                  <div style={shortcutCardNumberWrapStyle}>
-                    <div style={shortcutCardNumberStyle}>{interventiEntro7Count}</div>
-                  </div>
-                </Link>
-                <Link
-                  href="/admin/consegne-entro-7-giorni"
-                  style={shortcutCardStyle}
-                >
-                  <div style={shortcutCardTitleStyle}>CONSEGNE ENTRO 7 GIORNI</div>
-                  <div style={shortcutCardNumberWrapStyle}>
-                    <div style={shortcutCardNumberStyle}>{consegneEntro7Count}</div>
-                  </div>
-                </Link>
-                <Link
-                  href="/admin/smontaggi-noleggi-entro-7-giorni"
-                  style={shortcutCardStyle}
-                >
-                  <div style={shortcutCardTitleStyle}>SMONTAGGI NOLEGGI ENTRO 7 GIORNI</div>
-                  <div style={shortcutCardNumberWrapStyle}>
-                    <div style={shortcutCardNumberStyle}>{smontaggiEntro7Count}</div>
-                  </div>
-                </Link>
+                {renderCockpitMetricCard(
+                  "/admin/interventi-da-chiudere",
+                  "INTERVENTI DA CHIUDERE",
+                  interventiDaChiudereSummary.count,
+                  "In ritardo",
+                  interventiDaChiudereSummary.overdue
+                )}
+                {renderCockpitMetricCard(
+                  "/admin/interventi-entro-7-giorni",
+                  "INTERVENTI ENTRO 7 GIORNI",
+                  interventiEntro7Summary.count,
+                  "Scaduti",
+                  interventiEntro7Summary.overdue
+                )}
+                {renderCockpitMetricCard(
+                  "/admin/consegne-entro-7-giorni",
+                  "CONSEGNE ENTRO 7 GIORNI",
+                  consegneEntro7Summary.count,
+                  "Scadute",
+                  consegneEntro7Summary.overdue
+                )}
+                {renderCockpitMetricCard(
+                  "/admin/smontaggi-noleggi-entro-7-giorni",
+                  "SMONTAGGI NOLEGGI ENTRO 7 GIORNI",
+                  smontaggiEntro7Summary.count,
+                  "Scaduti",
+                  smontaggiEntro7Summary.overdue
+                )}
+                {renderCockpitMetricCard(
+                  "/admin/noleggi-attivi",
+                  "NOLEGGI ATTIVI",
+                  noleggiAttiviCount
+                )}
               </div>
             </div>
           </div>

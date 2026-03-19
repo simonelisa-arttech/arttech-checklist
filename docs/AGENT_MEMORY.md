@@ -1,5 +1,23 @@
 # AGENT MEMORY — Snapshot Operativo
 
+## Snapshot 2026-03-19 - Cockpit dashboard overdue counts
+- `app/page.tsx`
+  - cockpit riallineato su 2 righe:
+    - riga 1: `SCADENZE IN ARRIVO`, `FATTURE DA EMETTERE`
+    - riga 2: `INTERVENTI DA CHIUDERE`, `INTERVENTI ENTRO 7 GIORNI`, `CONSEGNE ENTRO 7 GIORNI`, `SMONTAGGI NOLEGGI ENTRO 7 GIORNI`, `NOLEGGI ATTIVI`
+  - aggiunti badge secondari per elementi `scaduti / in ritardo` su:
+    - scadenze
+    - interventi da chiudere
+    - interventi entro 7 giorni
+    - consegne entro 7 giorni
+    - smontaggi noleggi entro 7 giorni
+- Route estese senza breaking change:
+  - `GET /api/interventi/entro-7-giorni?overdue=1`
+  - `GET /api/consegne/entro-7-giorni?overdue=1`
+  - `GET /api/noleggi/smontaggi-entro-7-giorni?overdue=1`
+- Regola funzionale:
+  - gli elementi con data nel passato restano visibili nel cockpit finche non entrano in uno stato finale del loro dominio
+
 ## Snapshot 2026-03-19 - Regole globali avvisi scadenze
 - Nuova distinzione di dominio per il blocco `Scadenze & Rinnovi`:
   - `scadenze_alert_global_rules`: regole globali automatiche per tipo scadenza (`LICENZA`, `TAGLIANDO`, `GARANZIA`, `SAAS`)

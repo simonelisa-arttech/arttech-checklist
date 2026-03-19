@@ -27,12 +27,14 @@ function getConsegnaDate(row: ChecklistRow) {
 
 function isExcludedStatus(value?: string | null) {
   const normalized = String(value || "").trim().toUpperCase().replace(/\s+/g, "_");
-  return normalized === "CONSEGNATO" || normalized === "CHIUSO";
+  return normalized === "CONSEGNATO" || normalized === "CHIUSO" || normalized === "ANNULLATO";
 }
 
 export async function GET(request: Request) {
   const auth = await requireOperatore(request);
   if (!auth.ok) return auth.response;
+  const url = new URL(request.url);
+  const overdueOnly = url.searchParams.get("overdue") === "1";
 
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -63,7 +65,11 @@ export async function GET(request: Request) {
       };
     })
     .filter((row) => !isExcludedStatus(row.stato_progetto))
-    .filter((row) => !!row.data_consegna && row.data_consegna >= todayIso && row.data_consegna <= inSevenDaysIso)
+    .filter((row) =>
+      overdueOnly
+        ? !!row.data_consegna && row.data_consegna < todayIso
+        : !!row.data_consegna && row.data_consegna >= todayIso && row.data_consegna <= inSevenDaysIso
+    )
     .sort((a, b) => {
       const byDate = String(a.data_consegna).localeCompare(String(b.data_consegna));
       if (byDate !== 0) return byDate;

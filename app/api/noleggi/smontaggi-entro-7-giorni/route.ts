@@ -21,9 +21,16 @@ function toIsoDay(value?: string | null) {
   return date.toISOString().slice(0, 10);
 }
 
+function isFinalSmontaggioStatus(value?: string | null) {
+  const normalized = String(value || "").trim().toUpperCase().replace(/\s+/g, "_");
+  return normalized === "RIENTRATO" || normalized === "CHIUSO" || normalized === "ANNULLATO";
+}
+
 export async function GET(request: Request) {
   const auth = await requireOperatore(request);
   if (!auth.ok) return auth.response;
+  const url = new URL(request.url);
+  const overdueOnly = url.searchParams.get("overdue") === "1";
 
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -63,11 +70,14 @@ export async function GET(request: Request) {
         data_disinstallazione: missingDataDisinstallazione ? null : toIsoDay(raw.data_disinstallazione ?? null),
       };
     })
+    .filter((row: any) => !isFinalSmontaggioStatus(row.stato_progetto))
     .filter(
       (row: any) =>
-        row.data_disinstallazione &&
-        row.data_disinstallazione >= todayIso &&
-        row.data_disinstallazione <= inSevenDaysIso
+        overdueOnly
+          ? row.data_disinstallazione && row.data_disinstallazione < todayIso
+          : row.data_disinstallazione &&
+            row.data_disinstallazione >= todayIso &&
+            row.data_disinstallazione <= inSevenDaysIso
     )
     .sort((a: any, b: any) => {
       const byDate = String(a.data_disinstallazione).localeCompare(String(b.data_disinstallazione));
