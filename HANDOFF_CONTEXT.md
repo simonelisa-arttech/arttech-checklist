@@ -10,6 +10,10 @@
     - `tipo` tipizzato come `ScadenzaAlertRuleType | null`
     - `ALLOWED_TIPI` riallineato a `SCADENZE_ALERT_RULE_TYPES`
     - aggiunta `normalizeTipo()` per convertire l'input stringa al tipo corretto senza cambiare la logica runtime
+  - stesso riallineamento applicato anche a `trigger`:
+    - `trigger` tipizzato come `ScadenzaAlertDefaultTemplateTrigger | null`
+    - `ALLOWED_TRIGGER` tipizzato sulla union corretta
+    - aggiunta `normalizeTrigger()` e rimozione dell'uso diretto di stringhe raw nel payload
 
 - `fix: interventi aperti non visibili in interventi da chiudere` in corso locale.
 - Causa reale:

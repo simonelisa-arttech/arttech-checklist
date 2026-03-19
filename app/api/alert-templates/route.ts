@@ -6,6 +6,7 @@ import {
   SCADENZE_ALERT_DEFAULT_TEMPLATE_TRIGGERS,
   SCADENZE_ALERT_RULE_TYPES,
   type ScadenzaAlertRuleType,
+  type ScadenzaAlertDefaultTemplateTrigger,
 } from "@/lib/scadenzeAlertConfig";
 
 type AlertTemplatePayload = {
@@ -13,14 +14,16 @@ type AlertTemplatePayload = {
   codice: string | null;
   titolo: string | null;
   tipo: ScadenzaAlertRuleType | null;
-  trigger: string | null;
+  trigger: ScadenzaAlertDefaultTemplateTrigger | null;
   subject_template: string | null;
   body_template: string | null;
   attivo: boolean;
 };
 
 const ALLOWED_TIPI = new Set<ScadenzaAlertRuleType>(SCADENZE_ALERT_RULE_TYPES);
-const ALLOWED_TRIGGER = new Set(SCADENZE_ALERT_DEFAULT_TEMPLATE_TRIGGERS);
+const ALLOWED_TRIGGER = new Set<ScadenzaAlertDefaultTemplateTrigger>(
+  SCADENZE_ALERT_DEFAULT_TEMPLATE_TRIGGERS
+);
 
 type RateLimitEntry = { count: number; resetAt: number };
 const rateLimitMap = new Map<string, RateLimitEntry>();
@@ -90,6 +93,19 @@ function normalizeTipo(value?: string | null): ScadenzaAlertRuleType | null {
   return null;
 }
 
+function normalizeTrigger(value?: string | null): ScadenzaAlertDefaultTemplateTrigger | null {
+  const raw = String(value || "")
+    .trim()
+    .toUpperCase();
+  if (raw === "MANUALE") return "MANUALE";
+  if (raw === "60GG") return "60GG";
+  if (raw === "30GG") return "30GG";
+  if (raw === "15GG") return "15GG";
+  if (raw === "7GG") return "7GG";
+  if (raw === "1GG") return "1GG";
+  return null;
+}
+
 const SELECT_FIELDS =
   "id,codice,titolo,tipo,trigger,subject_template,body_template,attivo,created_at,updated_at";
 
@@ -132,7 +148,7 @@ export async function POST(request: Request) {
     codice: body.codice?.trim() || null,
     titolo: body.titolo?.trim() || null,
     tipo: normalizeTipo(body.tipo),
-    trigger: body.trigger?.trim() || null,
+    trigger: normalizeTrigger(body.trigger),
     subject_template: body.subject_template ?? null,
     body_template: body.body_template ?? null,
     attivo: Boolean(body.attivo),
@@ -183,7 +199,7 @@ export async function PATCH(request: Request) {
     codice: body.codice?.trim() || null,
     titolo: body.titolo?.trim() || null,
     tipo: normalizeTipo(body.tipo),
-    trigger: body.trigger?.trim() || null,
+    trigger: normalizeTrigger(body.trigger),
     subject_template: body.subject_template ?? null,
     body_template: body.body_template ?? null,
     attivo: Boolean(body.attivo),
