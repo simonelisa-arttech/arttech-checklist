@@ -1,5 +1,14 @@
 # Handoff Context — AT SYSTEM (arttech-checklist)
 
+## Aggiornamento rapido (19 marzo 2026)
+
+- `fix: abilita impostazioni per tecnico sw` in corso locale.
+- Allineato il criterio di visibilita del bottone `Impostazioni` per includere anche `TECNICO_SW`.
+- Verifica completata sui percorsi `app/impostazioni/*`:
+  - non e' presente un blocco ruolo dedicato lato pagina
+  - le pagine interne restano navigabili per utente autenticato
+  - gli endpoint `api/admin/*` restano limitati ai ruoli admin e continuano solo a governare azioni admin specifiche dentro `Impostazioni > Operatori`
+
 ## Aggiornamento rapido (11 marzo 2026)
 
 - Handoff riallineato prima dei prossimi sviluppi.

@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
-import { isAdminRole } from "@/lib/adminRoles";
+import { canAccessSettingsRole } from "@/lib/adminRoles";
 
 export default function LogoutButton() {
   const router = useRouter();
@@ -32,7 +32,7 @@ export default function LogoutButton() {
           .trim()
           .toUpperCase();
         setOperatoreLabel(`Operatore: ${nome}${ruolo}`);
-        setCanAccessSettings(isAdminRole(operatore.ruolo) || roleNormalized === "MAGAZZINO");
+        setCanAccessSettings(canAccessSettingsRole(roleNormalized));
       } catch {
         setOperatoreLabel("");
         setCanAccessSettings(false);
