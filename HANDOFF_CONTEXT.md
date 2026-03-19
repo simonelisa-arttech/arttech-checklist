@@ -2,6 +2,16 @@
 
 ## Aggiornamento rapido (19 marzo 2026)
 
+- `ui: top scrollbar blocco interventi` in corso locale.
+- `components/InterventiBlock.tsx` usa ora:
+  - scrollbar orizzontale alta sempre visibile
+  - scrollbar bassa reale sul contenuto tabella
+  - sincronizzazione bidirezionale `scrollLeft`
+- Il fix vale sia per:
+  - `app/clienti/[cliente]/page.tsx`
+  - `app/checklists/[id]/page.tsx`
+  perche entrambe renderizzano il blocco condiviso `InterventiBlock`
+
 - `ui: cockpit dashboard overdue counts` in corso locale.
 - Layout cockpit riallineato:
   - riga 1: `SCADENZE IN ARRIVO` + `FATTURE DA EMETTERE`

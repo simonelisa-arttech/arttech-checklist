@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import AttachmentsPanel from "@/components/AttachmentsPanel";
 import type { InterventoRow } from "@/lib/interventi";
@@ -319,6 +320,51 @@ export default function InterventiBlock({
   currentProjectLabel,
 }: Props) {
   const fattureDaEmettere = interventi.filter((item) => isFatturaDaEmettere(item));
+  const topScrollbarRef = useRef<HTMLDivElement | null>(null);
+  const tableScrollRef = useRef<HTMLDivElement | null>(null);
+  const [topScrollbarWidth, setTopScrollbarWidth] = useState(1410);
+
+  useEffect(() => {
+    const tableEl = tableScrollRef.current;
+    if (!tableEl) return;
+
+    const syncWidth = () => {
+      setTopScrollbarWidth(Math.max(tableEl.scrollWidth, 1410));
+    };
+
+    syncWidth();
+
+    const observer =
+      typeof ResizeObserver !== "undefined"
+        ? new ResizeObserver(() => {
+            syncWidth();
+          })
+        : null;
+
+    if (observer) {
+      observer.observe(tableEl);
+      const firstChild = tableEl.firstElementChild;
+      if (firstChild instanceof HTMLElement) observer.observe(firstChild);
+    } else {
+      window.addEventListener("resize", syncWidth);
+    }
+
+    return () => {
+      if (observer) observer.disconnect();
+      else window.removeEventListener("resize", syncWidth);
+    };
+  }, [interventi, expandedInterventoId, editInterventoId]);
+
+  function syncHorizontalScroll(source: "top" | "bottom") {
+    const topEl = topScrollbarRef.current;
+    const tableEl = tableScrollRef.current;
+    if (!topEl || !tableEl) return;
+    if (source === "top") {
+      if (tableEl.scrollLeft !== topEl.scrollLeft) tableEl.scrollLeft = topEl.scrollLeft;
+    } else if (topEl.scrollLeft !== tableEl.scrollLeft) {
+      topEl.scrollLeft = tableEl.scrollLeft;
+    }
+  }
 
   return (
     <>
@@ -617,11 +663,35 @@ export default function InterventiBlock({
                 marginTop: 10,
                 border: "1px solid #eee",
                 borderRadius: 12,
-                overflowX: "auto",
                 width: "100%",
                 background: "white",
+                overflow: "hidden",
               }}
             >
+              <div
+                ref={topScrollbarRef}
+                onScroll={() => syncHorizontalScroll("top")}
+                style={{
+                  overflowX: "auto",
+                  overflowY: "hidden",
+                  position: "sticky",
+                  top: 0,
+                  zIndex: 2,
+                  background: "#fafafa",
+                  borderBottom: "1px solid #eee",
+                }}
+              >
+                <div style={{ width: topScrollbarWidth, height: 14 }} />
+              </div>
+              <div
+                ref={tableScrollRef}
+                onScroll={() => syncHorizontalScroll("bottom")}
+                style={{
+                  overflowX: "auto",
+                  overflowY: "hidden",
+                  width: "100%",
+                }}
+              >
               <div
                 style={{
                   display: "grid",
@@ -1028,6 +1098,7 @@ export default function InterventiBlock({
                   </div>
                 );
               })}
+              </div>
             </div>
           </>
         )}
