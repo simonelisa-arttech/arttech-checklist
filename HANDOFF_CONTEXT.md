@@ -2,6 +2,13 @@
 
 ## Aggiornamento rapido (19 marzo 2026)
 
+- `fix: dashboard scadenze overdueCount fallback` in corso locale.
+- `app/page.tsx`
+  - `DashboardScadenzeSummary` richiede `count`, `breakdown` e `overdueCount`
+  - nel catch del caricamento dashboard era rimasto un `setScadenzeByPeriod(...)` senza `overdueCount`
+  - fix minimale:
+    - aggiunto `overdueCount: 0` ai fallback `7 / 15 / 30`
+
 - `fix: remove cast newIntervento to editIntervento` in corso locale.
 - `app/clienti/[cliente]/page.tsx`
   - `extractClienteInterventoOperativi(...)` era tipizzata su `typeof editIntervento`

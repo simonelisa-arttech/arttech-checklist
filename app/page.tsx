@@ -1307,9 +1307,9 @@ export default function Page() {
       console.error("Errore caricamento dashboard", e);
       setDashboardLoadError(message);
       setScadenzeByPeriod({
-        7: { count: 0, breakdown: { ...EMPTY_SCADENZE_BREAKDOWN } },
-        15: { count: 0, breakdown: { ...EMPTY_SCADENZE_BREAKDOWN } },
-        30: { count: 0, breakdown: { ...EMPTY_SCADENZE_BREAKDOWN } },
+        7: { count: 0, breakdown: { ...EMPTY_SCADENZE_BREAKDOWN }, overdueCount: 0 },
+        15: { count: 0, breakdown: { ...EMPTY_SCADENZE_BREAKDOWN }, overdueCount: 0 },
+        30: { count: 0, breakdown: { ...EMPTY_SCADENZE_BREAKDOWN }, overdueCount: 0 },
       });
       setInterventiDaChiudereCount(0);
       setInterventiEntro7Count(0);
