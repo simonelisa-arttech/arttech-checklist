@@ -1,5 +1,13 @@
 # AGENT MEMORY — Snapshot Operativo
 
+## Snapshot 2026-03-19 - Fix persistenza data_disinstallazione e cockpit dashboard
+- `app/checklists/[id]/page.tsx`
+  - rimosso il fallback che eliminava `data_disinstallazione` dal payload di update checklist
+  - se la colonna manca davvero, l'utente vede errore esplicito con riferimento alla migration `scripts/20260318_add_checklists_data_disinstallazione.sql`
+- `app/page.tsx`
+  - il cockpit dashboard non dipende piu da `scadenzeEntro7Count > 0`
+  - la banda gialla con shortcut operative resta visibile anche quando il conteggio scadenze e' zero
+
 ## Snapshot 2026-03-19 - Cronoprogramma disinstallazioni noleggio
 - `app/api/cronoprogramma/route.ts` genera ora anche eventi `DISINSTALLAZIONE` per checklist `NOLEGGIO` con `data_disinstallazione` valorizzata.
 - Stati ammessi per la visibilita dello smontaggio noleggio:

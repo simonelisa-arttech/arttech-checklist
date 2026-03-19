@@ -4714,9 +4714,7 @@ function buildFormData(c: Checklist): FormData {
     };
     const isDataDisinstallazioneMissing = (err: any) => {
       const msg = `${err?.message || ""}`.toLowerCase();
-      const code = `${err?.code || ""}`.toLowerCase();
       return (
-        code === "pgrst204" ||
         (msg.includes("data_disinstallazione") && msg.includes("does not exist")) ||
         (msg.includes("data_disinstallazione") && msg.includes("column"))
       );
@@ -4755,15 +4753,14 @@ function buildFormData(c: Checklist): FormData {
       const { updated_by_operatore, ...legacyPayload } = sourcePayload;
       ({ error: errUpdate } = await tryUpdate(legacyPayload));
     }
-    if (errUpdate && isDataDisinstallazioneMissing(errUpdate)) {
-      const sourcePayload = driveFallbackUsed
-        ? (({ magazzino_drive_url: _skip, ...rest }) => rest)(payload)
-        : payload;
-      const { data_disinstallazione, ...legacyPayload } = sourcePayload;
-      ({ error: errUpdate } = await tryUpdate(legacyPayload));
-    }
 
     if (errUpdate) {
+      if (isDataDisinstallazioneMissing(errUpdate)) {
+        alert(
+          "Errore salvataggio: la colonna checklists.data_disinstallazione non risulta disponibile. Verifica la migration scripts/20260318_add_checklists_data_disinstallazione.sql."
+        );
+        return;
+      }
       const info = logSupabaseError("update checklist", errUpdate);
       alert("Errore salvataggio: " + (info || errUpdate.message));
       return;

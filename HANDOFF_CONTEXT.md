@@ -2,6 +2,16 @@
 
 ## Aggiornamento rapido (19 marzo 2026)
 
+- `fix: persistenza data_disinstallazione + ripristino cockpit dashboard` in corso locale.
+- Causa reale `data_disinstallazione`:
+  - nel save checklist `app/checklists/[id]/page.tsx` esisteva un fallback che rimuoveva silenziosamente `data_disinstallazione` dal payload su errore compatibilita schema
+  - il salvataggio poteva quindi andare in `ok` senza persistere il campo
+- Causa reale cockpit dashboard:
+  - la banda gialla in `app/page.tsx` era renderizzata solo se `scadenzeEntro7Count > 0`
+  - quando il count scadenze andava a zero spariva tutto il cockpit, incluse le altre celle shortcut
+- Correzione:
+  - rimosso il fallback che scartava `data_disinstallazione`; ora il campo viene salvato oppure viene mostrato un errore esplicito di schema
+  - il cockpit dashboard e' di nuovo sempre visibile, anche con `SCADENZE IN ARRIVO = 0`
 - `feat: cronoprogramma mostra disinstallazioni noleggio + preset periodo` in corso locale.
 - Causa reale:
   - `app/api/cronoprogramma/route.ts` riconosceva `DISINSTALLAZIONE` solo per meta/commenti

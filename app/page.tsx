@@ -1506,178 +1506,176 @@ export default function Page() {
               {dashboardLoadError}
             </div>
           )}
-          {scadenzeEntro7Count > 0 && (
+          <div
+            style={{
+              padding: "12px 14px",
+              borderRadius: 12,
+              border: "1px solid #f59e0b",
+              background: "#fffbeb",
+              color: "#92400e",
+            }}
+          >
             <div
               style={{
-                padding: "12px 14px",
-                borderRadius: 12,
-                border: "1px solid #f59e0b",
-                background: "#fffbeb",
-                color: "#92400e",
+                display: "flex",
+                flexWrap: "wrap",
+                gap: 10,
+                alignItems: "stretch",
               }}
             >
-              <div
+              <Link
+                href={`/scadenze?from=${toDateInputValue(new Date())}&to=${toDateInputValue(new Date(Date.now() + 7 * 86400000))}`}
                 style={{
-                  display: "flex",
-                  flexWrap: "wrap",
-                  gap: 10,
-                  alignItems: "stretch",
+                  flex: "1 1 360px",
+                  minWidth: 280,
+                  padding: "12px 14px",
+                  borderRadius: 12,
+                  border: "1px solid #fcd34d",
+                  background: "rgba(255,255,255,0.62)",
+                  color: "inherit",
+                  textDecoration: "none",
                 }}
               >
-                <Link
-                  href={`/scadenze?from=${toDateInputValue(new Date())}&to=${toDateInputValue(new Date(Date.now() + 7 * 86400000))}`}
+                <div
                   style={{
-                    flex: "1 1 360px",
-                    minWidth: 280,
-                    padding: "12px 14px",
-                    borderRadius: 12,
-                    border: "1px solid #fcd34d",
-                    background: "rgba(255,255,255,0.62)",
-                    color: "inherit",
-                    textDecoration: "none",
+                    display: "flex",
+                    flexWrap: "wrap",
+                    gap: 18,
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    height: "100%",
                   }}
                 >
+                  <div style={{ display: "grid", gap: 6 }}>
+                    <div style={{ fontSize: 13, fontWeight: 900, letterSpacing: 0.4 }}>SCADENZE IN ARRIVO</div>
+                    <div style={{ fontSize: 32, lineHeight: 1.05 }}>⚠ {scadenzeEntro7Count}</div>
+                    <div style={{ fontSize: 14, fontWeight: 700 }}>scadenze entro 7 giorni</div>
+                  </div>
                   <div
                     style={{
-                      display: "flex",
-                      flexWrap: "wrap",
-                      gap: 18,
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                      height: "100%",
+                      display: "grid",
+                      gap: 4,
+                      fontSize: 13,
+                      fontWeight: 700,
+                      minWidth: 120,
                     }}
                   >
-                    <div style={{ display: "grid", gap: 6 }}>
-                      <div style={{ fontSize: 13, fontWeight: 900, letterSpacing: 0.4 }}>SCADENZE IN ARRIVO</div>
-                      <div style={{ fontSize: 32, lineHeight: 1.05 }}>⚠ {scadenzeEntro7Count}</div>
-                      <div style={{ fontSize: 14, fontWeight: 700 }}>scadenze entro 7 giorni</div>
-                    </div>
-                    <div
-                      style={{
-                        display: "grid",
-                        gap: 4,
-                        fontSize: 13,
-                        fontWeight: 700,
-                        minWidth: 120,
-                      }}
-                    >
-                      <div>Garanzie: {scadenzeEntro7Breakdown.garanzie}</div>
-                      <div>Licenze: {scadenzeEntro7Breakdown.licenze}</div>
-                      <div>Tagliandi: {scadenzeEntro7Breakdown.tagliandi}</div>
-                    </div>
+                    <div>Garanzie: {scadenzeEntro7Breakdown.garanzie}</div>
+                    <div>Licenze: {scadenzeEntro7Breakdown.licenze}</div>
+                    <div>Tagliandi: {scadenzeEntro7Breakdown.tagliandi}</div>
                   </div>
-                </Link>
-                <Link
-                  href="/admin/interventi-da-chiudere"
-                  style={{
-                    padding: "10px 12px",
-                    borderRadius: 12,
-                    border: "1px solid #fcd34d",
-                    background: "rgba(255,255,255,0.62)",
-                    color: "inherit",
-                    textDecoration: "none",
-                    minWidth: 180,
-                    flex: "0 1 190px",
-                  }}
-                >
-                  <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: 0.2, color: "#6b7280" }}>
-                    INTERVENTI DA CHIUDERE
-                  </div>
-                  <div style={{ marginTop: 6, fontSize: 24, fontWeight: 800 }}>{interventiDaChiudereCount}</div>
-                </Link>
-                <Link
-                  href="/admin/interventi-entro-7-giorni"
-                  style={{
-                    padding: "10px 12px",
-                    borderRadius: 12,
-                    border: "1px solid #fcd34d",
-                    background: "rgba(255,255,255,0.62)",
-                    color: "inherit",
-                    textDecoration: "none",
-                    minWidth: 180,
-                    flex: "0 1 190px",
-                  }}
-                >
-                  <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: 0.2, color: "#6b7280" }}>
-                    INTERVENTI ENTRO 7 GIORNI
-                  </div>
-                  <div style={{ marginTop: 6, fontSize: 24, fontWeight: 800 }}>{interventiEntro7Count}</div>
-                </Link>
-                <Link
-                  href="/admin/fatture-da-emettere"
-                  style={{
-                    padding: "10px 12px",
-                    borderRadius: 12,
-                    border: "1px solid #fcd34d",
-                    background: "rgba(255,255,255,0.62)",
-                    color: "inherit",
-                    textDecoration: "none",
-                    minWidth: 180,
-                    flex: "0 1 190px",
-                  }}
-                >
-                  <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: 0.2, color: "#6b7280" }}>
-                    FATTURE DA EMETTERE
-                  </div>
-                  <div style={{ marginTop: 6, fontSize: 24, fontWeight: 800 }}>{fattureDaEmettereCount}</div>
-                </Link>
-                <Link
-                  href="/admin/noleggi-attivi"
-                  style={{
-                    padding: "10px 12px",
-                    borderRadius: 12,
-                    border: "1px solid #fcd34d",
-                    background: "rgba(255,255,255,0.62)",
-                    color: "inherit",
-                    textDecoration: "none",
-                    minWidth: 180,
-                    flex: "0 1 190px",
-                  }}
-                >
-                  <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: 0.2, color: "#6b7280" }}>
-                    NOLEGGI ATTIVI
-                  </div>
-                  <div style={{ marginTop: 6, fontSize: 24, fontWeight: 800 }}>{noleggiAttiviCount}</div>
-                </Link>
-                <Link
-                  href="/admin/consegne-entro-7-giorni"
-                  style={{
-                    padding: "10px 12px",
-                    borderRadius: 12,
-                    border: "1px solid #fcd34d",
-                    background: "rgba(255,255,255,0.62)",
-                    color: "inherit",
-                    textDecoration: "none",
-                    minWidth: 180,
-                    flex: "0 1 190px",
-                  }}
-                >
-                  <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: 0.2, color: "#6b7280" }}>
-                    CONSEGNE ENTRO 7 GIORNI
-                  </div>
-                  <div style={{ marginTop: 6, fontSize: 24, fontWeight: 800 }}>{consegneEntro7Count}</div>
-                </Link>
-                <Link
-                  href="/admin/smontaggi-noleggi-entro-7-giorni"
-                  style={{
-                    padding: "10px 12px",
-                    borderRadius: 12,
-                    border: "1px solid #fcd34d",
-                    background: "rgba(255,255,255,0.62)",
-                    color: "inherit",
-                    textDecoration: "none",
-                    minWidth: 180,
-                    flex: "0 1 190px",
-                  }}
-                >
-                  <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: 0.2, color: "#6b7280" }}>
-                    SMONTAGGI NOLEGGI ENTRO 7 GIORNI
-                  </div>
-                  <div style={{ marginTop: 6, fontSize: 24, fontWeight: 800 }}>{smontaggiEntro7Count}</div>
-                </Link>
-              </div>
+                </div>
+              </Link>
+              <Link
+                href="/admin/interventi-da-chiudere"
+                style={{
+                  padding: "10px 12px",
+                  borderRadius: 12,
+                  border: "1px solid #fcd34d",
+                  background: "rgba(255,255,255,0.62)",
+                  color: "inherit",
+                  textDecoration: "none",
+                  minWidth: 180,
+                  flex: "0 1 190px",
+                }}
+              >
+                <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: 0.2, color: "#6b7280" }}>
+                  INTERVENTI DA CHIUDERE
+                </div>
+                <div style={{ marginTop: 6, fontSize: 24, fontWeight: 800 }}>{interventiDaChiudereCount}</div>
+              </Link>
+              <Link
+                href="/admin/interventi-entro-7-giorni"
+                style={{
+                  padding: "10px 12px",
+                  borderRadius: 12,
+                  border: "1px solid #fcd34d",
+                  background: "rgba(255,255,255,0.62)",
+                  color: "inherit",
+                  textDecoration: "none",
+                  minWidth: 180,
+                  flex: "0 1 190px",
+                }}
+              >
+                <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: 0.2, color: "#6b7280" }}>
+                  INTERVENTI ENTRO 7 GIORNI
+                </div>
+                <div style={{ marginTop: 6, fontSize: 24, fontWeight: 800 }}>{interventiEntro7Count}</div>
+              </Link>
+              <Link
+                href="/admin/fatture-da-emettere"
+                style={{
+                  padding: "10px 12px",
+                  borderRadius: 12,
+                  border: "1px solid #fcd34d",
+                  background: "rgba(255,255,255,0.62)",
+                  color: "inherit",
+                  textDecoration: "none",
+                  minWidth: 180,
+                  flex: "0 1 190px",
+                }}
+              >
+                <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: 0.2, color: "#6b7280" }}>
+                  FATTURE DA EMETTERE
+                </div>
+                <div style={{ marginTop: 6, fontSize: 24, fontWeight: 800 }}>{fattureDaEmettereCount}</div>
+              </Link>
+              <Link
+                href="/admin/noleggi-attivi"
+                style={{
+                  padding: "10px 12px",
+                  borderRadius: 12,
+                  border: "1px solid #fcd34d",
+                  background: "rgba(255,255,255,0.62)",
+                  color: "inherit",
+                  textDecoration: "none",
+                  minWidth: 180,
+                  flex: "0 1 190px",
+                }}
+              >
+                <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: 0.2, color: "#6b7280" }}>
+                  NOLEGGI ATTIVI
+                </div>
+                <div style={{ marginTop: 6, fontSize: 24, fontWeight: 800 }}>{noleggiAttiviCount}</div>
+              </Link>
+              <Link
+                href="/admin/consegne-entro-7-giorni"
+                style={{
+                  padding: "10px 12px",
+                  borderRadius: 12,
+                  border: "1px solid #fcd34d",
+                  background: "rgba(255,255,255,0.62)",
+                  color: "inherit",
+                  textDecoration: "none",
+                  minWidth: 180,
+                  flex: "0 1 190px",
+                }}
+              >
+                <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: 0.2, color: "#6b7280" }}>
+                  CONSEGNE ENTRO 7 GIORNI
+                </div>
+                <div style={{ marginTop: 6, fontSize: 24, fontWeight: 800 }}>{consegneEntro7Count}</div>
+              </Link>
+              <Link
+                href="/admin/smontaggi-noleggi-entro-7-giorni"
+                style={{
+                  padding: "10px 12px",
+                  borderRadius: 12,
+                  border: "1px solid #fcd34d",
+                  background: "rgba(255,255,255,0.62)",
+                  color: "inherit",
+                  textDecoration: "none",
+                  minWidth: 180,
+                  flex: "0 1 190px",
+                }}
+              >
+                <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: 0.2, color: "#6b7280" }}>
+                  SMONTAGGI NOLEGGI ENTRO 7 GIORNI
+                </div>
+                <div style={{ marginTop: 6, fontSize: 24, fontWeight: 800 }}>{smontaggiEntro7Count}</div>
+              </Link>
             </div>
-          )}
+          </div>
           {loading ? (
             <div>Caricamento…</div>
           ) : items.length === 0 ? (
