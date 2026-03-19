@@ -15,6 +15,10 @@ import {
   normalizeEmailSecondarieInput,
 } from "@/lib/clientiEmail";
 import type { InterventoRow } from "@/lib/interventi";
+import {
+  loadInterventoOperativi,
+  saveInterventoOperativi,
+} from "@/lib/interventoOperativi";
 import { calcM2FromDimensioni } from "@/lib/parseDimensioni";
 import {
   getDefaultRenewalAlertRule,
@@ -965,6 +969,15 @@ export default function ClientePage({
     fatturatoIl: "",
     note: "",
     noteTecniche: "",
+    personalePrevisto: "",
+    mezzi: "",
+    descrizioneAttivita: "",
+    indirizzo: "",
+    orario: "",
+    referenteClienteNome: "",
+    referenteClienteContatto: "",
+    commercialeArtTechNome: "",
+    commercialeArtTechContatto: "",
   });
   const [newIntervento, setNewIntervento] = useState({
     data: "",
@@ -980,7 +993,30 @@ export default function ClientePage({
     numeroFattura: "",
     fatturatoIl: "",
     statoIntervento: "APERTO",
+    personalePrevisto: "",
+    mezzi: "",
+    descrizioneAttivita: "",
+    indirizzo: "",
+    orario: "",
+    referenteClienteNome: "",
+    referenteClienteContatto: "",
+    commercialeArtTechNome: "",
+    commercialeArtTechContatto: "",
   });
+
+  function extractClienteInterventoOperativi(form: typeof editIntervento) {
+    return {
+      personale_previsto: form.personalePrevisto,
+      mezzi: form.mezzi,
+      descrizione_attivita: form.descrizioneAttivita,
+      indirizzo: form.indirizzo,
+      orario: form.orario,
+      referente_cliente_nome: form.referenteClienteNome,
+      referente_cliente_contatto: form.referenteClienteContatto,
+      commerciale_art_tech_nome: form.commercialeArtTechNome,
+      commerciale_art_tech_contatto: form.commercialeArtTechContatto,
+    };
+  }
 
   function showToast(message: string, variant: "success" | "error" = "success", duration = 2500) {
     if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
@@ -2008,9 +2044,9 @@ export default function ClientePage({
     };
   }, [alertOperatori, cliente, interventi, initialClienteLoadDone]);
 
-  function startEditIntervento(i: InterventoRow) {
+  async function startEditIntervento(i: InterventoRow) {
     setEditInterventoId(i.id);
-    setEditIntervento({
+    const baseForm = {
       data: i.data ? String(i.data).slice(0, 10) : "",
       dataTassativa: i.data_tassativa ? String(i.data_tassativa).slice(0, 10) : "",
       descrizione: i.descrizione ?? "",
@@ -2025,7 +2061,23 @@ export default function ClientePage({
       fatturatoIl: i.fatturato_il ? i.fatturato_il.slice(0, 10) : "",
       note: i.note ?? "",
       noteTecniche: i.note_tecniche ?? "",
-    });
+      personalePrevisto: "",
+      mezzi: "",
+      descrizioneAttivita: "",
+      indirizzo: "",
+      orario: "",
+      referenteClienteNome: "",
+      referenteClienteContatto: "",
+      commercialeArtTechNome: "",
+      commercialeArtTechContatto: "",
+    };
+    setEditIntervento(baseForm);
+    try {
+      const { form } = await loadInterventoOperativi(i.id);
+      setEditIntervento({ ...baseForm, ...form });
+    } catch (e: any) {
+      setInterventiError(String(e?.message || "Errore caricamento dati operativi intervento"));
+    }
   }
 
   async function saveEditIntervento() {
@@ -2084,6 +2136,18 @@ export default function ClientePage({
 
     if (updErr) {
       setInterventiError("Errore aggiornamento intervento: " + updErr.message);
+      return;
+    }
+    try {
+      await saveInterventoOperativi(
+        editInterventoId,
+        extractClienteInterventoOperativi(editIntervento)
+      );
+    } catch (e: any) {
+      setInterventiError(
+        "Intervento aggiornato ma dati operativi non salvati: " +
+          String(e?.message || "errore sconosciuto")
+      );
       return;
     }
 
@@ -3298,6 +3362,19 @@ export default function ClientePage({
       setInterventiError("Errore inserimento intervento: " + insertErr.message);
       return;
     }
+    let operativiSaveError: string | null = null;
+    if (inserted?.id) {
+      try {
+        await saveInterventoOperativi(
+          inserted.id,
+          extractClienteInterventoOperativi(newIntervento as typeof editIntervento)
+        );
+      } catch (e: any) {
+        operativiSaveError =
+          "Intervento creato ma dati operativi non salvati: " +
+          String(e?.message || "errore sconosciuto");
+      }
+    }
 
     if (inserted?.id && newInterventoFiles.length > 0) {
       await uploadInterventoFilesList(inserted.id, newInterventoFiles);
@@ -3322,9 +3399,18 @@ export default function ClientePage({
       numeroFattura: "",
       fatturatoIl: "",
       statoIntervento: "APERTO",
+      personalePrevisto: "",
+      mezzi: "",
+      descrizioneAttivita: "",
+      indirizzo: "",
+      orario: "",
+      referenteClienteNome: "",
+      referenteClienteContatto: "",
+      commercialeArtTechNome: "",
+      commercialeArtTechContatto: "",
     });
     setNewInterventoFiles([]);
-    setInterventiError(null);
+    setInterventiError(operativiSaveError);
   }
 
   async function deleteIntervento(id: string) {
@@ -6950,6 +7036,15 @@ ${rinnovi30ggBreakdown.debugSample
           fatturatoIl: newIntervento.fatturatoIl,
           note: newIntervento.note,
           noteTecniche: "",
+          personalePrevisto: newIntervento.personalePrevisto,
+          mezzi: newIntervento.mezzi,
+          descrizioneAttivita: newIntervento.descrizioneAttivita,
+          indirizzo: newIntervento.indirizzo,
+          orario: newIntervento.orario,
+          referenteClienteNome: newIntervento.referenteClienteNome,
+          referenteClienteContatto: newIntervento.referenteClienteContatto,
+          commercialeArtTechNome: newIntervento.commercialeArtTechNome,
+          commercialeArtTechContatto: newIntervento.commercialeArtTechContatto,
         }}
         setNewIntervento={(value) => {
           setNewIntervento({
@@ -6966,6 +7061,15 @@ ${rinnovi30ggBreakdown.debugSample
             numeroFattura: value.numeroFattura,
             fatturatoIl: value.fatturatoIl,
             statoIntervento: value.statoIntervento,
+            personalePrevisto: value.personalePrevisto,
+            mezzi: value.mezzi,
+            descrizioneAttivita: value.descrizioneAttivita,
+            indirizzo: value.indirizzo,
+            orario: value.orario,
+            referenteClienteNome: value.referenteClienteNome,
+            referenteClienteContatto: value.referenteClienteContatto,
+            commercialeArtTechNome: value.commercialeArtTechNome,
+            commercialeArtTechContatto: value.commercialeArtTechContatto,
           });
         }}
         newInterventoFiles={newInterventoFiles}
@@ -6993,6 +7097,15 @@ ${rinnovi30ggBreakdown.debugSample
             fatturatoIl: value.fatturatoIl,
             note: value.note,
             noteTecniche: value.noteTecniche,
+            personalePrevisto: value.personalePrevisto,
+            mezzi: value.mezzi,
+            descrizioneAttivita: value.descrizioneAttivita,
+            indirizzo: value.indirizzo,
+            orario: value.orario,
+            referenteClienteNome: value.referenteClienteNome,
+            referenteClienteContatto: value.referenteClienteContatto,
+            commercialeArtTechNome: value.commercialeArtTechNome,
+            commercialeArtTechContatto: value.commercialeArtTechContatto,
           })
         }
         startEditIntervento={startEditIntervento}

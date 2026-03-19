@@ -2,6 +2,26 @@
 
 ## Aggiornamento rapido (19 marzo 2026)
 
+- `feat: dati operativi condivisi per interventi` in corso locale.
+- Source of truth unica:
+  - i dati operativi intervento usano `cronoprogramma_meta` con `row_kind = INTERVENTO`
+  - lettura/scrittura riusano `POST /api/cronoprogramma` con azioni `load` e `set_operativi`
+- UI:
+  - `components/InterventiBlock.tsx` mostra ora il blocco `Dati operativi intervento` sia in creazione sia in modifica
+  - il blocco e' riusato sia da `app/clienti/[cliente]/page.tsx` sia da `app/checklists/[id]/page.tsx`
+- Campi operativi allineati al cronoprogramma:
+  - personale previsto / incarico
+  - mezzi
+  - descrizione attivita / note operative
+  - indirizzo
+  - orario
+  - referente cliente + contatto
+  - commerciale Art Tech + contatto
+- Sincronizzazione bidirezionale:
+  - pagina intervento -> salva su `saas_interventi` + `cronoprogramma_meta`
+  - cronoprogramma -> continua a leggere/scrivere gli stessi meta `INTERVENTO`
+  - apertura modifica intervento ricarica i meta dal cronoprogramma, quindi i dati restano allineati tra le due pagine
+
 - `fix: pagina interventi da chiudere` in corso locale.
 - Causa reale:
   - `app/api/interventi/da-chiudere/route.ts` non usava il dominio interventi reale

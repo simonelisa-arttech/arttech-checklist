@@ -1,5 +1,28 @@
 # AGENT MEMORY — Snapshot Operativo
 
+## Snapshot 2026-03-19 - Dati operativi condivisi interventi
+- Source of truth unica per i dati operativi intervento:
+  - `cronoprogramma_meta` con `row_kind = INTERVENTO`
+  - API riusata: `POST /api/cronoprogramma` con `load` e `set_operativi`
+- Nuovo helper client-side:
+  - `lib/interventoOperativi.ts`
+  - espone `loadInterventoOperativi`, `saveInterventoOperativi`, `extractInterventoOperativi`, `EMPTY_INTERVENTO_OPERATIVI`
+- `components/InterventiBlock.tsx`
+  - il form intervento espone ora anche:
+    - personale previsto / incarico
+    - mezzi
+    - descrizione attivita / note operative
+    - indirizzo
+    - orario
+    - referente cliente + contatto
+    - commerciale Art Tech + contatto
+- `app/clienti/[cliente]/page.tsx` e `app/checklists/[id]/page.tsx`
+  - precompilano i dati operativi in apertura modifica leggendo i meta `INTERVENTO`
+  - in creazione e modifica salvano i dati sugli stessi meta del cronoprogramma
+- Regola operativa:
+  - non duplicare questi campi su nuove tabelle/colonne intervento se serve solo il dominio operativo
+  - usare sempre i meta `INTERVENTO` del cronoprogramma come dato condiviso
+
 ## Snapshot 2026-03-19 - Cockpit dashboard overdue counts
 - `app/page.tsx`
   - cockpit riallineato su 2 righe:

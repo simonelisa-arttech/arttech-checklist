@@ -22,6 +22,12 @@ import Toast from "@/components/Toast";
 import { buildClienteEmailList } from "@/lib/clientiEmail";
 import type { InterventoRow } from "@/lib/interventi";
 import {
+  EMPTY_INTERVENTO_OPERATIVI,
+  loadInterventoOperativi,
+  saveInterventoOperativi,
+  type InterventoOperativiFormState,
+} from "@/lib/interventoOperativi";
+import {
   getDefaultRenewalAlertRule,
   normalizeRenewalAlertRule,
   type RenewalAlertRuleRow,
@@ -270,7 +276,7 @@ type ProjectInterventoForm = {
   fatturazione_stato: string;
   stato_intervento: string;
   note: string;
-};
+} & InterventoOperativiFormState;
 
 type FormData = {
   cliente: string;
@@ -1202,6 +1208,7 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
     fatturazione_stato: "DA_FATTURARE",
     stato_intervento: "APERTO",
     note: "",
+    ...EMPTY_INTERVENTO_OPERATIVI,
   });
   const isPerfEnabled = () =>
     process.env.NODE_ENV !== "production" ||
@@ -1493,6 +1500,23 @@ function buildFormData(c: Checklist): FormData {
       fatturazione_stato: String(it.fatturazione_stato || "DA_FATTURARE"),
       stato_intervento: String(it.stato_intervento || "APERTO"),
       note: String(it.note || ""),
+      ...EMPTY_INTERVENTO_OPERATIVI,
+    };
+  }
+
+  function extractProjectInterventoOperativi(
+    form: ProjectInterventoForm
+  ): InterventoOperativiFormState {
+    return {
+      personale_previsto: form.personale_previsto,
+      mezzi: form.mezzi,
+      descrizione_attivita: form.descrizione_attivita,
+      indirizzo: form.indirizzo,
+      orario: form.orario,
+      referente_cliente_nome: form.referente_cliente_nome,
+      referente_cliente_contatto: form.referente_cliente_contatto,
+      commerciale_art_tech_nome: form.commerciale_art_tech_nome,
+      commerciale_art_tech_contatto: form.commerciale_art_tech_contatto,
     };
   }
 
@@ -1632,6 +1656,7 @@ function buildFormData(c: Checklist): FormData {
       return;
     }
     setProjectInterventiError(null);
+    const newInterventoOperativi = extractProjectInterventoOperativi(newProjectIntervento);
     const payload = {
       cliente: checklist.cliente,
       checklist_id: id,
@@ -1663,6 +1688,18 @@ function buildFormData(c: Checklist): FormData {
       return;
     }
     inserted = (insRes.data as { id: string } | null) ?? null;
+    if (inserted?.id) {
+      try {
+        await saveInterventoOperativi(
+          inserted.id,
+          newInterventoOperativi
+        );
+      } catch (e: any) {
+        setProjectInterventiError(
+          String(e?.message || "Intervento creato ma dati operativi non salvati")
+        );
+      }
+    }
     if (inserted?.id && projectInterventoFiles.length > 0) {
       await uploadInterventoRowFilesList(inserted.id, projectInterventoFiles);
     }
@@ -1681,21 +1718,34 @@ function buildFormData(c: Checklist): FormData {
       fatturazione_stato: "DA_FATTURARE",
       stato_intervento: "APERTO",
       note: "",
+      ...EMPTY_INTERVENTO_OPERATIVI,
     });
     setProjectInterventoFiles([]);
     if (inserted?.id) {
       const created = list.find((row) => row.id === inserted?.id) || null;
       if (created) {
         setProjectInterventoEditId(created.id);
-        setProjectInterventoEditForm(buildProjectInterventoForm(created));
+        setProjectInterventoEditForm({
+          ...buildProjectInterventoForm(created),
+          ...newInterventoOperativi,
+        });
         setProjectInterventiExpandedId(created.id);
       }
     }
   }
 
-  function startEditInterventoRow(it: InterventoRow) {
+  async function startEditInterventoRow(it: InterventoRow) {
     setProjectInterventoEditId(it.id);
-    setProjectInterventoEditForm(buildProjectInterventoForm(it));
+    const baseForm = buildProjectInterventoForm(it);
+    setProjectInterventoEditForm(baseForm);
+    try {
+      const { form } = await loadInterventoOperativi(it.id);
+      setProjectInterventoEditForm({ ...baseForm, ...form });
+    } catch (e: any) {
+      setProjectInterventiError(
+        String(e?.message || "Errore caricamento dati operativi intervento")
+      );
+    }
   }
 
   async function saveInterventoRow() {
@@ -1726,6 +1776,17 @@ function buildFormData(c: Checklist): FormData {
     if (updRes.error) {
       const updErr = updRes.error;
       setProjectInterventiError(updErr.message);
+      return;
+    }
+    try {
+      await saveInterventoOperativi(
+        projectInterventoEditId,
+        extractProjectInterventoOperativi(projectInterventoEditForm)
+      );
+    } catch (e: any) {
+      setProjectInterventiError(
+        String(e?.message || "Intervento aggiornato ma dati operativi non salvati")
+      );
       return;
     }
     if (!id) return;
@@ -5246,6 +5307,15 @@ function buildFormData(c: Checklist): FormData {
         fatturatoIl: "",
         note: newProjectIntervento.note,
         noteTecniche: "",
+        personalePrevisto: newProjectIntervento.personale_previsto,
+        mezzi: newProjectIntervento.mezzi,
+        descrizioneAttivita: newProjectIntervento.descrizione_attivita,
+        indirizzo: newProjectIntervento.indirizzo,
+        orario: newProjectIntervento.orario,
+        referenteClienteNome: newProjectIntervento.referente_cliente_nome,
+        referenteClienteContatto: newProjectIntervento.referente_cliente_contatto,
+        commercialeArtTechNome: newProjectIntervento.commerciale_art_tech_nome,
+        commercialeArtTechContatto: newProjectIntervento.commerciale_art_tech_contatto,
       }}
       setNewIntervento={(value) =>
         setNewProjectIntervento((prev) => ({
@@ -5260,6 +5330,15 @@ function buildFormData(c: Checklist): FormData {
           fatturazione_stato: value.fatturazioneStato,
           stato_intervento: value.statoIntervento,
           note: value.note,
+          personale_previsto: value.personalePrevisto,
+          mezzi: value.mezzi,
+          descrizione_attivita: value.descrizioneAttivita,
+          indirizzo: value.indirizzo,
+          orario: value.orario,
+          referente_cliente_nome: value.referenteClienteNome,
+          referente_cliente_contatto: value.referenteClienteContatto,
+          commerciale_art_tech_nome: value.commercialeArtTechNome,
+          commerciale_art_tech_contatto: value.commercialeArtTechContatto,
         }))
       }
       newInterventoFiles={projectInterventoFiles}
@@ -5283,6 +5362,15 @@ function buildFormData(c: Checklist): FormData {
         fatturatoIl: "",
         note: projectInterventoEditForm?.note || "",
         noteTecniche: "",
+        personalePrevisto: projectInterventoEditForm?.personale_previsto || "",
+        mezzi: projectInterventoEditForm?.mezzi || "",
+        descrizioneAttivita: projectInterventoEditForm?.descrizione_attivita || "",
+        indirizzo: projectInterventoEditForm?.indirizzo || "",
+        orario: projectInterventoEditForm?.orario || "",
+        referenteClienteNome: projectInterventoEditForm?.referente_cliente_nome || "",
+        referenteClienteContatto: projectInterventoEditForm?.referente_cliente_contatto || "",
+        commercialeArtTechNome: projectInterventoEditForm?.commerciale_art_tech_nome || "",
+        commercialeArtTechContatto: projectInterventoEditForm?.commerciale_art_tech_contatto || "",
       }}
       setEditIntervento={(value) =>
         setProjectInterventoEditForm((prev) =>
@@ -5299,6 +5387,15 @@ function buildFormData(c: Checklist): FormData {
                 fatturazione_stato: value.fatturazioneStato,
                 stato_intervento: value.statoIntervento,
                 note: value.note,
+                personale_previsto: value.personalePrevisto,
+                mezzi: value.mezzi,
+                descrizione_attivita: value.descrizioneAttivita,
+                indirizzo: value.indirizzo,
+                orario: value.orario,
+                referente_cliente_nome: value.referenteClienteNome,
+                referente_cliente_contatto: value.referenteClienteContatto,
+                commerciale_art_tech_nome: value.commercialeArtTechNome,
+                commerciale_art_tech_contatto: value.commercialeArtTechContatto,
               }
             : prev
         )

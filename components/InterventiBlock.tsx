@@ -36,6 +36,15 @@ export type InterventoFormState = {
   fatturatoIl: string;
   note: string;
   noteTecniche: string;
+  personalePrevisto: string;
+  mezzi: string;
+  descrizioneAttivita: string;
+  indirizzo: string;
+  orario: string;
+  referenteClienteNome: string;
+  referenteClienteContatto: string;
+  commercialeArtTechNome: string;
+  commercialeArtTechContatto: string;
 };
 
 type Props = {
@@ -243,6 +252,99 @@ function getChecklistMeta(row: InterventoRow, checklists: InterventiChecklistOpt
     proforma: found?.proforma ?? null,
     codMag: found?.magazzino_importazione ?? null,
   };
+}
+
+function renderOperativiFields(
+  form: InterventoFormState,
+  setForm: (value: InterventoFormState) => void
+) {
+  return (
+    <div style={{ marginTop: 10 }}>
+      <div style={{ fontWeight: 700, marginBottom: 8 }}>Dati operativi intervento</div>
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(2, minmax(280px, 1fr))",
+          gap: 10,
+        }}
+      >
+        <div>
+          <div style={{ fontSize: 12, marginBottom: 4 }}>Personale previsto / incarico</div>
+          <textarea
+            value={form.personalePrevisto}
+            onChange={(e) => setForm({ ...form, personalePrevisto: e.target.value })}
+            style={{ width: "100%", minHeight: 70, padding: 8 }}
+          />
+        </div>
+        <div>
+          <div style={{ fontSize: 12, marginBottom: 4 }}>Mezzi</div>
+          <textarea
+            value={form.mezzi}
+            onChange={(e) => setForm({ ...form, mezzi: e.target.value })}
+            style={{ width: "100%", minHeight: 70, padding: 8 }}
+          />
+        </div>
+        <div>
+          <div style={{ fontSize: 12, marginBottom: 4 }}>Descrizione attivita / note operative</div>
+          <textarea
+            value={form.descrizioneAttivita}
+            onChange={(e) => setForm({ ...form, descrizioneAttivita: e.target.value })}
+            style={{ width: "100%", minHeight: 70, padding: 8 }}
+          />
+        </div>
+        <div>
+          <div style={{ fontSize: 12, marginBottom: 4 }}>Indirizzo</div>
+          <textarea
+            value={form.indirizzo}
+            onChange={(e) => setForm({ ...form, indirizzo: e.target.value })}
+            style={{ width: "100%", minHeight: 70, padding: 8 }}
+          />
+        </div>
+        <div>
+          <div style={{ fontSize: 12, marginBottom: 4 }}>Orario</div>
+          <input
+            value={form.orario}
+            onChange={(e) => setForm({ ...form, orario: e.target.value })}
+            style={{ width: "100%", padding: 8 }}
+          />
+        </div>
+        <div>
+          <div style={{ fontSize: 12, marginBottom: 4 }}>Referente cliente</div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+            <input
+              value={form.referenteClienteNome}
+              onChange={(e) => setForm({ ...form, referenteClienteNome: e.target.value })}
+              placeholder="Nome"
+              style={{ width: "100%", padding: 8 }}
+            />
+            <input
+              value={form.referenteClienteContatto}
+              onChange={(e) => setForm({ ...form, referenteClienteContatto: e.target.value })}
+              placeholder="Contatto"
+              style={{ width: "100%", padding: 8 }}
+            />
+          </div>
+        </div>
+        <div>
+          <div style={{ fontSize: 12, marginBottom: 4 }}>Commerciale Art Tech</div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+            <input
+              value={form.commercialeArtTechNome}
+              onChange={(e) => setForm({ ...form, commercialeArtTechNome: e.target.value })}
+              placeholder="Nome"
+              style={{ width: "100%", padding: 8 }}
+            />
+            <input
+              value={form.commercialeArtTechContatto}
+              onChange={(e) => setForm({ ...form, commercialeArtTechContatto: e.target.value })}
+              placeholder="Contatto"
+              style={{ width: "100%", padding: 8 }}
+            />
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 export default function InterventiBlock({
@@ -580,6 +682,8 @@ export default function InterventiBlock({
               />
             </label>
           </div>
+
+          {renderOperativiFields(newIntervento, setNewIntervento)}
 
           <div style={{ marginTop: 10 }}>
             <label>
@@ -1057,6 +1161,7 @@ export default function InterventiBlock({
                             />
                           </label>
                         </div>
+                        {renderOperativiFields(editIntervento, setEditIntervento)}
                         <div style={{ marginTop: 10 }}>
                           <AttachmentsPanel
                             title="Allegati intervento (upload + link Drive)"
