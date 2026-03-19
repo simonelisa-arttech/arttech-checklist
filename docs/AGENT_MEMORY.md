@@ -1,5 +1,25 @@
 # AGENT MEMORY — Snapshot Operativo
 
+## Snapshot 2026-03-19 - Interventi da chiudere aperti reali
+- `app/api/interventi/da-chiudere/route.ts`
+  - la pagina admin usa solo `saas_interventi`, non checklist/task generiche
+  - regola aggiornata: `stato_intervento` e' la fonte primaria per decidere se un intervento e' ancora da chiudere
+  - stati aperti inclusi:
+    - `APERTO`
+    - `DA_CHIUDERE`
+    - `IN_CORSO`
+    - `IN_LAVORAZIONE`
+    - `PENDENTE`
+    - `PROGRAMMATO`
+  - stati finali esclusi:
+    - `CHIUSO`
+    - `COMPLETATO`
+    - `CONCLUSO`
+    - `ANNULLATO`
+    - `FATTO`
+    - `CONFERMATO`
+  - `fatturazione_stato` va usato solo come fallback legacy se `stato_intervento` manca
+
 ## Snapshot 2026-03-19 - Dati operativi condivisi interventi
 - Source of truth unica per i dati operativi intervento:
   - `cronoprogramma_meta` con `row_kind = INTERVENTO`

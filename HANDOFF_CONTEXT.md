@@ -2,6 +2,17 @@
 
 ## Aggiornamento rapido (19 marzo 2026)
 
+- `fix: interventi aperti non visibili in interventi da chiudere` in corso locale.
+- Causa reale:
+  - `app/api/interventi/da-chiudere/route.ts` escludeva alcune righe usando `fatturazione_stato` come filtro forte
+  - questo poteva nascondere interventi reali con `stato_intervento = APERTO` ma campi fatturazione legacy/non coerenti
+  - nella UI progetto la colonna fatturazione mostra comunque `da chiudere` per gli interventi aperti, quindi il mismatch risultava evidente
+- Correzione:
+  - la route usa ora `stato_intervento` come fonte primaria
+  - stati aperti trattati come inclusi: `APERTO`, `DA_CHIUDERE`, `IN_CORSO`, `IN_LAVORAZIONE`, `PENDENTE`, `PROGRAMMATO`
+  - stati finali esclusi: `CHIUSO`, `COMPLETATO`, `CONCLUSO`, `ANNULLATO`, `FATTO`, `CONFERMATO`
+  - `fatturazione_stato` resta solo fallback per record vecchi senza `stato_intervento`
+
 - `feat: dati operativi condivisi per interventi` in corso locale.
 - Source of truth unica:
   - i dati operativi intervento usano `cronoprogramma_meta` con `row_kind = INTERVENTO`

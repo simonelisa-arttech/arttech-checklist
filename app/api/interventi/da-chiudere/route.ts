@@ -32,10 +32,36 @@ function normalizeStatus(value?: string | null) {
   return String(value || "").trim().toUpperCase().replace(/\s+/g, "_");
 }
 
+const OPEN_STATUSES = new Set([
+  "APERTO",
+  "DA_CHIUDERE",
+  "IN_CORSO",
+  "IN_LAVORAZIONE",
+  "PENDENTE",
+  "PROGRAMMATO",
+]);
+
+const CLOSED_STATUSES = new Set([
+  "CHIUSO",
+  "COMPLETATO",
+  "CONCLUSO",
+  "ANNULLATO",
+  "FATTO",
+  "CONFERMATO",
+]);
+
 function isOpenIntervento(row: InterventoRow) {
   const stato = normalizeStatus(row.stato_intervento);
   const fatturazione = normalizeStatus(row.fatturazione_stato);
-  if (stato === "CHIUSO") return false;
+
+  // Se lo stato intervento e' valorizzato, e' la fonte primaria.
+  // La fatturazione resta un fallback legacy per record vecchi/non normalizzati.
+  if (stato) {
+    if (OPEN_STATUSES.has(stato)) return true;
+    if (CLOSED_STATUSES.has(stato)) return false;
+    return true;
+  }
+
   if (fatturazione === "CHIUSO" || fatturazione === "FATTURATO") return false;
   return true;
 }
