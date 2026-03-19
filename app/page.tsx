@@ -1562,30 +1562,39 @@ export default function Page() {
                     display: "flex",
                     flexWrap: "wrap",
                     gap: 18,
-                    alignItems: "center",
+                    alignItems: "stretch",
                     justifyContent: "space-between",
                     height: "100%",
                   }}
                 >
-                  <div style={{ display: "grid", gap: 6 }}>
+                  <div style={{ display: "grid", gap: 10, alignContent: "start" }}>
                     <div style={{ fontSize: 13, fontWeight: 900, letterSpacing: 0.4 }}>SCADENZE IN ARRIVO</div>
-                    <div style={{ fontSize: 32, lineHeight: 1.05 }}>⚠ {scadenzeEntro7Count}</div>
-                    <div style={{ fontSize: 14, fontWeight: 700 }}>scadenze entro 7 giorni</div>
-                    <div style={{ fontSize: 13, fontWeight: 700 }}>entro 30 giorni: {scadenzeEntro30Count}</div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                      <div style={{ fontSize: 30, lineHeight: 1 }}>⚠</div>
+                      <div style={{ display: "grid", gap: 2 }}>
+                        <div style={{ fontSize: 32, lineHeight: 1.05, fontWeight: 900 }}>{scadenzeEntro7Count}</div>
+                        <div style={{ fontSize: 14, fontWeight: 700 }}>Totale entro 7 giorni</div>
+                      </div>
+                    </div>
+                    <div
+                      style={{
+                        display: "grid",
+                        gap: 4,
+                        fontSize: 13,
+                        fontWeight: 700,
+                      }}
+                    >
+                      <div>Garanzie: {scadenzeEntro7Breakdown.garanzie}</div>
+                      <div>Licenze: {scadenzeEntro7Breakdown.licenze}</div>
+                      <div>Tagliandi: {scadenzeEntro7Breakdown.tagliandi}</div>
+                    </div>
+                    <div style={{ fontSize: 13, fontWeight: 700, opacity: 0.8 }}>(entro 30 giorni: {scadenzeEntro30Count})</div>
                   </div>
                   <div
                     style={{
-                      display: "grid",
-                      gap: 4,
-                      fontSize: 13,
-                      fontWeight: 700,
-                      minWidth: 120,
+                      minWidth: 32,
                     }}
-                  >
-                    <div>Garanzie: {scadenzeEntro7Breakdown.garanzie}</div>
-                    <div>Licenze: {scadenzeEntro7Breakdown.licenze}</div>
-                    <div>Tagliandi: {scadenzeEntro7Breakdown.tagliandi}</div>
-                  </div>
+                  />
                 </div>
               </Link>
               <Link
@@ -1593,7 +1602,7 @@ export default function Page() {
                 style={{
                   display: "flex",
                   flexDirection: "column",
-                  justifyContent: "center",
+                  justifyContent: "space-between",
                   alignItems: "center",
                   textAlign: "center",
                   padding: "10px 12px",
@@ -1603,20 +1612,23 @@ export default function Page() {
                   color: "inherit",
                   textDecoration: "none",
                   minWidth: 180,
+                  minHeight: 112,
                   flex: "0 1 190px",
                 }}
               >
                 <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: 0.2, color: "#6b7280" }}>
                   INTERVENTI DA CHIUDERE
                 </div>
-                <div style={{ marginTop: 6, fontSize: 24, fontWeight: 800 }}>{interventiDaChiudereCount}</div>
+                <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 30, fontWeight: 800, width: "100%" }}>
+                  {interventiDaChiudereCount}
+                </div>
               </Link>
               <Link
                 href="/admin/interventi-entro-7-giorni"
                 style={{
                   display: "flex",
                   flexDirection: "column",
-                  justifyContent: "center",
+                  justifyContent: "space-between",
                   alignItems: "center",
                   textAlign: "center",
                   padding: "10px 12px",
@@ -1626,20 +1638,23 @@ export default function Page() {
                   color: "inherit",
                   textDecoration: "none",
                   minWidth: 180,
+                  minHeight: 112,
                   flex: "0 1 190px",
                 }}
               >
                 <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: 0.2, color: "#6b7280" }}>
                   INTERVENTI ENTRO 7 GIORNI
                 </div>
-                <div style={{ marginTop: 6, fontSize: 24, fontWeight: 800 }}>{interventiEntro7Count}</div>
+                <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 30, fontWeight: 800, width: "100%" }}>
+                  {interventiEntro7Count}
+                </div>
               </Link>
               <Link
                 href="/admin/fatture-da-emettere"
                 style={{
                   display: "flex",
                   flexDirection: "column",
-                  justifyContent: "center",
+                  justifyContent: "space-between",
                   alignItems: "center",
                   textAlign: "center",
                   padding: "10px 12px",
@@ -1649,20 +1664,23 @@ export default function Page() {
                   color: "inherit",
                   textDecoration: "none",
                   minWidth: 180,
+                  minHeight: 112,
                   flex: "0 1 190px",
                 }}
               >
                 <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: 0.2, color: "#6b7280" }}>
                   FATTURE DA EMETTERE
                 </div>
-                <div style={{ marginTop: 6, fontSize: 24, fontWeight: 800 }}>{fattureDaEmettereCount}</div>
+                <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 30, fontWeight: 800, width: "100%" }}>
+                  {fattureDaEmettereCount}
+                </div>
               </Link>
               <Link
                 href="/admin/noleggi-attivi"
                 style={{
                   display: "flex",
                   flexDirection: "column",
-                  justifyContent: "center",
+                  justifyContent: "space-between",
                   alignItems: "center",
                   textAlign: "center",
                   padding: "10px 12px",
@@ -1672,20 +1690,23 @@ export default function Page() {
                   color: "inherit",
                   textDecoration: "none",
                   minWidth: 180,
+                  minHeight: 112,
                   flex: "0 1 190px",
                 }}
               >
                 <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: 0.2, color: "#6b7280" }}>
                   NOLEGGI ATTIVI
                 </div>
-                <div style={{ marginTop: 6, fontSize: 24, fontWeight: 800 }}>{noleggiAttiviCount}</div>
+                <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 30, fontWeight: 800, width: "100%" }}>
+                  {noleggiAttiviCount}
+                </div>
               </Link>
               <Link
                 href="/admin/consegne-entro-7-giorni"
                 style={{
                   display: "flex",
                   flexDirection: "column",
-                  justifyContent: "center",
+                  justifyContent: "space-between",
                   alignItems: "center",
                   textAlign: "center",
                   padding: "10px 12px",
@@ -1695,20 +1716,23 @@ export default function Page() {
                   color: "inherit",
                   textDecoration: "none",
                   minWidth: 180,
+                  minHeight: 112,
                   flex: "0 1 190px",
                 }}
               >
                 <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: 0.2, color: "#6b7280" }}>
                   CONSEGNE ENTRO 7 GIORNI
                 </div>
-                <div style={{ marginTop: 6, fontSize: 24, fontWeight: 800 }}>{consegneEntro7Count}</div>
+                <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 30, fontWeight: 800, width: "100%" }}>
+                  {consegneEntro7Count}
+                </div>
               </Link>
               <Link
                 href="/admin/smontaggi-noleggi-entro-7-giorni"
                 style={{
                   display: "flex",
                   flexDirection: "column",
-                  justifyContent: "center",
+                  justifyContent: "space-between",
                   alignItems: "center",
                   textAlign: "center",
                   padding: "10px 12px",
@@ -1718,13 +1742,16 @@ export default function Page() {
                   color: "inherit",
                   textDecoration: "none",
                   minWidth: 180,
+                  minHeight: 112,
                   flex: "0 1 190px",
                 }}
               >
                 <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: 0.2, color: "#6b7280" }}>
                   SMONTAGGI NOLEGGI ENTRO 7 GIORNI
                 </div>
-                <div style={{ marginTop: 6, fontSize: 24, fontWeight: 800 }}>{smontaggiEntro7Count}</div>
+                <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 30, fontWeight: 800, width: "100%" }}>
+                  {smontaggiEntro7Count}
+                </div>
               </Link>
             </div>
           </div>
