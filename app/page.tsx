@@ -51,6 +51,17 @@ type DashboardScadenzeBreakdown = {
   tagliandi: number;
 };
 
+type DashboardScadenzeSummary = {
+  count: number;
+  breakdown: DashboardScadenzeBreakdown;
+};
+
+const EMPTY_SCADENZE_BREAKDOWN: DashboardScadenzeBreakdown = {
+  garanzie: 0,
+  licenze: 0,
+  tagliandi: 0,
+};
+
 function matchesSingleSaasService(row: Checklist, filter: SaasServiceFilter) {
   const piano = String(row.saas_piano || "")
     .trim()
@@ -443,12 +454,11 @@ export default function Page() {
     Map<string, { nome: string | null; email: string | null }>
   >(new Map());
   const [operatoreAssociationError, setOperatoreAssociationError] = useState<string | null>(null);
-  const [scadenzeEntro7Count, setScadenzeEntro7Count] = useState(0);
-  const [scadenzeEntro30Count, setScadenzeEntro30Count] = useState(0);
-  const [scadenzeEntro7Breakdown, setScadenzeEntro7Breakdown] = useState<DashboardScadenzeBreakdown>({
-    garanzie: 0,
-    licenze: 0,
-    tagliandi: 0,
+  const [scadenzePeriodDays, setScadenzePeriodDays] = useState<7 | 15 | 30>(7);
+  const [scadenzeByPeriod, setScadenzeByPeriod] = useState<Record<7 | 15 | 30, DashboardScadenzeSummary>>({
+    7: { count: 0, breakdown: { ...EMPTY_SCADENZE_BREAKDOWN } },
+    15: { count: 0, breakdown: { ...EMPTY_SCADENZE_BREAKDOWN } },
+    30: { count: 0, breakdown: { ...EMPTY_SCADENZE_BREAKDOWN } },
   });
   const [interventiDaChiudereCount, setInterventiDaChiudereCount] = useState(0);
   const [interventiEntro7Count, setInterventiEntro7Count] = useState(0);
@@ -781,6 +791,48 @@ export default function Page() {
       .map((c) => ({ id: c.id, nome: c.nome_checklist }));
   }, [items, addInterventoCliente]);
 
+  const selectedScadenzeSummary = scadenzeByPeriod[scadenzePeriodDays];
+  const shortcutCardStyle = {
+    display: "flex",
+    flexDirection: "column" as const,
+    justifyContent: "space-between",
+    alignItems: "center",
+    textAlign: "center" as const,
+    padding: "10px 12px",
+    borderRadius: 12,
+    border: "1px solid #fcd34d",
+    background: "rgba(255,255,255,0.62)",
+    color: "inherit",
+    textDecoration: "none",
+    minWidth: 180,
+    minHeight: 112,
+    flex: "0 1 190px",
+  };
+  const shortcutCardTitleStyle = {
+    fontSize: 12,
+    fontWeight: 800,
+    letterSpacing: 0.2,
+    color: "#6b7280",
+    width: "100%",
+    height: 34,
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    lineHeight: 1.2,
+  };
+  const shortcutCardNumberWrapStyle = {
+    flex: 1,
+    width: "100%",
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+  };
+  const shortcutCardNumberStyle = {
+    fontSize: 30,
+    fontWeight: 800,
+    lineHeight: 1,
+  };
+
   async function load() {
     const requestSeq = ++loadRequestSeqRef.current;
     if (loadAbortRef.current) loadAbortRef.current.abort();
@@ -918,61 +970,52 @@ export default function Page() {
 
       const today = new Date();
       const from = toDateInputValue(today);
-      const toDate = new Date(today);
-      toDate.setDate(toDate.getDate() + 7);
-      const to = toDateInputValue(toDate);
-      const toDate30 = new Date(today);
-      toDate30.setDate(toDate30.getDate() + 30);
-      const to30 = toDateInputValue(toDate30);
+      const scadenzePeriods = [7, 15, 30] as const;
+      const buildScadenzeBreakdown = (rows: any[]): DashboardScadenzeBreakdown =>
+        rows.reduce(
+          (acc: DashboardScadenzeBreakdown, row: any) => {
+            const source = String(row?.source || "")
+              .trim()
+              .toLowerCase();
+            if (source === "garanzie") acc.garanzie += 1;
+            if (source === "licenze") acc.licenze += 1;
+            if (source === "tagliandi") acc.tagliandi += 1;
+            return acc;
+          },
+          { ...EMPTY_SCADENZE_BREAKDOWN }
+        );
       try {
-        const scadenzeRes = await fetch(`/api/scadenze?from=${from}&to=${to}`, {
-          signal: controller.signal,
-          credentials: "include",
-        });
-        const scadenzeData = await scadenzeRes.json().catch(() => ({}));
+        const summaries = await Promise.all(
+          scadenzePeriods.map(async (days) => {
+            const untilDate = new Date(today);
+            untilDate.setDate(untilDate.getDate() + days);
+            const to = toDateInputValue(untilDate);
+            const res = await fetch(`/api/scadenze?from=${from}&to=${to}`, {
+              signal: controller.signal,
+              credentials: "include",
+            });
+            const json = await res.json().catch(() => ({}));
+            if (!res.ok || typeof json?.count !== "number") {
+              return [days, { count: 0, breakdown: { ...EMPTY_SCADENZE_BREAKDOWN } }] as const;
+            }
+            const rows = Array.isArray(json?.data) ? json.data : [];
+            return [days, { count: json.count, breakdown: buildScadenzeBreakdown(rows) }] as const;
+          })
+        );
         if (!isLatest()) return;
-        if (scadenzeRes.ok && typeof scadenzeData?.count === "number") {
-          setScadenzeEntro7Count(scadenzeData.count);
-          const rows = Array.isArray(scadenzeData?.data) ? scadenzeData.data : [];
-          const nextBreakdown = rows.reduce(
-            (acc: DashboardScadenzeBreakdown, row: any) => {
-              const source = String(row?.source || "")
-                .trim()
-                .toLowerCase();
-              if (source === "garanzie") acc.garanzie += 1;
-              if (source === "licenze") acc.licenze += 1;
-              if (source === "tagliandi") acc.tagliandi += 1;
-              return acc;
-            },
-            { garanzie: 0, licenze: 0, tagliandi: 0 }
-          );
-          setScadenzeEntro7Breakdown(nextBreakdown);
-        } else {
-          setScadenzeEntro7Count(0);
-          setScadenzeEntro7Breakdown({ garanzie: 0, licenze: 0, tagliandi: 0 });
-        }
+        setScadenzeByPeriod({
+          7: summaries.find(([days]) => days === 7)?.[1] || { count: 0, breakdown: { ...EMPTY_SCADENZE_BREAKDOWN } },
+          15: summaries.find(([days]) => days === 15)?.[1] || { count: 0, breakdown: { ...EMPTY_SCADENZE_BREAKDOWN } },
+          30: summaries.find(([days]) => days === 30)?.[1] || { count: 0, breakdown: { ...EMPTY_SCADENZE_BREAKDOWN } },
+        });
       } catch (e: any) {
         if (e?.name === "AbortError" || controller.signal.aborted) return;
         if (!isLatest()) return;
-        setScadenzeEntro7Count(0);
-        setScadenzeEntro7Breakdown({ garanzie: 0, licenze: 0, tagliandi: 0 });
-      }
-      try {
-        const scadenze30Res = await fetch(`/api/scadenze?from=${from}&to=${to30}`, {
-          signal: controller.signal,
-          credentials: "include",
+        setScadenzeByPeriod({
+          7: { count: 0, breakdown: { ...EMPTY_SCADENZE_BREAKDOWN } },
+          15: { count: 0, breakdown: { ...EMPTY_SCADENZE_BREAKDOWN } },
+          30: { count: 0, breakdown: { ...EMPTY_SCADENZE_BREAKDOWN } },
         });
-        const scadenze30Data = await scadenze30Res.json().catch(() => ({}));
-        if (!isLatest()) return;
-        if (scadenze30Res.ok && typeof scadenze30Data?.count === "number") {
-          setScadenzeEntro30Count(scadenze30Data.count);
-        } else {
-          setScadenzeEntro30Count(0);
-        }
-      } catch (e: any) {
-        if (e?.name === "AbortError" || controller.signal.aborted) return;
-        if (!isLatest()) return;
-        setScadenzeEntro30Count(0);
       }
 
       try {
@@ -1544,8 +1587,7 @@ export default function Page() {
                 alignItems: "stretch",
               }}
             >
-              <Link
-                href={`/scadenze?from=${toDateInputValue(new Date())}&to=${toDateInputValue(new Date(Date.now() + 7 * 86400000))}`}
+              <div
                 style={{
                   flex: "1 1 360px",
                   minWidth: 280,
@@ -1554,26 +1596,69 @@ export default function Page() {
                   border: "1px solid #fcd34d",
                   background: "rgba(255,255,255,0.62)",
                   color: "inherit",
-                  textDecoration: "none",
                 }}
               >
                 <div
                   style={{
-                    display: "flex",
-                    flexWrap: "wrap",
-                    gap: 18,
-                    alignItems: "stretch",
-                    justifyContent: "space-between",
+                    display: "grid",
+                    gap: 12,
                     height: "100%",
                   }}
                 >
-                  <div style={{ display: "grid", gap: 10, alignContent: "start" }}>
+                  <div
+                    style={{
+                      display: "flex",
+                      flexWrap: "wrap",
+                      gap: 10,
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                    }}
+                  >
                     <div style={{ fontSize: 13, fontWeight: 900, letterSpacing: 0.4 }}>SCADENZE IN ARRIVO</div>
+                    <div
+                      style={{
+                        display: "inline-flex",
+                        padding: 3,
+                        borderRadius: 999,
+                        border: "1px solid #fcd34d",
+                        background: "rgba(255,255,255,0.8)",
+                        gap: 4,
+                      }}
+                    >
+                      {([7, 15, 30] as const).map((days) => {
+                        const active = scadenzePeriodDays === days;
+                        return (
+                          <button
+                            key={days}
+                            type="button"
+                            onClick={() => setScadenzePeriodDays(days)}
+                            style={{
+                              border: "none",
+                              borderRadius: 999,
+                              padding: "5px 10px",
+                              background: active ? "#f59e0b" : "transparent",
+                              color: active ? "white" : "#92400e",
+                              fontWeight: 800,
+                              fontSize: 12,
+                              cursor: "pointer",
+                            }}
+                          >
+                            {days} giorni
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                  <div style={{ display: "grid", gap: 10, alignContent: "start" }}>
                     <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
                       <div style={{ fontSize: 30, lineHeight: 1 }}>⚠</div>
                       <div style={{ display: "grid", gap: 2 }}>
-                        <div style={{ fontSize: 32, lineHeight: 1.05, fontWeight: 900 }}>{scadenzeEntro7Count}</div>
-                        <div style={{ fontSize: 14, fontWeight: 700 }}>Totale entro 7 giorni</div>
+                        <div style={{ fontSize: 32, lineHeight: 1.05, fontWeight: 900 }}>
+                          {selectedScadenzeSummary.count}
+                        </div>
+                        <div style={{ fontSize: 14, fontWeight: 700 }}>
+                          Totale entro {scadenzePeriodDays} giorni
+                        </div>
                       </div>
                     </div>
                     <div
@@ -1584,173 +1669,77 @@ export default function Page() {
                         fontWeight: 700,
                       }}
                     >
-                      <div>Garanzie: {scadenzeEntro7Breakdown.garanzie}</div>
-                      <div>Licenze: {scadenzeEntro7Breakdown.licenze}</div>
-                      <div>Tagliandi: {scadenzeEntro7Breakdown.tagliandi}</div>
+                      <div>Garanzie: {selectedScadenzeSummary.breakdown.garanzie}</div>
+                      <div>Licenze: {selectedScadenzeSummary.breakdown.licenze}</div>
+                      <div>Tagliandi: {selectedScadenzeSummary.breakdown.tagliandi}</div>
                     </div>
-                    <div style={{ fontSize: 13, fontWeight: 700, opacity: 0.8 }}>(entro 30 giorni: {scadenzeEntro30Count})</div>
                   </div>
-                  <div
+                  <Link
+                    href={`/scadenze?from=${toDateInputValue(new Date())}&to=${toDateInputValue(new Date(Date.now() + scadenzePeriodDays * 86400000))}`}
                     style={{
-                      minWidth: 32,
+                      justifySelf: "start",
+                      fontSize: 12,
+                      fontWeight: 800,
+                      color: "#92400e",
+                      textDecoration: "underline",
                     }}
-                  />
+                  >
+                    Apri elenco scadenze
+                  </Link>
                 </div>
-              </Link>
+              </div>
               <Link
                 href="/admin/interventi-da-chiudere"
-                style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  textAlign: "center",
-                  padding: "10px 12px",
-                  borderRadius: 12,
-                  border: "1px solid #fcd34d",
-                  background: "rgba(255,255,255,0.62)",
-                  color: "inherit",
-                  textDecoration: "none",
-                  minWidth: 180,
-                  minHeight: 112,
-                  flex: "0 1 190px",
-                }}
+                style={shortcutCardStyle}
               >
-                <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: 0.2, color: "#6b7280" }}>
-                  INTERVENTI DA CHIUDERE
-                </div>
-                <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 30, fontWeight: 800, width: "100%" }}>
-                  {interventiDaChiudereCount}
+                <div style={shortcutCardTitleStyle}>INTERVENTI DA CHIUDERE</div>
+                <div style={shortcutCardNumberWrapStyle}>
+                  <div style={shortcutCardNumberStyle}>{interventiDaChiudereCount}</div>
                 </div>
               </Link>
               <Link
                 href="/admin/interventi-entro-7-giorni"
-                style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  textAlign: "center",
-                  padding: "10px 12px",
-                  borderRadius: 12,
-                  border: "1px solid #fcd34d",
-                  background: "rgba(255,255,255,0.62)",
-                  color: "inherit",
-                  textDecoration: "none",
-                  minWidth: 180,
-                  minHeight: 112,
-                  flex: "0 1 190px",
-                }}
+                style={shortcutCardStyle}
               >
-                <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: 0.2, color: "#6b7280" }}>
-                  INTERVENTI ENTRO 7 GIORNI
-                </div>
-                <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 30, fontWeight: 800, width: "100%" }}>
-                  {interventiEntro7Count}
+                <div style={shortcutCardTitleStyle}>INTERVENTI ENTRO 7 GIORNI</div>
+                <div style={shortcutCardNumberWrapStyle}>
+                  <div style={shortcutCardNumberStyle}>{interventiEntro7Count}</div>
                 </div>
               </Link>
               <Link
                 href="/admin/fatture-da-emettere"
-                style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  textAlign: "center",
-                  padding: "10px 12px",
-                  borderRadius: 12,
-                  border: "1px solid #fcd34d",
-                  background: "rgba(255,255,255,0.62)",
-                  color: "inherit",
-                  textDecoration: "none",
-                  minWidth: 180,
-                  minHeight: 112,
-                  flex: "0 1 190px",
-                }}
+                style={shortcutCardStyle}
               >
-                <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: 0.2, color: "#6b7280" }}>
-                  FATTURE DA EMETTERE
-                </div>
-                <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 30, fontWeight: 800, width: "100%" }}>
-                  {fattureDaEmettereCount}
+                <div style={shortcutCardTitleStyle}>FATTURE DA EMETTERE</div>
+                <div style={shortcutCardNumberWrapStyle}>
+                  <div style={shortcutCardNumberStyle}>{fattureDaEmettereCount}</div>
                 </div>
               </Link>
               <Link
                 href="/admin/noleggi-attivi"
-                style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  textAlign: "center",
-                  padding: "10px 12px",
-                  borderRadius: 12,
-                  border: "1px solid #fcd34d",
-                  background: "rgba(255,255,255,0.62)",
-                  color: "inherit",
-                  textDecoration: "none",
-                  minWidth: 180,
-                  minHeight: 112,
-                  flex: "0 1 190px",
-                }}
+                style={shortcutCardStyle}
               >
-                <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: 0.2, color: "#6b7280" }}>
-                  NOLEGGI ATTIVI
-                </div>
-                <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 30, fontWeight: 800, width: "100%" }}>
-                  {noleggiAttiviCount}
+                <div style={shortcutCardTitleStyle}>NOLEGGI ATTIVI</div>
+                <div style={shortcutCardNumberWrapStyle}>
+                  <div style={shortcutCardNumberStyle}>{noleggiAttiviCount}</div>
                 </div>
               </Link>
               <Link
                 href="/admin/consegne-entro-7-giorni"
-                style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  textAlign: "center",
-                  padding: "10px 12px",
-                  borderRadius: 12,
-                  border: "1px solid #fcd34d",
-                  background: "rgba(255,255,255,0.62)",
-                  color: "inherit",
-                  textDecoration: "none",
-                  minWidth: 180,
-                  minHeight: 112,
-                  flex: "0 1 190px",
-                }}
+                style={shortcutCardStyle}
               >
-                <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: 0.2, color: "#6b7280" }}>
-                  CONSEGNE ENTRO 7 GIORNI
-                </div>
-                <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 30, fontWeight: 800, width: "100%" }}>
-                  {consegneEntro7Count}
+                <div style={shortcutCardTitleStyle}>CONSEGNE ENTRO 7 GIORNI</div>
+                <div style={shortcutCardNumberWrapStyle}>
+                  <div style={shortcutCardNumberStyle}>{consegneEntro7Count}</div>
                 </div>
               </Link>
               <Link
                 href="/admin/smontaggi-noleggi-entro-7-giorni"
-                style={{
-                  display: "flex",
-                  flexDirection: "column",
-                  justifyContent: "space-between",
-                  alignItems: "center",
-                  textAlign: "center",
-                  padding: "10px 12px",
-                  borderRadius: 12,
-                  border: "1px solid #fcd34d",
-                  background: "rgba(255,255,255,0.62)",
-                  color: "inherit",
-                  textDecoration: "none",
-                  minWidth: 180,
-                  minHeight: 112,
-                  flex: "0 1 190px",
-                }}
+                style={shortcutCardStyle}
               >
-                <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: 0.2, color: "#6b7280" }}>
-                  SMONTAGGI NOLEGGI ENTRO 7 GIORNI
-                </div>
-                <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 30, fontWeight: 800, width: "100%" }}>
-                  {smontaggiEntro7Count}
+                <div style={shortcutCardTitleStyle}>SMONTAGGI NOLEGGI ENTRO 7 GIORNI</div>
+                <div style={shortcutCardNumberWrapStyle}>
+                  <div style={shortcutCardNumberStyle}>{smontaggiEntro7Count}</div>
                 </div>
               </Link>
             </div>
