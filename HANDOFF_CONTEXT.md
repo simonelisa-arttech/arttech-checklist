@@ -2,6 +2,15 @@
 
 ## Aggiornamento rapido (19 marzo 2026)
 
+- `fix: riallinea vincolo row_kind note task cronoprogramma` in corso locale.
+- Causa reale errore note task:
+  - UI `Storico note task` e API `/api/cronoprogramma` inviano gia `row_kind = 'CHECKLIST_TASK'`
+  - il DB colpito dall'errore ha ancora un constraint `cronoprogramma_comments_row_kind_check` non allineato
+- Aggiunta migration idempotente `scripts/20260319_fix_cronoprogramma_comments_row_kind_check.sql` per riallineare i valori ammessi a:
+  - `INSTALLAZIONE`
+  - `DISINSTALLAZIONE`
+  - `INTERVENTO`
+  - `CHECKLIST_TASK`
 - `fix: abilita impostazioni per tecnico sw` in corso locale.
 - Allineato il criterio di visibilita del bottone `Impostazioni` per includere anche `TECNICO_SW`.
 - Verifica completata sui percorsi `app/impostazioni/*`:
