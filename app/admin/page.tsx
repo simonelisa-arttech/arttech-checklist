@@ -180,9 +180,28 @@ export default function AdminPage() {
   return (
     <div style={{ maxWidth: 1100, margin: "24px auto", padding: 16, paddingBottom: 60 }}>
       <div style={{ marginBottom: 18 }}>
-        <h1 style={{ margin: 0, fontSize: 34, whiteSpace: "nowrap" }}>AREA ADMIN</h1>
-        <div style={{ marginTop: 4, fontSize: 13, opacity: 0.7 }}>
-          Shortcut operativi e aree di controllo.
+        <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+          <div>
+            <h1 style={{ margin: 0, fontSize: 34, whiteSpace: "nowrap" }}>AREA ADMIN</h1>
+            <div style={{ marginTop: 4, fontSize: 13, opacity: 0.7 }}>
+              Shortcut operativi e aree di controllo.
+            </div>
+          </div>
+          <Link
+            href="/"
+            style={{
+              marginLeft: "auto",
+              padding: "8px 12px",
+              borderRadius: 10,
+              border: "1px solid #ddd",
+              background: "white",
+              textDecoration: "none",
+              color: "inherit",
+              fontWeight: 600,
+            }}
+          >
+            Dashboard
+          </Link>
         </div>
       </div>
 
