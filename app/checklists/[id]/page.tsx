@@ -278,6 +278,25 @@ type ProjectInterventoForm = {
   note: string;
 } & InterventoOperativiFormState;
 
+function buildEmptyProjectInterventoForm(
+  proforma = "",
+  codiceMagazzino = ""
+): ProjectInterventoForm {
+  return {
+    data: "",
+    data_tassativa: "",
+    descrizione: "",
+    ticket_no: "",
+    incluso: true,
+    proforma,
+    codice_magazzino: codiceMagazzino,
+    fatturazione_stato: "DA_FATTURARE",
+    stato_intervento: "APERTO",
+    note: "",
+    ...EMPTY_INTERVENTO_OPERATIVI,
+  };
+}
+
 type FormData = {
   cliente: string;
   cliente_id: string;
@@ -1197,19 +1216,9 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
   const [projectCloseEsito, setProjectCloseEsito] = useState("");
   const [projectCloseNote, setProjectCloseNote] = useState("");
   const [projectCloseError, setProjectCloseError] = useState<string | null>(null);
-  const [newProjectIntervento, setNewProjectIntervento] = useState<ProjectInterventoForm>({
-    data: "",
-    data_tassativa: "",
-    descrizione: "",
-    ticket_no: "",
-    incluso: true,
-    proforma: "",
-    codice_magazzino: "",
-    fatturazione_stato: "DA_FATTURARE",
-    stato_intervento: "APERTO",
-    note: "",
-    ...EMPTY_INTERVENTO_OPERATIVI,
-  });
+  const [newProjectIntervento, setNewProjectIntervento] = useState<ProjectInterventoForm>(
+    buildEmptyProjectInterventoForm()
+  );
   const isPerfEnabled = () =>
     process.env.NODE_ENV !== "production" ||
     (typeof window !== "undefined" && new URLSearchParams(window.location.search).has("perf"));
@@ -1707,19 +1716,9 @@ function buildFormData(c: Checklist): FormData {
     setProjectInterventi(list);
     await loadInterventoRowAttachmentCounts(list);
     setProjectInterventiNotice("Intervento aggiunto.");
-    setNewProjectIntervento({
-      data: "",
-      data_tassativa: "",
-      descrizione: "",
-      ticket_no: "",
-      incluso: true,
-      proforma: checklist.proforma || "",
-      codice_magazzino: magazzino.codice || "",
-      fatturazione_stato: "DA_FATTURARE",
-      stato_intervento: "APERTO",
-      note: "",
-      ...EMPTY_INTERVENTO_OPERATIVI,
-    });
+    setNewProjectIntervento(
+      buildEmptyProjectInterventoForm(checklist.proforma || "", magazzino.codice || "")
+    );
     setProjectInterventoFiles([]);
     if (inserted?.id) {
       const created = list.find((row) => row.id === inserted?.id) || null;
@@ -3312,21 +3311,15 @@ function buildFormData(c: Checklist): FormData {
     const nextForm = buildFormData(headChecklist);
     setFormData(nextForm);
     setOriginalData(nextForm);
-    setNewProjectIntervento({
-      data: "",
-      data_tassativa: "",
-      descrizione: "",
-      ticket_no: "",
-      incluso: true,
-      proforma: headChecklist.proforma || "",
-      codice_magazzino: splitMagazzinoFields(
-        headChecklist.magazzino_importazione,
-        headChecklist.magazzino_drive_url
-      ).codice,
-      fatturazione_stato: "DA_FATTURARE",
-      stato_intervento: "APERTO",
-      note: "",
-    });
+    setNewProjectIntervento(
+      buildEmptyProjectInterventoForm(
+        headChecklist.proforma || "",
+        splitMagazzinoFields(
+          headChecklist.magazzino_importazione,
+          headChecklist.magazzino_drive_url
+        ).codice
+      )
+    );
     await loadCronoOperativi(id);
     if (isPerfEnabled()) {
       const renewalRowsCount =

@@ -2,6 +2,14 @@
 
 ## Aggiornamento rapido (19 marzo 2026)
 
+- `fix: type reset newProjectIntervento` in corso locale.
+- `app/checklists/[id]/page.tsx`
+  - `ProjectInterventoForm` era stato esteso con i campi operativi condivisi
+  - un reset di `setNewProjectIntervento(...)` non includeva piu' tutti i campi richiesti dal tipo
+  - fix minimale:
+    - introdotto `buildEmptyProjectInterventoForm(...)`
+    - riusato per `useState` iniziale e per tutti i reset di `newProjectIntervento`
+
 - `fix: typing tipo alert-templates` in corso locale.
 - `app/api/alert-templates/route.ts`
   - il payload `tipo` era tipizzato genericamente come `string | null`
