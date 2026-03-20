@@ -2,6 +2,19 @@
 
 ## Aggiornamento rapido (19 marzo 2026)
 
+- `fix: api import multipart non deve redirectare a login` in corso locale.
+- Causa reale di `Server action not found` su `POST /api/import/progetti-csv`:
+  - `middleware.ts` intercettava anche `/api/*`
+  - in assenza di cookie sessione faceva `redirect("/login")`
+  - su una `POST multipart/form-data` il redirect portava la richiesta su una pagina App Router invece che sulla route API, producendo la risposta `Server action not found`
+- Fix minimale:
+  - per richieste `/api/*` non autenticate il middleware restituisce ora `401 JSON`
+  - non effettua piu redirect HTML verso `/login`
+  - la route `app/api/import/progetti-csv/route.ts` puo quindi rispondere come normale route handler multipart
+- Effetto:
+  - `/api/import/progetti-csv` non viene piu confusa con una pagina/server action
+  - la risposta torna coerente con dominio API anche quando manca autenticazione
+
 - `feat: warning conflitti risorse cronoprogramma` in corso locale.
 - Nuovo helper frontend:
   - `lib/operativiConflicts.ts`

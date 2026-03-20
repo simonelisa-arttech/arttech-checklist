@@ -8,12 +8,18 @@ const PUBLIC_PATHS = [
   "/auth/login",
   "/api/auth/password-recovery",
 ];
+const API_PREFIX = "/api/";
 const ASSET_PREFIXES = ["/_next", "/images"];
 const ASSET_FILE_RE =
   /\.(?:png|jpg|jpeg|gif|svg|webp|ico|css|js|map|txt|xml|woff|woff2|ttf|eot)$/i;
 
+function unauthorizedApiResponse() {
+  return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+}
+
 export async function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
+  const isApiRequest = pathname === "/api" || pathname.startsWith(API_PREFIX);
 
   if (process.env.E2E === "1") {
     return NextResponse.next();
@@ -35,6 +41,9 @@ export async function middleware(req: NextRequest) {
   const refreshToken = req.cookies.get("sb-refresh-token")?.value;
 
   if (!accessToken) {
+    if (isApiRequest) {
+      return unauthorizedApiResponse();
+    }
     const url = req.nextUrl.clone();
     url.pathname = "/login";
     return NextResponse.redirect(url);
@@ -86,6 +95,10 @@ export async function middleware(req: NextRequest) {
       });
       return res;
     }
+  }
+
+  if (isApiRequest) {
+    return unauthorizedApiResponse();
   }
 
   const url = req.nextUrl.clone();

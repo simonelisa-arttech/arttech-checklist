@@ -1,5 +1,16 @@
 # AGENT MEMORY — Snapshot Operativo
 
+## Snapshot 2026-03-20 - Middleware API no redirect login
+- `middleware.ts`
+  - le richieste `/api/*` non autenticate non devono fare redirect verso `/login`
+  - devono restare nel dominio API con risposta JSON `401 Unauthorized`
+- Causa reale osservata:
+  - `POST multipart` su `/api/import/progetti-csv` veniva deviata dal middleware a `/login`
+  - il risultato lato production era `Server action not found`
+- Regola operativa:
+  - per endpoint API protetti, il middleware non deve trasformare una chiamata API in una navigazione HTML
+  - la singola route puo continuare a fare i propri check auth e leggere `formData()`
+
 ## Snapshot 2026-03-20 - Warning conflitti risorse cronoprogramma
 - Nuovo helper frontend:
   - `lib/operativiConflicts.ts`
