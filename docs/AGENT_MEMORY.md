@@ -39,10 +39,12 @@
 - Compatibilita' schema:
   - la route rimuove dal payload i campi `checklists` mancanti nello schema runtime e li segnala nei `warnings`
   - questo evita di rompere ambienti non ancora allineati con tutte le migration
+- Allineamento dominio:
+  - il tag reale `Rif. Check List` / colonna `Progetto` dashboard usa `checklists.nome_checklist`
+  - `codice_progetto` CSV viene importato su `checklists.nome_checklist`
+  - `proforma` CSV resta separata su `checklists.proforma` e puo essere condivisa tra piu progetti
+  - se `codice_progetto` manca, la route usa `nome_progetto` come fallback legacy
 - Limiti noti:
-  - manca ancora una colonna dedicata per `codice_progetto`
-  - il riferimento univoco continua quindi a transitare da `checklists.proforma`
-  - se `codice_progetto` e `proforma` differiscono, la proforma commerciale viene preservata in `note`
   - `servizio_saas_aggiuntivo` puo contenere piu valori nel CSV ma `checklists.saas_tipo` ne salva uno solo; gli extra finiscono in `saas_note`
 
 ## Snapshot 2026-03-20 - Middleware API no redirect login

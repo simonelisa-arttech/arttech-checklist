@@ -361,14 +361,16 @@ async function ensureClienteAnagraficaRow(
   };
 }
 
-async function findChecklistByCodiceProgetto(
+async function findChecklistByProjectTag(
   supabaseAdmin: ReturnType<typeof getSupabaseAdmin>,
-  codiceProgetto: string
+  cliente: string,
+  projectTag: string
 ) {
   const { data, error } = await supabaseAdmin
     .from("checklists")
     .select("id, nome_checklist, cliente, stato_progetto, proforma")
-    .eq("proforma", codiceProgetto)
+    .eq("cliente", cliente)
+    .eq("nome_checklist", projectTag)
     .limit(1);
   if (error) throw error;
   return ((data || [])[0] ?? null) as
@@ -611,11 +613,11 @@ export async function POST(request: Request) {
     const rowNumber = index + 2;
 
     try {
-      const nomeProgetto = getRowValue(row, "nome_progetto", "nome_checklist");
+      const nomeProgettoCsv = getRowValue(row, "nome_progetto");
       const clienteInput = getRowValue(row, "cliente");
-      const codiceProgetto = getRowValue(row, "codice_progetto");
+      const codiceProgetto = getRowValue(row, "codice_progetto", "nome_checklist");
       const csvProforma = getRowValue(row, "proforma");
-      const effectiveProjectCode = codiceProgetto || csvProforma;
+      const projectTag = codiceProgetto || nomeProgettoCsv;
       const tipo = parseOptionalUpper(getRowValue(row, "tipo"));
       const stato = parseOptionalUpper(getRowValue(row, "stato", "stato_progetto"));
       const dataPrevista = parseOptionalDate(getRowValue(row, "data_prevista"));
@@ -647,18 +649,18 @@ export async function POST(request: Request) {
       const serialiModuliLed = splitSerials(getRowValue(row, "seriali_moduli_led"));
       const legacyNote = parseOptionalText(getRowValue(row, "note"));
 
-      if (!nomeProgetto || !clienteInput) {
-        throw new Error("campi obbligatori mancanti: nome_progetto / cliente");
+      if (!projectTag || !clienteInput) {
+        throw new Error("campi obbligatori mancanti: codice_progetto (o nome_progetto legacy) / cliente");
       }
 
       if (emailCliente && !isValidEmail(emailCliente)) {
         throw new Error(`email non valida: ${emailCliente}`);
       }
 
-      if (effectiveProjectCode) {
-        const normalizedCode = normalizeCatalogCode(effectiveProjectCode);
+      if (projectTag) {
+        const normalizedCode = normalizeCatalogCode(projectTag);
         if (seenProjectCodes.has(normalizedCode)) {
-          throw new Error(`codice_progetto duplicato nel CSV: ${effectiveProjectCode}`);
+          throw new Error(`codice_progetto duplicato nel CSV: ${projectTag}`);
         }
         seenProjectCodes.add(normalizedCode);
       }
@@ -678,24 +680,19 @@ export async function POST(request: Request) {
         });
       }
 
-      if (codiceProgetto && csvProforma && codiceProgetto.trim() !== csvProforma.trim()) {
-        warnings.push({
-          row: rowNumber,
-          reason: "codice_progetto e proforma differiscono: per compatibilità il codice progetto resta il riferimento univoco salvato su proforma",
-        });
-      }
-
       const clienteRow = await ensureClienteAnagraficaRow(supabaseAdmin, clienteInput);
       const cliente = clienteRow?.denominazione || clienteInput.trim();
 
-      const similarWarning = await findSimilarProjectWarning(supabaseAdmin, cliente, nomeProgetto);
+      const similarWarning = await findSimilarProjectWarning(supabaseAdmin, cliente, projectTag);
       if (similarWarning) {
         warnings.push({ row: rowNumber, reason: similarWarning });
       }
 
       const payloadNote = mergeNoteSections(
         legacyNote,
-        csvProforma && csvProforma !== effectiveProjectCode ? `Proforma commerciale: ${csvProforma}` : null,
+        nomeProgettoCsv && normalizeTextKey(nomeProgettoCsv) !== normalizeTextKey(projectTag)
+          ? `Nome progetto CSV: ${nomeProgettoCsv}`
+          : null,
         referenteCliente || contattoReferente
           ? `Referente cliente: ${[referenteCliente, contattoReferente].filter(Boolean).join(" | ")}`
           : null,
@@ -703,10 +700,10 @@ export async function POST(request: Request) {
       );
 
       const payload: Record<string, any> = {
-        nome_checklist: nomeProgetto.trim(),
+        nome_checklist: projectTag.trim(),
         cliente,
         cliente_id: clienteRow?.id || null,
-        proforma: effectiveProjectCode ? effectiveProjectCode.trim() : null,
+        proforma: csvProforma ? csvProforma.trim() : null,
         noleggio_vendita: tipo,
         stato_progetto: stato,
         data_prevista: dataPrevista,
@@ -735,8 +732,12 @@ export async function POST(request: Request) {
       let checklistId = "";
       let checklistStrippedColumns = new Set<string>();
 
-      if (effectiveProjectCode) {
-        const existingByCode = await findChecklistByCodiceProgetto(supabaseAdmin, effectiveProjectCode.trim());
+      if (projectTag) {
+        const existingByCode = await findChecklistByProjectTag(
+          supabaseAdmin,
+          cliente,
+          projectTag.trim()
+        );
         if (existingByCode?.id) {
           if (onConflict === "update") {
             checklistId = existingByCode.id;
@@ -752,7 +753,7 @@ export async function POST(request: Request) {
             skipped += 1;
             warnings.push({
               row: rowNumber,
-              reason: `codice_progetto già esistente: ${effectiveProjectCode.trim()}`,
+              reason: `codice_progetto già esistente: ${projectTag.trim()}`,
             });
             continue;
           }

@@ -59,12 +59,12 @@
     - `asset_serials` per `seriali_*`
     - `licenses` per `licenze`
     - `checklist_items` per `accessori_ricambi`
-- Nota compatibilita':
-  - non esiste ancora una colonna dedicata per `codice_progetto`
-  - per non rompere la logica attuale, il riferimento univoco continua a usare `checklists.proforma`
-  - se nel CSV sono presenti sia `codice_progetto` sia `proforma` e differiscono:
-    - `codice_progetto` resta il valore chiave usato su `proforma`
-    - la proforma commerciale viene preservata in `note`
+- Allineamento dominio import progetti CSV:
+  - il tag reale `Rif. Check List` / colonna `Progetto` dashboard usa `checklists.nome_checklist`
+  - `codice_progetto` CSV importa quindi su `checklists.nome_checklist`
+  - `proforma` CSV resta separata su `checklists.proforma`
+  - una stessa `proforma` puo comparire su piu progetti senza warning
+  - per compatibilita' con file legacy, se `codice_progetto` manca la route usa `nome_progetto`
 - Limite noto:
   - `servizio_saas_aggiuntivo` supporta CSV multipli ma `checklists.saas_tipo` accetta un solo valore
   - il primo valore va in `saas_tipo`, gli extra vengono serializzati in `saas_note` con warning
