@@ -4,6 +4,12 @@ import { useEffect, useMemo, useRef, useState, type UIEvent } from "react";
 import Link from "next/link";
 import ConfigMancante from "@/components/ConfigMancante";
 import { isSupabaseConfigured } from "@/lib/supabaseClient";
+import {
+  buildOperativiSchedule,
+  computeOperativiEndDate,
+  durationToInputValue,
+  normalizeOperativiDate,
+} from "@/lib/operativiSchedule";
 
 type TimelineRow = {
   kind: "INSTALLAZIONE" | "DISINSTALLAZIONE" | "INTERVENTO";
@@ -28,6 +34,8 @@ type CronoMeta = {
   updated_at: string | null;
   updated_by_operatore: string | null;
   updated_by_nome: string | null;
+  data_inizio?: string | null;
+  durata_giorni?: number | null;
   personale_previsto?: string | null;
   mezzi?: string | null;
   descrizione_attivita?: string | null;
@@ -48,6 +56,8 @@ type CronoComment = {
 };
 
 type OperativiFields = {
+  data_inizio: string;
+  durata_giorni: string;
   personale_previsto: string;
   mezzi: string;
   descrizione_attivita: string;
@@ -60,6 +70,8 @@ type OperativiFields = {
 };
 
 const EMPTY_OPERATIVI: OperativiFields = {
+  data_inizio: "",
+  durata_giorni: "",
   personale_previsto: "",
   mezzi: "",
   descrizione_attivita: "",
@@ -73,6 +85,8 @@ const EMPTY_OPERATIVI: OperativiFields = {
 
 function extractOperativi(meta?: CronoMeta | null): OperativiFields {
   return {
+    data_inizio: normalizeOperativiDate(meta?.data_inizio),
+    durata_giorni: durationToInputValue(meta?.durata_giorni),
     personale_previsto: String(meta?.personale_previsto || ""),
     mezzi: String(meta?.mezzi || ""),
     descrizione_attivita: String(meta?.descrizione_attivita || ""),
@@ -83,6 +97,19 @@ function extractOperativi(meta?: CronoMeta | null): OperativiFields {
     commerciale_art_tech_nome: String(meta?.commerciale_art_tech_nome || ""),
     commerciale_art_tech_contatto: String(meta?.commerciale_art_tech_contatto || ""),
   };
+}
+
+type OperativiScheduleLike = {
+  data_inizio?: string | null;
+  durata_giorni?: string | number | null;
+};
+
+function getRowSchedule(row: TimelineRow, value?: OperativiScheduleLike | null) {
+  return buildOperativiSchedule(
+    value?.data_inizio ?? null,
+    row.data_tassativa || row.data_prevista,
+    value?.durata_giorni ?? null
+  );
 }
 
 function inferInterventoTipologia(text?: string | null) {
@@ -125,6 +152,9 @@ function downloadCsv(
 ) {
   const header = [
     "tipo_evento",
+    "data_inizio",
+    "durata_giorni",
+    "data_fine",
     "data_prevista",
     "data_tassativa",
     "cliente",
@@ -150,8 +180,12 @@ function downloadCsv(
     const fatto = Boolean(metaByKey[key]?.fatto ?? r.fatto);
     const latestComment = commentsByKey[key]?.[0];
     const op = extractOperativi(metaByKey[key] || null);
+    const schedule = getRowSchedule(r, metaByKey[key] || null);
     const cells = [
       r.kind,
+      schedule.data_inizio,
+      schedule.durata_giorni,
+      schedule.data_fine,
       r.data_prevista,
       r.data_tassativa,
       r.cliente,
@@ -515,11 +549,12 @@ export default function CronoprogrammaPage() {
     const needle = q.trim().toLowerCase();
     const personaleNeedle = normalizePersonaleText(personaleFilter);
     return rows.filter((r) => {
-      const rifDate = r.data_tassativa || r.data_prevista;
       const key = getRowKey(r.kind, r.row_ref_id);
       const fatto = Boolean(metaByKey[key]?.fatto ?? r.fatto);
       const hidden = Boolean(metaByKey[key]?.hidden);
-      const personalePrevisto = extractOperativi(metaByKey[key] || null).personale_previsto;
+      const operativi = extractOperativi(metaByKey[key] || null);
+      const personalePrevisto = operativi.personale_previsto;
+      const schedule = getRowSchedule(r, metaByKey[key] || null);
       if (hidden && !showHidden) return false;
       if (fatto && !showFatto) return false;
       if (clienteFilter !== "TUTTI" && r.cliente !== clienteFilter) return false;
@@ -539,8 +574,8 @@ export default function CronoprogrammaPage() {
       // Se chiedo esplicitamente di vedere i "Fatto", li mostro sempre
       // (indipendentemente dal range date) per permettere il reset del flag.
       if (fatto && showFatto) return true;
-      if (fromDate && rifDate < fromDate) return false;
-      if (toDate && rifDate > toDate) return false;
+      if (fromDate && schedule.data_fine < fromDate) return false;
+      if (toDate && schedule.data_inizio > toDate) return false;
       return true;
     });
   }, [
@@ -560,13 +595,15 @@ export default function CronoprogrammaPage() {
     const sorted = [...filtered];
     const field = sortBy;
     sorted.sort((a, b) => {
-      const av = field === "data_prevista" ? a.data_prevista : a.data_tassativa;
-      const bv = field === "data_prevista" ? b.data_prevista : b.data_tassativa;
+      const avSchedule = getRowSchedule(a, metaByKey[getRowKey(a.kind, a.row_ref_id)] || null);
+      const bvSchedule = getRowSchedule(b, metaByKey[getRowKey(b.kind, b.row_ref_id)] || null);
+      const av = field === "data_prevista" ? avSchedule.data_inizio : avSchedule.data_fine;
+      const bv = field === "data_prevista" ? bvSchedule.data_inizio : bvSchedule.data_fine;
       const cmp = String(av || "").localeCompare(String(bv || ""));
       return sortDir === "asc" ? cmp : -cmp;
     });
     return sorted;
-  }, [filtered, sortBy, sortDir]);
+  }, [filtered, sortBy, sortDir, metaByKey]);
 
   useEffect(() => {
     const updateScrollWidth = () => {
@@ -834,13 +871,13 @@ export default function CronoprogrammaPage() {
             style={{
               display: "grid",
               gridTemplateColumns:
-                "110px 110px 180px 240px 220px 260px 140px 130px 120px 260px 260px 220px 260px 160px 140px 300px 300px 120px",
+                "110px 110px 90px 180px 240px 220px 260px 140px 130px 120px 260px 150px 150px 260px 260px 220px 260px 160px 140px 300px 300px 120px",
               gap: 12,
               padding: "10px 12px",
               fontWeight: 700,
               background: "#fafafa",
               borderBottom: "1px solid #eee",
-              minWidth: 3930,
+              minWidth: 4320,
             }}
           >
             <button
@@ -849,7 +886,7 @@ export default function CronoprogrammaPage() {
               style={{ border: "none", background: "transparent", padding: 0, textAlign: "left", cursor: "pointer", fontWeight: 700 }}
               title="Ordina per data prevista"
             >
-              Data prevista {sortBy === "data_prevista" ? (sortDir === "asc" ? "↑" : "↓") : ""}
+              Data inizio {sortBy === "data_prevista" ? (sortDir === "asc" ? "↑" : "↓") : ""}
             </button>
             <button
               type="button"
@@ -857,8 +894,9 @@ export default function CronoprogrammaPage() {
               style={{ border: "none", background: "transparent", padding: 0, textAlign: "left", cursor: "pointer", fontWeight: 700 }}
               title="Ordina per data tassativa"
             >
-              Data tassativa {sortBy === "data_tassativa" ? (sortDir === "asc" ? "↑" : "↓") : ""}
+              Data fine {sortBy === "data_tassativa" ? (sortDir === "asc" ? "↑" : "↓") : ""}
             </button>
+            <div>Durata</div>
             <div style={{ paddingRight: 18, whiteSpace: "nowrap" }}>Evento</div>
             <div style={{ paddingLeft: 6 }}>Cliente</div>
             <div>Progetto</div>
@@ -867,6 +905,8 @@ export default function CronoprogrammaPage() {
             <div>Fatto</div>
             <div>Nascosta</div>
             <div>Note</div>
+            <div>Data inizio op.</div>
+            <div>Durata / fine</div>
             <div>Personale previsto / incarico</div>
             <div>Mezzi</div>
             <div>Descrizione attività</div>
@@ -884,6 +924,7 @@ export default function CronoprogrammaPage() {
             filteredSorted.map((r) => {
             const key = getRowKey(r.kind, r.row_ref_id);
             const meta = metaByKey[key];
+            const schedule = getRowSchedule(r, meta);
             const fatto = Boolean(meta?.fatto ?? r.fatto);
             const hidden = Boolean(meta?.hidden);
             const comments = commentsByKey[key] || [];
@@ -893,18 +934,27 @@ export default function CronoprogrammaPage() {
                 style={{
                   display: "grid",
                   gridTemplateColumns:
-                    "110px 110px 180px 240px 220px 260px 140px 130px 120px 260px 260px 220px 260px 160px 140px 300px 300px 120px",
+                    "110px 110px 90px 180px 240px 220px 260px 140px 130px 120px 260px 150px 150px 260px 260px 220px 260px 160px 140px 300px 300px 120px",
                   gap: 12,
                   padding: "10px 12px",
                   borderBottom: "1px solid #f3f4f6",
                   alignItems: "start",
                   opacity: hidden && showHidden ? 0.6 : 1,
                   fontStyle: hidden && showHidden ? "italic" : "normal",
-                  minWidth: 3930,
+                  minWidth: 4320,
                 }}
               >
-                <div>{r.data_prevista ? new Date(r.data_prevista).toLocaleDateString("it-IT") : "—"}</div>
-                <div>{r.data_tassativa ? new Date(r.data_tassativa).toLocaleDateString("it-IT") : "—"}</div>
+                <div>
+                  {schedule.data_inizio
+                    ? new Date(schedule.data_inizio).toLocaleDateString("it-IT")
+                    : "—"}
+                </div>
+                <div>
+                  {schedule.data_fine
+                    ? new Date(schedule.data_fine).toLocaleDateString("it-IT")
+                    : "—"}
+                </div>
+                <div>{schedule.durata_giorni} gg</div>
                 <div style={{ paddingRight: 18, whiteSpace: "nowrap" }}>{r.kind}</div>
                 <div style={{ paddingLeft: 6 }}>{r.cliente}</div>
                 <div>
@@ -1014,6 +1064,56 @@ export default function CronoprogrammaPage() {
                     ) : (
                       <span style={{ opacity: 0.7 }}>Nessuna nota</span>
                     )}
+                  </div>
+                </div>
+                <div>
+                  <input
+                    type="date"
+                    value={operativiDraftByKey[key]?.data_inizio ?? ""}
+                    onChange={(e) =>
+                      setOperativiDraftByKey((prev) => ({
+                        ...prev,
+                        [key]: { ...(prev[key] || EMPTY_OPERATIVI), data_inizio: e.target.value },
+                      }))
+                    }
+                    style={{ width: "100%", padding: 6 }}
+                  />
+                  {!(operativiDraftByKey[key]?.data_inizio ?? "") && (r.data_tassativa || r.data_prevista) ? (
+                    <div style={{ marginTop: 4, fontSize: 11, opacity: 0.7 }}>
+                      Fallback: {new Date(r.data_tassativa || r.data_prevista).toLocaleDateString("it-IT")}
+                    </div>
+                  ) : null}
+                </div>
+                <div>
+                  <div style={{ display: "grid", gap: 6 }}>
+                    <input
+                      type="number"
+                      min={1}
+                      step={1}
+                      value={operativiDraftByKey[key]?.durata_giorni ?? ""}
+                      onChange={(e) =>
+                        setOperativiDraftByKey((prev) => ({
+                          ...prev,
+                          [key]: { ...(prev[key] || EMPTY_OPERATIVI), durata_giorni: e.target.value },
+                        }))
+                      }
+                      placeholder="1"
+                      style={{ width: "100%", padding: 6 }}
+                    />
+                    <div style={{ fontSize: 11, opacity: 0.7 }}>
+                      Fine:{" "}
+                      {computeOperativiEndDate(
+                        operativiDraftByKey[key]?.data_inizio || r.data_tassativa || r.data_prevista,
+                        operativiDraftByKey[key]?.durata_giorni
+                      )
+                        ? new Date(
+                            computeOperativiEndDate(
+                              operativiDraftByKey[key]?.data_inizio || r.data_tassativa || r.data_prevista,
+                              operativiDraftByKey[key]?.durata_giorni
+                            )
+                          ).toLocaleDateString("it-IT")
+                        : "—"}
+                    </div>
                   </div>
                 </div>
                 <div>

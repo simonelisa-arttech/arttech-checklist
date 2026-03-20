@@ -42,6 +42,11 @@ import {
   isMissingMagazzinoDriveColumnError,
   splitMagazzinoFields,
 } from "@/lib/magazzino";
+import {
+  computeOperativiEndDate,
+  durationToInputValue,
+  normalizeOperativiDate,
+} from "@/lib/operativiSchedule";
 
 type Checklist = {
   id: string;
@@ -387,6 +392,8 @@ type CronoOperativiMeta = {
   updated_at?: string | null;
   updated_by_operatore?: string | null;
   updated_by_nome?: string | null;
+  data_inizio?: string | null;
+  durata_giorni?: number | null;
   personale_previsto?: string | null;
   mezzi?: string | null;
   descrizione_attivita?: string | null;
@@ -399,6 +406,8 @@ type CronoOperativiMeta = {
 };
 
 type CronoOperativiFormState = {
+  data_inizio: string;
+  durata_giorni: string;
   personale_previsto: string;
   mezzi: string;
   descrizione_attivita: string;
@@ -594,6 +603,8 @@ function startOfToday() {
 }
 
 const EMPTY_CRONO_OPERATIVI: CronoOperativiFormState = {
+  data_inizio: "",
+  durata_giorni: "",
   personale_previsto: "",
   mezzi: "",
   descrizione_attivita: "",
@@ -607,6 +618,8 @@ const EMPTY_CRONO_OPERATIVI: CronoOperativiFormState = {
 
 function extractCronoOperativi(meta?: CronoOperativiMeta | null) {
   return {
+    data_inizio: normalizeOperativiDate(meta?.data_inizio),
+    durata_giorni: durationToInputValue(meta?.durata_giorni),
     personale_previsto: String(meta?.personale_previsto || ""),
     mezzi: String(meta?.mezzi || ""),
     descrizione_attivita: String(meta?.descrizione_attivita || ""),
@@ -1517,6 +1530,8 @@ function buildFormData(c: Checklist): FormData {
     form: ProjectInterventoForm
   ): InterventoOperativiFormState {
     return {
+      data_inizio: form.data_inizio,
+      durata_giorni: form.durata_giorni,
       personale_previsto: form.personale_previsto,
       mezzi: form.mezzi,
       descrizione_attivita: form.descrizione_attivita,
@@ -3598,7 +3613,8 @@ function buildFormData(c: Checklist): FormData {
     saving: boolean,
     meta: CronoOperativiMeta | null,
     errorMessage: string | null,
-    notice: string | null
+    notice: string | null,
+    fallbackStartDate: string
   ) => (
     <div
       style={{
@@ -3616,6 +3632,42 @@ function buildFormData(c: Checklist): FormData {
           gap: 10,
         }}
       >
+        <div>
+          <div style={{ fontSize: 12, marginBottom: 4 }}>Data inizio</div>
+          <input
+            type="date"
+            value={form.data_inizio}
+            onChange={(e) => setForm((prev) => ({ ...prev, data_inizio: e.target.value }))}
+            style={{ width: "100%", padding: 8 }}
+          />
+          {!form.data_inizio && fallbackStartDate ? (
+            <div style={{ marginTop: 4, fontSize: 11, opacity: 0.7 }}>
+              Fallback automatico: {new Date(fallbackStartDate).toLocaleDateString("it-IT")}
+            </div>
+          ) : null}
+        </div>
+        <div>
+          <div style={{ fontSize: 12, marginBottom: 4 }}>Durata giorni</div>
+          <input
+            type="number"
+            min={1}
+            step={1}
+            value={form.durata_giorni}
+            onChange={(e) => setForm((prev) => ({ ...prev, durata_giorni: e.target.value }))}
+            placeholder="1"
+            style={{ width: "100%", padding: 8 }}
+          />
+          <div style={{ marginTop: 4, fontSize: 11, opacity: 0.7 }}>
+            Data fine:{" "}
+            {computeOperativiEndDate(form.data_inizio || fallbackStartDate, form.durata_giorni) ? (
+              new Date(
+                computeOperativiEndDate(form.data_inizio || fallbackStartDate, form.durata_giorni)
+              ).toLocaleDateString("it-IT")
+            ) : (
+              "—"
+            )}
+          </div>
+        </div>
         <div>
           <div style={{ fontSize: 12, marginBottom: 4 }}>Personale previsto / incarico</div>
           <textarea
@@ -5300,6 +5352,8 @@ function buildFormData(c: Checklist): FormData {
         fatturatoIl: "",
         note: newProjectIntervento.note,
         noteTecniche: "",
+        dataInizio: newProjectIntervento.data_inizio,
+        durataGiorni: newProjectIntervento.durata_giorni,
         personalePrevisto: newProjectIntervento.personale_previsto,
         mezzi: newProjectIntervento.mezzi,
         descrizioneAttivita: newProjectIntervento.descrizione_attivita,
@@ -5323,6 +5377,8 @@ function buildFormData(c: Checklist): FormData {
           fatturazione_stato: value.fatturazioneStato,
           stato_intervento: value.statoIntervento,
           note: value.note,
+          data_inizio: value.dataInizio,
+          durata_giorni: value.durataGiorni,
           personale_previsto: value.personalePrevisto,
           mezzi: value.mezzi,
           descrizione_attivita: value.descrizioneAttivita,
@@ -5355,6 +5411,8 @@ function buildFormData(c: Checklist): FormData {
         fatturatoIl: "",
         note: projectInterventoEditForm?.note || "",
         noteTecniche: "",
+        dataInizio: projectInterventoEditForm?.data_inizio || "",
+        durataGiorni: projectInterventoEditForm?.durata_giorni || "",
         personalePrevisto: projectInterventoEditForm?.personale_previsto || "",
         mezzi: projectInterventoEditForm?.mezzi || "",
         descrizioneAttivita: projectInterventoEditForm?.descrizione_attivita || "",
@@ -5380,6 +5438,8 @@ function buildFormData(c: Checklist): FormData {
                 fatturazione_stato: value.fatturazioneStato,
                 stato_intervento: value.statoIntervento,
                 note: value.note,
+                data_inizio: value.dataInizio,
+                durata_giorni: value.durataGiorni,
                 personale_previsto: value.personalePrevisto,
                 mezzi: value.mezzi,
                 descrizione_attivita: value.descrizioneAttivita,
@@ -6709,7 +6769,8 @@ function buildFormData(c: Checklist): FormData {
             cronoOperativiSaving,
             cronoOperativiMeta,
             cronoOperativiError,
-            cronoOperativiNotice
+            cronoOperativiNotice,
+            formData?.data_tassativa || formData?.data_prevista || ""
           )}
           {isNoleggioProject
             ? renderCronoOperativiSection(
@@ -6720,7 +6781,8 @@ function buildFormData(c: Checklist): FormData {
                 cronoDisinstallazioneSaving,
                 cronoDisinstallazioneMeta,
                 cronoDisinstallazioneError,
-                cronoDisinstallazioneNotice
+                cronoDisinstallazioneNotice,
+                formData?.data_disinstallazione || ""
               )
             : null}
         </div>

@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import AttachmentsPanel from "@/components/AttachmentsPanel";
 import type { InterventoRow } from "@/lib/interventi";
+import { computeOperativiEndDate } from "@/lib/operativiSchedule";
 
 export type InterventiChecklistOption = {
   id: string;
@@ -36,6 +37,8 @@ export type InterventoFormState = {
   fatturatoIl: string;
   note: string;
   noteTecniche: string;
+  dataInizio: string;
+  durataGiorni: string;
   personalePrevisto: string;
   mezzi: string;
   descrizioneAttivita: string;
@@ -258,6 +261,11 @@ function renderOperativiFields(
   form: InterventoFormState,
   setForm: (value: InterventoFormState) => void
 ) {
+  const fallbackStartDate = form.dataTassativa || form.data;
+  const computedEndDate = computeOperativiEndDate(
+    form.dataInizio || fallbackStartDate,
+    form.durataGiorni
+  );
   return (
     <div style={{ marginTop: 10 }}>
       <div style={{ fontWeight: 700, marginBottom: 8 }}>Dati operativi intervento</div>
@@ -268,6 +276,35 @@ function renderOperativiFields(
           gap: 10,
         }}
       >
+        <div>
+          <div style={{ fontSize: 12, marginBottom: 4 }}>Data inizio</div>
+          <input
+            type="date"
+            value={form.dataInizio}
+            onChange={(e) => setForm({ ...form, dataInizio: e.target.value })}
+            style={{ width: "100%", padding: 8 }}
+          />
+          {!form.dataInizio && fallbackStartDate ? (
+            <div style={{ marginTop: 4, fontSize: 11, opacity: 0.7 }}>
+              Fallback automatico: {new Date(fallbackStartDate).toLocaleDateString("it-IT")}
+            </div>
+          ) : null}
+        </div>
+        <div>
+          <div style={{ fontSize: 12, marginBottom: 4 }}>Durata giorni</div>
+          <input
+            type="number"
+            min={1}
+            step={1}
+            value={form.durataGiorni}
+            onChange={(e) => setForm({ ...form, durataGiorni: e.target.value })}
+            placeholder="1"
+            style={{ width: "100%", padding: 8 }}
+          />
+          <div style={{ marginTop: 4, fontSize: 11, opacity: 0.7 }}>
+            Data fine: {computedEndDate ? new Date(computedEndDate).toLocaleDateString("it-IT") : "—"}
+          </div>
+        </div>
         <div>
           <div style={{ fontSize: 12, marginBottom: 4 }}>Personale previsto / incarico</div>
           <textarea

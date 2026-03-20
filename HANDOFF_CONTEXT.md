@@ -2,6 +2,30 @@
 
 ## Aggiornamento rapido (19 marzo 2026)
 
+- `feat: durata multi-giorno nei blocchi operativi e cronoprogramma` in corso locale.
+- Source of truth confermata:
+  - `cronoprogramma_meta` resta la fonte unica per i dati operativi di `INSTALLAZIONE`, `INTERVENTO`, `DISINSTALLAZIONE`
+  - aggiunti nei meta i campi:
+    - `data_inizio`
+    - `durata_giorni`
+  - `data_fine` resta derivata e non duplicata a DB
+- UI aggiornate:
+  - `app/checklists/[id]/page.tsx`
+    - blocco installazione/disinstallazione con `Data inizio`, `Durata giorni`, `Data fine` calcolata
+  - `components/InterventiBlock.tsx`
+    - blocco dati operativi intervento con gli stessi campi
+  - `app/clienti/[cliente]/page.tsx` e `app/checklists/[id]/page.tsx`
+    - creazione/modifica intervento salvano sugli stessi meta `INTERVENTO`
+- Cronoprogramma:
+  - `app/cronoprogramma/page.tsx` usa ora il range operativo effettivo:
+    - `data_inizio` esplicita se presente
+    - altrimenti fallback alla data evento
+    - `durata_giorni` fallback a `1`
+  - i filtri data considerano sovrapposizione dell'intero periodo, quindi personale e mezzi restano impegnati su tutti i giorni del range
+- DB:
+  - aggiunta migration `scripts/20260320_add_cronoprogramma_operativi_duration.sql`
+  - da eseguire manualmente in Supabase prima di usare i nuovi campi in produzione
+
 - `fix: dashboard old setter names` in corso locale.
 - `app/page.tsx`
   - nel catch/reset del `load()` dashboard erano rimasti setter legacy:

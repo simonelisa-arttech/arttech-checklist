@@ -3,10 +3,16 @@ export const runtime = "nodejs";
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import {
+  normalizeOperativiDate,
+  normalizeOperativiDuration,
+} from "@/lib/operativiSchedule";
 
 type RowKind = "INSTALLAZIONE" | "DISINSTALLAZIONE" | "INTERVENTO" | "CHECKLIST_TASK";
 type RowRef = { row_kind: RowKind; row_ref_id: string };
 type OperativiInput = {
+  data_inizio?: string | null;
+  durata_giorni?: string | number | null;
   personale_previsto?: string | null;
   mezzi?: string | null;
   descrizione_attivita?: string | null;
@@ -71,6 +77,8 @@ function normalizeUpper(value: unknown) {
 
 function toOperativiPayload(input: OperativiInput) {
   return {
+    data_inizio: normalizeOperativiDate(input?.data_inizio) || null,
+    durata_giorni: normalizeOperativiDuration(input?.durata_giorni),
     personale_previsto: cleanText(input?.personale_previsto),
     mezzi: cleanText(input?.mezzi),
     descrizione_attivita: cleanText(input?.descrizione_attivita),
@@ -90,6 +98,11 @@ function mapMetaRow(row: any) {
     updated_at: row?.updated_at || null,
     updated_by_operatore: row?.updated_by_operatore || null,
     updated_by_nome: row?.operatore?.nome || null,
+    data_inizio: row?.data_inizio || null,
+    durata_giorni:
+      Number.isFinite(Number(row?.durata_giorni)) && Number(row?.durata_giorni) > 0
+        ? Number(row?.durata_giorni)
+        : null,
     personale_previsto: row?.personale_previsto || null,
     mezzi: row?.mezzi || null,
     descrizione_attivita: row?.descrizione_attivita || null,

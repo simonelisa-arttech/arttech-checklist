@@ -969,6 +969,8 @@ export default function ClientePage({
     fatturatoIl: "",
     note: "",
     noteTecniche: "",
+    dataInizio: "",
+    durataGiorni: "",
     personalePrevisto: "",
     mezzi: "",
     descrizioneAttivita: "",
@@ -993,6 +995,8 @@ export default function ClientePage({
     numeroFattura: "",
     fatturatoIl: "",
     statoIntervento: "APERTO",
+    dataInizio: "",
+    durataGiorni: "",
     personalePrevisto: "",
     mezzi: "",
     descrizioneAttivita: "",
@@ -1005,6 +1009,8 @@ export default function ClientePage({
   });
 
   type ClienteInterventoOperativiInput = {
+    dataInizio: string;
+    durataGiorni: string;
     personalePrevisto: string;
     mezzi: string;
     descrizioneAttivita: string;
@@ -1018,6 +1024,8 @@ export default function ClientePage({
 
   function extractClienteInterventoOperativi(form: ClienteInterventoOperativiInput) {
     return {
+      data_inizio: form.dataInizio,
+      durata_giorni: form.durataGiorni,
       personale_previsto: form.personalePrevisto,
       mezzi: form.mezzi,
       descrizione_attivita: form.descrizioneAttivita,
@@ -2073,6 +2081,8 @@ export default function ClientePage({
       fatturatoIl: i.fatturato_il ? i.fatturato_il.slice(0, 10) : "",
       note: i.note ?? "",
       noteTecniche: i.note_tecniche ?? "",
+      dataInizio: "",
+      durataGiorni: "",
       personalePrevisto: "",
       mezzi: "",
       descrizioneAttivita: "",
@@ -3411,6 +3421,8 @@ export default function ClientePage({
       numeroFattura: "",
       fatturatoIl: "",
       statoIntervento: "APERTO",
+      dataInizio: "",
+      durataGiorni: "",
       personalePrevisto: "",
       mezzi: "",
       descrizioneAttivita: "",
@@ -7045,10 +7057,12 @@ ${rinnovi30ggBreakdown.debugSample
           statoIntervento: newIntervento.statoIntervento,
           esitoFatturazione: "",
           numeroFattura: newIntervento.numeroFattura,
-          fatturatoIl: newIntervento.fatturatoIl,
-          note: newIntervento.note,
-          noteTecniche: "",
-          personalePrevisto: newIntervento.personalePrevisto,
+      fatturatoIl: newIntervento.fatturatoIl,
+      note: newIntervento.note,
+      noteTecniche: "",
+      dataInizio: newIntervento.dataInizio,
+      durataGiorni: newIntervento.durataGiorni,
+      personalePrevisto: newIntervento.personalePrevisto,
           mezzi: newIntervento.mezzi,
           descrizioneAttivita: newIntervento.descrizioneAttivita,
           indirizzo: newIntervento.indirizzo,
@@ -7073,6 +7087,8 @@ ${rinnovi30ggBreakdown.debugSample
             numeroFattura: value.numeroFattura,
             fatturatoIl: value.fatturatoIl,
             statoIntervento: value.statoIntervento,
+            dataInizio: value.dataInizio,
+            durataGiorni: value.durataGiorni,
             personalePrevisto: value.personalePrevisto,
             mezzi: value.mezzi,
             descrizioneAttivita: value.descrizioneAttivita,
@@ -7109,6 +7125,8 @@ ${rinnovi30ggBreakdown.debugSample
             fatturatoIl: value.fatturatoIl,
             note: value.note,
             noteTecniche: value.noteTecniche,
+            dataInizio: value.dataInizio,
+            durataGiorni: value.durataGiorni,
             personalePrevisto: value.personalePrevisto,
             mezzi: value.mezzi,
             descrizioneAttivita: value.descrizioneAttivita,

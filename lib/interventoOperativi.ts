@@ -1,6 +1,13 @@
 "use client";
 
+import {
+  durationToInputValue,
+  normalizeOperativiDate,
+} from "@/lib/operativiSchedule";
+
 export type InterventoOperativiMeta = {
+  data_inizio?: string | null;
+  durata_giorni?: number | null;
   personale_previsto?: string | null;
   mezzi?: string | null;
   descrizione_attivita?: string | null;
@@ -16,6 +23,8 @@ export type InterventoOperativiMeta = {
 };
 
 export type InterventoOperativiFormState = {
+  data_inizio: string;
+  durata_giorni: string;
   personale_previsto: string;
   mezzi: string;
   descrizione_attivita: string;
@@ -28,6 +37,8 @@ export type InterventoOperativiFormState = {
 };
 
 export const EMPTY_INTERVENTO_OPERATIVI: InterventoOperativiFormState = {
+  data_inizio: "",
+  durata_giorni: "",
   personale_previsto: "",
   mezzi: "",
   descrizione_attivita: "",
@@ -43,6 +54,8 @@ export function extractInterventoOperativi(
   meta?: InterventoOperativiMeta | null
 ): InterventoOperativiFormState {
   return {
+    data_inizio: normalizeOperativiDate(meta?.data_inizio),
+    durata_giorni: durationToInputValue(meta?.durata_giorni),
     personale_previsto: String(meta?.personale_previsto || ""),
     mezzi: String(meta?.mezzi || ""),
     descrizione_attivita: String(meta?.descrizione_attivita || ""),

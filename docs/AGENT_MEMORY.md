@@ -1,5 +1,26 @@
 # AGENT MEMORY — Snapshot Operativo
 
+## Snapshot 2026-03-20 - Durata multi-giorno cronoprogramma
+- `cronoprogramma_meta` resta la source of truth per i dati operativi di:
+  - `INSTALLAZIONE`
+  - `INTERVENTO`
+  - `DISINSTALLAZIONE`
+- Nuovi campi meta:
+  - `data_inizio`
+  - `durata_giorni`
+- `data_fine` non viene salvata: e' sempre derivata da `data_inizio + durata_giorni - 1`
+- Fallback compatibilita record vecchi:
+  - se `data_inizio` manca -> usa la data evento esistente
+  - se `durata_giorni` manca -> assume `1`
+- UI aggiornate:
+  - `app/checklists/[id]/page.tsx` blocchi operativi installazione/disinstallazione
+  - `components/InterventiBlock.tsx` dati operativi intervento
+  - `app/clienti/[cliente]/page.tsx` e `app/checklists/[id]/page.tsx` per create/edit intervento
+- `app/cronoprogramma/page.tsx`
+  - filtra le righe per sovrapposizione dell'intero periodo operativo
+  - mostra `Data inizio`, `Data fine`, `Durata`
+  - personale e mezzi restano quindi associati a tutta la durata operativa
+
 ## Snapshot 2026-03-19 - Interventi da chiudere aperti reali
 - `app/api/interventi/da-chiudere/route.ts`
   - la pagina admin usa solo `saas_interventi`, non checklist/task generiche
