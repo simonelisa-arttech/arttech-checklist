@@ -5704,7 +5704,7 @@ function buildFormData(c: Checklist): FormData {
       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
         <div>
           <h1 style={{ margin: 0, fontSize: 34 }}>AT SYSTEM</h1>
-          <div style={{ marginTop: 2, fontSize: 12, opacity: 0.7 }}>CHECK LIST</div>
+          <div style={{ marginTop: 2, fontSize: 12, opacity: 0.7 }}>PROGETTO</div>
         </div>
         <a
           href="/"
@@ -5781,7 +5781,7 @@ function buildFormData(c: Checklist): FormData {
           >
             <div style={{ fontWeight: 800, marginBottom: 6 }}>PROGETTO</div>
             <FieldRow
-              label="Nome checklist"
+              label="Rif. Progetto"
               view={checklist.nome_checklist || "—"}
               edit={
                 isEdit ? (

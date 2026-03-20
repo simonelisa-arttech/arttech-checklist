@@ -191,7 +191,7 @@ export default function ImportProgettiPage() {
                   <thead style={{ background: "#f9fafb" }}>
                     <tr>
                       <th style={{ padding: 10, textAlign: "left", borderBottom: "1px solid #e5e7eb" }}>Riga</th>
-                      <th style={{ padding: 10, textAlign: "left", borderBottom: "1px solid #e5e7eb" }}>Nome checklist</th>
+                      <th style={{ padding: 10, textAlign: "left", borderBottom: "1px solid #e5e7eb" }}>Progetto</th>
                       <th style={{ padding: 10, textAlign: "left", borderBottom: "1px solid #e5e7eb" }}>Cliente</th>
                       <th style={{ padding: 10, textAlign: "left", borderBottom: "1px solid #e5e7eb" }}>Errore</th>
                     </tr>

@@ -494,7 +494,7 @@ export default function NuovaChecklistPage() {
   async function onCreate() {
     try {
       if (!canCreate) {
-        alert("Compila almeno Cliente e Nome checklist.");
+        alert("Compila almeno Cliente e Rif. Progetto.");
         return;
       }
       if (!cliente.trim()) {
@@ -622,7 +622,7 @@ export default function NuovaChecklistPage() {
 
       if (errCreate) {
         if (isChecklistDuplicateError(errCreate)) {
-          alert("Esiste gia' una checklist/progetto con questo cliente e questo nome checklist.");
+          alert("Esiste gia' un progetto con questo cliente e questo Rif. Progetto.");
           return;
         }
         const info = logSupabaseError(errCreate);
@@ -805,7 +805,7 @@ export default function NuovaChecklistPage() {
       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
         <div>
           <h1 style={{ margin: 0, fontSize: 34 }}>AT SYSTEM</h1>
-          <div style={{ marginTop: 2, fontSize: 12, opacity: 0.7 }}>NUOVA CHECK LIST</div>
+          <div style={{ marginTop: 2, fontSize: 12, opacity: 0.7 }}>NUOVO PROGETTO</div>
         </div>
         <Link
           href="/"
@@ -874,7 +874,7 @@ export default function NuovaChecklistPage() {
           </label>
 
           <label>
-            RIF. Check List*<br />
+            RIF. Progetto*<br />
             <input
               value={nomeChecklist}
               onChange={(e) => setNomeChecklist(e.target.value)}
