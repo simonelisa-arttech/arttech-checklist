@@ -1720,7 +1720,7 @@ export default function Page() {
                 className="dashboard-cockpit-primary-grid"
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "max-content 220px",
+                  gridTemplateColumns: "max-content var(--dashboard-kpi-card-width)",
                   gap: 12,
                   alignItems: "stretch",
                   justifyContent: "space-between",
@@ -3134,9 +3134,10 @@ export default function Page() {
         }
         .dashboard-cockpit-inner {
           width: 100%;
+          --dashboard-kpi-card-width: calc((100% - 48px) / 5);
         }
         .dashboard-cockpit-primary-grid {
-          grid-template-columns: max-content minmax(250px, 290px);
+          grid-template-columns: max-content var(--dashboard-kpi-card-width);
           justify-content: space-between;
         }
         .dashboard-scadenze-card {
@@ -3144,8 +3145,8 @@ export default function Page() {
           max-width: 430px;
         }
         .dashboard-fatture-card {
-          width: 100%;
-          max-width: 220px;
+          width: var(--dashboard-kpi-card-width);
+          max-width: var(--dashboard-kpi-card-width);
           justify-self: end;
           min-width: 0;
         }
