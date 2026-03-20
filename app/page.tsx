@@ -1720,10 +1720,9 @@ export default function Page() {
                 className="dashboard-cockpit-primary-grid"
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "max-content 194px",
+                  gridTemplateColumns: "repeat(5, minmax(0, 1fr))",
                   gap: 12,
                   alignItems: "stretch",
-                  justifyContent: "space-between",
                 }}
               >
                 <div
@@ -3136,25 +3135,26 @@ export default function Page() {
           width: 100%;
         }
         .dashboard-cockpit-primary-grid {
-          grid-template-columns: max-content 194px;
-          justify-content: space-between;
+          grid-template-columns: repeat(5, minmax(0, 1fr));
         }
         .dashboard-scadenze-card {
+          grid-column: span 2 / span 2;
           width: 100%;
-          max-width: 430px;
+          max-width: none;
         }
         .dashboard-fatture-card {
-          width: 194px;
-          max-width: 194px;
-          justify-self: end;
-          min-width: 194px;
+          grid-column: 5 / span 1;
+          width: 100%;
+          max-width: none;
+          justify-self: stretch;
+          min-width: 0;
         }
         .dashboard-fatture-card :global(a) {
           height: 100%;
         }
         .dashboard-scadenze-shell {
           width: 100%;
-          max-width: 392px;
+          max-width: 440px;
           margin: 0 auto;
         }
         .dashboard-scadenze-breakdown {
