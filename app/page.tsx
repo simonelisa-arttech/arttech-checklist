@@ -1707,6 +1707,7 @@ export default function Page() {
             </div>
           )}
           <div
+            className="dashboard-cockpit-frame"
             style={{
               padding: "12px 14px",
               borderRadius: 12,
@@ -1717,17 +1718,17 @@ export default function Page() {
           >
             <div style={{ display: "grid", gap: 10 }}>
               <div
+                className="dashboard-cockpit-primary-grid"
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "minmax(420px, 1fr) minmax(220px, 0.38fr)",
+                  gridTemplateColumns: "repeat(12, minmax(0, 1fr))",
                   gap: 10,
                   alignItems: "stretch",
                 }}
               >
                 <div
+                  className="dashboard-cockpit-card dashboard-scadenze-card"
                   style={{
-                    flex: "2 1 520px",
-                    minWidth: 420,
                     minHeight: cockpitCardHeight,
                     height: cockpitCardHeight,
                     padding: "10px 14px",
@@ -1739,20 +1740,22 @@ export default function Page() {
                   }}
                 >
                   <div
+                    className="dashboard-scadenze-shell"
                     style={{
                       display: "grid",
-                      gap: 8,
+                      gap: 6,
                       height: "100%",
                       gridTemplateRows: "auto 1fr",
                     }}
                     >
                       <div
+                        className="dashboard-scadenze-header"
                         style={{
                           display: "flex",
                           flexWrap: "wrap",
-                          gap: 12,
+                          gap: 10,
                           alignItems: "center",
-                          justifyContent: "space-between",
+                          justifyContent: "flex-start",
                         }}
                     >
                       <Link
@@ -1769,6 +1772,7 @@ export default function Page() {
                         SCADENZE IN ARRIVO
                       </Link>
                       <div
+                        className="dashboard-scadenze-range"
                         style={{
                           display: "inline-flex",
                           padding: 3,
@@ -1776,7 +1780,6 @@ export default function Page() {
                           border: "1px solid #fcd34d",
                           background: "rgba(255,255,255,0.8)",
                           gap: 4,
-                          marginLeft: "auto",
                         }}
                       >
                         {([7, 15, 30] as const).map((days) => {
@@ -1804,16 +1807,18 @@ export default function Page() {
                       </div>
                     </div>
                     <div
+                      className="dashboard-scadenze-body"
                       style={{
-                        display: "flex",
-                        flexWrap: "wrap",
-                        gap: 14,
+                        display: "grid",
+                        gridTemplateColumns: "minmax(155px, 190px) minmax(220px, 1fr)",
+                        gap: 12,
                         alignItems: "center",
-                        justifyContent: "space-between",
+                        justifyContent: "center",
                         minHeight: 0,
                       }}
                     >
                       <div
+                        className="dashboard-scadenze-total"
                         style={{
                           display: "grid",
                           gap: 4,
@@ -1840,16 +1845,14 @@ export default function Page() {
                         </div>
                       </div>
                       <div
+                        className="dashboard-scadenze-breakdown"
                         style={{
-                          display: "flex",
-                          flexWrap: "wrap",
-                          gap: 12,
-                          alignItems: "center",
-                          justifyContent: "flex-end",
+                          display: "grid",
+                          gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                          gap: 10,
                           fontSize: 12,
                           fontWeight: 700,
                           minWidth: 0,
-                          flex: 1,
                         }}
                       >
                         <div style={{ whiteSpace: "nowrap" }}>Garanzie: {selectedScadenzeSummary.breakdown.garanzie}</div>
@@ -1860,11 +1863,13 @@ export default function Page() {
                     </div>
                   </div>
                 </div>
-                {renderCockpitMetricCard(
-                  "/admin/fatture-da-emettere",
-                  "FATTURE DA EMETTERE",
-                  fattureDaEmettereCount
-                )}
+                <div className="dashboard-cockpit-card dashboard-fatture-card">
+                  {renderCockpitMetricCard(
+                    "/admin/fatture-da-emettere",
+                    "FATTURE DA EMETTERE",
+                    fattureDaEmettereCount
+                  )}
+                </div>
               </div>
               <div
                 style={{
@@ -3165,6 +3170,56 @@ export default function Page() {
       {toastMsg && (
         <Toast message={toastMsg} variant="success" onClose={() => setToastMsg(null)} />
       )}
+      <style jsx>{`
+        .dashboard-cockpit-primary-grid {
+          grid-template-columns: repeat(12, minmax(0, 1fr));
+        }
+        .dashboard-scadenze-card {
+          grid-column: span 8 / span 8;
+          width: 100%;
+          max-width: 760px;
+        }
+        .dashboard-fatture-card {
+          grid-column: span 4 / span 4;
+          min-width: 0;
+        }
+        .dashboard-fatture-card :global(a) {
+          height: 100%;
+        }
+        .dashboard-scadenze-shell {
+          width: 100%;
+          max-width: 590px;
+          margin: 0 auto;
+        }
+        .dashboard-scadenze-breakdown {
+          justify-items: start;
+        }
+        @media (max-width: 960px) {
+          .dashboard-cockpit-primary-grid {
+            grid-template-columns: 1fr;
+          }
+          .dashboard-scadenze-card,
+          .dashboard-fatture-card {
+            grid-column: 1 / -1;
+            max-width: none;
+          }
+          .dashboard-scadenze-body {
+            grid-template-columns: 1fr;
+            gap: 12px;
+          }
+          .dashboard-scadenze-breakdown {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+          }
+        }
+        @media (max-width: 640px) {
+          .dashboard-cockpit-frame {
+            padding: 10px;
+          }
+          .dashboard-scadenze-breakdown {
+            grid-template-columns: 1fr;
+          }
+        }
+      `}</style>
     </div>
   );
 }
