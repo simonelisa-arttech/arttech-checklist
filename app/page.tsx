@@ -1740,24 +1740,11 @@ export default function Page() {
                   }}
                 >
                   <div
-                    className="dashboard-scadenze-shell"
-                    style={{
-                      display: "grid",
-                      gap: 6,
-                      height: "100%",
-                      gridTemplateRows: "auto 1fr",
-                    }}
-                    >
+                    className="dashboard-scadenze-shell grid h-full grid-rows-[auto_1fr] gap-2"
+                  >
                       <div
-                        className="dashboard-scadenze-header"
-                        style={{
-                          display: "flex",
-                          flexWrap: "wrap",
-                          gap: 10,
-                          alignItems: "center",
-                          justifyContent: "flex-start",
-                        }}
-                    >
+                        className="dashboard-scadenze-header flex flex-wrap items-center justify-between gap-3"
+                      >
                       <Link
                         href={buildScadenzeLink(scadenzePeriodDays)}
                         style={{
@@ -1772,15 +1759,7 @@ export default function Page() {
                         SCADENZE IN ARRIVO
                       </Link>
                       <div
-                        className="dashboard-scadenze-range"
-                        style={{
-                          display: "inline-flex",
-                          padding: 3,
-                          borderRadius: 999,
-                          border: "1px solid #fcd34d",
-                          background: "rgba(255,255,255,0.8)",
-                          gap: 4,
-                        }}
+                        className="dashboard-scadenze-range inline-flex gap-1 rounded-full border border-[#fcd34d] bg-[rgba(255,255,255,0.8)] p-[3px]"
                       >
                         {([7, 15, 30] as const).map((days) => {
                           const active = scadenzePeriodDays === days;
@@ -1807,25 +1786,10 @@ export default function Page() {
                       </div>
                     </div>
                     <div
-                      className="dashboard-scadenze-body"
-                      style={{
-                        display: "grid",
-                        gridTemplateColumns: "1fr",
-                        gap: 8,
-                        alignItems: "start",
-                        minHeight: 0,
-                      }}
+                      className="dashboard-scadenze-body grid min-h-0 grid-cols-[minmax(150px,168px)_minmax(0,1fr)] items-start gap-x-5 gap-y-2"
                     >
                       <div
-                        className="dashboard-scadenze-total"
-                        style={{
-                          display: "grid",
-                          gap: 4,
-                          minWidth: 0,
-                          alignContent: "center",
-                          justifyItems: "center",
-                          textAlign: "center",
-                        }}
+                        className="dashboard-scadenze-total flex min-w-0 flex-col items-start justify-center gap-1 text-left"
                       >
                         <div
                           style={{
@@ -1839,20 +1803,12 @@ export default function Page() {
                         <div style={{ fontSize: 13, fontWeight: 700 }}>
                           Totale entro {scadenzePeriodDays} giorni
                         </div>
-                        <div style={shortcutCardBadgeStyle}>
+                        <div style={{ ...shortcutCardBadgeStyle, justifyContent: "flex-start" }}>
                           (Scadute non gestite: {selectedScadenzeSummary.overdueCount})
                         </div>
                       </div>
                       <div
-                        className="dashboard-scadenze-breakdown"
-                        style={{
-                          display: "grid",
-                          gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
-                          gap: 8,
-                          fontSize: 12,
-                          fontWeight: 700,
-                          minWidth: 0,
-                        }}
+                        className="dashboard-scadenze-breakdown grid min-w-0 grid-cols-2 gap-x-4 gap-y-2 text-[12px] font-bold"
                       >
                         <div style={{ whiteSpace: "nowrap" }}>Garanzie: {selectedScadenzeSummary.breakdown.garanzie}</div>
                         <div style={{ whiteSpace: "nowrap" }}>Licenze: {selectedScadenzeSummary.breakdown.licenze}</div>
@@ -3185,7 +3141,7 @@ export default function Page() {
         }
         .dashboard-scadenze-card {
           width: 100%;
-          max-width: 450px;
+          max-width: 430px;
         }
         .dashboard-fatture-card {
           width: 100%;
@@ -3198,11 +3154,8 @@ export default function Page() {
         }
         .dashboard-scadenze-shell {
           width: 100%;
-          max-width: 410px;
+          max-width: 392px;
           margin: 0 auto;
-        }
-        .dashboard-scadenze-header {
-          justify-content: space-between;
         }
         .dashboard-scadenze-breakdown {
           justify-items: start;
