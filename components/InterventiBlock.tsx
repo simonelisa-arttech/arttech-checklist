@@ -773,7 +773,7 @@ export default function InterventiBlock({
               }}
             >
               <div>
-                <div style={{ fontWeight: 700 }}>Fatture da emettere</div>
+                <div style={{ fontWeight: 700 }}>Fatture da emettere x interventi</div>
                 <div style={{ fontSize: 12, opacity: 0.7 }}>{fattureDaEmettere.length} interventi</div>
               </div>
               <button
