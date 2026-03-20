@@ -832,11 +832,10 @@ export default function Page() {
     background: "rgba(255,255,255,0.62)",
     color: "inherit",
     textDecoration: "none",
-    minWidth: 180,
+    width: "100%",
+    minWidth: 0,
     minHeight: cockpitCardHeight,
     height: cockpitCardHeight,
-    flex: "1 1 190px",
-    maxWidth: 220,
   };
   const shortcutCardTitleStyle = {
     fontSize: 12,
@@ -895,7 +894,7 @@ export default function Page() {
           <div style={shortcutCardNumberStyle}>{count}</div>
         </div>
         <div style={shortcutCardBadgeStyle}>
-          {secondaryLabel ? `${secondaryLabel}: ${secondaryValue ?? 0}` : "\u00A0"}
+          {secondaryLabel ? `(${secondaryLabel}: ${secondaryValue ?? 0})` : "\u00A0"}
         </div>
       </Link>
     );
@@ -1716,13 +1715,13 @@ export default function Page() {
               color: "#92400e",
             }}
           >
-            <div style={{ display: "grid", gap: 10 }}>
+            <div className="dashboard-cockpit-inner" style={{ display: "grid", gap: 12 }}>
               <div
                 className="dashboard-cockpit-primary-grid"
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "repeat(12, minmax(0, 1fr))",
-                  gap: 10,
+                  gridTemplateColumns: "minmax(0, 1.85fr) minmax(250px, 0.9fr)",
+                  gap: 12,
                   alignItems: "stretch",
                 }}
               >
@@ -1841,7 +1840,7 @@ export default function Page() {
                           Totale entro {scadenzePeriodDays} giorni
                         </div>
                         <div style={shortcutCardBadgeStyle}>
-                          Scadute non gestite: {selectedScadenzeSummary.overdueCount}
+                          (Scadute non gestite: {selectedScadenzeSummary.overdueCount})
                         </div>
                       </div>
                       <div
@@ -1872,10 +1871,11 @@ export default function Page() {
                 </div>
               </div>
               <div
+                className="dashboard-cockpit-kpi-grid"
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-                  gap: 10,
+                  gridTemplateColumns: "repeat(5, minmax(0, 1fr))",
+                  gap: 12,
                   alignItems: "stretch",
                 }}
               >
@@ -3171,16 +3171,25 @@ export default function Page() {
         <Toast message={toastMsg} variant="success" onClose={() => setToastMsg(null)} />
       )}
       <style jsx>{`
+        .dashboard-cockpit-frame {
+          width: 100%;
+          max-width: 1020px;
+          margin: 0 auto;
+        }
+        .dashboard-cockpit-inner {
+          width: 100%;
+        }
         .dashboard-cockpit-primary-grid {
-          grid-template-columns: repeat(12, minmax(0, 1fr));
+          grid-template-columns: minmax(0, 1.85fr) minmax(250px, 0.9fr);
         }
         .dashboard-scadenze-card {
-          grid-column: span 8 / span 8;
           width: 100%;
-          max-width: 760px;
+          max-width: 630px;
         }
         .dashboard-fatture-card {
-          grid-column: span 4 / span 4;
+          width: 100%;
+          max-width: 290px;
+          justify-self: end;
           min-width: 0;
         }
         .dashboard-fatture-card :global(a) {
@@ -3194,14 +3203,23 @@ export default function Page() {
         .dashboard-scadenze-breakdown {
           justify-items: start;
         }
+        .dashboard-cockpit-kpi-grid :global(a) {
+          max-width: none;
+        }
         @media (max-width: 960px) {
+          .dashboard-cockpit-frame {
+            max-width: none;
+          }
           .dashboard-cockpit-primary-grid {
             grid-template-columns: 1fr;
           }
+          .dashboard-cockpit-kpi-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+          }
           .dashboard-scadenze-card,
           .dashboard-fatture-card {
-            grid-column: 1 / -1;
             max-width: none;
+            justify-self: stretch;
           }
           .dashboard-scadenze-body {
             grid-template-columns: 1fr;
@@ -3214,6 +3232,9 @@ export default function Page() {
         @media (max-width: 640px) {
           .dashboard-cockpit-frame {
             padding: 10px;
+          }
+          .dashboard-cockpit-kpi-grid {
+            grid-template-columns: 1fr;
           }
           .dashboard-scadenze-breakdown {
             grid-template-columns: 1fr;
