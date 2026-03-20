@@ -1720,7 +1720,7 @@ export default function Page() {
                 className="dashboard-cockpit-primary-grid"
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "max-content minmax(250px, 290px)",
+                  gridTemplateColumns: "max-content 220px",
                   gap: 12,
                   alignItems: "stretch",
                   justifyContent: "space-between",
@@ -1786,10 +1786,10 @@ export default function Page() {
                       </div>
                     </div>
                     <div
-                      className="dashboard-scadenze-body grid min-h-0 grid-cols-[minmax(150px,168px)_minmax(0,1fr)] items-start gap-x-5 gap-y-2"
+                      className="dashboard-scadenze-body grid min-h-0 grid-cols-[minmax(150px,168px)_minmax(0,1fr)] items-start gap-x-5 gap-y-3"
                     >
                       <div
-                        className="dashboard-scadenze-total flex min-w-0 flex-col items-start justify-center gap-1 text-left"
+                        className="dashboard-scadenze-total flex min-w-0 flex-col items-center justify-center gap-1 text-center"
                       >
                         <div
                           style={{
@@ -1803,12 +1803,12 @@ export default function Page() {
                         <div style={{ fontSize: 13, fontWeight: 700 }}>
                           Totale entro {scadenzePeriodDays} giorni
                         </div>
-                        <div style={{ ...shortcutCardBadgeStyle, justifyContent: "flex-start" }}>
+                        <div style={shortcutCardBadgeStyle}>
                           (Scadute non gestite: {selectedScadenzeSummary.overdueCount})
                         </div>
                       </div>
                       <div
-                        className="dashboard-scadenze-breakdown grid min-w-0 grid-cols-2 gap-x-4 gap-y-2 text-[12px] font-bold"
+                        className="dashboard-scadenze-breakdown grid min-w-0 grid-cols-2 gap-x-4 gap-y-3 pt-2 text-[13px] font-bold"
                       >
                         <div style={{ whiteSpace: "nowrap" }}>Garanzie: {selectedScadenzeSummary.breakdown.garanzie}</div>
                         <div style={{ whiteSpace: "nowrap" }}>Licenze: {selectedScadenzeSummary.breakdown.licenze}</div>
@@ -3145,7 +3145,7 @@ export default function Page() {
         }
         .dashboard-fatture-card {
           width: 100%;
-          max-width: 290px;
+          max-width: 220px;
           justify-self: end;
           min-width: 0;
         }
