@@ -1,5 +1,23 @@
 # AGENT MEMORY — Snapshot Operativo
 
+## Snapshot 2026-03-20 - Interventi checklist allineati a saas_interventi
+- `app/checklists/[id]/page.tsx`
+  - il blocco `Interventi` progetto usa ora query diretta `dbFrom("saas_interventi")`
+  - filtro corretto della scheda progetto: `.eq("checklist_id", checklistId)`
+  - il payload letto resta il dataset reale interventi con:
+    - ticket
+    - descrizione
+    - stato intervento
+    - fatturazione
+    - metadata checklist
+- Causa reale del bug:
+  - nel load checklist era presente una select su `saas_interventi` filtrata solo per `contratto_id`
+  - il wrapper `/api/db` per `saas_interventi` richiede almeno uno tra `id`, `checklist_id`, `cliente_id`, `cliente`
+  - questo generava l'errore `Missing required eq filter...`
+- Regola operativa:
+  - per la scheda progetto/checklist, usare sempre `checklist_id` come chiave primaria di lettura degli interventi reali
+  - non introdurre dataset paralleli o derived state separati dall'origine `saas_interventi`
+
 ## Snapshot 2026-03-20 - Import progetti CSV esteso
 - `app/api/import/progetti-csv/route.ts`
   - continua a usare import `multipart/form-data` + file CSV `;`

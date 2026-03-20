@@ -1545,37 +1545,31 @@ function buildFormData(c: Checklist): FormData {
   }
 
   async function loadProjectInterventi(checklistId: string) {
-    let res: any = await db<any[]>({
-      table: "saas_interventi",
-      op: "select",
-      select:
-        "id, cliente, checklist_id, data, data_tassativa, ticket_no, descrizione, incluso, proforma, codice_magazzino, fatturazione_stato, stato_intervento, esito_fatturazione, numero_fattura, fatturato_il, note, note_tecniche, created_at",
-      filter: { checklist_id: checklistId },
-      order: [{ col: "data", asc: false }],
-    });
+    let res = await dbFrom("saas_interventi")
+      .select(
+        "id, cliente, checklist_id, contratto_id, ticket_no, data, data_tassativa, descrizione, incluso, proforma, codice_magazzino, fatturazione_stato, stato_intervento, esito_fatturazione, chiuso_il, chiuso_da_operatore, alert_fattura_last_sent_at, alert_fattura_last_sent_by, numero_fattura, fatturato_il, note, note_tecniche, created_at, checklist:checklists(id, nome_checklist, proforma, magazzino_importazione)"
+      )
+      .eq("checklist_id", checklistId)
+      .order("data", { ascending: false });
 
     if (res.error && String(res.error.message || "").toLowerCase().includes("data_tassativa")) {
-      res = await db<any[]>({
-        table: "saas_interventi",
-        op: "select",
-        select:
-          "id, cliente, checklist_id, data, ticket_no, descrizione, incluso, proforma, codice_magazzino, fatturazione_stato, stato_intervento, esito_fatturazione, numero_fattura, fatturato_il, note, note_tecniche, created_at",
-        filter: { checklist_id: checklistId },
-        order: [{ col: "data", asc: false }],
-      });
+      res = await dbFrom("saas_interventi")
+        .select(
+          "id, cliente, checklist_id, contratto_id, ticket_no, data, descrizione, incluso, proforma, codice_magazzino, fatturazione_stato, stato_intervento, esito_fatturazione, chiuso_il, chiuso_da_operatore, alert_fattura_last_sent_at, alert_fattura_last_sent_by, numero_fattura, fatturato_il, note, note_tecniche, created_at, checklist:checklists(id, nome_checklist, proforma, magazzino_importazione)"
+        )
+        .eq("checklist_id", checklistId)
+        .order("data", { ascending: false });
       if (!res.error) {
         res.data = ((res.data || []) as any[]).map((r) => ({ ...r, data_tassativa: null }));
       }
     }
     if (res.error && String(res.error.message || "").toLowerCase().includes("ticket_no")) {
-      res = await db<any[]>({
-        table: "saas_interventi",
-        op: "select",
-        select:
-          "id, cliente, checklist_id, data, data_tassativa, descrizione, incluso, proforma, codice_magazzino, fatturazione_stato, stato_intervento, esito_fatturazione, numero_fattura, fatturato_il, note, note_tecniche, created_at",
-        filter: { checklist_id: checklistId },
-        order: [{ col: "data", asc: false }],
-      });
+      res = await dbFrom("saas_interventi")
+        .select(
+          "id, cliente, checklist_id, contratto_id, data, data_tassativa, descrizione, incluso, proforma, codice_magazzino, fatturazione_stato, stato_intervento, esito_fatturazione, chiuso_il, chiuso_da_operatore, alert_fattura_last_sent_at, alert_fattura_last_sent_by, numero_fattura, fatturato_il, note, note_tecniche, created_at, checklist:checklists(id, nome_checklist, proforma, magazzino_importazione)"
+        )
+        .eq("checklist_id", checklistId)
+        .order("data", { ascending: false });
       if (!res.error) {
         res.data = ((res.data || []) as any[]).map((r) => ({ ...r, ticket_no: null }));
       }
@@ -3259,13 +3253,12 @@ function buildFormData(c: Checklist): FormData {
       }
 
       if (activeContratto?.id) {
-        const { data: includedRows } = await db<any[]>({
-          table: "saas_interventi",
-          op: "select",
-          select: "id, contratto_id, incluso",
-          filter: { contratto_id: activeContratto.id, incluso: true } as any,
-          limit: 1000,
-        });
+        const { data: includedRows } = await dbFrom("saas_interventi")
+          .select("id, contratto_id, incluso")
+          .eq("checklist_id", id)
+          .eq("contratto_id", activeContratto.id)
+          .eq("incluso", true)
+          .limit(1000);
         setInterventiInclusiUsati((includedRows || []).length);
       } else {
         setInterventiInclusiUsati(0);

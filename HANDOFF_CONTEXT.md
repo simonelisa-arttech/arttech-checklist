@@ -2,6 +2,22 @@
 
 ## Aggiornamento rapido (19 marzo 2026)
 
+- `fix: allineamento blocco interventi checklist con saas_interventi` in corso locale.
+- Causa reale del disallineamento:
+  - `app/checklists/[id]/page.tsx` caricava gli interventi progetto tramite il wrapper `db(...)` su `/api/db`
+  - nello stesso flow faceva anche una select su `saas_interventi` filtrata solo per `contratto_id`
+  - il wrapper per `saas_interventi` richiede almeno uno tra `id`, `checklist_id`, `cliente_id`, `cliente`
+  - la query con solo `contratto_id` produceva `Missing required eq filter: one of [id, checklist_id, cliente_id, cliente]`
+- Fix applicato:
+  - `loadProjectInterventi(checklistId)` legge ora direttamente da `dbFrom("saas_interventi")`
+  - filtro reale usato per la scheda progetto: `.eq("checklist_id", checklistId)`
+  - stessa source of truth dominio usata dalla pagina admin: tabella reale `saas_interventi`
+  - il conteggio `interventi inclusi usati` usa ora anch'esso `checklist_id + contratto_id`
+- Effetto:
+  - la checklist/progetto mostra gli stessi interventi reali associati a quella checklist che alimentano anche `/admin/interventi-da-chiudere`
+  - il blocco `Interventi` continua a mostrare ticket, descrizione, stato, fatturazione e azioni dal dataset reale
+  - nessuna modifica alla logica admin
+
 - `feat: import progetti CSV esteso` in corso locale.
 - `app/api/import/progetti-csv/route.ts`
   - mantiene parsing CSV `;` compatibile ma ora supporta anche i campi:
