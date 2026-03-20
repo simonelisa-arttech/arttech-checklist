@@ -18,6 +18,8 @@ type ImportWarning = {
 
 type ProjectImportMode = "skip" | "update";
 
+type CatalogLookup = Map<string, { codice: string; descrizione: string | null }>;
+
 function getAccessTokenFromCookieHeader(cookieHeader: string | null) {
   if (!cookieHeader) return "";
   const raw = cookieHeader
@@ -149,6 +151,16 @@ function parseOptionalDate(value: string | undefined) {
   return trimmed;
 }
 
+function parseOptionalPositiveInteger(value: string | undefined, fieldLabel: string) {
+  const trimmed = String(value || "").trim();
+  if (!trimmed) return null;
+  const parsed = Number(trimmed.replace(",", "."));
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    throw new Error(`${fieldLabel} non valido: ${trimmed}`);
+  }
+  return parsed;
+}
+
 function parseBooleanLike(value: FormDataEntryValue | null) {
   const raw = String(value || "").trim().toLowerCase();
   return raw === "1" || raw === "true" || raw === "yes" || raw === "on";
@@ -162,10 +174,150 @@ function normalizeTextKey(value: string) {
     .replace(/[^\p{L}\p{N}\s]/gu, "");
 }
 
+function normalizeCatalogCode(value: string) {
+  return String(value || "").trim().toUpperCase();
+}
+
+function splitMultiValue(value: string | undefined) {
+  return Array.from(
+    new Set(
+      String(value || "")
+        .split(/[\n,|]+/g)
+        .map((entry) => entry.trim())
+        .filter(Boolean)
+    )
+  );
+}
+
+function splitSerials(value: string | undefined) {
+  return splitMultiValue(value);
+}
+
 function isValidEmail(value: string | undefined) {
   const trimmed = String(value || "").trim();
   if (!trimmed) return true;
   return trimmed.includes("@");
+}
+
+function mergeNoteSections(...values: Array<string | null | undefined>) {
+  const out = values
+    .map((value) => String(value || "").trim())
+    .filter(Boolean);
+  return out.length > 0 ? out.join("\n") : null;
+}
+
+function isColumnMissingError(error: any, column: string) {
+  const msg = `${error?.message || ""}`.toLowerCase();
+  const details = `${error?.details || ""}`.toLowerCase();
+  const hint = `${error?.hint || ""}`.toLowerCase();
+  const code = `${error?.code || ""}`.toLowerCase();
+  const needle = column.toLowerCase();
+  return (
+    code === "pgrst204" ||
+    msg.includes(`'${needle}'`) ||
+    msg.includes(`"${needle}"`) ||
+    msg.includes(`${needle} does not exist`) ||
+    details.includes(needle) ||
+    hint.includes(needle)
+  );
+}
+
+function stripUnsupportedChecklistColumns(
+  payload: Record<string, any>,
+  error: any,
+  strippedColumns: Set<string>
+) {
+  const optionalColumns = Object.keys(payload).filter((key) => payload[key] !== undefined);
+  const matched = optionalColumns.find((column) => isColumnMissingError(error, column));
+  if (!matched) return false;
+  delete payload[matched];
+  strippedColumns.add(matched);
+  return true;
+}
+
+async function insertChecklistWithFallback(
+  supabaseAdmin: ReturnType<typeof getSupabaseAdmin>,
+  payload: Record<string, any>
+) {
+  const workingPayload = { ...payload };
+  const strippedColumns = new Set<string>();
+
+  for (;;) {
+    const { data, error } = await supabaseAdmin
+      .from("checklists")
+      .insert(workingPayload)
+      .select("id")
+      .single();
+    if (!error) {
+      return {
+        id: String(data?.id || ""),
+        strippedColumns,
+      };
+    }
+    if (!stripUnsupportedChecklistColumns(workingPayload, error, strippedColumns)) {
+      throw error;
+    }
+  }
+}
+
+async function updateChecklistWithFallback(
+  supabaseAdmin: ReturnType<typeof getSupabaseAdmin>,
+  checklistId: string,
+  payload: Record<string, any>
+) {
+  const workingPayload = { ...payload };
+  const strippedColumns = new Set<string>();
+
+  for (;;) {
+    const { error } = await supabaseAdmin
+      .from("checklists")
+      .update(workingPayload)
+      .eq("id", checklistId);
+    if (!error) {
+      return { strippedColumns };
+    }
+    if (!stripUnsupportedChecklistColumns(workingPayload, error, strippedColumns)) {
+      throw error;
+    }
+  }
+}
+
+async function loadCatalogLookup(supabaseAdmin: ReturnType<typeof getSupabaseAdmin>) {
+  const { data, error } = await supabaseAdmin
+    .from("catalog_items")
+    .select("codice, descrizione, attivo")
+    .eq("attivo", true);
+  if (error) throw error;
+
+  const lookup: CatalogLookup = new Map();
+  for (const row of (data || []) as Array<{ codice?: string | null; descrizione?: string | null }>) {
+    const code = normalizeCatalogCode(String(row?.codice || ""));
+    if (!code) continue;
+    lookup.set(code, {
+      codice: String(row?.codice || "").trim(),
+      descrizione: row?.descrizione ? String(row.descrizione).trim() : null,
+    });
+  }
+  return lookup;
+}
+
+function collectCatalogWarnings(
+  warnings: ImportWarning[],
+  rowNumber: number,
+  catalogLookup: CatalogLookup,
+  input: Array<{ field: string; values: string[] }>
+) {
+  for (const entry of input) {
+    for (const rawValue of entry.values) {
+      const normalized = normalizeCatalogCode(rawValue);
+      if (!normalized) continue;
+      if (catalogLookup.has(normalized)) continue;
+      warnings.push({
+        row: rowNumber,
+        reason: `${entry.field}: codice catalogo non trovato "${rawValue}"`,
+      });
+    }
+  }
 }
 
 async function ensureClienteAnagraficaRow(
@@ -268,6 +420,151 @@ async function existsActiveChecklistDuplicate(
   return (data || []).length > 0;
 }
 
+async function insertAssetSerialsCompatible(
+  supabaseAdmin: ReturnType<typeof getSupabaseAdmin>,
+  checklistId: string,
+  moduliLed: string[],
+  elettroniche: string[]
+) {
+  const wanted = [
+    ...elettroniche.map((seriale) => ({
+      checklist_id: checklistId,
+      tipo: "CONTROLLO",
+      seriale,
+      note: null,
+      device_code: null,
+      device_descrizione: null,
+    })),
+    ...moduliLed.map((seriale) => ({
+      checklist_id: checklistId,
+      tipo: "MODULO_LED",
+      seriale,
+      note: null,
+      device_code: null,
+      device_descrizione: null,
+    })),
+  ];
+  if (!wanted.length) return;
+
+  const { data: existingRows, error: existingErr } = await supabaseAdmin
+    .from("asset_serials")
+    .select("tipo, seriale")
+    .eq("checklist_id", checklistId);
+  if (existingErr) throw existingErr;
+
+  const existing = new Set(
+    ((existingRows || []) as Array<{ tipo?: string | null; seriale?: string | null }>).map(
+      (row) => `${String(row?.tipo || "").trim().toUpperCase()}::${String(row?.seriale || "").trim().toUpperCase()}`
+    )
+  );
+
+  const payload = wanted.filter((row) => {
+    const key = `${String(row.tipo).trim().toUpperCase()}::${String(row.seriale).trim().toUpperCase()}`;
+    if (existing.has(key)) return false;
+    existing.add(key);
+    return true;
+  });
+  if (!payload.length) return;
+
+  const { error } = await supabaseAdmin.from("asset_serials").insert(payload);
+  if (error) throw error;
+}
+
+async function insertLicensesCompatible(
+  supabaseAdmin: ReturnType<typeof getSupabaseAdmin>,
+  checklistId: string,
+  licenses: string[]
+) {
+  if (!licenses.length) return;
+
+  const { data: existingRows, error: existingErr } = await supabaseAdmin
+    .from("licenses")
+    .select("tipo")
+    .eq("checklist_id", checklistId);
+  if (existingErr) throw existingErr;
+
+  const existing = new Set(
+    ((existingRows || []) as Array<{ tipo?: string | null }>).map((row) =>
+      normalizeCatalogCode(String(row?.tipo || ""))
+    )
+  );
+
+  const payload = licenses
+    .map((tipo) => tipo.trim())
+    .filter(Boolean)
+    .filter((tipo) => {
+      const key = normalizeCatalogCode(tipo);
+      if (!key || existing.has(key)) return false;
+      existing.add(key);
+      return true;
+    })
+    .map((tipo) => ({
+      checklist_id: checklistId,
+      tipo,
+      scadenza: null,
+      stato: "attiva",
+      note: "Import CSV progetti",
+    }));
+
+  if (!payload.length) return;
+
+  const { error } = await supabaseAdmin.from("licenses").insert(payload);
+  if (error) throw error;
+}
+
+async function insertChecklistItemsCompatible(
+  supabaseAdmin: ReturnType<typeof getSupabaseAdmin>,
+  checklistId: string,
+  items: string[],
+  catalogLookup: CatalogLookup
+) {
+  if (!items.length) return;
+
+  const { data: existingRows, error: existingErr } = await supabaseAdmin
+    .from("checklist_items")
+    .select("codice, descrizione")
+    .eq("checklist_id", checklistId);
+  if (existingErr) throw existingErr;
+
+  const existing = new Set(
+    ((existingRows || []) as Array<{ codice?: string | null; descrizione?: string | null }>).map((row) => {
+      const code = normalizeCatalogCode(String(row?.codice || ""));
+      const description = normalizeTextKey(String(row?.descrizione || ""));
+      return `${code}::${description}`;
+    })
+  );
+
+  const payload: Array<{
+    checklist_id: string;
+    codice: string | null;
+    descrizione: string | null;
+    quantita: number;
+    note: string | null;
+  }> = [];
+
+  for (const rawItem of items) {
+    const normalized = normalizeCatalogCode(rawItem);
+    const catalogItem = normalized ? catalogLookup.get(normalized) : null;
+    const codice = catalogItem?.codice || null;
+    const descrizione = catalogItem?.descrizione || rawItem.trim() || null;
+    const dedupeKey = `${normalizeCatalogCode(codice || "")}::${normalizeTextKey(descrizione || "")}`;
+    if (!descrizione || existing.has(dedupeKey)) continue;
+    existing.add(dedupeKey);
+    payload.push({
+      checklist_id: checklistId,
+      codice,
+      descrizione,
+      quantita: 1,
+      note: "Import CSV accessori_ricambi",
+    });
+  }
+
+  if (!payload.length) return;
+
+  const { error } = await supabaseAdmin.from("checklist_items").insert(payload);
+  if (error) throw error;
+}
+
 export async function POST(request: Request) {
   if (!(await assertAuthenticated(request))) {
     return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
@@ -301,6 +598,9 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: false, error: "CSV vuoto o senza righe valide" }, { status: 400 });
   }
 
+  const catalogLookup = await loadCatalogLookup(supabaseAdmin);
+  const seenProjectCodes = new Set<string>();
+
   let inserted = 0;
   let skipped = 0;
   const errors: ImportError[] = [];
@@ -313,13 +613,39 @@ export async function POST(request: Request) {
     try {
       const nomeProgetto = getRowValue(row, "nome_progetto", "nome_checklist");
       const clienteInput = getRowValue(row, "cliente");
-      const codiceProgetto = getRowValue(row, "codice_progetto", "proforma");
+      const codiceProgetto = getRowValue(row, "codice_progetto");
+      const csvProforma = getRowValue(row, "proforma");
+      const effectiveProjectCode = codiceProgetto || csvProforma;
       const tipo = parseOptionalUpper(getRowValue(row, "tipo"));
       const stato = parseOptionalUpper(getRowValue(row, "stato", "stato_progetto"));
       const dataPrevista = parseOptionalDate(getRowValue(row, "data_prevista"));
       const dataTassativa = parseOptionalDate(getRowValue(row, "data_tassativa"));
-      const note = parseOptionalText(getRowValue(row, "note"));
+      const dataInstallazioneReale = parseOptionalDate(getRowValue(row, "data_installazione_reale"));
+      const saasScadenza = parseOptionalDate(getRowValue(row, "saas_scadenza"));
+      const garanziaScadenza = parseOptionalDate(getRowValue(row, "garanzia_scadenza"));
       const emailCliente = parseOptionalText(getRowValue(row, "email", "email_cliente"));
+      const indirizzo = parseOptionalText(getRowValue(row, "indirizzo"));
+      const referenteCliente = parseOptionalText(getRowValue(row, "referente_cliente"));
+      const contattoReferente = parseOptionalText(getRowValue(row, "contatto_referente"));
+      const codiceMagazzino = parseOptionalText(getRowValue(row, "codice_magazzino"));
+      const linkDriveMagazzino = parseOptionalText(getRowValue(row, "link_drive_magazzino"));
+      const descrizioneImpianto = parseOptionalText(getRowValue(row, "descrizione_impianto"));
+      const passo = parseOptionalText(getRowValue(row, "passo"));
+      const quantitaImpianti = parseOptionalPositiveInteger(
+        getRowValue(row, "quantita_impianti"),
+        "quantita_impianti"
+      );
+      const dimensioni = parseOptionalText(getRowValue(row, "dimensioni"));
+      const tipoImpianto = parseOptionalUpper(getRowValue(row, "tipo_impianto"));
+      const pianoSaas = parseOptionalText(getRowValue(row, "piano_saas"));
+      const serviziSaas = splitMultiValue(getRowValue(row, "servizio_saas_aggiuntivo"));
+      const tipoStruttura = parseOptionalText(getRowValue(row, "tipo_struttura"));
+      const saasNoteInput = parseOptionalText(getRowValue(row, "saas_note"));
+      const licenze = splitMultiValue(getRowValue(row, "licenze"));
+      const accessoriRicambi = splitMultiValue(getRowValue(row, "accessori_ricambi"));
+      const serialiControllo = splitSerials(getRowValue(row, "seriali_elettroniche_controllo", "seriali_elettroniche"));
+      const serialiModuliLed = splitSerials(getRowValue(row, "seriali_moduli_led"));
+      const legacyNote = parseOptionalText(getRowValue(row, "note"));
 
       if (!nomeProgetto || !clienteInput) {
         throw new Error("campi obbligatori mancanti: nome_progetto / cliente");
@@ -327,6 +653,36 @@ export async function POST(request: Request) {
 
       if (emailCliente && !isValidEmail(emailCliente)) {
         throw new Error(`email non valida: ${emailCliente}`);
+      }
+
+      if (effectiveProjectCode) {
+        const normalizedCode = normalizeCatalogCode(effectiveProjectCode);
+        if (seenProjectCodes.has(normalizedCode)) {
+          throw new Error(`codice_progetto duplicato nel CSV: ${effectiveProjectCode}`);
+        }
+        seenProjectCodes.add(normalizedCode);
+      }
+
+      collectCatalogWarnings(warnings, rowNumber, catalogLookup, [
+        { field: "piano_saas", values: pianoSaas ? [pianoSaas] : [] },
+        { field: "servizio_saas_aggiuntivo", values: serviziSaas },
+        { field: "tipo_struttura", values: tipoStruttura ? [tipoStruttura] : [] },
+        { field: "licenze", values: licenze },
+        { field: "accessori_ricambi", values: accessoriRicambi },
+      ]);
+
+      if (serviziSaas.length > 1) {
+        warnings.push({
+          row: rowNumber,
+          reason: "servizio_saas_aggiuntivo contiene più valori: il primo va in saas_tipo, gli altri restano in saas_note",
+        });
+      }
+
+      if (codiceProgetto && csvProforma && codiceProgetto.trim() !== csvProforma.trim()) {
+        warnings.push({
+          row: rowNumber,
+          reason: "codice_progetto e proforma differiscono: per compatibilità il codice progetto resta il riferimento univoco salvato su proforma",
+        });
       }
 
       const clienteRow = await ensureClienteAnagraficaRow(supabaseAdmin, clienteInput);
@@ -337,28 +693,56 @@ export async function POST(request: Request) {
         warnings.push({ row: rowNumber, reason: similarWarning });
       }
 
-      const payload = {
+      const payloadNote = mergeNoteSections(
+        legacyNote,
+        csvProforma && csvProforma !== effectiveProjectCode ? `Proforma commerciale: ${csvProforma}` : null,
+        referenteCliente || contattoReferente
+          ? `Referente cliente: ${[referenteCliente, contattoReferente].filter(Boolean).join(" | ")}`
+          : null,
+        serviziSaas.length > 1 ? `Servizi SaaS aggiuntivi extra: ${serviziSaas.slice(1).join(", ")}` : null
+      );
+
+      const payload: Record<string, any> = {
         nome_checklist: nomeProgetto.trim(),
         cliente,
         cliente_id: clienteRow?.id || null,
-        proforma: codiceProgetto ? codiceProgetto.trim() : null,
+        proforma: effectiveProjectCode ? effectiveProjectCode.trim() : null,
         noleggio_vendita: tipo,
         stato_progetto: stato,
         data_prevista: dataPrevista,
         data_tassativa: dataTassativa,
-        note,
+        data_installazione_reale: dataInstallazioneReale,
+        magazzino_importazione: codiceMagazzino,
+        magazzino_drive_url: linkDriveMagazzino,
+        impianto_indirizzo: indirizzo,
+        impianto_descrizione: descrizioneImpianto,
+        passo,
+        impianto_quantita: quantitaImpianti,
+        dimensioni,
+        tipo_impianto: tipoImpianto,
+        saas_piano: pianoSaas,
+        saas_tipo: serviziSaas[0] || null,
+        saas_scadenza: saasScadenza,
+        saas_note: mergeNoteSections(
+          saasNoteInput,
+          serviziSaas.length > 1 ? `Extra servizi: ${serviziSaas.slice(1).join(", ")}` : null
+        ),
+        garanzia_scadenza: garanziaScadenza,
+        tipo_struttura: tipoStruttura,
+        note: payloadNote,
       };
 
-      if (codiceProgetto) {
-        const existingByCode = await findChecklistByCodiceProgetto(supabaseAdmin, codiceProgetto.trim());
+      let checklistId = "";
+      let checklistStrippedColumns = new Set<string>();
+
+      if (effectiveProjectCode) {
+        const existingByCode = await findChecklistByCodiceProgetto(supabaseAdmin, effectiveProjectCode.trim());
         if (existingByCode?.id) {
           if (onConflict === "update") {
+            checklistId = existingByCode.id;
             if (!dryRun) {
-              const { error } = await supabaseAdmin
-                .from("checklists")
-                .update(payload)
-                .eq("id", existingByCode.id);
-              if (error) throw error;
+              const result = await updateChecklistWithFallback(supabaseAdmin, existingByCode.id, payload);
+              checklistStrippedColumns = result.strippedColumns;
             }
             warnings.push({
               row: rowNumber,
@@ -368,31 +752,79 @@ export async function POST(request: Request) {
             skipped += 1;
             warnings.push({
               row: rowNumber,
-              reason: `codice_progetto già esistente: ${codiceProgetto.trim()}`,
+              reason: `codice_progetto già esistente: ${effectiveProjectCode.trim()}`,
             });
+            continue;
           }
-          continue;
         }
       }
 
-      const duplicate = await existsActiveChecklistDuplicate(supabaseAdmin, payload.nome_checklist, cliente);
-      if (duplicate) {
-        skipped += 1;
-        errors.push({
+      if (!checklistId) {
+        const duplicate = await existsActiveChecklistDuplicate(supabaseAdmin, payload.nome_checklist, cliente);
+        if (duplicate) {
+          skipped += 1;
+          errors.push({
+            row: rowNumber,
+            reason: "esiste già un progetto attivo con questo nome per questo cliente",
+          });
+          continue;
+        }
+
+        if (dryRun) {
+          inserted += 1;
+          continue;
+        }
+
+        const result = await insertChecklistWithFallback(supabaseAdmin, payload);
+        checklistId = result.id;
+        checklistStrippedColumns = result.strippedColumns;
+        inserted += 1;
+      }
+
+      for (const strippedColumn of checklistStrippedColumns) {
+        warnings.push({
           row: rowNumber,
-          reason: "esiste già un progetto attivo con questo nome per questo cliente",
+          reason: `colonna checklist non disponibile nello schema corrente: ${strippedColumn}`,
         });
-        continue;
       }
 
       if (dryRun) {
-        inserted += 1;
         continue;
       }
 
-      const { error } = await supabaseAdmin.from("checklists").insert(payload);
-      if (error) throw error;
-      inserted += 1;
+      const postImportWarnings: string[] = [];
+
+      try {
+        await insertAssetSerialsCompatible(
+          supabaseAdmin,
+          checklistId,
+          serialiModuliLed,
+          serialiControllo
+        );
+      } catch (err: any) {
+        postImportWarnings.push(`seriali non importati: ${String(err?.message || err)}`);
+      }
+
+      try {
+        await insertLicensesCompatible(supabaseAdmin, checklistId, licenze);
+      } catch (err: any) {
+        postImportWarnings.push(`licenze non importate: ${String(err?.message || err)}`);
+      }
+
+      try {
+        await insertChecklistItemsCompatible(
+          supabaseAdmin,
+          checklistId,
+          accessoriRicambi,
+          catalogLookup
+        );
+      } catch (err: any) {
+        postImportWarnings.push(`accessori/ricambi non importati: ${String(err?.message || err)}`);
+      }
+
+      for (const warning of postImportWarnings) {
+        warnings.push({ row: rowNumber, reason: warning });
+      }
     } catch (err: any) {
       errors.push({
         row: rowNumber,

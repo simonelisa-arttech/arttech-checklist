@@ -2,6 +2,57 @@
 
 ## Aggiornamento rapido (19 marzo 2026)
 
+- `feat: import progetti CSV esteso` in corso locale.
+- `app/api/import/progetti-csv/route.ts`
+  - mantiene parsing CSV `;` compatibile ma ora supporta anche i campi:
+    - `indirizzo`
+    - `referente_cliente`
+    - `contatto_referente`
+    - `codice_magazzino`
+    - `link_drive_magazzino`
+    - `seriali_elettroniche_controllo`
+    - `seriali_moduli_led`
+    - `descrizione_impianto`
+    - `passo`
+    - `quantita_impianti`
+    - `dimensioni`
+    - `tipo_impianto`
+    - `data_installazione_reale`
+    - `piano_saas`
+    - `servizio_saas_aggiuntivo`
+    - `saas_scadenza`
+    - `garanzia_scadenza`
+    - `tipo_struttura`
+    - `saas_note`
+    - `licenze`
+    - `accessori_ricambi`
+    - `proforma`
+  - `dry_run` e `on_conflict=skip|update` restano supportati
+  - warning non bloccanti aggiunti per:
+    - codici catalogo non trovati
+    - seriali/licenze/accessori non importati
+    - colonne `checklists` non presenti nello schema runtime
+- Mapping attuale:
+  - `checklists`:
+    - base progetto + date + stato
+    - impianto (`magazzino_importazione`, `magazzino_drive_url`, `impianto_indirizzo`, `impianto_descrizione`, `passo`, `impianto_quantita`, `dimensioni`, `tipo_impianto`)
+    - SaaS (`saas_piano`, `saas_tipo`, `saas_scadenza`, `saas_note`)
+    - struttura (`tipo_struttura`)
+    - garanzia (`garanzia_scadenza`)
+  - tabelle correlate:
+    - `asset_serials` per `seriali_*`
+    - `licenses` per `licenze`
+    - `checklist_items` per `accessori_ricambi`
+- Nota compatibilita':
+  - non esiste ancora una colonna dedicata per `codice_progetto`
+  - per non rompere la logica attuale, il riferimento univoco continua a usare `checklists.proforma`
+  - se nel CSV sono presenti sia `codice_progetto` sia `proforma` e differiscono:
+    - `codice_progetto` resta il valore chiave usato su `proforma`
+    - la proforma commerciale viene preservata in `note`
+- Limite noto:
+  - `servizio_saas_aggiuntivo` supporta CSV multipli ma `checklists.saas_tipo` accetta un solo valore
+  - il primo valore va in `saas_tipo`, gli extra vengono serializzati in `saas_note` con warning
+
 - `fix: api import multipart non deve redirectare a login` in corso locale.
 - Causa reale di `Server action not found` su `POST /api/import/progetti-csv`:
   - `middleware.ts` intercettava anche `/api/*`

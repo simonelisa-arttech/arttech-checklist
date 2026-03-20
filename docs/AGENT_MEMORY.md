@@ -1,5 +1,32 @@
 # AGENT MEMORY — Snapshot Operativo
 
+## Snapshot 2026-03-20 - Import progetti CSV esteso
+- `app/api/import/progetti-csv/route.ts`
+  - continua a usare import `multipart/form-data` + file CSV `;`
+  - supporta ora campi progetto estesi su `checklists`:
+    - magazzino
+    - indirizzo impianto
+    - descrizione/passo/quantita/dimensioni/tipo impianto
+    - SaaS
+    - garanzia
+    - tipo struttura
+  - supporta anche import correlati:
+    - `asset_serials` da `seriali_elettroniche_controllo` e `seriali_moduli_led`
+    - `licenses` da `licenze`
+    - `checklist_items` da `accessori_ricambi`
+- Regole operative:
+  - `dry_run` non scrive nulla ma mantiene validazioni/warning
+  - `on_conflict=skip` resta default
+  - `on_conflict=update` aggiorna la checklist esistente e prova ad aggiungere i correlati evitando duplicati banali
+- Compatibilita' schema:
+  - la route rimuove dal payload i campi `checklists` mancanti nello schema runtime e li segnala nei `warnings`
+  - questo evita di rompere ambienti non ancora allineati con tutte le migration
+- Limiti noti:
+  - manca ancora una colonna dedicata per `codice_progetto`
+  - il riferimento univoco continua quindi a transitare da `checklists.proforma`
+  - se `codice_progetto` e `proforma` differiscono, la proforma commerciale viene preservata in `note`
+  - `servizio_saas_aggiuntivo` puo contenere piu valori nel CSV ma `checklists.saas_tipo` ne salva uno solo; gli extra finiscono in `saas_note`
+
 ## Snapshot 2026-03-20 - Middleware API no redirect login
 - `middleware.ts`
   - le richieste `/api/*` non autenticate non devono fare redirect verso `/login`
