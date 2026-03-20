@@ -58,6 +58,13 @@
   - per endpoint API protetti, il middleware non deve trasformare una chiamata API in una navigazione HTML
   - la singola route puo continuare a fare i propri check auth e leggere `formData()`
 
+## Snapshot 2026-03-20 - Import progetti usa auth helper condiviso
+- `app/api/import/progetti-csv/route.ts`
+  - rimossa l'autenticazione custom basata solo su `sb-access-token`
+  - la route usa ora `requireOperatore(request)` come le API protette dell'app
+  - in questo modo riconosce anche i cookie Supabase `sb-<ref>-auth-token` / chunked della sessione browser same-origin
+  - la POST multipart da browser loggato viene quindi autenticata senza aprire pubblicamente la route
+
 ## Snapshot 2026-03-20 - Warning conflitti risorse cronoprogramma
 - Nuovo helper frontend:
   - `lib/operativiConflicts.ts`

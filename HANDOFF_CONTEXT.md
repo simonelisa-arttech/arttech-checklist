@@ -82,6 +82,17 @@
   - `/api/import/progetti-csv` non viene piu confusa con una pagina/server action
   - la risposta torna coerente con dominio API anche quando manca autenticazione
 
+- `fix: auth import progetti allineata alla sessione app` in corso locale.
+- Causa reale del `401 Unauthorized` residuo su `POST /api/import/progetti-csv`:
+  - la route import validava solo il cookie legacy `sb-access-token`
+  - la sessione browser reale dell'app puo invece essere salvata nei cookie Supabase `sb-<ref>-auth-token`, anche in forma chunked
+- Fix auth:
+  - `app/api/import/progetti-csv/route.ts` usa ora `requireOperatore(request)` come le altre API protette dell'app
+  - quindi legge la stessa sessione browser same-origin gia riconosciuta dalle pagine/API logged-in e riusa `adminClient` autenticato lato server
+- Effetto:
+  - da browser loggato, `fetch("/api/import/progetti-csv", { credentials: "include" })` viene autenticata correttamente
+  - la route resta protetta e non viene resa pubblica
+
 - `feat: warning conflitti risorse cronoprogramma` in corso locale.
 - Nuovo helper frontend:
   - `lib/operativiConflicts.ts`
