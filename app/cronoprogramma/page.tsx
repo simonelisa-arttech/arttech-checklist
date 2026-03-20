@@ -10,6 +10,7 @@ import {
   durationToInputValue,
   normalizeOperativiDate,
 } from "@/lib/operativiSchedule";
+import { checkOperativiConflicts } from "@/lib/operativiConflicts";
 
 type TimelineRow = {
   kind: "INSTALLAZIONE" | "DISINSTALLAZIONE" | "INTERVENTO";
@@ -142,6 +143,17 @@ function extractPersonaleNames(value?: string | null) {
     .split(/[,+;/]+/)
     .map((part) => part.replace(/\([^)]*\)/g, "").trim())
     .filter(Boolean);
+}
+
+function buildConflictTooltip(personale: string[], mezzi: string[]) {
+  const details: string[] = [];
+  if (personale.length) {
+    details.push(`Personale già impegnato: ${personale.join(", ")}`);
+  }
+  if (mezzi.length) {
+    details.push(`Mezzi già impegnati: ${mezzi.join(", ")}`);
+  }
+  return details.join(" | ");
 }
 
 function downloadCsv(
@@ -605,6 +617,23 @@ export default function CronoprogrammaPage() {
     return sorted;
   }, [filtered, sortBy, sortDir, metaByKey]);
 
+  const conflictByKey = useMemo(() => {
+    return checkOperativiConflicts(
+      rows.map((row) => {
+        const key = getRowKey(row.kind, row.row_ref_id);
+        const operativi = operativiDraftByKey[key] || extractOperativi(metaByKey[key] || null);
+        const schedule = getRowSchedule(row, operativi);
+        return {
+          key,
+          start: schedule.data_inizio,
+          end: schedule.data_fine,
+          personale: operativi.personale_previsto,
+          mezzi: operativi.mezzi,
+        };
+      })
+    );
+  }, [rows, metaByKey, operativiDraftByKey]);
+
   useEffect(() => {
     const updateScrollWidth = () => {
       const w = scrollContentRef.current?.scrollWidth || 4320;
@@ -928,6 +957,11 @@ export default function CronoprogrammaPage() {
             const fatto = Boolean(meta?.fatto ?? r.fatto);
             const hidden = Boolean(meta?.hidden);
             const comments = commentsByKey[key] || [];
+            const conflict = conflictByKey[key];
+            const conflictTitle = buildConflictTooltip(
+              conflict?.conflictDetails.personale || [],
+              conflict?.conflictDetails.mezzi || []
+            );
             return (
               <div
                 key={r.id}
@@ -941,8 +975,11 @@ export default function CronoprogrammaPage() {
                   alignItems: "start",
                   opacity: hidden && showHidden ? 0.6 : 1,
                   fontStyle: hidden && showHidden ? "italic" : "normal",
+                  background: conflict?.hasConflict ? "#fff7f7" : "white",
+                  boxShadow: conflict?.hasConflict ? "inset 3px 0 0 #ef4444" : "none",
                   minWidth: 4320,
                 }}
+                title={conflict?.hasConflict ? conflictTitle : undefined}
               >
                 <div>
                   {schedule.data_inizio
@@ -955,7 +992,30 @@ export default function CronoprogrammaPage() {
                     : "—"}
                 </div>
                 <div>{schedule.durata_giorni} gg</div>
-                <div style={{ paddingRight: 18, whiteSpace: "nowrap" }}>{r.kind}</div>
+                <div style={{ paddingRight: 18 }}>
+                  <div style={{ whiteSpace: "nowrap" }}>{r.kind}</div>
+                  {conflict?.hasConflict ? (
+                    <div
+                      title={conflictTitle}
+                      style={{
+                        marginTop: 6,
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 6,
+                        borderRadius: 999,
+                        border: "1px solid #fca5a5",
+                        background: "#fff1f2",
+                        color: "#b91c1c",
+                        padding: "3px 8px",
+                        fontSize: 12,
+                        fontWeight: 700,
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      ⚠ Conflitto
+                    </div>
+                  ) : null}
+                </div>
                 <div style={{ paddingLeft: 6 }}>{r.cliente}</div>
                 <div>
                   {r.checklist_id ? (

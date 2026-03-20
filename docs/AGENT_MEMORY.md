@@ -1,5 +1,25 @@
 # AGENT MEMORY — Snapshot Operativo
 
+## Snapshot 2026-03-20 - Warning conflitti risorse cronoprogramma
+- Nuovo helper frontend:
+  - `lib/operativiConflicts.ts`
+- Regola conflitto:
+  - due eventi sono in conflitto se i rispettivi intervalli operativi si sovrappongono
+  - e condividono almeno una voce di `personale_previsto` oppure `mezzi`
+- L'intervallo operativo continua a usare la source of truth multi-giorno:
+  - `data_inizio`
+  - `durata_giorni`
+  - `data_fine` derivata
+- `app/cronoprogramma/page.tsx`
+  - calcola i conflitti lato frontend sui dati gia caricati
+  - mostra un warning non bloccante su ogni riga in conflitto:
+    - bordo rosso leggero
+    - badge `Conflitto`
+    - tooltip con dettaglio delle risorse coinvolte
+- Regola operativa:
+  - nessun blocco al salvataggio per ora
+  - nessuna nuova API o tabella: solo evidenza visiva nel cronoprogramma
+
 ## Snapshot 2026-03-20 - Durata multi-giorno cronoprogramma
 - `cronoprogramma_meta` resta la source of truth per i dati operativi di:
   - `INSTALLAZIONE`

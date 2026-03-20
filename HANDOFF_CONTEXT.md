@@ -2,6 +2,27 @@
 
 ## Aggiornamento rapido (19 marzo 2026)
 
+- `feat: warning conflitti risorse cronoprogramma` in corso locale.
+- Nuovo helper frontend:
+  - `lib/operativiConflicts.ts`
+  - confronta gli eventi operativi usando:
+    - intervallo effettivo `data_inizio -> data_fine`
+    - personale assegnato
+    - mezzi assegnati
+  - conflitto se:
+    - i periodi si sovrappongono
+    - e almeno una risorsa `personale` o `mezzi` coincide
+- `app/cronoprogramma/page.tsx`
+  - usa ora `checkOperativiConflicts(...)` sui dati gia presenti lato frontend
+  - warning solo visivo, nessun blocco al salvataggio
+  - ogni riga in conflitto mostra:
+    - bordo rosso leggero
+    - badge `⚠ Conflitto`
+    - tooltip con dettaglio di personale/mezzi gia impegnati
+- Nessuna modifica backend/API:
+  - il controllo usa i meta operativi gia caricati dal cronoprogramma
+  - considera anche la durata multi-giorno introdotta nei campi `data_inizio` e `durata_giorni`
+
 - `feat: durata multi-giorno nei blocchi operativi e cronoprogramma` in corso locale.
 - Source of truth confermata:
   - `cronoprogramma_meta` resta la fonte unica per i dati operativi di `INSTALLAZIONE`, `INTERVENTO`, `DISINSTALLAZIONE`
