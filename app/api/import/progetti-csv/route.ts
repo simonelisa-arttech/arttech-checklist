@@ -569,7 +569,7 @@ export async function POST(request: Request) {
   }
 
   const catalogLookup = await loadCatalogLookup(supabaseAdmin);
-  const seenProjectCodes = new Set<string>();
+  const seenProjectTags = new Set<string>();
 
   let inserted = 0;
   let skipped = 0;
@@ -585,7 +585,7 @@ export async function POST(request: Request) {
       const clienteInput = getRowValue(row, "cliente");
       const codiceProgetto = getRowValue(row, "codice_progetto", "nome_checklist");
       const csvProforma = getRowValue(row, "proforma");
-      const projectTag = normalizeCatalogCode(codiceProgetto);
+      const projectTag = normalizeCatalogCode(nomeProgettoCsv);
       const tipo = parseOptionalUpper(getRowValue(row, "tipo"));
       const stato = parseOptionalUpper(getRowValue(row, "stato", "stato_progetto"));
       const dataPrevista = parseOptionalDate(getRowValue(row, "data_prevista"));
@@ -618,7 +618,7 @@ export async function POST(request: Request) {
       const legacyNote = parseOptionalText(getRowValue(row, "note"));
 
       if (!projectTag || !clienteInput) {
-        throw new Error("campi obbligatori mancanti: codice_progetto / cliente");
+        throw new Error("campi obbligatori mancanti: nome_progetto / cliente");
       }
 
       if (emailCliente && !isValidEmail(emailCliente)) {
@@ -626,11 +626,10 @@ export async function POST(request: Request) {
       }
 
       if (projectTag) {
-        const normalizedCode = normalizeCatalogCode(projectTag);
-        if (seenProjectCodes.has(normalizedCode)) {
-          throw new Error(`codice_progetto duplicato nel CSV: ${projectTag}`);
+        if (seenProjectTags.has(projectTag)) {
+          throw new Error(`nome_progetto duplicato nel CSV: ${projectTag}`);
         }
-        seenProjectCodes.add(normalizedCode);
+        seenProjectTags.add(projectTag);
       }
 
       collectCatalogWarnings(warnings, rowNumber, catalogLookup, [
@@ -658,9 +657,7 @@ export async function POST(request: Request) {
 
       const payloadNote = mergeNoteSections(
         legacyNote,
-        nomeProgettoCsv && normalizeTextKey(nomeProgettoCsv) !== normalizeTextKey(projectTag)
-          ? `Nome progetto CSV: ${nomeProgettoCsv}`
-          : null,
+        codiceProgetto ? `Codice progetto CSV: ${codiceProgetto}` : null,
         referenteCliente || contattoReferente
           ? `Referente cliente: ${[referenteCliente, contattoReferente].filter(Boolean).join(" | ")}`
           : null,
@@ -711,13 +708,13 @@ export async function POST(request: Request) {
             }
             warnings.push({
               row: rowNumber,
-              reason: `codice_progetto già esistente: aggiornato progetto ${existingByCode.nome_checklist || existingByCode.id}`,
+              reason: `nome_progetto già esistente: aggiornato progetto ${existingByCode.nome_checklist || existingByCode.id}`,
             });
           } else {
             skipped += 1;
             warnings.push({
               row: rowNumber,
-              reason: `codice_progetto già esistente: ${projectTag}`,
+              reason: `nome_progetto già esistente: ${projectTag}`,
             });
             continue;
           }
@@ -730,7 +727,7 @@ export async function POST(request: Request) {
           skipped += 1;
           warnings.push({
             row: rowNumber,
-            reason: `codice_progetto già esistente: ${payload.nome_checklist}`,
+            reason: `nome_progetto già esistente: ${payload.nome_checklist}`,
           });
           continue;
         }

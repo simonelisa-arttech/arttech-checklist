@@ -67,10 +67,10 @@
 
 ## Snapshot 2026-03-23 - Import progetti CSV idempotente
 - `app/api/import/progetti-csv/route.ts`
-  - il dedupe non usa piu `proforma` ne `nome_progetto`
-  - `codice_progetto` e' la sola chiave di deduplica
-  - `codice_progetto` viene normalizzato `trim + uppercase` e salvato in `checklists.nome_checklist`
-  - il lookup progetto esistente usa `.eq("nome_checklist", codice_progetto_normalized)`
+  - il dedupe non usa piu `proforma` ne `codice_progetto`
+  - `nome_progetto` e' la sola chiave di deduplica
+  - `nome_progetto` viene normalizzato `trim + uppercase` e salvato in `checklists.nome_checklist`
+  - il lookup progetto esistente usa `.eq("nome_checklist", nome_progetto_normalized)`
   - stesso CSV rieseguito con `on_conflict=skip` produce `skipped` invece di nuovi insert
 
 ## Snapshot 2026-03-20 - Warning conflitti risorse cronoprogramma
