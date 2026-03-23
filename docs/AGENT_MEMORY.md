@@ -484,3 +484,24 @@ group by checklist_id;
   - CRUD via `/api/db`
   - documenti persona/azienda gestiti direttamente nelle rispettive schede
   - nessuna integrazione con cronoprogramma in questa fase
+
+## Snapshot 2026-03-23 - Safety compliance badge su operativi
+- `components/SafetyComplianceBadge.tsx` carica in cache client-side:
+  - `aziende`
+  - `personale`
+  - `aziende_documenti`
+  - `personale_documenti`
+- Il badge valuta il testo libero `personale_previsto` e prova a matchare:
+  - persone su `nome + cognome`
+  - aziende su `ragione_sociale`
+- Regole minime:
+  - personale: visita medica, formazione generale, formazione specifica
+  - aziende: DURC, visura camerale
+- Esito solo visuale:
+  - verde `Safety conforme`
+  - giallo `Safety in scadenza`
+  - rosso `Safety non conforme`
+- Badge inserito in:
+  - `/cronoprogramma`
+  - blocchi operativi progetto in `/checklists/[id]`
+  - form operativi intervento in `InterventiBlock`

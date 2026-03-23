@@ -692,3 +692,19 @@ Dopo il push, Vercel farà auto-deploy e i fix saranno in produzione.
   - anagrafiche personale interno/esterno con collegamento azienda
   - gestione documenti sicurezza per azienda e persona
 - Nessuna integrazione ancora con cronoprogramma.
+
+## Update 2026-03-23 - Badge conformità safety su cronoprogramma e blocchi operativi
+
+- Aggiunto helper `lib/safetyCompliance.ts` con verifica documentale non bloccante su assegnazioni testuali da `personale_previsto`.
+- Matching attuale:
+  - persone: match per nome+cognome contro `personale`
+  - aziende: match per ragione sociale contro `aziende`
+- Controlli minimi:
+  - personale: `Visita medica`, `Formazione generale`, `Formazione specifica`
+  - aziende: `DURC`, `Visura camerale`
+  - eventuali `abilitazioni/corsi` e documenti sicurezza azienda gia' presenti vengono segnalati se scaduti / in scadenza
+- UI:
+  - cronoprogramma: badge safety sulla riga evento
+  - scheda progetto: badge nei blocchi installazione/disinstallazione
+  - interventi progetto: badge nel form `Dati operativi intervento`
+- Nessun blocco sul salvataggio: solo warning visivo (`verde/giallo/rosso`).

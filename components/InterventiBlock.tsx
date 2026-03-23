@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import AttachmentsPanel from "@/components/AttachmentsPanel";
+import SafetyComplianceBadge from "@/components/SafetyComplianceBadge";
 import type { InterventoRow } from "@/lib/interventi";
 import { computeOperativiEndDate } from "@/lib/operativiSchedule";
 
@@ -268,7 +269,10 @@ function renderOperativiFields(
   );
   return (
     <div style={{ marginTop: 10 }}>
-      <div style={{ fontWeight: 700, marginBottom: 8 }}>Dati operativi intervento</div>
+      <div style={{ display: "grid", gap: 8, marginBottom: 8 }}>
+        <div style={{ fontWeight: 700 }}>Dati operativi intervento</div>
+        <SafetyComplianceBadge personaleText={form.personalePrevisto} />
+      </div>
       <div
         style={{
           display: "grid",

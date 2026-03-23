@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState, type UIEvent } from "react";
 import Link from "next/link";
 import ConfigMancante from "@/components/ConfigMancante";
+import SafetyComplianceBadge from "@/components/SafetyComplianceBadge";
 import { isSupabaseConfigured } from "@/lib/supabaseClient";
 import {
   buildOperativiSchedule,
@@ -1025,6 +1026,15 @@ export default function CronoprogrammaPage() {
                       ⚠ Conflitto
                     </div>
                   ) : null}
+                  <div style={{ marginTop: 6 }}>
+                    <SafetyComplianceBadge
+                      personaleText={
+                        operativiDraftByKey[key]?.personale_previsto ??
+                        extractOperativi(meta).personale_previsto
+                      }
+                      showSummary={false}
+                    />
+                  </div>
                 </div>
                 <div style={{ paddingLeft: 6 }}>{r.cliente}</div>
                 <div>

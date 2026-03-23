@@ -18,6 +18,7 @@ import AttachmentsPanel from "@/components/AttachmentsPanel";
 import InterventiBlock from "@/components/InterventiBlock";
 import RenewalsAlertModal from "@/components/RenewalsAlertModal";
 import RenewalsBlock from "@/components/RenewalsBlock";
+import SafetyComplianceBadge from "@/components/SafetyComplianceBadge";
 import Toast from "@/components/Toast";
 import { buildClienteEmailList } from "@/lib/clientiEmail";
 import type { InterventoRow } from "@/lib/interventi";
@@ -3617,7 +3618,10 @@ function buildFormData(c: Checklist): FormData {
         background: "#fff",
       }}
     >
-      <div style={{ fontWeight: 800, marginBottom: 10 }}>{title}</div>
+      <div style={{ display: "grid", gap: 8, marginBottom: 10 }}>
+        <div style={{ fontWeight: 800 }}>{title}</div>
+        <SafetyComplianceBadge personaleText={form.personale_previsto} />
+      </div>
       <div
         style={{
           display: "grid",
