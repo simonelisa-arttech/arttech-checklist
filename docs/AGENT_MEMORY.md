@@ -70,7 +70,7 @@
   - il dedupe non usa piu `proforma` ne `codice_progetto`
   - `nome_progetto` e' la sola chiave di deduplica
   - `nome_progetto` viene normalizzato `trim + uppercase` e salvato in `checklists.nome_checklist`
-  - il lookup progetto esistente usa `.eq("nome_checklist", nome_progetto_normalized)`
+  - il lookup progetto esistente usa ricerca case-insensitive e confronto finale su valore DB normalizzato
   - stesso CSV rieseguito con `on_conflict=skip` produce `skipped` invece di nuovi insert
 
 ## Snapshot 2026-03-20 - Warning conflitti risorse cronoprogramma

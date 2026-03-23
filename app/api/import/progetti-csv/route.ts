@@ -341,10 +341,18 @@ async function findChecklistByProjectTag(
   const { data, error } = await supabaseAdmin
     .from("checklists")
     .select("id, nome_checklist, cliente, stato_progetto, proforma")
-    .eq("nome_checklist", projectTag)
-    .limit(1);
+    .ilike("nome_checklist", `%${projectTag}%`)
+    .limit(25);
   if (error) throw error;
-  return ((data || [])[0] ?? null) as
+  const rows = (data || []) as Array<{
+    id: string;
+    nome_checklist: string | null;
+    cliente: string | null;
+    stato_progetto: string | null;
+    proforma: string | null;
+  }>;
+  return (rows.find((row) => normalizeCatalogCode(String(row.nome_checklist || "")) === projectTag) ??
+    null) as
     | {
         id: string;
         nome_checklist: string | null;
@@ -383,12 +391,14 @@ async function existsActiveChecklistDuplicate(
 ) {
   const { data, error } = await supabaseAdmin
     .from("checklists")
-    .select("id")
-    .eq("nome_checklist", nomeChecklist)
+    .select("id, nome_checklist")
+    .ilike("nome_checklist", `%${nomeChecklist}%`)
     .or("stato_progetto.is.null,stato_progetto.neq.CHIUSO")
-    .limit(1);
+    .limit(25);
   if (error) throw error;
-  return (data || []).length > 0;
+  return ((data || []) as Array<{ nome_checklist?: string | null }>).some(
+    (row) => normalizeCatalogCode(String(row.nome_checklist || "")) === nomeChecklist
+  );
 }
 
 async function insertAssetSerialsCompatible(
@@ -699,6 +709,12 @@ export async function POST(request: Request) {
 
       if (projectTag) {
         const existingByCode = await findChecklistByProjectTag(supabaseAdmin, projectTag);
+        console.info("[import-progetti-csv][dedupe]", {
+          row: rowNumber,
+          csv_tag: projectTag,
+          db_match: existingByCode?.nome_checklist || null,
+          checklist_id: existingByCode?.id || null,
+        });
         if (existingByCode?.id) {
           if (onConflict === "update") {
             checklistId = existingByCode.id;
