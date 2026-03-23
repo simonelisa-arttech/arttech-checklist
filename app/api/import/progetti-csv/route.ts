@@ -336,43 +336,18 @@ async function ensureClienteAnagraficaRow(
 
 async function findChecklistByProjectTag(
   supabaseAdmin: ReturnType<typeof getSupabaseAdmin>,
-  projectTag: string,
-  clienteId?: string | null,
-  cliente?: string | null
+  projectTag: string
 ) {
   const { data, error } = await supabaseAdmin
     .from("checklists")
-    .select("id, nome_checklist, cliente_id, cliente, stato_progetto, proforma")
+    .select("id, nome_checklist, cliente, stato_progetto, proforma")
     .eq("nome_checklist", projectTag)
-    .limit(50);
+    .limit(1);
   if (error) throw error;
-  const rows = (data || []) as Array<{
-    id: string;
-    nome_checklist: string | null;
-    cliente_id: string | null;
-    cliente: string | null;
-    stato_progetto: string | null;
-    proforma: string | null;
-  }>;
-
-  if (clienteId) {
-    const byClienteId = rows.find((row) => String(row.cliente_id || "") === String(clienteId));
-    if (byClienteId) return byClienteId;
-  }
-
-  const normalizedCliente = normalizeTextKey(String(cliente || ""));
-  if (normalizedCliente) {
-    const byCliente = rows.find(
-      (row) => normalizeTextKey(String(row.cliente || "")) === normalizedCliente
-    );
-    if (byCliente) return byCliente;
-  }
-
-  return (rows.length === 1 ? rows[0] : null) as
+  return ((data || [])[0] ?? null) as
     | {
         id: string;
         nome_checklist: string | null;
-        cliente_id: string | null;
         cliente: string | null;
         stato_progetto: string | null;
         proforma: string | null;
@@ -404,28 +379,16 @@ async function findSimilarProjectWarning(
 
 async function existsActiveChecklistDuplicate(
   supabaseAdmin: ReturnType<typeof getSupabaseAdmin>,
-  nomeChecklist: string,
-  clienteId?: string | null,
-  cliente?: string | null
+  nomeChecklist: string
 ) {
   const { data, error } = await supabaseAdmin
     .from("checklists")
-    .select("id, cliente_id, cliente, stato_progetto")
+    .select("id")
     .eq("nome_checklist", nomeChecklist)
     .or("stato_progetto.is.null,stato_progetto.neq.CHIUSO")
-    .limit(50);
+    .limit(1);
   if (error) throw error;
-  const rows = (data || []) as Array<{
-    id?: string | null;
-    cliente_id?: string | null;
-    cliente?: string | null;
-  }>;
-  if (clienteId) {
-    return rows.some((row) => String(row.cliente_id || "") === String(clienteId));
-  }
-  const normalizedCliente = normalizeTextKey(String(cliente || ""));
-  if (!normalizedCliente) return rows.length > 0;
-  return rows.some((row) => normalizeTextKey(String(row.cliente || "")) === normalizedCliente);
+  return (data || []).length > 0;
 }
 
 async function insertAssetSerialsCompatible(
@@ -622,7 +585,7 @@ export async function POST(request: Request) {
       const clienteInput = getRowValue(row, "cliente");
       const codiceProgetto = getRowValue(row, "codice_progetto", "nome_checklist");
       const csvProforma = getRowValue(row, "proforma");
-      const projectTag = codiceProgetto || nomeProgettoCsv;
+      const projectTag = normalizeCatalogCode(codiceProgetto);
       const tipo = parseOptionalUpper(getRowValue(row, "tipo"));
       const stato = parseOptionalUpper(getRowValue(row, "stato", "stato_progetto"));
       const dataPrevista = parseOptionalDate(getRowValue(row, "data_prevista"));
@@ -655,7 +618,7 @@ export async function POST(request: Request) {
       const legacyNote = parseOptionalText(getRowValue(row, "note"));
 
       if (!projectTag || !clienteInput) {
-        throw new Error("campi obbligatori mancanti: codice_progetto (o nome_progetto legacy) / cliente");
+        throw new Error("campi obbligatori mancanti: codice_progetto / cliente");
       }
 
       if (emailCliente && !isValidEmail(emailCliente)) {
@@ -705,7 +668,7 @@ export async function POST(request: Request) {
       );
 
       const payload: Record<string, any> = {
-        nome_checklist: projectTag.trim(),
+        nome_checklist: projectTag,
         cliente,
         cliente_id: clienteRow?.id || null,
         proforma: csvProforma ? csvProforma.trim() : null,
@@ -738,12 +701,7 @@ export async function POST(request: Request) {
       let checklistStrippedColumns = new Set<string>();
 
       if (projectTag) {
-        const existingByCode = await findChecklistByProjectTag(
-          supabaseAdmin,
-          projectTag.trim(),
-          clienteRow?.id || null,
-          cliente
-        );
+        const existingByCode = await findChecklistByProjectTag(supabaseAdmin, projectTag);
         if (existingByCode?.id) {
           if (onConflict === "update") {
             checklistId = existingByCode.id;
@@ -759,7 +717,7 @@ export async function POST(request: Request) {
             skipped += 1;
             warnings.push({
               row: rowNumber,
-              reason: `codice_progetto già esistente: ${projectTag.trim()}`,
+              reason: `codice_progetto già esistente: ${projectTag}`,
             });
             continue;
           }
@@ -767,17 +725,12 @@ export async function POST(request: Request) {
       }
 
       if (!checklistId) {
-        const duplicate = await existsActiveChecklistDuplicate(
-          supabaseAdmin,
-          payload.nome_checklist,
-          clienteRow?.id || null,
-          cliente
-        );
+        const duplicate = await existsActiveChecklistDuplicate(supabaseAdmin, payload.nome_checklist);
         if (duplicate) {
           skipped += 1;
-          errors.push({
+          warnings.push({
             row: rowNumber,
-            reason: "esiste già un progetto attivo con questo nome per questo cliente",
+            reason: `codice_progetto già esistente: ${payload.nome_checklist}`,
           });
           continue;
         }

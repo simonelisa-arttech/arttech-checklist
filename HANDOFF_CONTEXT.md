@@ -95,9 +95,10 @@
 
 - `fix: import progetti CSV idempotente` in corso locale.
 - Deduplica import:
-  - la route cerca ora i progetti esistenti partendo sempre da `checklists.nome_checklist` (`Rif. Progetto`)
-  - se disponibile, usa `cliente_id` come chiave di match prioritaria
-  - per record legacy senza `cliente_id`, usa fallback su `cliente` normalizzato
+  - la route usa solo `codice_progetto` come chiave di deduplica
+  - `codice_progetto` viene normalizzato con `trim + uppercase`
+  - il valore normalizzato viene salvato in `checklists.nome_checklist`
+  - il match esistente avviene con `.eq("nome_checklist", codice_progetto_normalized)`
 - Effetto:
   - lo stesso CSV non reinserisce i progetti gia presenti
   - con `on_conflict=skip` i record esistenti finiscono in `skipped`
