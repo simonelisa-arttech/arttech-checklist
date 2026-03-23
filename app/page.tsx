@@ -44,7 +44,13 @@ function saasLabelFromCode(code?: string | null) {
 }
 
 type SaasServiceFilter = "EVENTS" | "ULTRA" | "PREMIUM" | "PLUS";
-type ProjectStatusFilter = "IN_CORSO" | "CONSEGNATO" | "RIENTRATO" | "SOSPESO" | "CHIUSO";
+type ProjectStatusFilter =
+  | "IN_CORSO"
+  | "CONSEGNATO"
+  | "NOLEGGIO_ATTIVO"
+  | "RIENTRATO"
+  | "SOSPESO"
+  | "CHIUSO";
 type DashboardScadenzeBreakdown = {
   garanzie: number;
   licenze: number;
@@ -98,8 +104,14 @@ function matchesSingleSaasService(row: Checklist, filter: SaasServiceFilter) {
   return true;
 }
 
-function normalizeProjectStatus(value?: string | null): ProjectStatusFilter | null {
-  const raw = String(value || "")
+function normalizeProjectStatus(project: {
+  stato_progetto?: string | null;
+  noleggio_vendita?: string | null;
+  data_disinstallazione?: string | null;
+}): ProjectStatusFilter | null {
+  const { isNoleggioAttivo } = getProjectNoleggioState(project);
+  if (isNoleggioAttivo) return "NOLEGGIO_ATTIVO";
+  const raw = String(project.stato_progetto || "")
     .trim()
     .toUpperCase()
     .replace(/\s+/g, "_");
@@ -614,6 +626,7 @@ export default function Page() {
   >({
     IN_CORSO: false,
     CONSEGNATO: false,
+    NOLEGGIO_ATTIVO: false,
     RIENTRATO: false,
     SOSPESO: false,
     CHIUSO: false,
@@ -727,9 +740,9 @@ export default function Page() {
         .filter(([, enabled]) => enabled)
         .map(([key]) => key);
       if (activeStatusFilters.length > 0) {
-        const status = normalizeProjectStatus(c.stato_progetto);
-        if (!status || !activeStatusFilters.includes(status)) return false;
-      }
+          const status = normalizeProjectStatus(c);
+          if (!status || !activeStatusFilters.includes(status)) return false;
+        }
       const docs = (c.checklist_documents ?? []) as any[];
       const hasProforma = docs.some((d) =>
         String(d.tipo ?? "")
@@ -1993,6 +2006,7 @@ export default function Page() {
                         setProjectStatusFilter({
                           IN_CORSO: checked,
                           CONSEGNATO: checked,
+                          NOLEGGIO_ATTIVO: checked,
                           RIENTRATO: checked,
                           SOSPESO: checked,
                           CHIUSO: checked,
@@ -2023,6 +2037,19 @@ export default function Page() {
                       }
                     />
                     Consegnato
+                  </label>
+                  <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <input
+                      type="checkbox"
+                      checked={projectStatusFilter.NOLEGGIO_ATTIVO}
+                      onChange={(e) =>
+                        setProjectStatusFilter((prev) => ({
+                          ...prev,
+                          NOLEGGIO_ATTIVO: e.target.checked,
+                        }))
+                      }
+                    />
+                    Noleggio attivo
                   </label>
                   <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
                     <input
