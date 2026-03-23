@@ -1742,7 +1742,7 @@ export default function Page() {
                     className="dashboard-scadenze-shell grid h-full grid-rows-[auto_1fr] gap-2"
                   >
                       <div
-                        className="dashboard-scadenze-header flex flex-wrap items-center justify-between gap-3"
+                        className="dashboard-scadenze-header flex items-center justify-between gap-2"
                       >
                       <Link
                         href={buildScadenzeLink(scadenzePeriodDays)}
@@ -1758,7 +1758,7 @@ export default function Page() {
                         SCADENZE IN ARRIVO
                       </Link>
                       <div
-                        className="dashboard-scadenze-range inline-flex gap-1 rounded-full border border-[#fcd34d] bg-[rgba(255,255,255,0.8)] p-[3px]"
+                        className="dashboard-scadenze-range inline-flex shrink-0 gap-1 rounded-full border border-[#fcd34d] bg-[rgba(255,255,255,0.8)] p-[2px]"
                       >
                         {([7, 15, 30] as const).map((days) => {
                           const active = scadenzePeriodDays === days;
@@ -1770,11 +1770,12 @@ export default function Page() {
                               style={{
                                 border: "none",
                                 borderRadius: 999,
-                                padding: "4px 9px",
+                                padding: "3px 8px",
                                 background: active ? "#f59e0b" : "transparent",
                                 color: active ? "white" : "#92400e",
                                 fontWeight: 800,
-                                fontSize: 12,
+                                fontSize: 11,
+                                lineHeight: 1.1,
                                 cursor: "pointer",
                               }}
                             >
@@ -1785,7 +1786,7 @@ export default function Page() {
                       </div>
                     </div>
                     <div
-                      className="dashboard-scadenze-body grid min-h-0 grid-cols-[minmax(150px,168px)_minmax(0,1fr)] items-start gap-x-5 gap-y-3"
+                      className="dashboard-scadenze-body grid min-h-0 grid-cols-[minmax(150px,168px)_minmax(0,1fr)] items-start gap-x-4 gap-y-2"
                     >
                       <div
                         className="dashboard-scadenze-total flex min-w-0 flex-col items-center justify-center gap-1 text-center"
@@ -1807,7 +1808,7 @@ export default function Page() {
                         </div>
                       </div>
                       <div
-                        className="dashboard-scadenze-breakdown grid min-w-0 grid-cols-2 gap-x-4 gap-y-3 pt-2 text-[13px] font-bold"
+                        className="dashboard-scadenze-breakdown grid min-w-0 grid-cols-2 gap-x-4 gap-y-2 pt-1 text-[13px] font-bold"
                       >
                         <div style={{ whiteSpace: "nowrap" }}>Garanzie: {selectedScadenzeSummary.breakdown.garanzie}</div>
                         <div style={{ whiteSpace: "nowrap" }}>Licenze: {selectedScadenzeSummary.breakdown.licenze}</div>
@@ -3181,6 +3182,9 @@ export default function Page() {
           .dashboard-scadenze-body {
             grid-template-columns: 1fr;
             gap: 12px;
+          }
+          .dashboard-scadenze-header {
+            flex-wrap: wrap;
           }
           .dashboard-scadenze-breakdown {
             grid-template-columns: repeat(2, minmax(0, 1fr));
