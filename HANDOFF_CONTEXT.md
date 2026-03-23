@@ -674,3 +674,21 @@ Dopo il push, Vercel farà auto-deploy e i fix saranno in produzione.
   - numeri decimali import (`quantita_impianti`): `,` -> `.`
 - Se una correzione automatica viene applicata, la route aggiunge un warning non bloccante `formato corretto automaticamente: <campo>`.
 - Per `dimensioni` viene anche calcolato `m2_calcolati` / `m2_inclusi` dal formato normalizzato.
+
+## Update 2026-03-23 - Modulo safety personale / aziende / documenti
+
+- Aggiunto script DB `scripts/20260323_create_personale_aziende_safety_module.sql` con tabelle:
+  - `aziende`
+  - `personale`
+  - `personale_documenti`
+  - `aziende_documenti`
+  - `document_types`
+- Aggiunto whitelisting `/api/db` per CRUD su queste tabelle.
+- Nuove pagine impostazioni:
+  - `/impostazioni/aziende`
+  - `/impostazioni/personale`
+- Le pagine permettono:
+  - anagrafiche aziende interne/esterne
+  - anagrafiche personale interno/esterno con collegamento azienda
+  - gestione documenti sicurezza per azienda e persona
+- Nessuna integrazione ancora con cronoprogramma.

@@ -469,3 +469,18 @@ group by checklist_id;
 - `dimensioni` viene normalizzata (`_` e `,` -> `.`) e salvata in forma compatta `LxH`.
 - Dal valore `dimensioni` normalizzato la route valorizza anche `m2_calcolati` e `m2_inclusi`.
 - Le correzioni automatiche aggiungono warning non bloccanti per riga (`proforma`, `dimensioni`, `quantita_impianti`).
+
+## Snapshot 2026-03-23 - Safety module personale / aziende
+- Nuove entita' DB:
+  - `aziende`
+  - `personale`
+  - `personale_documenti`
+  - `aziende_documenti`
+  - `document_types`
+- Nuove pagine settings:
+  - `/impostazioni/aziende`
+  - `/impostazioni/personale`
+- Implementazione attuale:
+  - CRUD via `/api/db`
+  - documenti persona/azienda gestiti direttamente nelle rispettive schede
+  - nessuna integrazione con cronoprogramma in questa fase

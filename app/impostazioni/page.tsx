@@ -63,6 +63,32 @@ export default function ImpostazioniPage() {
           Operatori
         </Link>
         <Link
+          href="/impostazioni/aziende"
+          style={{
+            padding: "12px 16px",
+            borderRadius: 12,
+            border: "1px solid #ddd",
+            background: "white",
+            textDecoration: "none",
+            color: "inherit",
+          }}
+        >
+          Aziende
+        </Link>
+        <Link
+          href="/impostazioni/personale"
+          style={{
+            padding: "12px 16px",
+            borderRadius: 12,
+            border: "1px solid #ddd",
+            background: "white",
+            textDecoration: "none",
+            color: "inherit",
+          }}
+        >
+          Personale
+        </Link>
+        <Link
           href="/catalogo"
           style={{
             padding: "12px 16px",

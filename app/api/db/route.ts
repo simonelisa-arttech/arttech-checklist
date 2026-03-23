@@ -82,6 +82,36 @@ const TABLE_RULES: Record<
     orderCols: ["created_at", "updated_at", "nome"],
     allowNoFilterSelect: true,
   },
+  aziende: {
+    ops: ["select", "insert", "update", "delete"],
+    filterCols: ["id", "tipo", "attiva"],
+    orderCols: ["created_at", "ragione_sociale", "partita_iva", "tipo"],
+    allowNoFilterSelect: true,
+  },
+  personale: {
+    ops: ["select", "insert", "update", "delete"],
+    filterCols: ["id", "azienda_id", "tipo", "attivo"],
+    orderCols: ["created_at", "cognome", "nome", "tipo"],
+    allowNoFilterSelect: true,
+  },
+  personale_documenti: {
+    ops: ["select", "insert", "update", "delete"],
+    filterCols: ["id", "personale_id", "tipo_documento", "data_scadenza"],
+    orderCols: ["data_scadenza", "tipo_documento"],
+    allowNoFilterSelect: true,
+  },
+  aziende_documenti: {
+    ops: ["select", "insert", "update", "delete"],
+    filterCols: ["id", "azienda_id", "tipo_documento", "data_scadenza"],
+    orderCols: ["data_scadenza", "tipo_documento"],
+    allowNoFilterSelect: true,
+  },
+  document_types: {
+    ops: ["select", "insert", "update", "delete"],
+    filterCols: ["id", "codice", "nome"],
+    orderCols: ["codice", "nome"],
+    allowNoFilterSelect: true,
+  },
   attachments: {
     ops: ["select", "insert", "update", "delete"],
     filterCols: ["id", "entity_id", "entity_type", "created_by"],
