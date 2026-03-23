@@ -93,6 +93,16 @@
   - da browser loggato, `fetch("/api/import/progetti-csv", { credentials: "include" })` viene autenticata correttamente
   - la route resta protetta e non viene resa pubblica
 
+- `fix: import progetti CSV idempotente` in corso locale.
+- Deduplica import:
+  - la route cerca ora i progetti esistenti partendo sempre da `checklists.nome_checklist` (`Rif. Progetto`)
+  - se disponibile, usa `cliente_id` come chiave di match prioritaria
+  - per record legacy senza `cliente_id`, usa fallback su `cliente` normalizzato
+- Effetto:
+  - lo stesso CSV non reinserisce i progetti gia presenti
+  - con `on_conflict=skip` i record esistenti finiscono in `skipped`
+  - con `on_conflict=update` i record esistenti vengono aggiornati
+
 - `feat: warning conflitti risorse cronoprogramma` in corso locale.
 - Nuovo helper frontend:
   - `lib/operativiConflicts.ts`

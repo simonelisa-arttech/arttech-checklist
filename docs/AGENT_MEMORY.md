@@ -65,6 +65,14 @@
   - in questo modo riconosce anche i cookie Supabase `sb-<ref>-auth-token` / chunked della sessione browser same-origin
   - la POST multipart da browser loggato viene quindi autenticata senza aprire pubblicamente la route
 
+## Snapshot 2026-03-23 - Import progetti CSV idempotente
+- `app/api/import/progetti-csv/route.ts`
+  - il dedupe non usa piu `proforma`
+  - lookup progetto esistente basato su `checklists.nome_checklist`
+  - `cliente_id` e' il match prioritario quando disponibile
+  - fallback legacy su `cliente` normalizzato se `cliente_id` manca nei record esistenti
+  - stesso CSV rieseguito con `on_conflict=skip` produce `skipped` invece di nuovi insert
+
 ## Snapshot 2026-03-20 - Warning conflitti risorse cronoprogramma
 - Nuovo helper frontend:
   - `lib/operativiConflicts.ts`

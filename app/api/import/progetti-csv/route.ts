@@ -336,20 +336,43 @@ async function ensureClienteAnagraficaRow(
 
 async function findChecklistByProjectTag(
   supabaseAdmin: ReturnType<typeof getSupabaseAdmin>,
-  cliente: string,
-  projectTag: string
+  projectTag: string,
+  clienteId?: string | null,
+  cliente?: string | null
 ) {
   const { data, error } = await supabaseAdmin
     .from("checklists")
-    .select("id, nome_checklist, cliente, stato_progetto, proforma")
-    .eq("cliente", cliente)
+    .select("id, nome_checklist, cliente_id, cliente, stato_progetto, proforma")
     .eq("nome_checklist", projectTag)
-    .limit(1);
+    .limit(50);
   if (error) throw error;
-  return ((data || [])[0] ?? null) as
+  const rows = (data || []) as Array<{
+    id: string;
+    nome_checklist: string | null;
+    cliente_id: string | null;
+    cliente: string | null;
+    stato_progetto: string | null;
+    proforma: string | null;
+  }>;
+
+  if (clienteId) {
+    const byClienteId = rows.find((row) => String(row.cliente_id || "") === String(clienteId));
+    if (byClienteId) return byClienteId;
+  }
+
+  const normalizedCliente = normalizeTextKey(String(cliente || ""));
+  if (normalizedCliente) {
+    const byCliente = rows.find(
+      (row) => normalizeTextKey(String(row.cliente || "")) === normalizedCliente
+    );
+    if (byCliente) return byCliente;
+  }
+
+  return (rows.length === 1 ? rows[0] : null) as
     | {
         id: string;
         nome_checklist: string | null;
+        cliente_id: string | null;
         cliente: string | null;
         stato_progetto: string | null;
         proforma: string | null;
@@ -382,17 +405,27 @@ async function findSimilarProjectWarning(
 async function existsActiveChecklistDuplicate(
   supabaseAdmin: ReturnType<typeof getSupabaseAdmin>,
   nomeChecklist: string,
-  cliente: string
+  clienteId?: string | null,
+  cliente?: string | null
 ) {
   const { data, error } = await supabaseAdmin
     .from("checklists")
-    .select("id")
+    .select("id, cliente_id, cliente, stato_progetto")
     .eq("nome_checklist", nomeChecklist)
-    .eq("cliente", cliente)
     .or("stato_progetto.is.null,stato_progetto.neq.CHIUSO")
-    .limit(1);
+    .limit(50);
   if (error) throw error;
-  return (data || []).length > 0;
+  const rows = (data || []) as Array<{
+    id?: string | null;
+    cliente_id?: string | null;
+    cliente?: string | null;
+  }>;
+  if (clienteId) {
+    return rows.some((row) => String(row.cliente_id || "") === String(clienteId));
+  }
+  const normalizedCliente = normalizeTextKey(String(cliente || ""));
+  if (!normalizedCliente) return rows.length > 0;
+  return rows.some((row) => normalizeTextKey(String(row.cliente || "")) === normalizedCliente);
 }
 
 async function insertAssetSerialsCompatible(
@@ -707,8 +740,9 @@ export async function POST(request: Request) {
       if (projectTag) {
         const existingByCode = await findChecklistByProjectTag(
           supabaseAdmin,
-          cliente,
-          projectTag.trim()
+          projectTag.trim(),
+          clienteRow?.id || null,
+          cliente
         );
         if (existingByCode?.id) {
           if (onConflict === "update") {
@@ -733,7 +767,12 @@ export async function POST(request: Request) {
       }
 
       if (!checklistId) {
-        const duplicate = await existsActiveChecklistDuplicate(supabaseAdmin, payload.nome_checklist, cliente);
+        const duplicate = await existsActiveChecklistDuplicate(
+          supabaseAdmin,
+          payload.nome_checklist,
+          clienteRow?.id || null,
+          cliente
+        );
         if (duplicate) {
           skipped += 1;
           errors.push({
