@@ -6,12 +6,17 @@ import ConfigMancante from "@/components/ConfigMancante";
 import { isSupabaseConfigured } from "@/lib/supabaseClient";
 import { dbFrom } from "@/lib/clientDbBroker";
 import {
+  buildLegacyScadenzaAlertGlobalRulePayload,
+  buildModernScadenzaAlertGlobalRulePayload,
   buildScadenzaAlertGlobalRuleSummary,
+  detectScadenzaAlertGlobalRuleStorageMode,
   getDefaultScadenzaAlertGlobalRule,
+  getScadenzaAlertGlobalRuleTipo,
   normalizeScadenzaAlertGlobalRule,
   SCADENZE_ALERT_RULE_TYPES,
   SCADENZE_ALERT_STEP_OPTIONS,
   type ScadenzaAlertGlobalRuleRow,
+  type ScadenzaAlertGlobalRuleStorageMode,
   type ScadenzaAlertRuleType,
 } from "@/lib/scadenzeAlertConfig";
 
@@ -35,40 +40,83 @@ export default function RegoleGlobaliAvvisiPage() {
   const [templates, setTemplates] = useState<AlertTemplateRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [savingTipo, setSavingTipo] = useState<ScadenzaAlertRuleType | null>(null);
+  const [storageMode, setStorageMode] = useState<ScadenzaAlertGlobalRuleStorageMode>("unknown");
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+
+  async function loadRulesRows() {
+    const legacyRes = await dbFrom("scadenze_alert_global_rules")
+      .select("*")
+      .order("tipo_scadenza", { ascending: true });
+    if (!legacyRes.error) {
+      return {
+        data: ((legacyRes.data as any[]) || []) as Record<string, unknown>[],
+        error: null,
+        mode:
+          detectScadenzaAlertGlobalRuleStorageMode(
+            ((legacyRes.data as any[]) || []) as Record<string, unknown>[]
+          ) || "legacy",
+      };
+    }
+
+    const modernRes = await dbFrom("scadenze_alert_global_rules")
+      .select("*")
+      .order("tipo", { ascending: true });
+    if (!modernRes.error) {
+      return {
+        data: ((modernRes.data as any[]) || []) as Record<string, unknown>[],
+        error: null,
+        mode:
+          detectScadenzaAlertGlobalRuleStorageMode(
+            ((modernRes.data as any[]) || []) as Record<string, unknown>[]
+          ) || "modern",
+      };
+    }
+
+    return {
+      data: [] as Record<string, unknown>[],
+      error: legacyRes.error || modernRes.error,
+      mode: "unknown" as ScadenzaAlertGlobalRuleStorageMode,
+    };
+  }
 
   async function loadData() {
     setLoading(true);
     setError(null);
     const [rulesRes, templatesRes] = await Promise.all([
-      dbFrom("scadenze_alert_global_rules").select("*").order("tipo_scadenza", { ascending: true }),
+      loadRulesRows(),
       dbFrom("alert_message_templates")
         .select("id,titolo,tipo,attivo")
         .eq("attivo", true)
         .order("titolo", { ascending: true }),
     ]);
 
-    if (rulesRes.error) {
-      setError(`Errore caricamento regole globali: ${rulesRes.error.message}`);
-      setLoading(false);
-      return;
-    }
-    if (templatesRes.error) {
-      setError(`Errore caricamento preset: ${templatesRes.error.message}`);
-      setLoading(false);
-      return;
-    }
-
     const nextRules = Object.fromEntries(
       SCADENZE_ALERT_RULE_TYPES.map((tipo) => [tipo, getDefaultScadenzaAlertGlobalRule(tipo)])
     ) as Record<ScadenzaAlertRuleType, ScadenzaAlertGlobalRuleRow>;
+    const ruleRows = rulesRes.error ? [] : (rulesRes.data as Record<string, unknown>[]);
+    const rulesByTipo = new Map<ScadenzaAlertRuleType, Record<string, unknown>>();
+    for (const row of ruleRows) {
+      const tipo = getScadenzaAlertGlobalRuleTipo(row);
+      if (!tipo) continue;
+      rulesByTipo.set(tipo, row);
+    }
     for (const tipo of SCADENZE_ALERT_RULE_TYPES) {
-      const found = ((rulesRes.data as any[]) || []).find((row) => row?.tipo_scadenza === tipo) || null;
-      nextRules[tipo] = normalizeScadenzaAlertGlobalRule(found, tipo);
+      nextRules[tipo] = normalizeScadenzaAlertGlobalRule(rulesByTipo.get(tipo) || null, tipo);
     }
     setRules(nextRules);
-    setTemplates(((templatesRes.data as any[]) || []) as AlertTemplateRow[]);
+    setStorageMode(rulesRes.mode);
+    setTemplates(
+      templatesRes.error ? [] : (((templatesRes.data as any[]) || []) as AlertTemplateRow[])
+    );
+    const errors: string[] = [];
+    if (rulesRes.error) {
+      errors.push(`Errore caricamento regole globali: ${rulesRes.error.message}`);
+    }
+    if (templatesRes.error) {
+      errors.push(`Errore caricamento preset: ${templatesRes.error.message}`);
+    }
+    setError(errors.length > 0 ? errors.join(" • ") : null);
     setLoading(false);
   }
 
@@ -96,10 +144,50 @@ export default function RegoleGlobaliAvvisiPage() {
     setError(null);
     setNotice(null);
     const payload = normalizeScadenzaAlertGlobalRule(rules[tipo], tipo);
-    const { data, error: saveErr } = await dbFrom("scadenze_alert_global_rules")
-      .upsert(payload, { onConflict: "tipo_scadenza" })
-      .select("*")
-      .single();
+    const attempts =
+      storageMode === "modern"
+        ? [
+            {
+              mode: "modern" as const,
+              onConflict: "tipo",
+              payload: buildModernScadenzaAlertGlobalRulePayload(payload),
+            },
+            {
+              mode: "legacy" as const,
+              onConflict: "tipo_scadenza",
+              payload: buildLegacyScadenzaAlertGlobalRulePayload(payload),
+            },
+          ]
+        : [
+            {
+              mode: "legacy" as const,
+              onConflict: "tipo_scadenza",
+              payload: buildLegacyScadenzaAlertGlobalRulePayload(payload),
+            },
+            {
+              mode: "modern" as const,
+              onConflict: "tipo",
+              payload: buildModernScadenzaAlertGlobalRulePayload(payload),
+            },
+          ];
+
+    let savedData: any = null;
+    let savedMode: ScadenzaAlertGlobalRuleStorageMode = storageMode;
+    let saveErr: { message: string } | null = null;
+    for (const attempt of attempts) {
+      const result = await dbFrom("scadenze_alert_global_rules")
+        .upsert(attempt.payload, { onConflict: attempt.onConflict })
+        .select("*")
+        .single();
+      if (!result.error) {
+        savedData = result.data;
+        savedMode = attempt.mode;
+        saveErr = null;
+        break;
+      }
+      saveErr = result.error;
+    }
+
     if (saveErr) {
       setError(`Errore salvataggio regola ${tipo}: ${saveErr.message}`);
       setSavingTipo(null);
@@ -107,8 +195,9 @@ export default function RegoleGlobaliAvvisiPage() {
     }
     setRules((prev) => ({
       ...prev,
-      [tipo]: normalizeScadenzaAlertGlobalRule((data as any) || payload, tipo),
+      [tipo]: normalizeScadenzaAlertGlobalRule((savedData as any) || payload, tipo),
     }));
+    setStorageMode(savedMode);
     setNotice(`✅ Regola globale ${tipo} salvata.`);
     setSavingTipo(null);
   }
@@ -163,6 +252,10 @@ export default function RegoleGlobaliAvvisiPage() {
             const presetTitle = rule.default_template_id
               ? templatesById.get(rule.default_template_id)?.titolo || "Preset selezionato"
               : null;
+            const matchingTemplates = templates.filter((template) => {
+              const templateTipo = String(template.tipo || "").toUpperCase();
+              return templateTipo === tipo || templateTipo === "GENERICO";
+            });
             return (
               <div
                 key={tipo}
@@ -276,16 +369,16 @@ export default function RegoleGlobaliAvvisiPage() {
                       style={{ width: "100%", padding: 8, marginTop: 6 }}
                     >
                       <option value="">— Nessun preset —</option>
-                      {templates
-                        .filter((template) => {
-                          const templateTipo = String(template.tipo || "").toUpperCase();
-                          return templateTipo === tipo || templateTipo === "GENERICO";
-                        })
-                        .map((template) => (
-                          <option key={template.id} value={template.id}>
-                            {template.titolo || template.id}
-                          </option>
-                        ))}
+                      {matchingTemplates.map((template) => (
+                        <option key={template.id} value={template.id}>
+                          {template.titolo || template.id}
+                        </option>
+                      ))}
+                      {matchingTemplates.length === 0 ? (
+                        <option value="" disabled>
+                          Nessun preset disponibile per questo tipo
+                        </option>
+                      ) : null}
                     </select>
                   </label>
                 </div>

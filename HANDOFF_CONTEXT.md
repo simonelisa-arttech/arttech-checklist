@@ -653,3 +653,15 @@ Dopo il push, Vercel farà auto-deploy e i fix saranno in produzione.
   - `GET /api/impostazioni/checklist-attivita?recovery=1&checklist_id=<uuid>`
   - `GET /api/impostazioni/checklist-attivita?recovery=1&checklist_ids=<uuid1>,<uuid2>,<uuid3>`
 - La bonifica va eseguita per liste stabili di `checklist_id`, cosi ogni checklist viene processata una sola volta per run.
+
+## Update 2026-03-23 - Regole globali avvisi schema compat + preset dropdown
+
+- La pagina `/impostazioni/regole-globali-avvisi` usava solo lo schema legacy `tipo_scadenza / enabled_steps / default_template_id`.
+- Era stato introdotto anche uno script alternativo con schema diverso (`tipo / step_giorni / preset_default`), creando disallineamento tra DB e UI.
+- Fix applicato:
+  - page load compatibile con entrambi gli shape (`legacy` e `modern`)
+  - save con fallback `upsert` su `tipo_scadenza` oppure `tipo`
+  - `/api/db` ora consente anche `tipo` e `attiva` per questa tabella
+  - il caricamento dei preset non si ferma piu se il read delle regole fallisce
+  - il select `Preset default` mostra stato vuoto coerente quando non ci sono preset compatibili
+- `scripts/create_scadenze_alert_global_rules.sql` ora crea/riallinea la tabella al contratto reale usato dall'app e copia i dati dai nomi colonna alternativi se presenti.

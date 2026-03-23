@@ -451,3 +451,15 @@ from public.saas_interventi
 where lower(cliente) = lower('<CLIENTE>') and incluso = true
 group by checklist_id;
 ```
+
+## Snapshot 2026-03-23 - Regole globali avvisi compatibili con doppio schema
+- `regole-globali-avvisi` ora normalizza sia lo schema legacy:
+  - `tipo_scadenza`
+  - `enabled_steps`
+  - `default_template_id`
+- sia quello alternativo:
+  - `tipo`
+  - `step_giorni`
+  - `preset_default`
+- Il dropdown `Preset default` non dipende piu dal successo del read regole: i preset vengono caricati comunque e mostrano uno stato vuoto esplicito se non ci sono template compatibili.
+- Lo script `scripts/create_scadenze_alert_global_rules.sql` e' stato riallineato al contratto effettivo dell'app e puo' anche backfillare i campi legacy dai nomi colonna alternativi.
