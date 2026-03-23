@@ -969,8 +969,8 @@ export default function CronoprogrammaPage() {
                   alignItems: "start",
                   opacity: hidden && showHidden ? 0.6 : 1,
                   fontStyle: hidden && showHidden ? "italic" : "normal",
-                  background: conflict?.hasConflict ? "#fff7f7" : "white",
-                  boxShadow: conflict?.hasConflict ? "inset 3px 0 0 #ef4444" : "none",
+                  background: operativoDefinito ? "#f0fdf4" : "white",
+                  boxShadow: "none",
                   minWidth: 4320,
                 }}
                 title={conflict?.hasConflict ? conflictTitle : undefined}
