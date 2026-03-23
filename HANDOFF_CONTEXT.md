@@ -708,3 +708,16 @@ Dopo il push, Vercel farà auto-deploy e i fix saranno in produzione.
   - scheda progetto: badge nei blocchi installazione/disinstallazione
   - interventi progetto: badge nel form `Dati operativi intervento`
 - Nessun blocco sul salvataggio: solo warning visivo (`verde/giallo/rosso`).
+
+## Update 2026-03-23 - Personale operativo da elenco censito
+
+- Il campo libero `personale_previsto` nei blocchi operativi progetto/intervento e' stato sostituito con `components/PersonaleMultiSelect.tsx`.
+- Il componente:
+  - carica il personale attivo da tabella `personale`
+  - mostra `nome cognome`
+  - se esterno aggiunge anche l'azienda
+  - consente ricerca e selezione multipla con badge dei selezionati
+- Compatibilita':
+  - il valore salvato resta `personale_previsto` come stringa
+  - formato emesso: `Mario Rossi; Luca Bianchi`
+  - eventuali token legacy non riconosciuti vengono preservati e mostrati come badge `Legacy`, rimovibili manualmente

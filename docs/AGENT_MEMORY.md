@@ -505,3 +505,15 @@ group by checklist_id;
   - `/cronoprogramma`
   - blocchi operativi progetto in `/checklists/[id]`
   - form operativi intervento in `InterventiBlock`
+
+## Snapshot 2026-03-23 - Multiselect personale con compatibilita' stringa legacy
+- Nuovo componente `components/PersonaleMultiSelect.tsx`.
+- Sorgente dati:
+  - `personale`
+  - `aziende` per mostrare il nome azienda sugli esterni
+- Salvataggio invariato:
+  - `personale_previsto` resta stringa
+  - output normalizzato con separatore `; `
+- Se il valore storico contiene nomi non presenti in anagrafica:
+  - vengono mantenuti come token `Legacy`
+  - non vengono persi al salvataggio finche' non vengono rimossi esplicitamente

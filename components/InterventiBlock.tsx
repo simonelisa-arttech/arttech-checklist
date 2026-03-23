@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import AttachmentsPanel from "@/components/AttachmentsPanel";
+import PersonaleMultiSelect from "@/components/PersonaleMultiSelect";
 import SafetyComplianceBadge from "@/components/SafetyComplianceBadge";
 import type { InterventoRow } from "@/lib/interventi";
 import { computeOperativiEndDate } from "@/lib/operativiSchedule";
@@ -311,11 +312,13 @@ function renderOperativiFields(
         </div>
         <div>
           <div style={{ fontSize: 12, marginBottom: 4 }}>Personale previsto / incarico</div>
-          <textarea
+          <PersonaleMultiSelect
             value={form.personalePrevisto}
-            onChange={(e) => setForm({ ...form, personalePrevisto: e.target.value })}
-            style={{ width: "100%", minHeight: 70, padding: 8 }}
+            onChange={(personalePrevisto) => setForm({ ...form, personalePrevisto })}
           />
+          <div style={{ marginTop: 6, fontSize: 11, opacity: 0.7 }}>
+            Salvato come stringa compatibile: {form.personalePrevisto || "—"}
+          </div>
         </div>
         <div>
           <div style={{ fontSize: 12, marginBottom: 4 }}>Mezzi</div>

@@ -16,6 +16,7 @@ import ConfigMancante from "@/components/ConfigMancante";
 import ClientiCombobox from "@/components/ClientiCombobox";
 import AttachmentsPanel from "@/components/AttachmentsPanel";
 import InterventiBlock from "@/components/InterventiBlock";
+import PersonaleMultiSelect from "@/components/PersonaleMultiSelect";
 import RenewalsAlertModal from "@/components/RenewalsAlertModal";
 import RenewalsBlock from "@/components/RenewalsBlock";
 import SafetyComplianceBadge from "@/components/SafetyComplianceBadge";
@@ -3667,11 +3668,15 @@ function buildFormData(c: Checklist): FormData {
         </div>
         <div>
           <div style={{ fontSize: 12, marginBottom: 4 }}>Personale previsto / incarico</div>
-          <textarea
+          <PersonaleMultiSelect
             value={form.personale_previsto}
-            onChange={(e) => setForm((prev) => ({ ...prev, personale_previsto: e.target.value }))}
-            style={{ width: "100%", minHeight: 70, padding: 8 }}
+            onChange={(personale_previsto) =>
+              setForm((prev) => ({ ...prev, personale_previsto }))
+            }
           />
+          <div style={{ marginTop: 6, fontSize: 11, opacity: 0.7 }}>
+            Salvato come stringa compatibile: {form.personale_previsto || "—"}
+          </div>
         </div>
         <div>
           <div style={{ fontSize: 12, marginBottom: 4 }}>Mezzi</div>
