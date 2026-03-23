@@ -3,6 +3,7 @@ export const runtime = "nodejs";
 import { NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { requireOperatore } from "@/lib/adminAuth";
+import { calcM2FromDimensioni, parseDimensioniToWH } from "@/lib/parseDimensioni";
 
 type CsvRow = Record<string, string>;
 
@@ -27,6 +28,52 @@ function normalizeHeader(value: string) {
 function normalizeCell(value: string) {
   const trimmed = value.trim();
   return trimmed === "" ? "" : trimmed;
+}
+
+function normalizeDecimalInput(value: string | undefined) {
+  const trimmed = String(value || "").trim();
+  if (!trimmed) return { value: "", changed: false };
+  const normalized = trimmed.replace(/,/g, ".");
+  return { value: normalized, changed: normalized !== trimmed };
+}
+
+function normalizeProformaInput(value: string | undefined) {
+  const trimmed = String(value || "").trim();
+  if (!trimmed) return { value: "", changed: false };
+  const normalized = trimmed.replace(/_/g, "/");
+  return { value: normalized, changed: normalized !== trimmed };
+}
+
+function formatDimensionNumber(value: number) {
+  const rounded = Math.round(value * 10000) / 10000;
+  return String(rounded)
+    .replace(/\.0+$/, "")
+    .replace(/(\.\d*?[1-9])0+$/, "$1");
+}
+
+function normalizeDimensioniInput(value: string | undefined) {
+  const trimmed = String(value || "").trim();
+  if (!trimmed) {
+    return { value: "", m2: null as number | null, changed: false };
+  }
+
+  const preNormalized = trimmed
+    .replace(/_/g, ".")
+    .replace(/,/g, ".")
+    .replace(/[×*]/g, "x")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  const wh = parseDimensioniToWH(preNormalized);
+  const normalized = wh
+    ? `${formatDimensionNumber(wh.larghezza)}x${formatDimensionNumber(wh.altezza)}`
+    : preNormalized.replace(/\s*x\s*/gi, "x");
+
+  return {
+    value: normalized,
+    m2: calcM2FromDimensioni(normalized, 1),
+    changed: normalized !== trimmed,
+  };
 }
 
 function parseCsvSemicolon(input: string) {
@@ -591,10 +638,14 @@ export async function POST(request: Request) {
     const rowNumber = index + 2;
 
     try {
+      const autoFixFields = new Set<string>();
       const nomeProgettoCsv = getRowValue(row, "nome_progetto");
       const clienteInput = getRowValue(row, "cliente");
       const codiceProgetto = getRowValue(row, "codice_progetto", "nome_checklist");
-      const csvProforma = getRowValue(row, "proforma");
+      const csvProformaRaw = getRowValue(row, "proforma");
+      const csvProformaNormalized = normalizeProformaInput(csvProformaRaw);
+      if (csvProformaNormalized.changed) autoFixFields.add("proforma");
+      const csvProforma = csvProformaNormalized.value;
       const projectTag = normalizeCatalogCode(nomeProgettoCsv);
       const tipo = parseOptionalUpper(getRowValue(row, "tipo"));
       const stato = parseOptionalUpper(getRowValue(row, "stato", "stato_progetto"));
@@ -611,11 +662,16 @@ export async function POST(request: Request) {
       const linkDriveMagazzino = parseOptionalText(getRowValue(row, "link_drive_magazzino"));
       const descrizioneImpianto = parseOptionalText(getRowValue(row, "descrizione_impianto"));
       const passo = parseOptionalText(getRowValue(row, "passo"));
+      const quantitaImpiantiRaw = normalizeDecimalInput(getRowValue(row, "quantita_impianti"));
+      if (quantitaImpiantiRaw.changed) autoFixFields.add("quantita_impianti");
       const quantitaImpianti = parseOptionalPositiveInteger(
-        getRowValue(row, "quantita_impianti"),
+        quantitaImpiantiRaw.value,
         "quantita_impianti"
       );
-      const dimensioni = parseOptionalText(getRowValue(row, "dimensioni"));
+      const dimensioniNormalized = normalizeDimensioniInput(getRowValue(row, "dimensioni"));
+      if (dimensioniNormalized.changed) autoFixFields.add("dimensioni");
+      const dimensioni = parseOptionalText(dimensioniNormalized.value);
+      const m2Calcolati = dimensioniNormalized.m2;
       const tipoImpianto = parseOptionalUpper(getRowValue(row, "tipo_impianto"));
       const pianoSaas = parseOptionalText(getRowValue(row, "piano_saas"));
       const serviziSaas = splitMultiValue(getRowValue(row, "servizio_saas_aggiuntivo"));
@@ -656,6 +712,12 @@ export async function POST(request: Request) {
           reason: "servizio_saas_aggiuntivo contiene più valori: il primo va in saas_tipo, gli altri restano in saas_note",
         });
       }
+      for (const field of autoFixFields) {
+        warnings.push({
+          row: rowNumber,
+          reason: `formato corretto automaticamente: ${field}`,
+        });
+      }
 
       const clienteRow = await ensureClienteAnagraficaRow(supabaseAdmin, clienteInput);
       const cliente = clienteRow?.denominazione || clienteInput.trim();
@@ -691,6 +753,8 @@ export async function POST(request: Request) {
         passo,
         impianto_quantita: quantitaImpianti,
         dimensioni,
+        m2_calcolati: m2Calcolati,
+        m2_inclusi: m2Calcolati,
         tipo_impianto: tipoImpianto,
         saas_piano: pianoSaas,
         saas_tipo: serviziSaas[0] || null,

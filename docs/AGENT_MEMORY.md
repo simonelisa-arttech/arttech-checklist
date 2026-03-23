@@ -463,3 +463,9 @@ group by checklist_id;
   - `preset_default`
 - Il dropdown `Preset default` non dipende piu dal successo del read regole: i preset vengono caricati comunque e mostrano uno stato vuoto esplicito se non ci sono template compatibili.
 - Lo script `scripts/create_scadenze_alert_global_rules.sql` e' stato riallineato al contratto effettivo dell'app e puo' anche backfillare i campi legacy dai nomi colonna alternativi.
+
+## Snapshot 2026-03-23 - Import progetti CSV con auto-normalizzazione input
+- `proforma` viene corretta automaticamente da `_` a `/`.
+- `dimensioni` viene normalizzata (`_` e `,` -> `.`) e salvata in forma compatta `LxH`.
+- Dal valore `dimensioni` normalizzato la route valorizza anche `m2_calcolati` e `m2_inclusi`.
+- Le correzioni automatiche aggiungono warning non bloccanti per riga (`proforma`, `dimensioni`, `quantita_impianti`).

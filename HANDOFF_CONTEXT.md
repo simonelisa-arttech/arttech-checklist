@@ -665,3 +665,12 @@ Dopo il push, Vercel farà auto-deploy e i fix saranno in produzione.
   - il caricamento dei preset non si ferma piu se il read delle regole fallisce
   - il select `Preset default` mostra stato vuoto coerente quando non ci sono preset compatibili
 - `scripts/create_scadenze_alert_global_rules.sql` ora crea/riallinea la tabella al contratto reale usato dall'app e copia i dati dai nomi colonna alternativi se presenti.
+
+## Update 2026-03-23 - Import progetti CSV auto-normalizza proforma, dimensioni e numeri
+
+- La route `app/api/import/progetti-csv/route.ts` normalizza in ingresso:
+  - `proforma`: `_` -> `/`
+  - `dimensioni`: `_` e `,` -> `.`, poi compatta in formato `LxH`
+  - numeri decimali import (`quantita_impianti`): `,` -> `.`
+- Se una correzione automatica viene applicata, la route aggiunge un warning non bloccante `formato corretto automaticamente: <campo>`.
+- Per `dimensioni` viene anche calcolato `m2_calcolati` / `m2_inclusi` dal formato normalizzato.
