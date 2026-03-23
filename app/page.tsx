@@ -1747,12 +1747,13 @@ export default function Page() {
                       <Link
                         href={buildScadenzeLink(scadenzePeriodDays)}
                         style={{
-                          fontSize: 13,
+                          fontSize: 11,
                           fontWeight: 900,
-                          letterSpacing: 0.4,
+                          letterSpacing: 0.2,
                           color: "#92400e",
                           textDecoration: "none",
                           cursor: "pointer",
+                          whiteSpace: "nowrap",
                         }}
                       >
                         SCADENZE IN ARRIVO
