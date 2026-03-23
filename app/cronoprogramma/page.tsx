@@ -7,7 +7,9 @@ import { isSupabaseConfigured } from "@/lib/supabaseClient";
 import {
   buildOperativiSchedule,
   computeOperativiEndDate,
+  dateToOperativiIsoDay,
   durationToInputValue,
+  formatOperativiDateLabel,
   normalizeOperativiDate,
 } from "@/lib/operativiSchedule";
 import { checkOperativiConflicts } from "@/lib/operativiConflicts";
@@ -127,22 +129,11 @@ function getRowKey(rowKind: "INSTALLAZIONE" | "DISINSTALLAZIONE" | "INTERVENTO",
   return `${rowKind}:${rowRefId}`;
 }
 
-function toIsoDate(value: Date) {
-  return value.toISOString().slice(0, 10);
-}
-
 function normalizePersonaleText(value?: string | null) {
   return String(value || "")
     .toLowerCase()
     .replace(/\s+/g, " ")
     .trim();
-}
-
-function extractPersonaleNames(value?: string | null) {
-  return String(value || "")
-    .split(/[,+;/]+/)
-    .map((part) => part.replace(/\([^)]*\)/g, "").trim())
-    .filter(Boolean);
 }
 
 function buildConflictTooltip(personale: string[], mezzi: string[]) {
@@ -154,6 +145,24 @@ function buildConflictTooltip(personale: string[], mezzi: string[]) {
     details.push(`Mezzi già impegnati: ${mezzi.join(", ")}`);
   }
   return details.join(" | ");
+}
+
+function hasDefinedOperativi(meta?: CronoMeta | null) {
+  if (!meta) return false;
+  const operativi = extractOperativi(meta);
+  return Boolean(
+    operativi.data_inizio ||
+      operativi.durata_giorni ||
+      operativi.personale_previsto.trim() ||
+      operativi.mezzi.trim() ||
+      operativi.descrizione_attivita.trim() ||
+      operativi.indirizzo.trim() ||
+      operativi.orario.trim() ||
+      operativi.referente_cliente_nome.trim() ||
+      operativi.referente_cliente_contatto.trim() ||
+      operativi.commerciale_art_tech_nome.trim() ||
+      operativi.commerciale_art_tech_contatto.trim()
+  );
 }
 
 function downloadCsv(
@@ -475,8 +484,8 @@ export default function CronoprogrammaPage() {
     from.setDate(from.getDate() - 7);
     const to = new Date(now.getTime());
     to.setDate(to.getDate() + 60);
-    setFromDate(from.toISOString().slice(0, 10));
-    setToDate(to.toISOString().slice(0, 10));
+    setFromDate(dateToOperativiIsoDay(from));
+    setToDate(dateToOperativiIsoDay(to));
   }, []);
 
   function applyQuickRange(days: 7 | 15 | 30) {
@@ -484,8 +493,8 @@ export default function CronoprogrammaPage() {
     today.setHours(0, 0, 0, 0);
     const to = new Date(today.getTime());
     to.setDate(to.getDate() + days);
-    setFromDate(toIsoDate(today));
-    setToDate(toIsoDate(to));
+    setFromDate(dateToOperativiIsoDay(today));
+    setToDate(dateToOperativiIsoDay(to));
     setQuickRangeDays(days);
   }
 
@@ -522,16 +531,6 @@ export default function CronoprogrammaPage() {
       a.localeCompare(b, "it", { sensitivity: "base" })
     );
   }, [rows]);
-
-  const personaleOptions = useMemo(() => {
-    const names = new Set<string>();
-    for (const meta of Object.values(metaByKey)) {
-      for (const name of extractPersonaleNames(meta?.personale_previsto)) {
-        names.add(name);
-      }
-    }
-    return Array.from(names).sort((a, b) => a.localeCompare(b, "it", { sensitivity: "base" }));
-  }, [metaByKey]);
 
   function onTopScroll(e: UIEvent<HTMLDivElement>) {
     if (syncingScrollRef.current === "main" || syncingScrollRef.current === "bottom") return;
@@ -793,15 +792,9 @@ export default function CronoprogrammaPage() {
           <input
             value={personaleFilter}
             onChange={(e) => setPersonaleFilter(e.target.value)}
-            list="cronoprogramma-personale-options"
             placeholder="Nome o incarico"
             style={{ width: "100%", padding: 8 }}
           />
-          <datalist id="cronoprogramma-personale-options">
-            {personaleOptions.map((name) => (
-              <option key={name} value={name} />
-            ))}
-          </datalist>
         </label>
       </div>
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
@@ -956,6 +949,7 @@ export default function CronoprogrammaPage() {
             const schedule = getRowSchedule(r, meta);
             const fatto = Boolean(meta?.fatto ?? r.fatto);
             const hidden = Boolean(meta?.hidden);
+            const operativoDefinito = hasDefinedOperativi(meta);
             const comments = commentsByKey[key] || [];
             const conflict = conflictByKey[key];
             const conflictTitle = buildConflictTooltip(
@@ -982,18 +976,34 @@ export default function CronoprogrammaPage() {
                 title={conflict?.hasConflict ? conflictTitle : undefined}
               >
                 <div>
-                  {schedule.data_inizio
-                    ? new Date(schedule.data_inizio).toLocaleDateString("it-IT")
-                    : "—"}
+                  {schedule.data_inizio ? formatOperativiDateLabel(schedule.data_inizio) : "—"}
                 </div>
                 <div>
-                  {schedule.data_fine
-                    ? new Date(schedule.data_fine).toLocaleDateString("it-IT")
-                    : "—"}
+                  {schedule.data_fine ? formatOperativiDateLabel(schedule.data_fine) : "—"}
                 </div>
                 <div>{schedule.durata_giorni} gg</div>
                 <div style={{ paddingRight: 18 }}>
                   <div style={{ whiteSpace: "nowrap" }}>{r.kind}</div>
+                  {operativoDefinito ? (
+                    <div
+                      style={{
+                        marginTop: 6,
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 6,
+                        borderRadius: 999,
+                        border: "1px solid #86efac",
+                        background: "#f0fdf4",
+                        color: "#166534",
+                        padding: "3px 8px",
+                        fontSize: 12,
+                        fontWeight: 700,
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      Operativo definito
+                    </div>
+                  ) : null}
                   {conflict?.hasConflict ? (
                     <div
                       title={conflictTitle}
@@ -1140,7 +1150,7 @@ export default function CronoprogrammaPage() {
                   />
                   {!(operativiDraftByKey[key]?.data_inizio ?? "") && (r.data_tassativa || r.data_prevista) ? (
                     <div style={{ marginTop: 4, fontSize: 11, opacity: 0.7 }}>
-                      Fallback: {new Date(r.data_tassativa || r.data_prevista).toLocaleDateString("it-IT")}
+                      Fallback: {formatOperativiDateLabel(r.data_tassativa || r.data_prevista)}
                     </div>
                   ) : null}
                 </div>
@@ -1161,18 +1171,13 @@ export default function CronoprogrammaPage() {
                       style={{ width: "100%", padding: 6 }}
                     />
                     <div style={{ fontSize: 11, opacity: 0.7 }}>
-                      Fine:{" "}
-                      {computeOperativiEndDate(
-                        operativiDraftByKey[key]?.data_inizio || r.data_tassativa || r.data_prevista,
-                        operativiDraftByKey[key]?.durata_giorni
-                      )
-                        ? new Date(
-                            computeOperativiEndDate(
-                              operativiDraftByKey[key]?.data_inizio || r.data_tassativa || r.data_prevista,
-                              operativiDraftByKey[key]?.durata_giorni
-                            )
-                          ).toLocaleDateString("it-IT")
-                        : "—"}
+                      {(() => {
+                        const draftEndDate = computeOperativiEndDate(
+                          operativiDraftByKey[key]?.data_inizio || r.data_tassativa || r.data_prevista,
+                          operativiDraftByKey[key]?.durata_giorni
+                        );
+                        return `Fine: ${draftEndDate ? formatOperativiDateLabel(draftEndDate) : "—"}`;
+                      })()}
                     </div>
                   </div>
                 </div>

@@ -93,6 +93,17 @@
   - nessun blocco al salvataggio per ora
   - nessuna nuova API o tabella: solo evidenza visiva nel cronoprogramma
 
+## Snapshot 2026-03-23 - Cronoprogramma date operative e personale manuale
+- `lib/operativiSchedule.ts`
+  - la formula corretta resta `data_fine = data_inizio + (durata_giorni - 1)`
+  - normalizzazione e calcolo date ora evitano slittamenti da `toISOString()` su date giornaliere
+- `app/api/cronoprogramma/route.ts`
+  - le date evento vengono normalizzate con lo stesso helper condiviso
+- `app/cronoprogramma/page.tsx`
+  - rendering date allineato al formatter condiviso
+  - badge verde `Operativo definito` su righe con `data_inizio` o meta operativo compilato
+  - rimossi i suggerimenti automatici di personale (`datalist`): il personale resta solo manuale
+
 ## Snapshot 2026-03-20 - Durata multi-giorno cronoprogramma
 - `cronoprogramma_meta` resta la source of truth per i dati operativi di:
   - `INSTALLAZIONE`

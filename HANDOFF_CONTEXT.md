@@ -116,6 +116,20 @@
     - e almeno una risorsa `personale` o `mezzi` coincide
 - `app/cronoprogramma/page.tsx`
   - usa ora `checkOperativiConflicts(...)` sui dati gia presenti lato frontend
+
+- `fix: cronoprogramma date operative + badge + personale manuale` in corso locale.
+- Formula data fine corretta:
+  - `data_fine = data_inizio + (durata_giorni - 1)`
+  - quindi:
+    - durata `1` => `data_fine = data_inizio`
+    - durata `2` => `data_fine = data_inizio + 1`
+- Causa reale del bug:
+  - il calcolo era gia impostato come `N - 1`, ma alcuni passaggi usavano `Date` + `toISOString()` su date giornaliere
+  - questo introduceva slittamenti di timezone e faceva apparire il giorno precedente in cronoprogramma
+- Fix:
+  - `lib/operativiSchedule.ts` usa ora aritmetica su giorno puro / UTC-safe per normalizzazione e `data_fine`
+  - `app/cronoprogramma/page.tsx` usa formatter date coerente e mostra badge verde `Operativo definito` se esiste `data_inizio` o altro meta operativo valorizzato
+  - rimossa la `datalist` di suggerimento automatico dal filtro `Personale previsto`
   - warning solo visivo, nessun blocco al salvataggio
   - ogni riga in conflitto mostra:
     - bordo rosso leggero

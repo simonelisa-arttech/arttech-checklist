@@ -1,3 +1,15 @@
+function pad2(value: number) {
+  return String(value).padStart(2, "0");
+}
+
+function formatIsoDayParts(year: number, month: number, day: number) {
+  return `${year}-${pad2(month)}-${pad2(day)}`;
+}
+
+export function dateToOperativiIsoDay(value: Date) {
+  return formatIsoDayParts(value.getFullYear(), value.getMonth() + 1, value.getDate());
+}
+
 export function normalizeOperativiDate(value?: string | null) {
   const raw = String(value || "").trim();
   if (!raw) return "";
@@ -7,7 +19,7 @@ export function normalizeOperativiDate(value?: string | null) {
   if (it) return `${it[3]}-${it[2]}-${it[1]}`;
   const dt = new Date(raw);
   if (!Number.isFinite(dt.getTime())) return "";
-  return dt.toISOString().slice(0, 10);
+  return dateToOperativiIsoDay(dt);
 }
 
 export function normalizeOperativiDuration(value?: string | number | null) {
@@ -33,9 +45,20 @@ export function computeOperativiEndDate(
   const start = normalizeOperativiDate(dataInizio);
   if (!start) return "";
   const duration = getOperativiDurationDays(durataGiorni);
-  const dt = new Date(`${start}T00:00:00`);
-  dt.setDate(dt.getDate() + duration - 1);
-  return dt.toISOString().slice(0, 10);
+  const parts = /^(\d{4})-(\d{2})-(\d{2})$/.exec(start);
+  if (!parts) return "";
+  const dt = new Date(Date.UTC(Number(parts[1]), Number(parts[2]) - 1, Number(parts[3])));
+  dt.setUTCDate(dt.getUTCDate() + duration - 1);
+  return formatIsoDayParts(dt.getUTCFullYear(), dt.getUTCMonth() + 1, dt.getUTCDate());
+}
+
+export function formatOperativiDateLabel(value?: string | null, locale = "it-IT") {
+  const iso = normalizeOperativiDate(value);
+  const parts = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+  if (!parts) return "";
+  return new Intl.DateTimeFormat(locale, { timeZone: "UTC" }).format(
+    new Date(Date.UTC(Number(parts[1]), Number(parts[2]) - 1, Number(parts[3])))
+  );
 }
 
 export function buildOperativiSchedule(

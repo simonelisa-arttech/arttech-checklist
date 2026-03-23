@@ -49,16 +49,7 @@ function isValidRowKind(value: string): value is RowKind {
 }
 
 function toIsoDay(value?: string | null) {
-  if (!value) return "";
-  const raw = String(value).trim();
-  if (!raw) return "";
-  const iso = /^(\d{4})-(\d{2})-(\d{2})/.exec(raw);
-  if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
-  const it = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(raw);
-  if (it) return `${it[3]}-${it[2]}-${it[1]}`;
-  const dt = new Date(raw);
-  if (Number.isFinite(dt.getTime())) return dt.toISOString().slice(0, 10);
-  return "";
+  return normalizeOperativiDate(value);
 }
 
 function isOnOrAfterCutoff(value?: string | null) {
