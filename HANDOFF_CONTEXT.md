@@ -721,3 +721,19 @@ Dopo il push, Vercel farà auto-deploy e i fix saranno in produzione.
   - il valore salvato resta `personale_previsto` come stringa
   - formato emesso: `Mario Rossi; Luca Bianchi`
   - eventuali token legacy non riconosciuti vengono preservati e mostrati come badge `Legacy`, rimovibili manualmente
+
+## Update 2026-03-24 - Safety badge trasparente + elenco standard atteso
+
+- I criteri minimi safety restano invariati:
+  - personale: `Visita medica`, `Formazione generale`, `Formazione specifica`
+  - aziende: `DURC`, `Visura camerale`
+- `SafetyComplianceBadge` ora mostra anche i motivi principali del giallo/rosso vicino al badge, oltre al tooltip completo.
+- Aggiunto pannello `SafetyExpectedDocumentsPanel` nelle pagine impostazioni:
+  - personale: `Visita medica`, `Formazione generale`, `Formazione specifica`, `Lavori in quota`, `Primo soccorso`, `Antincendio`, `Patente / patentini`
+  - aziende: `DURC`, `Visura camerale`, `DVR`, `POS`, `Assicurazione / documento impresa`
+- Per ogni voce il pannello mostra:
+  - `Presente e valido`
+  - `In scadenza`
+  - `Scaduto`
+  - `Mancante`
+- Sistemato anche l'allineamento del flag `Attivo` nella pagina personale.

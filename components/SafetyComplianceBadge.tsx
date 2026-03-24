@@ -168,6 +168,11 @@ export default function SafetyComplianceBadge({ personaleText, showSummary = tru
           {compliance.summary}
         </span>
       ) : null}
+      {compliance.status !== "CONFORME" && compliance.highlights.length > 0 ? (
+        <span title={compliance.tooltip} style={{ fontSize: 12, color: style.color, fontWeight: 600 }}>
+          {compliance.highlights.join(" · ")}
+        </span>
+      ) : null}
     </div>
   );
 }

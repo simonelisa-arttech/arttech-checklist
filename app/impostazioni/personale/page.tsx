@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import ConfigMancante from "@/components/ConfigMancante";
+import SafetyExpectedDocumentsPanel from "@/components/SafetyExpectedDocumentsPanel";
 import { isSupabaseConfigured } from "@/lib/supabaseClient";
 import { dbFrom } from "@/lib/clientDbBroker";
 
@@ -476,7 +477,17 @@ export default function PersonalePage() {
                         style={{ width: "100%", padding: 8, marginTop: 6 }}
                       />
                     </label>
-                    <label style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 12, paddingBottom: 8 }}>
+                    <label
+                      style={{
+                        display: "inline-flex",
+                        gap: 8,
+                        alignItems: "center",
+                        justifySelf: "start",
+                        alignSelf: "center",
+                        fontSize: 12,
+                        marginTop: 24,
+                      }}
+                    >
                       <input
                         type="checkbox"
                         checked={persona.attivo}
@@ -539,6 +550,14 @@ export default function PersonalePage() {
                       </button>
                     </div>
                   </div>
+
+                  <SafetyExpectedDocumentsPanel
+                    kind="PERSONALE"
+                    docs={docRows.map((doc) => ({
+                      tipo_documento: doc.tipo_documento,
+                      data_scadenza: doc.data_scadenza || null,
+                    }))}
+                  />
 
                   <div style={{ display: "grid", gap: 10 }}>
                     {docRows.length === 0 ? (

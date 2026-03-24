@@ -48,9 +48,20 @@ export type SafetyComplianceResult = {
   label: string;
   summary: string;
   tooltip: string;
+  highlights: string[];
   matchedPersonale: string[];
   matchedAziende: string[];
   unknownAssignments: string[];
+};
+
+export type SafetyDocumentState = "PRESENTE_VALIDO" | "IN_SCADENZA" | "SCADUTO" | "MANCANTE";
+
+export type SafetyExpectedDocumentItem = {
+  key: string;
+  label: string;
+  required: boolean;
+  state: SafetyDocumentState;
+  detail: string;
 };
 
 const PERSONALE_REQUIRED = [
@@ -59,9 +70,24 @@ const PERSONALE_REQUIRED = [
   { key: "FORMAZIONE_SPECIFICA", label: "Formazione specifica" },
 ] as const;
 
+export const PERSONALE_STANDARD_DOCUMENTS = [
+  ...PERSONALE_REQUIRED,
+  { key: "LAVORI_IN_QUOTA", label: "Lavori in quota" },
+  { key: "PRIMO_SOCCORSO", label: "Primo soccorso" },
+  { key: "ANTINCENDIO", label: "Antincendio" },
+  { key: "PATENTE_PATENTINI", label: "Patente / patentini" },
+] as const;
+
 const AZIENDA_REQUIRED = [
   { key: "DURC", label: "DURC" },
   { key: "VISURA_CAMERALE", label: "Visura camerale" },
+] as const;
+
+export const AZIENDA_STANDARD_DOCUMENTS = [
+  ...AZIENDA_REQUIRED,
+  { key: "DVR", label: "DVR" },
+  { key: "POS", label: "POS" },
+  { key: "ASSICURAZIONE_IMPRESA", label: "Assicurazione / documento impresa" },
 ] as const;
 
 const EXPIRING_DAYS = 30;
@@ -94,9 +120,12 @@ function classifyPersonaleDoc(value?: string | null) {
   if (normalized.includes("formazione") && normalized.includes("specifica")) {
     return "FORMAZIONE_SPECIFICA";
   }
+  if (normalized.includes("quota")) return "LAVORI_IN_QUOTA";
+  if (normalized.includes("primo soccorso")) return "PRIMO_SOCCORSO";
+  if (normalized.includes("antincendio")) return "ANTINCENDIO";
+  if (normalized.includes("patente") || normalized.includes("patentino")) return "PATENTE_PATENTINI";
   if (
     normalized.includes("abilit") ||
-    normalized.includes("patentino") ||
     normalized.includes("corso")
   ) {
     return "ABILITAZIONE";
@@ -109,9 +138,10 @@ function classifyAziendaDoc(value?: string | null) {
   if (!normalized) return "ALTRO";
   if (normalized.includes("durc")) return "DURC";
   if (normalized.includes("visura") && normalized.includes("camer")) return "VISURA_CAMERALE";
-  if (normalized.includes("sicurezza") || normalized.includes("dvr") || normalized.includes("pos")) {
-    return "SICUREZZA_AZIENDA";
-  }
+  if (normalized.includes("dvr")) return "DVR";
+  if (normalized.includes("pos")) return "POS";
+  if (normalized.includes("assicurazione") || normalized.includes("impresa")) return "ASSICURAZIONE_IMPRESA";
+  if (normalized.includes("sicurezza")) return "SICUREZZA_AZIENDA";
   return "ALTRO";
 }
 
@@ -127,6 +157,14 @@ function getDateSeverity(value?: string | null): SafetyStatus {
   limit.setDate(limit.getDate() + EXPIRING_DAYS);
   if (expiry <= limit) return "IN_SCADENZA";
   return "CONFORME";
+}
+
+function getDocumentState(value?: string | null): SafetyDocumentState {
+  const severity = getDateSeverity(value);
+  if (!String(value || "").trim()) return "PRESENTE_VALIDO";
+  if (severity === "NON_CONFORME") return "SCADUTO";
+  if (severity === "IN_SCADENZA") return "IN_SCADENZA";
+  return "PRESENTE_VALIDO";
 }
 
 function toAssignmentTokens(value?: string | null) {
@@ -199,6 +237,75 @@ function buildDocCheck(label: string, expiry?: string | null): DocCheck {
   return { label, status: "CONFORME", reason: `${label} valido (${formatDateLabel(expiry)})` };
 }
 
+function selectPreferredDoc<T extends { data_scadenza: string | null }>(docs: T[]) {
+  if (docs.length <= 1) return docs[0] || null;
+  const withoutExpiry = docs.find((doc) => !String(doc.data_scadenza || "").trim());
+  if (withoutExpiry) return withoutExpiry;
+  return [...docs].sort((a, b) => String(b.data_scadenza || "").localeCompare(String(a.data_scadenza || "")))[0] || null;
+}
+
+export function evaluatePersonaleExpectedDocuments(
+  docs: Array<{ tipo_documento: string; data_scadenza: string | null }>
+): SafetyExpectedDocumentItem[] {
+  return PERSONALE_STANDARD_DOCUMENTS.map((item) => {
+    const matching = docs.filter((doc) => classifyPersonaleDoc(doc.tipo_documento) === item.key);
+    const selected = selectPreferredDoc(matching);
+    if (!selected) {
+      return {
+        key: item.key,
+        label: item.label,
+        required: PERSONALE_REQUIRED.some((required) => required.key === item.key),
+        state: "MANCANTE",
+        detail: `${item.label} mancante`,
+      };
+    }
+    const state = getDocumentState(selected.data_scadenza);
+    return {
+      key: item.key,
+      label: item.label,
+      required: PERSONALE_REQUIRED.some((required) => required.key === item.key),
+      state,
+      detail:
+        state === "SCADUTO"
+          ? `${item.label} scaduto (${formatDateLabel(selected.data_scadenza)})`
+          : state === "IN_SCADENZA"
+          ? `${item.label} in scadenza (${formatDateLabel(selected.data_scadenza)})`
+          : `${item.label} valido (${formatDateLabel(selected.data_scadenza)})`,
+    };
+  });
+}
+
+export function evaluateAziendaExpectedDocuments(
+  docs: Array<{ tipo_documento: string; data_scadenza: string | null }>
+): SafetyExpectedDocumentItem[] {
+  return AZIENDA_STANDARD_DOCUMENTS.map((item) => {
+    const matching = docs.filter((doc) => classifyAziendaDoc(doc.tipo_documento) === item.key);
+    const selected = selectPreferredDoc(matching);
+    if (!selected) {
+      return {
+        key: item.key,
+        label: item.label,
+        required: AZIENDA_REQUIRED.some((required) => required.key === item.key),
+        state: "MANCANTE",
+        detail: `${item.label} mancante`,
+      };
+    }
+    const state = getDocumentState(selected.data_scadenza);
+    return {
+      key: item.key,
+      label: item.label,
+      required: AZIENDA_REQUIRED.some((required) => required.key === item.key),
+      state,
+      detail:
+        state === "SCADUTO"
+          ? `${item.label} scaduto (${formatDateLabel(selected.data_scadenza)})`
+          : state === "IN_SCADENZA"
+          ? `${item.label} in scadenza (${formatDateLabel(selected.data_scadenza)})`
+          : `${item.label} valido (${formatDateLabel(selected.data_scadenza)})`,
+    };
+  });
+}
+
 function pickWorstStatus(values: SafetyStatus[]) {
   if (values.includes("NON_CONFORME")) return "NON_CONFORME" as const;
   if (values.includes("IN_SCADENZA")) return "IN_SCADENZA" as const;
@@ -217,6 +324,7 @@ export function evaluateSafetyCompliance(
       label: "Safety non assegnato",
       summary: "Nessun personale o azienda assegnata.",
       tooltip: "Nessun personale o azienda assegnata.",
+      highlights: [],
       matchedPersonale: [],
       matchedAziende: [],
       unknownAssignments: [],
@@ -356,6 +464,9 @@ export function evaluateSafetyCompliance(
         ? "Presenti documenti in scadenza."
         : "Documenti mancanti o scaduti."),
     tooltip: checks.map((check) => check.reason).join("\n") || "Nessun controllo disponibile",
+    highlights: (
+      checks.filter((check) => check.status !== "CONFORME").map((check) => check.reason).slice(0, 3)
+    ),
     matchedPersonale: matchedNames,
     matchedAziende: matchedCompanies,
     unknownAssignments,

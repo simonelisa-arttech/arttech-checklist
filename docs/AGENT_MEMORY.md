@@ -517,3 +517,15 @@ group by checklist_id;
 - Se il valore storico contiene nomi non presenti in anagrafica:
   - vengono mantenuti come token `Legacy`
   - non vengono persi al salvataggio finche' non vengono rimossi esplicitamente
+
+## Snapshot 2026-03-24 - Trasparenza badge safety e liste standard attese
+- `SafetyComplianceBadge` espone ora anche `highlights` con le prime cause di `NON_CONFORME` / `IN_SCADENZA`.
+- `lib/safetyCompliance.ts` esporta liste standard attese e valutatori dedicati:
+  - `evaluatePersonaleExpectedDocuments`
+  - `evaluateAziendaExpectedDocuments`
+- Nuovo componente `components/SafetyExpectedDocumentsPanel.tsx` usato in:
+  - `/impostazioni/personale`
+  - `/impostazioni/aziende`
+- Il pannello standard e' informativo/non bloccante; i criteri minimi usati dal badge restano solo:
+  - persona: visita medica, formazione generale, formazione specifica
+  - azienda: DURC, visura camerale

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import ConfigMancante from "@/components/ConfigMancante";
+import SafetyExpectedDocumentsPanel from "@/components/SafetyExpectedDocumentsPanel";
 import { isSupabaseConfigured } from "@/lib/supabaseClient";
 import { dbFrom } from "@/lib/clientDbBroker";
 
@@ -460,6 +461,14 @@ export default function AziendePage() {
                       </button>
                     </div>
                   </div>
+
+                  <SafetyExpectedDocumentsPanel
+                    kind="AZIENDA"
+                    docs={docRows.map((doc) => ({
+                      tipo_documento: doc.tipo_documento,
+                      data_scadenza: doc.data_scadenza || null,
+                    }))}
+                  />
 
                   <div style={{ display: "grid", gap: 10 }}>
                     {docRows.length === 0 ? (
