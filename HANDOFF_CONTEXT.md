@@ -40,6 +40,28 @@
 - Effetto:
   - `cliente` e `nome_progetto` vengono letti correttamente anche da TSV/CSV con intestazioni sporche o formattate da Google Sheets
 
+## Update 2026-03-24 - Import progetti placeholder data vuoti
+
+- `app/api/import/progetti-csv/route.ts`
+  - i placeholder data non vengono piu validati come date reali
+  - valori trattati come vuoti/null:
+    - `-`
+    - `—`
+    - stringa vuota
+    - solo spazi
+    - `n.d.`
+    - `nd`
+    - `null`
+- Campi coperti:
+  - `data_prevista`
+  - `data_tassativa`
+  - `data_installazione_reale`
+  - `saas_scadenza`
+  - `garanzia_scadenza`
+- Effetto:
+  - il placeholder `-` non genera piu errore `data non valida`
+  - una data davvero malformata continua invece a produrre errore
+
 ## Aggiornamento rapido (19 marzo 2026)
 
 - `fix: allineamento blocco interventi checklist con saas_interventi` in corso locale.

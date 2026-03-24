@@ -36,6 +36,8 @@ type ParsedCsvCandidate = {
 
 const SUPPORTED_DELIMITERS: SupportedDelimiter[] = [";", ",", "\t"];
 
+const EMPTY_DATE_PLACEHOLDERS = new Set(["-", "—", "", "n.d.", "nd", "null"]);
+
 const HEADER_ALIASES = new Map<string, string>([
   ["nome progetto", "nome_progetto"],
   ["nomeprogetto", "nome_progetto"],
@@ -353,8 +355,15 @@ function parseOptionalUpper(value: string | undefined) {
   return trimmed ? trimmed.toUpperCase() : null;
 }
 
-function parseOptionalDate(value: string | undefined) {
+function normalizeOptionalDateInput(value: string | undefined) {
   const trimmed = String(value || "").trim();
+  if (!trimmed) return "";
+  const normalized = trimmed.toLowerCase();
+  return EMPTY_DATE_PLACEHOLDERS.has(normalized) ? "" : trimmed;
+}
+
+function parseOptionalDate(value: string | undefined) {
+  const trimmed = normalizeOptionalDateInput(value);
   if (!trimmed) return null;
   if (!/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
     throw new Error(`data non valida: ${trimmed}`);

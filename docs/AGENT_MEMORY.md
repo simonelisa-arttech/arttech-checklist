@@ -30,6 +30,26 @@
 - Regola operativa:
   - per bug di import con campi obbligatori mancanti, verificare prima il log header della route
 
+## Snapshot 2026-03-24 - Import progetti placeholder date vuoti
+- `app/api/import/progetti-csv/route.ts`
+  - `parseOptionalDate(...)` normalizza prima i placeholder vuoti
+  - valori trattati come `null`:
+    - `-`
+    - `—`
+    - stringa vuota / soli spazi
+    - `n.d.`
+    - `nd`
+    - `null`
+- Campi data coperti dal flow import:
+  - `data_prevista`
+  - `data_tassativa`
+  - `data_installazione_reale`
+  - `saas_scadenza`
+  - `garanzia_scadenza`
+- Regola operativa:
+  - placeholder documentali o foglio elettronico non devono produrre `data non valida`
+  - una data presente ma fuori formato continua a generare errore
+
 ## Snapshot 2026-03-20 - Interventi checklist allineati a saas_interventi
 - `app/checklists/[id]/page.tsx`
   - il blocco `Interventi` progetto usa ora query diretta `dbFrom("saas_interventi")`
