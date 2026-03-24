@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import ConfigMancante from "@/components/ConfigMancante";
 import DashboardTable from "./components/DashboardTable";
+import OperativeNotesPanel from "@/components/OperativeNotesPanel";
 import Toast from "@/components/Toast";
 import { calcM2FromDimensioni } from "@/lib/parseDimensioni";
 import { isSupabaseConfigured, supabase } from "@/lib/supabaseClient";
@@ -2783,7 +2784,29 @@ export default function Page() {
                         }}
                       >
                         <td style={{ padding: "10px 12px", fontWeight: 700 }}>
-                          {c.nome_checklist}
+                          <div style={{ display: "grid", gap: 6 }}>
+                            <div>{c.nome_checklist}</div>
+                            <OperativeNotesPanel
+                              compact
+                              title="Note operative"
+                              items={[
+                                {
+                                  rowKind: "INSTALLAZIONE",
+                                  rowRefId: c.id,
+                                  label: "Installazione",
+                                },
+                                ...(String(c.noleggio_vendita || "").trim().toUpperCase() === "NOLEGGIO"
+                                  ? [
+                                      {
+                                        rowKind: "DISINSTALLAZIONE" as const,
+                                        rowRefId: c.id,
+                                        label: "Disinstallazione",
+                                      },
+                                    ]
+                                  : []),
+                              ]}
+                            />
+                          </div>
                         </td>
                         <td style={{ padding: "10px 12px", opacity: 0.85 }}>
                           {c.cliente ? (

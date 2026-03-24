@@ -17,6 +17,7 @@ import ClientiCombobox from "@/components/ClientiCombobox";
 import AttachmentsPanel from "@/components/AttachmentsPanel";
 import InterventiBlock from "@/components/InterventiBlock";
 import PersonaleMultiSelect from "@/components/PersonaleMultiSelect";
+import OperativeNotesPanel from "@/components/OperativeNotesPanel";
 import RenewalsAlertModal from "@/components/RenewalsAlertModal";
 import RenewalsBlock from "@/components/RenewalsBlock";
 import SafetyComplianceBadge from "@/components/SafetyComplianceBadge";
@@ -5776,6 +5777,28 @@ function buildFormData(c: Checklist): FormData {
             </button>
           </>
         )}
+      </div>
+
+      <div style={{ marginTop: 10, marginBottom: 12 }}>
+        <OperativeNotesPanel
+          title="Note operative principali"
+          items={[
+            {
+              rowKind: "INSTALLAZIONE",
+              rowRefId: String(id || ""),
+              label: "Installazione",
+            },
+            ...(String(checklist.noleggio_vendita || "").trim().toUpperCase() === "NOLEGGIO"
+              ? [
+                  {
+                    rowKind: "DISINSTALLAZIONE" as const,
+                    rowRefId: String(id || ""),
+                    label: "Disinstallazione",
+                  },
+                ]
+              : []),
+          ]}
+        />
       </div>
 
       <div style={{ marginTop: 12, marginBottom: 10 }}>

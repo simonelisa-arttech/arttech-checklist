@@ -1,5 +1,25 @@
 # AGENT MEMORY — Snapshot Operativo
 
+## Snapshot 2026-03-24 - Note operative condivise multi-pagina
+- Source of truth unica:
+  - `cronoprogramma_meta.descrizione_attivita` = nota operativa corrente
+  - `cronoprogramma_comments` = storico note
+- Componente condiviso:
+  - `components/OperativeNotesPanel.tsx`
+  - usa sempre `/api/cronoprogramma` con:
+    - `load`
+    - `set_operativi`
+    - `add_comment`
+- Superfici coperte:
+  - `app/page.tsx` -> note installazione/disinstallazione inline nella dashboard progetti
+  - `app/clienti/[cliente]/page.tsx` -> note installazione inline nella lista progetti cliente
+  - `app/checklists/[id]/page.tsx` -> note rapide installazione/disinstallazione in alto nella pagina progetto
+  - `components/InterventiBlock.tsx` -> note intervento inline e nel dettaglio intervento
+- Regola operativa:
+  - non duplicare le note operative su `checklists.note`, `saas_interventi.note` o altri campi business
+  - per note operative cross-area usare sempre `cronoprogramma_meta` + `cronoprogramma_comments`
+  - `saas_interventi.note` / `note_tecniche` restano note di business dell'intervento, separate dalle note operative condivise
+
 ## Snapshot 2026-03-24 - Dashboard indirizzo impianto truncation/link safe
 - `app/page.tsx`
   - la colonna `Indirizzo impianto` sanitizza ora i valori raw prima del render

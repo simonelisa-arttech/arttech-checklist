@@ -406,11 +406,7 @@ export async function POST(request: Request) {
         return NextResponse.json({ error: interventiErr.message }, { status: 500 });
       }
       for (const row of interventiRows || []) {
-        const stato = String((row as any).stato_intervento || "APERTO").trim().toUpperCase();
-        const dataEvento = toIsoDay((row as any).data_tassativa) || toIsoDay((row as any).data);
-        if (stato === "APERTO" && isOnOrAfterCutoff(dataEvento)) {
-          allowedInterventi.add(String((row as any).id));
-        }
+        allowedInterventi.add(String((row as any).id));
       }
     }
 

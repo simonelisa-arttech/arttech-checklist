@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import ConfigMancante from "@/components/ConfigMancante";
 import AttachmentsPanel from "@/components/AttachmentsPanel";
 import InterventiBlock from "@/components/InterventiBlock";
+import OperativeNotesPanel from "@/components/OperativeNotesPanel";
 import RenewalsAlertModal from "@/components/RenewalsAlertModal";
 import RenewalsBlock from "@/components/RenewalsBlock";
 import Toast from "@/components/Toast";
@@ -7615,7 +7616,20 @@ ${rinnovi30ggBreakdown.debugSample
                   cursor: "pointer",
                 }}
               >
-                <div style={{ fontWeight: 800 }}>{c.nome_checklist ?? "—"}</div>
+                <div style={{ display: "grid", gap: 6 }}>
+                  <div style={{ fontWeight: 800 }}>{c.nome_checklist ?? "—"}</div>
+                  <OperativeNotesPanel
+                    compact
+                    title="Note operative"
+                    items={[
+                      {
+                        rowKind: "INSTALLAZIONE",
+                        rowRefId: c.id,
+                        label: "Installazione",
+                      },
+                    ]}
+                  />
+                </div>
                 <div>{c.proforma ?? "—"}</div>
                 <div>{c.dimensioni ?? "—"}</div>
                 <div>

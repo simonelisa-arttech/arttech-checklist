@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import AttachmentsPanel from "@/components/AttachmentsPanel";
+import OperativeNotesPanel from "@/components/OperativeNotesPanel";
 import PersonaleMultiSelect from "@/components/PersonaleMultiSelect";
 import SafetyComplianceBadge from "@/components/SafetyComplianceBadge";
 import type { InterventoRow } from "@/lib/interventi";
@@ -892,7 +893,20 @@ export default function InterventiBlock({
                       <div style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                         {checklistMeta.nome ? checklistMeta.nome : checklistMeta.id ? String(checklistMeta.id).slice(0, 8) : "—"}
                       </div>
-                      <div style={{ whiteSpace: "normal", overflowWrap: "anywhere" }}>{row.descrizione || "—"}</div>
+                      <div style={{ display: "grid", gap: 6 }}>
+                        <div style={{ whiteSpace: "normal", overflowWrap: "anywhere" }}>{row.descrizione || "—"}</div>
+                        <OperativeNotesPanel
+                          compact
+                          title="Note operative"
+                          items={[
+                            {
+                              rowKind: "INTERVENTO",
+                              rowRefId: row.id,
+                              label: "Intervento",
+                            },
+                          ]}
+                        />
+                      </div>
                       <div style={{ whiteSpace: "nowrap" }}>{row.ticket_no || "—"}</div>
                       <div style={{ display: "flex", flexDirection: "column", gap: 6, alignItems: "flex-start" }}>
                         {renderInterventoBadge(row.incluso ? "INCLUSO" : "EXTRA")}
@@ -1316,6 +1330,18 @@ export default function InterventiBlock({
                     {row.note_tecniche && (
                       <div style={{ marginTop: 6, fontSize: 12, opacity: 0.7 }}>Note tecniche: {row.note_tecniche}</div>
                     )}
+                  </div>
+                  <div style={{ marginTop: 12 }}>
+                    <OperativeNotesPanel
+                      title="Note operative intervento"
+                      items={[
+                        {
+                          rowKind: "INTERVENTO",
+                          rowRefId: row.id,
+                          label: "Intervento",
+                        },
+                      ]}
+                    />
                   </div>
                   <div style={{ marginTop: 12 }}>
                     <div style={{ fontWeight: 700, marginBottom: 6 }}>Allegati</div>

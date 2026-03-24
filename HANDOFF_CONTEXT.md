@@ -1,5 +1,35 @@
 # Handoff Context — AT SYSTEM (arttech-checklist)
 
+## Update 2026-03-24 - Note operative riusate fuori dal cronoprogramma
+
+- Source of truth unica confermata:
+  - `cronoprogramma_meta.descrizione_attivita` per la nota operativa corrente
+  - `cronoprogramma_comments` per lo storico note/commenti
+- Nuovo componente riusabile:
+  - `components/OperativeNotesPanel.tsx`
+  - legge/salva sempre via `POST /api/cronoprogramma` usando le azioni gia esistenti:
+    - `load`
+    - `set_operativi`
+    - `add_comment`
+- Dove le note sono ora visibili/modificabili:
+  - dashboard `app/page.tsx`
+    - inline sotto il nome progetto per `INSTALLAZIONE` e, se noleggio, `DISINSTALLAZIONE`
+  - pagina cliente `app/clienti/[cliente]/page.tsx`
+    - inline nella lista progetti cliente per `INSTALLAZIONE`
+  - pagina progetto `app/checklists/[id]/page.tsx`
+    - box rapido in alto vicino ai dati progetto per `INSTALLAZIONE` e `DISINSTALLAZIONE`
+  - blocco interventi condiviso `components/InterventiBlock.tsx`
+    - inline accanto a ogni intervento e nel dettaglio intervento per `INTERVENTO`
+- Coerenza con storico:
+  - il componente aggiorna la nota corrente con `set_operativi`
+  - aggiunge note storiche con `add_comment`
+  - mostra lo storico esistente in modal, senza creare tabelle o campi paralleli
+- Compatibilita' API:
+  - `app/api/cronoprogramma/route.ts` consente ora `load` delle note `INTERVENTO` per qualsiasi intervento esistente, non solo quelli aperti/futuri del timeline cronoprogramma
+- Effetto:
+  - dashboard, cliente, progetto e blocchi interventi leggono/scrivono la stessa nota centrale del cronoprogramma
+  - lo storico resta unico e coerente
+
 ## Update 2026-03-24 - Dashboard indirizzo impianto stabile
 
 - `app/page.tsx`
