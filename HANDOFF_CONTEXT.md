@@ -1,5 +1,23 @@
 # Handoff Context — AT SYSTEM (arttech-checklist)
 
+## Update 2026-03-24 - Dashboard indirizzo impianto stabile
+
+- `app/page.tsx`
+  - la colonna `Indirizzo impianto` della dashboard non usa piu il valore raw direttamente
+  - il render sanitizza ora:
+    - trim
+    - rimozione caratteri invisibili / spazi non standard
+    - placeholder vuoti (`-`, `—`, `null`, `n.d.`, `nd`)
+  - se il contenuto e' un URL:
+    - il link resta cliccabile
+    - viene mostrata una label compatta (`Apri mappa` o `Apri link`) invece dell'URL completo
+  - se il contenuto e' testo normale:
+    - viene mostrato con ellissi/troncamento
+  - la cella ha larghezza controllata (`180px`) e non allarga piu anomamente la tabella
+- Causa reale osservata:
+  - valori importati raw molto lunghi (soprattutto link Google Maps) o quasi vuoti con caratteri invisibili venivano renderizzati integralmente nella cella dashboard
+  - questo faceva percepire la colonna come larga/vuota pur con `tableLayout: fixed`
+
 ## Update 2026-03-24 - Import progetti CSV con auto-detect delimitatore
 
 - `app/api/import/progetti-csv/route.ts`

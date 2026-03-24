@@ -1,5 +1,16 @@
 # AGENT MEMORY — Snapshot Operativo
 
+## Snapshot 2026-03-24 - Dashboard indirizzo impianto truncation/link safe
+- `app/page.tsx`
+  - la colonna `Indirizzo impianto` sanitizza ora i valori raw prima del render
+  - placeholder come `-`, `—`, `null`, `n.d.`, `nd` vengono mostrati come `—`
+  - i link lunghi non vengono stampati per esteso:
+    - `Apri mappa` per Google Maps
+    - `Apri link` per altri URL
+  - i testi normali usano ellissi e la cella resta vincolata a `180px`
+- Regola operativa:
+  - in dashboard non renderizzare direttamente URL o stringhe sporche nei campi tabellari lunghi se possono destabilizzare la larghezza della colonna
+
 ## Snapshot 2026-03-24 - Import progetti CSV auto-detect delimitatore
 - `app/api/import/progetti-csv/route.ts`
   - il parser supporta ora `;`, `,` e `tab`

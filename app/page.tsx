@@ -224,6 +224,72 @@ function getExpiryStatus(value?: string | null): "ATTIVA" | "SCADUTA" | "—" {
   return dt < today ? "SCADUTA" : "ATTIVA";
 }
 
+function isHttpUrl(value?: string | null) {
+  const raw = String(value || "").trim();
+  return /^https?:\/\//i.test(raw);
+}
+
+function normalizeDashboardAddressValue(value?: string | null) {
+  const raw = String(value || "")
+    .replace(/[\u200B-\u200D\u2060\u00A0]/g, " ")
+    .trim();
+  if (!raw) return null;
+  const normalized = raw.toLowerCase();
+  if (
+    normalized === "-" ||
+    normalized === "—" ||
+    normalized === "null" ||
+    normalized === "n.d." ||
+    normalized === "nd"
+  ) {
+    return null;
+  }
+  return raw.replace(/\s+/g, " ");
+}
+
+function renderDashboardAddressCell(value?: string | null) {
+  const normalized = normalizeDashboardAddressValue(value);
+  if (!normalized) return "—";
+
+  if (isHttpUrl(normalized)) {
+    const label = /google\.[^/]+\/maps|maps\.app\.goo\.gl|goo\.gl\/maps/i.test(normalized)
+      ? "Apri mappa"
+      : "Apri link";
+
+    return (
+      <a
+        href={normalized}
+        target="_blank"
+        rel="noreferrer"
+        title={normalized}
+        onClick={(e) => e.stopPropagation()}
+        onKeyDown={(e) => e.stopPropagation()}
+        style={{
+          color: "#2563eb",
+          textDecoration: "underline",
+          whiteSpace: "nowrap",
+        }}
+      >
+        {label}
+      </a>
+    );
+  }
+
+  return (
+    <span
+      title={normalized}
+      style={{
+        display: "block",
+        overflow: "hidden",
+        textOverflow: "ellipsis",
+        whiteSpace: "nowrap",
+      }}
+    >
+      {normalized}
+    </span>
+  );
+}
+
 function renderBadge(label: "ATTIVA" | "SCADUTA" | "—") {
   let bg = "#e5e7eb";
   let color = "#374151";
@@ -2121,7 +2187,7 @@ export default function Page() {
                   <col style={{ width: 70 }} />   {/* Passo */}
                   <col style={{ width: 70 }} />   {/* m2 */}
                   <col style={{ width: 110 }} />  {/* Tipo impianto */}
-                  <col style={{ width: 160 }} />  {/* Indirizzo impianto */}
+                  <col style={{ width: 180 }} />  {/* Indirizzo impianto */}
                   <col style={{ width: 120 }} />  {/* Install. reale */}
                   <col style={{ width: 110 }} />  {/* Codice */}
                   <col style={{ width: 130 }} />  {/* Magazzino */}
@@ -2792,8 +2858,18 @@ export default function Page() {
                         <td style={{ padding: "10px 12px", opacity: 0.85 }}>
                           {c.tipo_impianto ?? "—"}
                         </td>
-                        <td style={{ padding: "10px 12px", opacity: 0.85 }}>
-                          {c.impianto_indirizzo ?? "—"}
+                        <td
+                          style={{
+                            padding: "10px 12px",
+                            opacity: 0.85,
+                            width: 180,
+                            maxWidth: 180,
+                            overflow: "hidden",
+                            whiteSpace: "nowrap",
+                            textOverflow: "ellipsis",
+                          }}
+                        >
+                          {renderDashboardAddressCell(c.impianto_indirizzo)}
                         </td>
                         <td style={{ padding: "10px 12px", opacity: 0.85 }}>
                           {c.data_installazione_reale
