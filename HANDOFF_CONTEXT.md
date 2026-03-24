@@ -62,6 +62,23 @@
   - il placeholder `-` non genera piu errore `data non valida`
   - una data davvero malformata continua invece a produrre errore
 
+## Update 2026-03-24 - Import progetti indirizzo/maps + scadenze SaaS/licenza
+
+- `app/api/import/progetti-csv/route.ts`
+  - `indirizzo` continua a salvare su `checklists.impianto_indirizzo`
+  - aggiunti alias header anche per eventuali colonne tipo `link maps` / `google maps`, mappate sempre su `indirizzo`
+  - `saas_scadenza` resta salvata su `checklists.saas_scadenza`
+  - aggiunta nuova colonna supportata `licenza_scadenza`
+    - applicata come scadenza di default alle licenze importate in `licenses.scadenza`
+    - con `on_conflict=update` aggiorna anche la scadenza delle licenze gia esistenti dello stesso tipo
+- `app/checklists/[id]/page.tsx`
+  - `Indirizzo impianto` usa ora rendering link-safe: se il valore importato e' un URL Google Maps/http, viene mostrato come link cliccabile
+- `app/import-progetti/page.tsx`
+  - testo template/import aggiornato per rendere esplicite le colonne supportate, incluse:
+    - `indirizzo`
+    - `saas_scadenza`
+    - `licenza_scadenza`
+
 ## Aggiornamento rapido (19 marzo 2026)
 
 - `fix: allineamento blocco interventi checklist con saas_interventi` in corso locale.

@@ -58,7 +58,12 @@ const HEADER_ALIASES = new Map<string, string>([
   ["piano saas", "piano_saas"],
   ["servizio saas aggiuntivo", "servizio_saas_aggiuntivo"],
   ["saas scadenza", "saas_scadenza"],
+  ["scadenza saas", "saas_scadenza"],
   ["garanzia scadenza", "garanzia_scadenza"],
+  ["licenza scadenza", "licenza_scadenza"],
+  ["scadenza licenza", "licenza_scadenza"],
+  ["link maps", "indirizzo"],
+  ["google maps", "indirizzo"],
   ["tipo struttura", "tipo_struttura"],
   ["saas note", "saas_note"],
   ["accessori ricambi", "accessori_ricambi"],
@@ -94,6 +99,7 @@ const EXPECTED_IMPORT_HEADERS = new Set(
     "servizio_saas_aggiuntivo",
     "saas_scadenza",
     "garanzia_scadenza",
+    "licenza_scadenza",
     "tipo_struttura",
     "saas_note",
     "licenze",
@@ -701,35 +707,50 @@ async function insertAssetSerialsCompatible(
 async function insertLicensesCompatible(
   supabaseAdmin: ReturnType<typeof getSupabaseAdmin>,
   checklistId: string,
-  licenses: string[]
+  licenses: string[],
+  defaultScadenza: string | null,
+  onConflict: ProjectImportMode
 ) {
   if (!licenses.length) return;
 
   const { data: existingRows, error: existingErr } = await supabaseAdmin
     .from("licenses")
-    .select("tipo")
+    .select("id, tipo, scadenza")
     .eq("checklist_id", checklistId);
   if (existingErr) throw existingErr;
 
-  const existing = new Set(
-    ((existingRows || []) as Array<{ tipo?: string | null }>).map((row) =>
-      normalizeCatalogCode(String(row?.tipo || ""))
-    )
+  const existingByTipo = new Map(
+    ((existingRows || []) as Array<{ id?: string | null; tipo?: string | null; scadenza?: string | null }>)
+      .map((row) => [normalizeCatalogCode(String(row?.tipo || "")), row] as const)
+      .filter(([key]) => Boolean(key))
   );
+
+  if (onConflict === "update" && defaultScadenza) {
+    for (const tipo of licenses) {
+      const key = normalizeCatalogCode(tipo);
+      const existing = existingByTipo.get(key);
+      if (!existing?.id) continue;
+      if (String(existing.scadenza || "").trim() === defaultScadenza) continue;
+      const { error: updateErr } = await supabaseAdmin
+        .from("licenses")
+        .update({ scadenza: defaultScadenza })
+        .eq("id", existing.id);
+      if (updateErr) throw updateErr;
+    }
+  }
 
   const payload = licenses
     .map((tipo) => tipo.trim())
     .filter(Boolean)
     .filter((tipo) => {
       const key = normalizeCatalogCode(tipo);
-      if (!key || existing.has(key)) return false;
-      existing.add(key);
+      if (!key || existingByTipo.has(key)) return false;
       return true;
     })
     .map((tipo) => ({
       checklist_id: checklistId,
       tipo,
-      scadenza: null,
+      scadenza: defaultScadenza,
       stato: "attiva",
       note: "Import CSV progetti",
     }));
@@ -873,6 +894,7 @@ export async function POST(request: Request) {
       const dataInstallazioneReale = parseOptionalDate(getRowValue(row, "data_installazione_reale"));
       const saasScadenza = parseOptionalDate(getRowValue(row, "saas_scadenza"));
       const garanziaScadenza = parseOptionalDate(getRowValue(row, "garanzia_scadenza"));
+      const licenzaScadenza = parseOptionalDate(getRowValue(row, "licenza_scadenza"));
       const emailCliente = parseOptionalText(getRowValue(row, "email", "email_cliente"));
       const indirizzo = parseOptionalText(getRowValue(row, "indirizzo"));
       const referenteCliente = parseOptionalText(getRowValue(row, "referente_cliente"));
@@ -1067,7 +1089,13 @@ export async function POST(request: Request) {
       }
 
       try {
-        await insertLicensesCompatible(supabaseAdmin, checklistId, licenze);
+        await insertLicensesCompatible(
+          supabaseAdmin,
+          checklistId,
+          licenze,
+          licenzaScadenza,
+          onConflict
+        );
       } catch (err: any) {
         postImportWarnings.push(`licenze non importate: ${String(err?.message || err)}`);
       }

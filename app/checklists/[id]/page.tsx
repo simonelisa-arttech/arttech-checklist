@@ -6168,7 +6168,7 @@ function buildFormData(c: Checklist): FormData {
             />
             <FieldRow
               label="Indirizzo impianto"
-              view={checklist.impianto_indirizzo || "—"}
+              view={renderTextOrLink(checklist.impianto_indirizzo)}
               edit={
                 isEdit ? (
                   <input
@@ -6176,7 +6176,7 @@ function buildFormData(c: Checklist): FormData {
                     onChange={(e) =>
                       setFormData({ ...formData, impianto_indirizzo: e.target.value })
                     }
-                    placeholder="Es. Via Roma 10, Milano"
+                    placeholder="Es. Via Roma 10, Milano oppure link Google Maps"
                     style={{ width: "100%", padding: 10 }}
                   />
                 ) : undefined

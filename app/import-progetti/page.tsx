@@ -64,7 +64,10 @@ export default function ImportProgettiPage() {
         <div>
           <h1 style={{ margin: 0, fontSize: 34 }}>IMPORTA PROGETTI DA CSV</h1>
           <div style={{ marginTop: 4, fontSize: 13, opacity: 0.7 }}>
-            Carica un file CSV con separatore `;` per creare piu progetti/checklist.
+            Carica un file CSV/TSV per creare piu progetti. Colonne supportate incluse:
+            <code style={{ marginLeft: 6 }}>
+              cliente;nome_progetto;indirizzo;saas_scadenza;licenza_scadenza
+            </code>
           </div>
         </div>
         <Link
@@ -98,7 +101,7 @@ export default function ImportProgettiPage() {
         <div style={{ display: "flex", flexWrap: "wrap", gap: 12, alignItems: "center" }}>
           <input
             type="file"
-            accept=".csv"
+            accept=".csv,.tsv"
             onChange={(e) => {
               setFile(e.target.files?.[0] || null);
               setError(null);

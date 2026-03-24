@@ -50,6 +50,19 @@
   - placeholder documentali o foglio elettronico non devono produrre `data non valida`
   - una data presente ma fuori formato continua a generare errore
 
+## Snapshot 2026-03-24 - Import progetti mapping indirizzo/maps e scadenze
+- `app/api/import/progetti-csv/route.ts`
+  - `indirizzo` viene salvato in `checklists.impianto_indirizzo`
+  - alias header `link maps` / `google maps` convergono su `indirizzo`
+  - `saas_scadenza` resta salvata in `checklists.saas_scadenza`
+  - nuova colonna supportata `licenza_scadenza`
+    - salva la data nelle licenze importate su `licenses.scadenza`
+    - in `on_conflict=update` aggiorna la scadenza delle licenze gia esistenti dello stesso tipo
+- `app/checklists/[id]/page.tsx`
+  - il campo `Indirizzo impianto` mostra URL importati come link cliccabili
+- `app/import-progetti/page.tsx`
+  - copy/template visuale aggiornato con intestazione campi supportati per `indirizzo`, `saas_scadenza`, `licenza_scadenza`
+
 ## Snapshot 2026-03-20 - Interventi checklist allineati a saas_interventi
 - `app/checklists/[id]/page.tsx`
   - il blocco `Interventi` progetto usa ora query diretta `dbFrom("saas_interventi")`
