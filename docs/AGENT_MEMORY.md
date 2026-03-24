@@ -1,5 +1,15 @@
 # AGENT MEMORY — Snapshot Operativo
 
+## Snapshot 2026-03-24 - Import progetti CSV auto-detect delimitatore
+- `app/api/import/progetti-csv/route.ts`
+  - il parser supporta ora `;`, `,` e `tab`
+  - l'auto-detect prova i delimitatori supportati e sceglie il candidato che produce gli header richiesti `cliente` + `nome_progetto`
+  - a parita' usa il maggior numero di header riconosciuti del template import
+  - se il match resta ambiguo, l'API risponde con errore esplicito
+- Regola operativa:
+  - non richiedere piu conversioni manuali per gli export CSV standard di Google Sheets
+  - mantenere il resto del flow invariato: normalizzazioni input, deduplica, warning e `dry_run`
+
 ## Snapshot 2026-03-20 - Interventi checklist allineati a saas_interventi
 - `app/checklists/[id]/page.tsx`
   - il blocco `Interventi` progetto usa ora query diretta `dbFrom("saas_interventi")`

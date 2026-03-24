@@ -1,5 +1,22 @@
 # Handoff Context — AT SYSTEM (arttech-checklist)
 
+## Update 2026-03-24 - Import progetti CSV con auto-detect delimitatore
+
+- `app/api/import/progetti-csv/route.ts`
+  - l'import massivo non dipende piu dal solo delimitatore `;`
+  - supporta ora auto-detect tra:
+    - `;`
+    - `,`
+    - `tab`
+- Regola di rilevamento:
+  - il parser prova tutti i delimitatori supportati
+  - sceglie quello che produce gli header richiesti (`cliente`, `nome_progetto`)
+  - a parita', preferisce il candidato con piu header noti del template import
+  - se restano piu candidati equivalenti, risponde con errore chiaro `delimitatore ambiguo`
+- Effetto:
+  - gli export standard CSV di Google Sheets con separatore `,` vengono accettati senza conversioni manuali
+  - restano invariate tutte le normalizzazioni gia presenti (`trim`, `proforma _ -> /`, `dimensioni`, deduplica, warning non bloccanti)
+
 ## Aggiornamento rapido (19 marzo 2026)
 
 - `fix: allineamento blocco interventi checklist con saas_interventi` in corso locale.

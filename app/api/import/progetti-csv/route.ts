@@ -21,6 +21,60 @@ type ProjectImportMode = "skip" | "update";
 
 type CatalogLookup = Map<string, { codice: string; descrizione: string | null }>;
 
+type SupportedDelimiter = ";" | "," | "\t";
+
+type ParsedCsvCandidate = {
+  delimiter: SupportedDelimiter;
+  rows: string[][];
+  headerCount: number;
+  matchedHeaders: number;
+  hasRequiredHeaders: boolean;
+};
+
+const SUPPORTED_DELIMITERS: SupportedDelimiter[] = [";", ",", "\t"];
+
+const EXPECTED_IMPORT_HEADERS = new Set(
+  [
+    "cliente",
+    "nome_progetto",
+    "codice_progetto",
+    "tipo",
+    "stato",
+    "indirizzo",
+    "referente_cliente",
+    "contatto_referente",
+    "data_prevista",
+    "data_tassativa",
+    "codice_magazzino",
+    "link_drive_magazzino",
+    "seriali_elettroniche_controllo",
+    "seriali_elettroniche",
+    "seriali_moduli_led",
+    "descrizione_impianto",
+    "passo",
+    "quantita_impianti",
+    "dimensioni",
+    "tipo_impianto",
+    "data_installazione_reale",
+    "piano_saas",
+    "servizio_saas_aggiuntivo",
+    "saas_scadenza",
+    "garanzia_scadenza",
+    "tipo_struttura",
+    "saas_note",
+    "licenze",
+    "accessori_ricambi",
+    "proforma",
+    "stato_progetto",
+    "nome_checklist",
+    "email",
+    "email_cliente",
+    "note",
+  ].map((value) => normalizeHeader(value))
+);
+
+const REQUIRED_IMPORT_HEADERS = ["cliente", "nome_progetto"].map((value) => normalizeHeader(value));
+
 function normalizeHeader(value: string) {
   return value.replace(/^\uFEFF/, "").trim().toLowerCase();
 }
@@ -76,7 +130,7 @@ function normalizeDimensioniInput(value: string | undefined) {
   };
 }
 
-function parseCsvSemicolon(input: string) {
+function parseDelimitedRows(input: string, delimiter: SupportedDelimiter) {
   const rows: string[][] = [];
   let row: string[] = [];
   let cell = "";
@@ -96,7 +150,7 @@ function parseCsvSemicolon(input: string) {
       continue;
     }
 
-    if (!inQuotes && ch === ";") {
+    if (!inQuotes && ch === delimiter) {
       row.push(cell);
       cell = "";
       continue;
@@ -120,6 +174,66 @@ function parseCsvSemicolon(input: string) {
   }
 
   return rows;
+}
+
+function scoreParsedCandidate(rows: string[][], delimiter: SupportedDelimiter): ParsedCsvCandidate {
+  const headerRow = rows[0] || [];
+  const normalizedHeaders = headerRow
+    .map((value) => normalizeHeader(value))
+    .filter(Boolean);
+  const headerCount = normalizedHeaders.length;
+  const matchedHeaders = normalizedHeaders.filter((header) => EXPECTED_IMPORT_HEADERS.has(header)).length;
+  const hasRequiredHeaders = REQUIRED_IMPORT_HEADERS.every((header) => normalizedHeaders.includes(header));
+  return {
+    delimiter,
+    rows,
+    headerCount,
+    matchedHeaders,
+    hasRequiredHeaders,
+  };
+}
+
+function detectCsvDelimiter(input: string) {
+  const candidates = SUPPORTED_DELIMITERS.map((delimiter) =>
+    scoreParsedCandidate(parseDelimitedRows(input, delimiter), delimiter)
+  );
+  const valid = candidates.filter((candidate) => candidate.hasRequiredHeaders);
+
+  if (valid.length === 1) {
+    return valid[0];
+  }
+
+  if (valid.length > 1) {
+    const bestScore = Math.max(...valid.map((candidate) => candidate.matchedHeaders));
+    const best = valid.filter((candidate) => candidate.matchedHeaders === bestScore);
+    if (best.length === 1) {
+      return best[0];
+    }
+
+    const bestHeaderCount = Math.max(...best.map((candidate) => candidate.headerCount));
+    const narrowed = best.filter((candidate) => candidate.headerCount === bestHeaderCount);
+    if (narrowed.length === 1) {
+      return narrowed[0];
+    }
+
+    throw new Error(
+      `delimitatore ambiguo: trovati più formati possibili (${narrowed
+        .map((candidate) => formatDelimiterLabel(candidate.delimiter))
+        .join(", ")})`
+    );
+  }
+
+  throw new Error(
+    `impossibile rilevare il delimitatore CSV: supportati ${SUPPORTED_DELIMITERS.map((delimiter) =>
+      formatDelimiterLabel(delimiter)
+    ).join(", ")}`
+  );
+}
+
+function formatDelimiterLabel(delimiter: SupportedDelimiter) {
+  if (delimiter === "\t") return "tab";
+  if (delimiter === ";") return ";";
+  return ",";
 }
 
 function csvRowsToObjects(rows: string[][]): CsvRow[] {
@@ -620,7 +734,20 @@ export async function POST(request: Request) {
   const onConflict: ProjectImportMode = modeRaw === "update" ? "update" : "skip";
 
   const csvText = await file.text();
-  const parsed = csvRowsToObjects(parseCsvSemicolon(csvText));
+  let detectedDelimiter: ParsedCsvCandidate;
+  try {
+    detectedDelimiter = detectCsvDelimiter(csvText);
+  } catch (error: any) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: String(error?.message || error || "Impossibile rilevare il delimitatore CSV"),
+      },
+      { status: 400 }
+    );
+  }
+
+  const parsed = csvRowsToObjects(detectedDelimiter.rows);
   if (!parsed.length) {
     return NextResponse.json({ ok: false, error: "CSV vuoto o senza righe valide" }, { status: 400 });
   }
@@ -879,6 +1006,7 @@ export async function POST(request: Request) {
     ok: true,
     dry_run: dryRun,
     on_conflict: onConflict,
+    delimiter: formatDelimiterLabel(detectedDelimiter.delimiter),
     inserted,
     skipped,
     errors,
