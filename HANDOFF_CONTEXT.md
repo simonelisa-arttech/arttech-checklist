@@ -10,11 +10,13 @@
     - `tab`
 - Regola di rilevamento:
   - il parser prova tutti i delimitatori supportati
-  - sceglie quello che produce gli header richiesti (`cliente`, `nome_progetto`)
-  - a parita', preferisce il candidato con piu header noti del template import
-  - se restano piu candidati equivalenti, risponde con errore chiaro `delimitatore ambiguo`
+  - legge la prima riga non vuota del file
+  - sceglie il delimitatore che su quella riga produce il maggior numero di colonne
+  - tra i candidati a pari colonne, preferisce quello con header richiesti (`cliente`, `nome_progetto`) e piu header noti del template import
+  - se nessun candidato produce almeno 2 colonne utili, risponde con errore chiaro `Impossibile rilevare separatore CSV/TSV`
 - Effetto:
   - gli export standard CSV di Google Sheets con separatore `,` vengono accettati senza conversioni manuali
+  - gli export TSV di Google Sheets con separatore `tab` vengono letti correttamente
   - restano invariate tutte le normalizzazioni gia presenti (`trim`, `proforma _ -> /`, `dimensioni`, deduplica, warning non bloccanti)
 
 ## Aggiornamento rapido (19 marzo 2026)

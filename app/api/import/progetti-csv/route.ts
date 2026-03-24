@@ -26,6 +26,7 @@ type SupportedDelimiter = ";" | "," | "\t";
 type ParsedCsvCandidate = {
   delimiter: SupportedDelimiter;
   rows: string[][];
+  firstRowColumns: number;
   headerCount: number;
   matchedHeaders: number;
   hasRequiredHeaders: boolean;
@@ -176,17 +177,27 @@ function parseDelimitedRows(input: string, delimiter: SupportedDelimiter) {
   return rows;
 }
 
+function getFirstNonEmptyLine(input: string) {
+  const lines = input.split(/\r?\n/);
+  return lines.find((line) => String(line || "").trim() !== "") || "";
+}
+
 function scoreParsedCandidate(rows: string[][], delimiter: SupportedDelimiter): ParsedCsvCandidate {
   const headerRow = rows[0] || [];
   const normalizedHeaders = headerRow
     .map((value) => normalizeHeader(value))
     .filter(Boolean);
+  const firstRowColumns = headerRow.filter((value, index) => {
+    if (index === 0) return true;
+    return normalizeCell(value) !== "";
+  }).length;
   const headerCount = normalizedHeaders.length;
   const matchedHeaders = normalizedHeaders.filter((header) => EXPECTED_IMPORT_HEADERS.has(header)).length;
   const hasRequiredHeaders = REQUIRED_IMPORT_HEADERS.every((header) => normalizedHeaders.includes(header));
   return {
     delimiter,
     rows,
+    firstRowColumns,
     headerCount,
     matchedHeaders,
     hasRequiredHeaders,
@@ -194,10 +205,28 @@ function scoreParsedCandidate(rows: string[][], delimiter: SupportedDelimiter): 
 }
 
 function detectCsvDelimiter(input: string) {
+  const firstLine = getFirstNonEmptyLine(input);
+  if (!firstLine) {
+    throw new Error("Impossibile rilevare separatore CSV/TSV");
+  }
+
   const candidates = SUPPORTED_DELIMITERS.map((delimiter) =>
     scoreParsedCandidate(parseDelimitedRows(input, delimiter), delimiter)
   );
-  const valid = candidates.filter((candidate) => candidate.hasRequiredHeaders);
+  const firstLineColumns = new Map<SupportedDelimiter, number>(
+    SUPPORTED_DELIMITERS.map((delimiter) => [delimiter, (parseDelimitedRows(firstLine, delimiter)[0] || []).length])
+  );
+  const bestColumnCount = Math.max(...SUPPORTED_DELIMITERS.map((delimiter) => firstLineColumns.get(delimiter) || 0));
+
+  if (bestColumnCount < 2) {
+    throw new Error("Impossibile rilevare separatore CSV/TSV");
+  }
+
+  const widest = candidates.filter(
+    (candidate) => (firstLineColumns.get(candidate.delimiter) || 0) === bestColumnCount
+  );
+
+  const valid = widest.filter((candidate) => candidate.hasRequiredHeaders);
 
   if (valid.length === 1) {
     return valid[0];
@@ -223,11 +252,13 @@ function detectCsvDelimiter(input: string) {
     );
   }
 
-  throw new Error(
-    `impossibile rilevare il delimitatore CSV: supportati ${SUPPORTED_DELIMITERS.map((delimiter) =>
-      formatDelimiterLabel(delimiter)
-    ).join(", ")}`
-  );
+  const fallbackScore = Math.max(...widest.map((candidate) => candidate.matchedHeaders));
+  const fallback = widest.filter((candidate) => candidate.matchedHeaders === fallbackScore);
+  if (fallback.length === 1 && fallback[0].matchedHeaders > 0) {
+    return fallback[0];
+  }
+
+  throw new Error("Impossibile rilevare separatore CSV/TSV");
 }
 
 function formatDelimiterLabel(delimiter: SupportedDelimiter) {

@@ -3,11 +3,12 @@
 ## Snapshot 2026-03-24 - Import progetti CSV auto-detect delimitatore
 - `app/api/import/progetti-csv/route.ts`
   - il parser supporta ora `;`, `,` e `tab`
-  - l'auto-detect prova i delimitatori supportati e sceglie il candidato che produce gli header richiesti `cliente` + `nome_progetto`
-  - a parita' usa il maggior numero di header riconosciuti del template import
-  - se il match resta ambiguo, l'API risponde con errore esplicito
+  - l'auto-detect legge la prima riga non vuota e sceglie il delimitatore che produce piu colonne
+  - a parita' usa gli header richiesti `cliente` + `nome_progetto` e poi il maggior numero di header riconosciuti del template import
+  - se nessun candidato produce abbastanza colonne, l'API risponde con `Impossibile rilevare separatore CSV/TSV`
 - Regola operativa:
   - non richiedere piu conversioni manuali per gli export CSV standard di Google Sheets
+  - trattare come supportati anche gli export TSV di Google Sheets
   - mantenere il resto del flow invariato: normalizzazioni input, deduplica, warning e `dry_run`
 
 ## Snapshot 2026-03-20 - Interventi checklist allineati a saas_interventi
