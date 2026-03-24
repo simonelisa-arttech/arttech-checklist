@@ -30,9 +30,40 @@ type ParsedCsvCandidate = {
   headerCount: number;
   matchedHeaders: number;
   hasRequiredHeaders: boolean;
+  originalHeaders: string[];
+  normalizedHeaders: string[];
 };
 
 const SUPPORTED_DELIMITERS: SupportedDelimiter[] = [";", ",", "\t"];
+
+const HEADER_ALIASES = new Map<string, string>([
+  ["nome progetto", "nome_progetto"],
+  ["nomeprogetto", "nome_progetto"],
+  ["rif progetto", "nome_progetto"],
+  ["rif_progetto", "nome_progetto"],
+  ["rif. progetto", "nome_progetto"],
+  ["codice progetto", "codice_progetto"],
+  ["codiceprogetto", "codice_progetto"],
+  ["referente cliente", "referente_cliente"],
+  ["contatto referente", "contatto_referente"],
+  ["link drive magazzino", "link_drive_magazzino"],
+  ["seriali elettroniche controllo", "seriali_elettroniche_controllo"],
+  ["seriali moduli led", "seriali_moduli_led"],
+  ["descrizione impianto", "descrizione_impianto"],
+  ["quantita impianti", "quantita_impianti"],
+  ["tipo impianto", "tipo_impianto"],
+  ["data installazione reale", "data_installazione_reale"],
+  ["piano saas", "piano_saas"],
+  ["servizio saas aggiuntivo", "servizio_saas_aggiuntivo"],
+  ["saas scadenza", "saas_scadenza"],
+  ["garanzia scadenza", "garanzia_scadenza"],
+  ["tipo struttura", "tipo_struttura"],
+  ["saas note", "saas_note"],
+  ["accessori ricambi", "accessori_ricambi"],
+  ["stato progetto", "stato_progetto"],
+  ["nome checklist", "nome_checklist"],
+  ["email cliente", "email_cliente"],
+]);
 
 const EXPECTED_IMPORT_HEADERS = new Set(
   [
@@ -77,7 +108,20 @@ const EXPECTED_IMPORT_HEADERS = new Set(
 const REQUIRED_IMPORT_HEADERS = ["cliente", "nome_progetto"].map((value) => normalizeHeader(value));
 
 function normalizeHeader(value: string) {
-  return value.replace(/^\uFEFF/, "").trim().toLowerCase();
+  const cleaned = String(value || "")
+    .replace(/^\uFEFF/, "")
+    .replace(/[\u200B-\u200D\u2060\u00A0]/g, " ")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .replace(/\s*\/\s*/g, "_")
+    .replace(/[().:]+/g, " ")
+    .replace(/\s+/g, "_")
+    .replace(/_+/g, "_")
+    .replace(/^_+|_+$/g, "");
+
+  const aliasKey = cleaned.replace(/_/g, " ");
+  return HEADER_ALIASES.get(aliasKey) || cleaned;
 }
 
 function normalizeCell(value: string) {
@@ -201,6 +245,8 @@ function scoreParsedCandidate(rows: string[][], delimiter: SupportedDelimiter): 
     headerCount,
     matchedHeaders,
     hasRequiredHeaders,
+    originalHeaders: headerRow.map((value) => String(value || "")),
+    normalizedHeaders,
   };
 }
 
@@ -777,6 +823,12 @@ export async function POST(request: Request) {
       { status: 400 }
     );
   }
+
+  console.info("[import-progetti-csv][headers]", {
+    delimiter: formatDelimiterLabel(detectedDelimiter.delimiter),
+    original_headers: detectedDelimiter.originalHeaders,
+    normalized_headers: detectedDelimiter.normalizedHeaders,
+  });
 
   const parsed = csvRowsToObjects(detectedDelimiter.rows);
   if (!parsed.length) {

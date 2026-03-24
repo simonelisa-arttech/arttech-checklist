@@ -19,6 +19,27 @@
   - gli export TSV di Google Sheets con separatore `tab` vengono letti correttamente
   - restano invariate tutte le normalizzazioni gia presenti (`trim`, `proforma _ -> /`, `dimensioni`, deduplica, warning non bloccanti)
 
+## Update 2026-03-24 - Import progetti CSV normalizzazione header
+
+- `app/api/import/progetti-csv/route.ts`
+  - gli header del file vengono ora normalizzati prima del mapping righe:
+    - `trim()`
+    - `lowercase`
+    - rimozione BOM
+    - rimozione caratteri invisibili / spazi non standard
+    - spazi convertiti in `_`
+  - aggiunta anche una mappa alias per varianti comuni:
+    - `Cliente` -> `cliente`
+    - ` nome_progetto ` -> `nome_progetto`
+    - `nome progetto` -> `nome_progetto`
+    - `rif progetto` -> `nome_progetto`
+- Debug temporaneo:
+  - log `console.info("[import-progetti-csv][headers]", ...)` con:
+    - `original_headers`
+    - `normalized_headers`
+- Effetto:
+  - `cliente` e `nome_progetto` vengono letti correttamente anche da TSV/CSV con intestazioni sporche o formattate da Google Sheets
+
 ## Aggiornamento rapido (19 marzo 2026)
 
 - `fix: allineamento blocco interventi checklist con saas_interventi` in corso locale.

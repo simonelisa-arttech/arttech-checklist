@@ -11,6 +11,25 @@
   - trattare come supportati anche gli export TSV di Google Sheets
   - mantenere il resto del flow invariato: normalizzazioni input, deduplica, warning e `dry_run`
 
+## Snapshot 2026-03-24 - Import progetti normalizzazione header
+- `app/api/import/progetti-csv/route.ts`
+  - gli header vengono normalizzati con:
+    - rimozione BOM
+    - trim
+    - lowercase
+    - rimozione caratteri invisibili
+    - sostituzione spazi con `_`
+  - presenti alias per intestazioni equivalenti come:
+    - `nome progetto`
+    - `rif progetto`
+    - `email cliente`
+  - il parser righe usa sempre gli header gia normalizzati
+  - log temporaneo dei campi:
+    - `original_headers`
+    - `normalized_headers`
+- Regola operativa:
+  - per bug di import con campi obbligatori mancanti, verificare prima il log header della route
+
 ## Snapshot 2026-03-20 - Interventi checklist allineati a saas_interventi
 - `app/checklists/[id]/page.tsx`
   - il blocco `Interventi` progetto usa ora query diretta `dbFrom("saas_interventi")`
