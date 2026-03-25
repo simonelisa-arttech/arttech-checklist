@@ -879,7 +879,9 @@ export async function POST(request: Request) {
 
     try {
       const autoFixFields = new Set<string>();
-      const nomeProgettoCsv = getRowValue(row, "nome_progetto");
+      const nomeProgettoCsv =
+        getRowValue(row, "nome_progetto", "nome progetto", "nome_checklist", "rif progetto") ||
+        "";
       const clienteInput = getRowValue(row, "cliente");
       const codiceProgetto = getRowValue(row, "codice_progetto", "nome_checklist");
       const csvProformaRaw = getRowValue(row, "proforma");
@@ -923,6 +925,11 @@ export async function POST(request: Request) {
       const serialiControllo = splitSerials(getRowValue(row, "seriali_elettroniche_controllo", "seriali_elettroniche"));
       const serialiModuliLed = splitSerials(getRowValue(row, "seriali_moduli_led"));
       const legacyNote = parseOptionalText(getRowValue(row, "note"));
+
+      console.log("[import-progetti-csv][row-debug]", {
+        normalized_headers: detectedDelimiter.normalizedHeaders,
+        sample_row: row,
+      });
 
       if (!projectTag || !clienteInput) {
         throw new Error("campi obbligatori mancanti: nome_progetto / cliente");

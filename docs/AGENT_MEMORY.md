@@ -1,5 +1,18 @@
 # AGENT MEMORY — Snapshot Operativo
 
+## Snapshot 2026-03-25 - Import progetti: obbligatorio `nome_progetto`, non `nome_checklist`
+- regola da mantenere:
+  - il campo progetto obbligatorio dell'import e' `nome_progetto`
+  - `nome_checklist` puo' restare solo alias legacy di compatibilita'
+- mapping robusto accettato:
+  - `nome_progetto`
+  - `nome progetto`
+  - `nome_checklist`
+  - `rif progetto`
+- attenzione:
+  - gli header vanno sempre normalizzati prima del mapping
+  - non reintrodurre validazioni bloccanti che chiedono `nome_checklist / cliente`
+
 ## Snapshot 2026-03-25 - Fetch client protette devono inviare i cookie di sessione
 - pattern da mantenere:
   - tutte le fetch client-side verso route protette (`/api/db`, `/api/cronoprogramma` e simili) devono impostare `credentials: "include"`

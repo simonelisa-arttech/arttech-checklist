@@ -1,5 +1,21 @@
 # Handoff Context — AT SYSTEM (arttech-checklist)
 
+## Update 2026-03-25 - Import progetti accetta di nuovo `nome_progetto` come campo obbligatorio reale
+
+- `app/api/import/progetti-csv/route.ts`
+  - il nome progetto viene ora risolto con alias espliciti:
+    - `nome_progetto`
+    - `nome progetto`
+    - `nome_checklist`
+    - `rif progetto`
+  - la validazione obbligatoria resta su:
+    - `cliente`
+    - `nome_progetto`
+  - non richiede piu' `nome_checklist` come campo obbligatorio esplicito
+  - aggiunto debug temporaneo per troubleshooting import:
+    - `normalized_headers`
+    - `sample_row`
+
 ## Update 2026-03-25 - Fix sessione browser su fetch client-side protette
 
 - `lib/clientDbBroker.ts`
