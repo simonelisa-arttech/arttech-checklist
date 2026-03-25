@@ -7,7 +7,6 @@ import ConfigMancante from "@/components/ConfigMancante";
 import {
   getAlertTemplateAssociationLabel,
   getAlertTemplateUsageLabel,
-  SCADENZE_ALERT_DEFAULT_TEMPLATE_TRIGGERS,
   SCADENZE_ALERT_DEFAULT_TEMPLATE_TYPES,
 } from "@/lib/scadenzeAlertConfig";
 
@@ -16,7 +15,6 @@ type AlertTemplate = {
   codice: string | null;
   titolo: string | null;
   tipo: string | null;
-  trigger: string | null;
   subject_template: string | null;
   body_template: string | null;
   attivo: boolean;
@@ -36,8 +34,7 @@ const EMPTY_TEMPLATE: AlertTemplate = {
   id: "",
   codice: "",
   titolo: "",
-  tipo: "GENERICO",
-  trigger: "MANUALE",
+  tipo: "LICENZA",
   subject_template: "",
   body_template: "",
   attivo: true,
@@ -46,7 +43,6 @@ const EMPTY_TEMPLATE: AlertTemplate = {
 };
 
 const TIPO_OPTIONS = [...SCADENZE_ALERT_DEFAULT_TEMPLATE_TYPES];
-const TRIGGER_OPTIONS = [...SCADENZE_ALERT_DEFAULT_TEMPLATE_TRIGGERS];
 
 export default function PresetAvvisiPage() {
   if (!isSupabaseConfigured) {
@@ -59,7 +55,6 @@ export default function PresetAvvisiPage() {
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [filterTipo, setFilterTipo] = useState("");
-  const [filterTrigger, setFilterTrigger] = useState("");
   const [toast, setToast] = useState<ToastState | null>(null);
   const [saving, setSaving] = useState(false);
   const [modal, setModal] = useState<ModalState>({
@@ -127,8 +122,6 @@ export default function PresetAvvisiPage() {
   }, [currentOperatoreId]);
 
   const tipoOptions = useMemo(() => TIPO_OPTIONS, []);
-  const triggerOptions = useMemo(() => TRIGGER_OPTIONS, []);
-
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
     return templates.filter((t) => {
@@ -136,10 +129,9 @@ export default function PresetAvvisiPage() {
       const codice = String(t.codice || "").toLowerCase();
       if (q && !titolo.includes(q) && !codice.includes(q)) return false;
       if (filterTipo && String(t.tipo || "") !== filterTipo) return false;
-      if (filterTrigger && String(t.trigger || "") !== filterTrigger) return false;
       return true;
     });
-  }, [templates, search, filterTipo, filterTrigger]);
+  }, [templates, search, filterTipo]);
 
   function openCreate() {
     setModal({ open: true, mode: "create", data: { ...EMPTY_TEMPLATE } });
@@ -185,7 +177,6 @@ export default function PresetAvvisiPage() {
       codice: modal.data.codice?.trim() || "",
       titolo: modal.data.titolo?.trim() || "",
       tipo: modal.data.tipo?.trim() || "",
-      trigger: modal.data.trigger?.trim() || "",
       subject_template: modal.data.subject_template ?? "",
       body_template: modal.data.body_template ?? "",
       attivo: Boolean(modal.data.attivo),
@@ -233,15 +224,14 @@ export default function PresetAvvisiPage() {
         "Content-Type": "application/json",
         "x-operatore-id": currentOperatoreId,
       },
-      body: JSON.stringify({
-        id: row.id,
-        codice: row.codice,
-        titolo: row.titolo,
-        tipo: row.tipo,
-        trigger: row.trigger,
-        subject_template: row.subject_template,
-        body_template: row.body_template,
-        attivo: !row.attivo,
+        body: JSON.stringify({
+          id: row.id,
+          codice: row.codice,
+          titolo: row.titolo,
+          tipo: row.tipo,
+          subject_template: row.subject_template,
+          body_template: row.body_template,
+          attivo: !row.attivo,
       }),
     });
     if (!res.ok) {
@@ -341,18 +331,6 @@ export default function PresetAvvisiPage() {
               </option>
             ))}
           </select>
-          <select
-            value={filterTrigger}
-            onChange={(e) => setFilterTrigger(e.target.value)}
-            style={{ padding: "8px 10px", borderRadius: 8, border: "1px solid #ddd" }}
-          >
-            <option value="">Tutti i trigger</option>
-            {triggerOptions.map((t) => (
-              <option key={t} value={t}>
-                {t}
-              </option>
-            ))}
-          </select>
           <button
             type="button"
             onClick={openCreate}
@@ -416,7 +394,7 @@ export default function PresetAvvisiPage() {
               style={{
                 display: "grid",
                 gridTemplateColumns:
-                  "minmax(220px, 1.8fr) minmax(220px, 1.4fr) minmax(130px, 0.8fr) minmax(170px, 1fr) minmax(120px, 0.8fr) 110px minmax(170px, 1fr) minmax(200px, 1fr)",
+                  "minmax(220px, 1.8fr) minmax(220px, 1.4fr) minmax(130px, 0.8fr) minmax(190px, 1fr) 110px minmax(170px, 1fr) minmax(200px, 1fr)",
                 padding: "10px 12px",
                 fontWeight: 700,
                 background: "#fafafa",
@@ -429,7 +407,6 @@ export default function PresetAvvisiPage() {
               <div>Codice</div>
               <div>Tipo</div>
               <div>Tipo scadenza</div>
-              <div>Trigger</div>
               <div>Attivo</div>
               <div>Updated</div>
               <div>Azioni</div>
@@ -449,7 +426,7 @@ export default function PresetAvvisiPage() {
                     style={{
                       display: "grid",
                       gridTemplateColumns:
-                        "minmax(220px, 1.8fr) minmax(220px, 1.4fr) minmax(130px, 0.8fr) minmax(170px, 1fr) minmax(120px, 0.8fr) 110px minmax(170px, 1fr) minmax(200px, 1fr)",
+                        "minmax(220px, 1.8fr) minmax(220px, 1.4fr) minmax(130px, 0.8fr) minmax(190px, 1fr) 110px minmax(170px, 1fr) minmax(200px, 1fr)",
                       padding: "10px 12px",
                       borderBottom: "1px solid #f1f1f1",
                       fontSize: 13,
@@ -473,7 +450,6 @@ export default function PresetAvvisiPage() {
                       <div style={{ fontWeight: 600 }}>{getAlertTemplateAssociationLabel(row.tipo)}</div>
                       <div style={{ fontSize: 11, opacity: 0.7 }}>{getAlertTemplateUsageLabel(row.tipo)}</div>
                     </div>
-                    <div style={{ fontWeight: 600 }}>{row.trigger || "—"}</div>
                     <div>
                       <span
                         style={{
@@ -586,11 +562,15 @@ export default function PresetAvvisiPage() {
                 <div style={{ display: "grid", gap: 6 }}>
                   <label style={{ fontSize: 12, fontWeight: 700 }}>Tipo</label>
                   <select
-                    value={modal.data.tipo || "GENERICO"}
+                    value={modal.data.tipo || "LICENZA"}
                     onChange={(e) => updateModal({ tipo: e.target.value })}
                     style={{ width: "100%", padding: 8 }}
                   >
-                    {TIPO_OPTIONS.map((t) => (
+                    {(modal.data.tipo &&
+                    !TIPO_OPTIONS.includes(modal.data.tipo as (typeof TIPO_OPTIONS)[number])
+                      ? [...TIPO_OPTIONS, modal.data.tipo]
+                      : TIPO_OPTIONS
+                    ).map((t) => (
                       <option key={t} value={t}>
                         {t}
                       </option>
@@ -598,18 +578,20 @@ export default function PresetAvvisiPage() {
                   </select>
                 </div>
                 <div style={{ display: "grid", gap: 6 }}>
-                  <label style={{ fontSize: 12, fontWeight: 700 }}>Trigger</label>
-                  <select
-                    value={modal.data.trigger || "MANUALE"}
-                    onChange={(e) => updateModal({ trigger: e.target.value })}
-                    style={{ width: "100%", padding: 8 }}
+                  <label style={{ fontSize: 12, fontWeight: 700 }}>Uso</label>
+                  <div
+                    style={{
+                      width: "100%",
+                      padding: "8px 10px",
+                      border: "1px solid #ddd",
+                      borderRadius: 2,
+                      background: "#f9fafb",
+                      fontSize: 12,
+                      color: "#374151",
+                    }}
                   >
-                    {TRIGGER_OPTIONS.map((t) => (
-                      <option key={t} value={t}>
-                        {t}
-                      </option>
-                    ))}
-                  </select>
+                    Il timing viene gestito dalle regole globali. Qui definisci solo il contenuto del preset.
+                  </div>
                 </div>
               </div>
               <div style={{ display: "grid", gap: 6 }}>

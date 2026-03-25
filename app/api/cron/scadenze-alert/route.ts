@@ -26,9 +26,10 @@ import {
   type ScadenzeAlertRecipient,
 } from "@/lib/scadenze/scadenzeAlertCron";
 import {
-  normalizeScadenzaAlertGlobalRule,
+  expandScadenzaAlertGlobalRuleRows,
   normalizeScadenzaAlertRuleType,
   renderTemplateText,
+  SCADENZE_ALERT_STEP_OPTIONS,
   type ScadenzaAlertGlobalRuleRow,
 } from "@/lib/scadenzeAlertConfig";
 
@@ -102,7 +103,7 @@ export async function GET(request: Request) {
   }
 
   const todayIso = getRomeIsoDay();
-  const toIso = addDaysIsoDay(todayIso, 30);
+  const toIso = addDaysIsoDay(todayIso, Math.max(...SCADENZE_ALERT_STEP_OPTIONS));
 
   let scadenzeRows: ScadenzaAgendaRow[];
   try {
@@ -138,11 +139,8 @@ export async function GET(request: Request) {
       .select("*")
       .eq("attivo", true);
     if (error) throw error;
-    globalRules = ((data || []) as any[]).map((row) =>
-      normalizeScadenzaAlertGlobalRule(
-        row,
-        normalizeScadenzaAlertRuleType(row?.tipo_scadenza) || "SAAS"
-      )
+    globalRules = expandScadenzaAlertGlobalRuleRows(
+      ((data || []) as any[]) as Record<string, unknown>[]
     );
   } catch (err: any) {
     return NextResponse.json(
@@ -151,17 +149,17 @@ export async function GET(request: Request) {
     );
   }
 
-  const globalRuleByTipo = new Map<string, ScadenzaAlertGlobalRuleRow>();
+  const globalRuleByTipoAndStep = new Map<string, ScadenzaAlertGlobalRuleRow>();
   for (const rule of globalRules) {
     const tipo = normalizeScadenzaAlertRuleType(rule.tipo_scadenza);
     if (!tipo) continue;
-    globalRuleByTipo.set(tipo, rule);
+    globalRuleByTipoAndStep.set(`${tipo}:${rule.giorni_preavviso}`, rule);
   }
 
   const presetIds = Array.from(
     new Set(
       globalRules
-        .map((rule) => String(rule.default_template_id || "").trim())
+        .map((rule) => String(rule.preset_id || "").trim())
         .filter(Boolean)
     )
   );
@@ -202,10 +200,10 @@ export async function GET(request: Request) {
     if (isStoppedScadenza(row)) return false;
     const tipo = normalizeScadenzaAlertRuleType(row.tipo);
     if (!tipo) return false;
-    const rule = globalRuleByTipo.get(tipo);
-    if (!rule || rule.attivo === false) return false;
     const diff = getDaysUntilScadenza(row.scadenza, todayIso);
-    return diff != null && rule.enabled_steps.includes(diff);
+    if (diff == null) return false;
+    const rule = globalRuleByTipoAndStep.get(`${tipo}:${diff}`);
+    return Boolean(rule && rule.attivo !== false);
   });
 
   const grouped = new Map<string, ScadenzaAgendaRow[]>();
@@ -234,8 +232,8 @@ export async function GET(request: Request) {
     if (step === null) continue;
     const tipo = normalizeScadenzaAlertRuleType(first.tipo);
     if (!tipo) continue;
-    const globalRule = globalRuleByTipo.get(tipo) || null;
-    if (!globalRule || globalRule.attivo === false || !globalRule.enabled_steps.includes(step)) {
+    const globalRule = globalRuleByTipoAndStep.get(`${tipo}:${step}`) || null;
+    if (!globalRule || globalRule.attivo === false) {
       continue;
     }
 
@@ -256,13 +254,10 @@ export async function GET(request: Request) {
     if (unsentRows.length === 0) continue;
 
     const prefs = findClienteDeliveryPreference(clientPrefs, first);
-    const deliveryMode = prefs?.scadenze_delivery_mode || globalRule.default_delivery_mode;
+    const deliveryMode = prefs?.scadenze_delivery_mode || "AUTO_CLIENTE";
     const recipients: ScadenzeAlertRecipient[] = [];
 
-    const shouldSendToArtTech =
-      deliveryMode === "MANUALE_INTERNO" ||
-      globalRule.default_target === "ART_TECH" ||
-      globalRule.default_target === "CLIENTE_E_ART_TECH";
+    const shouldSendToArtTech = deliveryMode === "MANUALE_INTERNO";
     if (shouldSendToArtTech) {
       const email = String(internalRecipient?.email || "").trim();
       if (email.includes("@")) {
@@ -274,10 +269,7 @@ export async function GET(request: Request) {
         });
       }
     }
-    const shouldSendToCliente =
-      deliveryMode === "AUTO_CLIENTE" &&
-      (globalRule.default_target === "CLIENTE" ||
-        globalRule.default_target === "CLIENTE_E_ART_TECH");
+    const shouldSendToCliente = deliveryMode === "AUTO_CLIENTE";
     if (shouldSendToCliente) {
       for (const email of prefs?.emails || []) {
         recipients.push({
@@ -322,16 +314,15 @@ export async function GET(request: Request) {
       continue;
     }
 
-    const template = globalRule.default_template_id
-      ? templatesById.get(globalRule.default_template_id) || null
+    const template = globalRule.preset_id
+      ? templatesById.get(globalRule.preset_id) || null
       : null;
     const context = buildRuleContext(first, step, unsentRows.length);
     const fallbackSubject = buildScadenzeAlertSubject(first.cliente || null, step);
     const fallbackText = buildScadenzeAlertText(first.cliente || null, step, unsentRows);
     const fallbackHtml = buildScadenzeAlertHtml(first.cliente || null, step, unsentRows);
     const customSubject = renderTemplateText(template?.subject_template, context).trim();
-    const customBody =
-      renderTemplateText(template?.body_template, context).trim() || String(globalRule.note || "").trim();
+    const customBody = renderTemplateText(template?.body_template, context).trim();
     const subject = customSubject || fallbackSubject;
     const text = customBody ? `${customBody}\n\n${fallbackText}` : fallbackText;
     const html = customBody ? buildCustomHtml(customBody, fallbackHtml) : fallbackHtml;
@@ -408,7 +399,7 @@ export async function GET(request: Request) {
     skippedExisting,
     skippedStopped,
     skippedMissingRecipient,
-    steps: [30, 15, 7, 1],
+    steps: SCADENZE_ALERT_STEP_OPTIONS,
     source: "buildScadenzeAgenda + scadenze_alert_global_rules",
     errors,
   });

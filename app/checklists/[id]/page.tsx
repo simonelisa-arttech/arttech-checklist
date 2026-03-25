@@ -2568,6 +2568,7 @@ function buildFormData(c: Checklist): FormData {
     operatoreId: string;
     manualEmail: string;
     manualName: string;
+    clienteEmailOverride?: string;
     subject: string;
     message: string;
     sendEmail: boolean;
@@ -2596,9 +2597,47 @@ function buildFormData(c: Checklist): FormData {
         setProjectRinnoviAlertErr("Inserisci un'email Art Tech valida.");
         return;
       }
-      if (payload.toCliente && checklistClienteEmails.length === 0) {
-        setProjectRinnoviAlertErr("Cliente senza email valida in anagrafica.");
-        return;
+      let customerEmailsForSend = [...checklistClienteEmails];
+      const manualCustomerEmail = String(payload.clienteEmailOverride || "").trim();
+      if (payload.toCliente && customerEmailsForSend.length === 0) {
+        if (!manualCustomerEmail.includes("@")) {
+          setProjectRinnoviAlertErr("Cliente senza email valida in anagrafica.");
+          return;
+        }
+        let clienteId = String(checklist?.cliente_id || "").trim();
+        if (!clienteId) {
+          const createRes = await fetch("/api/clienti", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            credentials: "include",
+            body: JSON.stringify({
+              denominazione: String(checklist?.cliente || "").trim() || "Cliente progetto",
+              attivo: true,
+              email: manualCustomerEmail,
+            }),
+          });
+          const createJson = await createRes.json().catch(() => ({} as any));
+          if (!createRes.ok || !createJson?.ok || !createJson?.data?.id) {
+            throw new Error(createJson?.error || "Errore creazione anagrafica cliente");
+          }
+          clienteId = String(createJson.data.id);
+        } else {
+          const saveRes = await fetch("/api/clienti", {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            credentials: "include",
+            body: JSON.stringify({
+              id: clienteId,
+              email: manualCustomerEmail,
+            }),
+          });
+          const saveJson = await saveRes.json().catch(() => ({} as any));
+          if (!saveRes.ok || !saveJson?.ok) {
+            throw new Error(saveJson?.error || "Errore salvataggio email cliente");
+          }
+        }
+        setChecklistClienteEmail(manualCustomerEmail);
+        customerEmailsForSend = [manualCustomerEmail];
       }
       const list = projectRinnoviAlertItems.length
         ? projectRinnoviAlertItems
@@ -2627,7 +2666,7 @@ function buildFormData(c: Checklist): FormData {
         });
       }
       if (payload.toCliente) {
-        for (const email of checklistClienteEmails) {
+        for (const email of customerEmailsForSend) {
           recipients.push({
             toEmail: email,
             toNome: "Cliente",

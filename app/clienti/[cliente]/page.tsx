@@ -1331,9 +1331,8 @@ export default function ClientePage({
     if (alertTemplatesLoadedRef.current) return;
     await runSingleFlight("alert_message_templates:manuale:attivo", async () => {
       const { data, error } = await dbFrom("alert_message_templates")
-        .select("id,codice,titolo,tipo,trigger,subject_template,body_template,attivo")
+        .select("id,codice,titolo,tipo,subject_template,body_template,attivo")
         .eq("attivo", true)
-        .eq("trigger", "MANUALE")
         .order("titolo", { ascending: true });
       if (error) {
         console.error("Errore caricamento template avvisi", error);
@@ -4451,6 +4450,7 @@ export default function ClientePage({
     operatoreId: string;
     manualEmail: string;
     manualName: string;
+    clienteEmailOverride?: string;
     subject: string;
     message: string;
     sendEmail: boolean;
@@ -4499,9 +4499,35 @@ export default function ClientePage({
         setRinnoviAlertErr("Inserisci un'email valida.");
         return;
       }
-      if (payload.toCliente && clienteAnagraficaEmails.length === 0) {
-        setRinnoviAlertErr("Nessuna email valida trovata nell'anagrafica cliente.");
-        return;
+      let customerEmailsForSend = [...clienteAnagraficaEmails];
+      const manualCustomerEmail = String(payload.clienteEmailOverride || "").trim();
+      if (payload.toCliente && customerEmailsForSend.length === 0) {
+        if (!manualCustomerEmail.includes("@")) {
+          setRinnoviAlertErr("Nessuna email valida trovata nell'anagrafica cliente.");
+          return;
+        }
+        const clienteId =
+          clienteAnagraficaId ||
+          (await ensureClienteAnagraficaRecord({
+            email: manualCustomerEmail,
+          }));
+        const saveRes = await fetch("/api/clienti", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({
+            id: clienteId,
+            email: manualCustomerEmail,
+          }),
+        });
+        const saveJson = await saveRes.json().catch(() => ({} as any));
+        if (!saveRes.ok || !saveJson?.ok) {
+          throw new Error(saveJson?.error || "Errore salvataggio email cliente");
+        }
+        const savedEmail = String(saveJson?.data?.email || manualCustomerEmail).trim();
+        setClienteAnagraficaEmail(savedEmail);
+        setClienteAnagraficaEmailDraft(savedEmail);
+        customerEmailsForSend = savedEmail ? [savedEmail] : [manualCustomerEmail];
       }
 
       const list =
@@ -4535,7 +4561,7 @@ export default function ClientePage({
         });
       }
       if (payload.toCliente) {
-        for (const email of clienteAnagraficaEmails) {
+        for (const email of customerEmailsForSend) {
           recipients.push({
             toEmail: email,
             toNome: "Cliente",

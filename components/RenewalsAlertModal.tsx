@@ -13,8 +13,8 @@ import {
   type RenewalAlertStage,
 } from "@/lib/renewalAlertRules";
 import {
-  buildScadenzaAlertGlobalRuleSummary,
-  normalizeScadenzaAlertGlobalRule,
+  buildScadenzaAlertGlobalRulesSummary,
+  expandScadenzaAlertGlobalRuleRows,
   normalizeScadenzaAlertRuleType,
   renderTemplateText,
   type ScadenzaAlertGlobalRuleRow,
@@ -35,6 +35,7 @@ type ManualSubmitPayload = {
   operatoreId: string;
   manualEmail: string;
   manualName: string;
+  clienteEmailOverride?: string;
   subject: string;
   message: string;
   sendEmail: boolean;
@@ -91,7 +92,6 @@ export default function RenewalsAlertModal({
     id: string;
     titolo: string | null;
     tipo: string | null;
-    trigger: string | null;
     subject_template: string | null;
     body_template: string | null;
     attivo: boolean | null;
@@ -103,6 +103,7 @@ export default function RenewalsAlertModal({
   const [operatoreId, setOperatoreId] = useState("");
   const [manualEmail, setManualEmail] = useState("");
   const [manualName, setManualName] = useState("");
+  const [customerEmailDraft, setCustomerEmailDraft] = useState("");
   const [subject, setSubject] = useState("");
   const [message, setMessage] = useState("");
   const [sendEmail, setSendEmail] = useState(true);
@@ -111,7 +112,7 @@ export default function RenewalsAlertModal({
   );
   const [presetTemplates, setPresetTemplates] = useState<AlertTemplatePreset[]>([]);
   const [selectedPresetId, setSelectedPresetId] = useState("");
-  const [globalRule, setGlobalRule] = useState<ScadenzaAlertGlobalRuleRow | null>(null);
+  const [globalRules, setGlobalRules] = useState<ScadenzaAlertGlobalRuleRow[]>([]);
   const [loadingGlobalRule, setLoadingGlobalRule] = useState(false);
 
   useEffect(() => {
@@ -124,6 +125,7 @@ export default function RenewalsAlertModal({
     setOperatoreId(defaultOperatorId);
     setManualEmail("");
     setManualName("");
+    setCustomerEmailDraft("");
     setSubject(initialSubject);
     setMessage(initialMessage);
     setSendEmail(true);
@@ -141,34 +143,28 @@ export default function RenewalsAlertModal({
     if (!open) return;
     setLoadingGlobalRule(Boolean(normalizedTipo));
     (async () => {
-      const [templatesRes, globalRuleRes] = await Promise.all([
+      const [templatesRes, globalRulesRes] = await Promise.all([
         dbFrom("alert_message_templates")
-          .select("id,titolo,tipo,trigger,subject_template,body_template,attivo")
+          .select("id,titolo,tipo,subject_template,body_template,attivo")
           .eq("attivo", true)
           .order("titolo", { ascending: true }),
-        normalizedTipo
-          ? dbFrom("scadenze_alert_global_rules")
-              .select("*")
-              .eq("tipo_scadenza", normalizedTipo)
-              .limit(1)
-              .maybeSingle()
-          : Promise.resolve({ data: null, error: null }),
+        dbFrom("scadenze_alert_global_rules").select("*"),
       ]);
       if (!alive) return;
       if (!templatesRes.error) {
         setPresetTemplates(((templatesRes.data as any[]) || []) as AlertTemplatePreset[]);
       }
-      if (normalizedTipo) {
-        setLoadingGlobalRule(false);
-        if (!globalRuleRes.error) {
-          setGlobalRule(
-            normalizeScadenzaAlertGlobalRule((globalRuleRes.data as any) || null, normalizedTipo)
-          );
-        } else {
-          setGlobalRule(null);
-        }
+      setLoadingGlobalRule(false);
+      if (normalizedTipo && !globalRulesRes.error) {
+        setGlobalRules(
+          expandScadenzaAlertGlobalRuleRows(
+            ((globalRulesRes.data as any[]) || []) as Record<string, unknown>[]
+          )
+            .filter((row) => row.tipo_scadenza === normalizedTipo)
+            .sort((a, b) => b.giorni_preavviso - a.giorni_preavviso)
+        );
       } else {
-        setGlobalRule(null);
+        setGlobalRules([]);
       }
     })();
     return () => {
@@ -185,12 +181,6 @@ export default function RenewalsAlertModal({
       return tipo === normalizedTipo || tipo === "GENERICO";
     });
   }, [presetTemplates, normalizedTipo]);
-  const globalRuleTemplateTitle = useMemo(() => {
-    if (!globalRule?.default_template_id) return null;
-    return (
-      presetTemplates.find((template) => template.id === globalRule.default_template_id)?.titolo || null
-    );
-  }, [globalRule, presetTemplates]);
   const normalizedCustomerEmails = useMemo(() => {
     const dedup = new Map<string, string>();
     for (const email of customerEmails) {
@@ -205,13 +195,19 @@ export default function RenewalsAlertModal({
     }
     return Array.from(dedup.values());
   }, [customerEmail, customerEmails]);
-  const customerEmailValid = normalizedCustomerEmails.length > 0;
+  const customerEmailOverride = String(customerEmailDraft || "").trim();
+  const effectiveCustomerEmails = useMemo(() => {
+    if (normalizedCustomerEmails.length > 0) return normalizedCustomerEmails;
+    if (isValidEmail(customerEmailOverride)) return [customerEmailOverride];
+    return [];
+  }, [customerEmailOverride, normalizedCustomerEmails]);
+  const customerEmailValid = effectiveCustomerEmails.length > 0;
   const customerAutoBlocked =
-    customerDeliveryMode === "AUTO_CLIENTE" && !customerEmailValid;
+    customerDeliveryMode === "AUTO_CLIENTE" && normalizedCustomerEmails.length === 0;
   const customerManualInternal = customerDeliveryMode === "MANUALE_INTERNO";
   const canUseAutomaticCliente = !customerManualInternal && !customerAutoBlocked;
   const canSendManual =
-    (toCliente && customerEmailValid) ||
+    (toCliente && effectiveCustomerEmails.length > 0) ||
     (toArtTech &&
       (artTechMode === "operatore" ? Boolean(operatoreId) : isValidEmail(manualEmail)));
 
@@ -296,15 +292,17 @@ export default function RenewalsAlertModal({
             marginBottom: 12,
             padding: "10px 12px",
             borderRadius: 10,
-            border: customerEmailValid ? "1px solid #e5e7eb" : "1px solid #f59e0b",
-            background: customerEmailValid ? "#f9fafb" : "#fffbeb",
+            border: normalizedCustomerEmails.length > 0 ? "1px solid #e5e7eb" : "1px solid #f59e0b",
+            background: normalizedCustomerEmails.length > 0 ? "#f9fafb" : "#fffbeb",
             fontSize: 12,
-            color: customerEmailValid ? "#374151" : "#92400e",
+            color: normalizedCustomerEmails.length > 0 ? "#374151" : "#92400e",
           }}
         >
           <strong>Email cliente da anagrafica:</strong>{" "}
-          {customerEmailValid ? normalizedCustomerEmails.join(", ") : "mancante o non valida"}
-          {!customerEmailValid ? " · modifica dalla scheda cliente." : ""}
+          {normalizedCustomerEmails.length > 0
+            ? normalizedCustomerEmails.join(", ")
+            : "mancante o non valida"}
+          {normalizedCustomerEmails.length === 0 ? " · puoi inserirla qui per questo invio." : ""}
         </div>
 
         {mode === "MANUALE" ? (
@@ -412,9 +410,25 @@ export default function RenewalsAlertModal({
             </div>
 
             {toCliente && (
-              <div style={{ marginTop: -4, marginBottom: 10, fontSize: 12, opacity: 0.8 }}>
-                Cliente {customerEmailValid ? "selezionato" : "senza email valida in anagrafica"}
-              </div>
+              <>
+                <div style={{ marginTop: -4, marginBottom: 10, fontSize: 12, opacity: 0.8 }}>
+                  Cliente{" "}
+                  {effectiveCustomerEmails.length > 0
+                    ? `selezionato (${effectiveCustomerEmails.join(", ")})`
+                    : "senza email valida"}
+                </div>
+                {normalizedCustomerEmails.length === 0 ? (
+                  <label style={{ display: "block", marginBottom: 10 }}>
+                    Email cliente per questo invio<br />
+                    <input
+                      placeholder="cliente@dominio.it"
+                      value={customerEmailDraft}
+                      onChange={(e) => setCustomerEmailDraft(e.target.value)}
+                      style={{ width: "100%", padding: 8 }}
+                    />
+                  </label>
+                ) : null}
+              </>
             )}
 
             {toArtTech && (
@@ -511,7 +525,15 @@ export default function RenewalsAlertModal({
             >
               {loadingGlobalRule
                 ? "Caricamento regola globale..."
-                : buildScadenzaAlertGlobalRuleSummary(globalRule, globalRuleTemplateTitle)}
+                : buildScadenzaAlertGlobalRulesSummary(
+                    globalRules,
+                    new Map(
+                      presetTemplates.map((template) => [
+                        template.id,
+                        { titolo: template.titolo },
+                      ])
+                    )
+                  )}
             </div>
 
             <div
@@ -751,6 +773,10 @@ export default function RenewalsAlertModal({
                   operatoreId,
                   manualEmail,
                   manualName,
+                  clienteEmailOverride:
+                    toCliente && normalizedCustomerEmails.length === 0
+                      ? customerEmailOverride
+                      : undefined,
                   subject,
                   message,
                   sendEmail,

@@ -180,8 +180,8 @@ const TABLE_RULES: Record<
   },
   scadenze_alert_global_rules: {
     ops: ["select", "insert", "update", "upsert"],
-    filterCols: ["id", "tipo_scadenza", "tipo", "attivo", "attiva"],
-    orderCols: ["created_at", "updated_at", "tipo_scadenza", "tipo"],
+    filterCols: ["id", "tipo_scadenza", "giorni_preavviso", "preset_id", "attivo"],
+    orderCols: ["created_at", "updated_at", "tipo_scadenza", "giorni_preavviso"],
     allowNoFilterSelect: true,
   },
   checklist_task_templates: {
@@ -204,7 +204,7 @@ const TABLE_RULES: Record<
   },
   alert_message_templates: {
     ops: ["select"],
-    filterCols: ["id", "tipo", "trigger", "attivo"],
+    filterCols: ["id", "tipo", "attivo"],
     orderCols: ["created_at", "updated_at", "titolo"],
     allowNoFilterSelect: true,
   },

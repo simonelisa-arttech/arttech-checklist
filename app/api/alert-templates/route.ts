@@ -3,26 +3,24 @@ export const runtime = "nodejs";
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import {
-  SCADENZE_ALERT_DEFAULT_TEMPLATE_TRIGGERS,
-  SCADENZE_ALERT_RULE_TYPES,
-  type ScadenzaAlertRuleType,
-  type ScadenzaAlertDefaultTemplateTrigger,
+  SCADENZE_ALERT_COMPAT_TEMPLATE_TYPES,
+  normalizeScadenzaAlertTemplateType,
+  type ScadenzaAlertDefaultTemplateType,
 } from "@/lib/scadenzeAlertConfig";
 
 type AlertTemplatePayload = {
   id?: string;
   codice: string | null;
   titolo: string | null;
-  tipo: ScadenzaAlertRuleType | null;
-  trigger: ScadenzaAlertDefaultTemplateTrigger | null;
+  tipo: ScadenzaAlertDefaultTemplateType | null;
+  trigger?: string | null;
   subject_template: string | null;
   body_template: string | null;
   attivo: boolean;
 };
 
-const ALLOWED_TIPI = new Set<ScadenzaAlertRuleType>(SCADENZE_ALERT_RULE_TYPES);
-const ALLOWED_TRIGGER = new Set<ScadenzaAlertDefaultTemplateTrigger>(
-  SCADENZE_ALERT_DEFAULT_TEMPLATE_TRIGGERS
+const ALLOWED_TIPI = new Set<ScadenzaAlertDefaultTemplateType>(
+  SCADENZE_ALERT_COMPAT_TEMPLATE_TYPES
 );
 
 type RateLimitEntry = { count: number; resetAt: number };
@@ -82,30 +80,6 @@ function getSupabaseClient() {
   return createClient(supabaseUrl, supabaseKey);
 }
 
-function normalizeTipo(value?: string | null): ScadenzaAlertRuleType | null {
-  const raw = String(value || "")
-    .trim()
-    .toUpperCase();
-  if (raw === "LICENZA") return "LICENZA";
-  if (raw === "TAGLIANDO") return "TAGLIANDO";
-  if (raw === "GARANZIA") return "GARANZIA";
-  if (raw === "SAAS") return "SAAS";
-  return null;
-}
-
-function normalizeTrigger(value?: string | null): ScadenzaAlertDefaultTemplateTrigger | null {
-  const raw = String(value || "")
-    .trim()
-    .toUpperCase();
-  if (raw === "MANUALE") return "MANUALE";
-  if (raw === "60GG") return "60GG";
-  if (raw === "30GG") return "30GG";
-  if (raw === "15GG") return "15GG";
-  if (raw === "7GG") return "7GG";
-  if (raw === "1GG") return "1GG";
-  return null;
-}
-
 const SELECT_FIELDS =
   "id,codice,titolo,tipo,trigger,subject_template,body_template,attivo,created_at,updated_at";
 
@@ -147,8 +121,8 @@ export async function POST(request: Request) {
   const payload: AlertTemplatePayload = {
     codice: body.codice?.trim() || null,
     titolo: body.titolo?.trim() || null,
-    tipo: normalizeTipo(body.tipo),
-    trigger: normalizeTrigger(body.trigger),
+    tipo: normalizeScadenzaAlertTemplateType(body.tipo),
+    trigger: typeof body.trigger === "string" ? body.trigger.trim() || null : null,
     subject_template: body.subject_template ?? null,
     body_template: body.body_template ?? null,
     attivo: Boolean(body.attivo),
@@ -160,13 +134,14 @@ export async function POST(request: Request) {
   if (!payload.tipo || !ALLOWED_TIPI.has(payload.tipo)) {
     return NextResponse.json({ error: "Invalid tipo" }, { status: 400 });
   }
-  if (!payload.trigger || !ALLOWED_TRIGGER.has(payload.trigger)) {
-    return NextResponse.json({ error: "Invalid trigger" }, { status: 400 });
-  }
 
+  const dbPayload = {
+    ...payload,
+    trigger: payload.trigger || "MANUALE",
+  };
   const { data, error } = await supabase
     .from("alert_message_templates")
-    .insert(payload)
+    .insert(dbPayload)
     .select(SELECT_FIELDS)
     .single();
   if (error) {
@@ -198,8 +173,8 @@ export async function PATCH(request: Request) {
     id: body.id,
     codice: body.codice?.trim() || null,
     titolo: body.titolo?.trim() || null,
-    tipo: normalizeTipo(body.tipo),
-    trigger: normalizeTrigger(body.trigger),
+    tipo: normalizeScadenzaAlertTemplateType(body.tipo),
+    trigger: typeof body.trigger === "string" ? body.trigger.trim() || null : null,
     subject_template: body.subject_template ?? null,
     body_template: body.body_template ?? null,
     attivo: Boolean(body.attivo),
@@ -211,13 +186,14 @@ export async function PATCH(request: Request) {
   if (!payload.tipo || !ALLOWED_TIPI.has(payload.tipo)) {
     return NextResponse.json({ error: "Invalid tipo" }, { status: 400 });
   }
-  if (!payload.trigger || !ALLOWED_TRIGGER.has(payload.trigger)) {
-    return NextResponse.json({ error: "Invalid trigger" }, { status: 400 });
-  }
 
+  const dbPayload = {
+    ...payload,
+    trigger: payload.trigger || "MANUALE",
+  };
   const { data, error } = await supabase
     .from("alert_message_templates")
-    .update(payload)
+    .update(dbPayload)
     .eq("id", payload.id)
     .select(SELECT_FIELDS)
     .single();

@@ -1,45 +1,43 @@
-export const SCADENZE_ALERT_RULE_TYPES = ["LICENZA", "TAGLIANDO", "GARANZIA", "SAAS"] as const;
-export const SCADENZE_ALERT_STEP_OPTIONS = [30, 15, 7, 1] as const;
-export const SCADENZE_ALERT_DEFAULT_TEMPLATE_TYPES = [
+export const SCADENZE_ALERT_RULE_TYPES = [
   "LICENZA",
   "TAGLIANDO",
   "GARANZIA",
   "SAAS",
-  "GENERICO",
+  "CMS",
 ] as const;
-export const SCADENZE_ALERT_DEFAULT_TEMPLATE_TRIGGERS = [
-  "MANUALE",
-  "60GG",
-  "30GG",
-  "15GG",
-  "7GG",
-  "1GG",
+
+export const SCADENZE_ALERT_STEP_OPTIONS = [60, 30, 15, 7, 1] as const;
+
+export const SCADENZE_ALERT_DEFAULT_TEMPLATE_TYPES = [...SCADENZE_ALERT_RULE_TYPES] as const;
+export const SCADENZE_ALERT_COMPAT_TEMPLATE_TYPES = [
+  ...SCADENZE_ALERT_RULE_TYPES,
+  "GENERICO",
 ] as const;
 
 export type ScadenzaAlertRuleType = (typeof SCADENZE_ALERT_RULE_TYPES)[number];
 export type ScadenzaAlertStep = (typeof SCADENZE_ALERT_STEP_OPTIONS)[number];
 export type ScadenzaAlertDefaultTemplateType =
-  (typeof SCADENZE_ALERT_DEFAULT_TEMPLATE_TYPES)[number];
-export type ScadenzaAlertDefaultTemplateTrigger =
-  (typeof SCADENZE_ALERT_DEFAULT_TEMPLATE_TRIGGERS)[number];
+  | ScadenzaAlertRuleType
+  | "GENERICO";
 
 export type ScadenzaAlertGlobalRuleRow = {
   id?: string;
   tipo_scadenza: ScadenzaAlertRuleType;
+  giorni_preavviso: number;
+  preset_id: string | null;
   attivo: boolean;
-  enabled_steps: number[];
-  default_delivery_mode: "AUTO_CLIENTE" | "MANUALE_INTERNO";
-  default_target: "CLIENTE" | "ART_TECH" | "CLIENTE_E_ART_TECH";
-  default_template_id: string | null;
-  note: string | null;
   created_at?: string | null;
   updated_at?: string | null;
 };
 
-export type ScadenzaAlertGlobalRuleStorageMode = "legacy" | "modern" | "unknown";
-
 type ScadenzaAlertGlobalRuleCompatRow = Partial<ScadenzaAlertGlobalRuleRow> &
   Record<string, unknown>;
+
+function normalizeInteger(value: unknown) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return null;
+  return Math.trunc(numeric);
+}
 
 export function normalizeScadenzaAlertRuleType(
   value?: string | null
@@ -51,25 +49,20 @@ export function normalizeScadenzaAlertRuleType(
   if (raw === "TAGLIANDO") return "TAGLIANDO";
   if (raw === "GARANZIA") return "GARANZIA";
   if (raw === "SAAS" || raw === "SAAS_ULTRA" || raw === "RINNOVO") return "SAAS";
+  if (raw === "CMS") return "CMS";
   return null;
 }
 
-function normalizeDeliveryModeCompat(value: unknown) {
+export function normalizeScadenzaAlertTemplateType(
+  value?: string | null
+): ScadenzaAlertDefaultTemplateType | null {
+  const normalizedRuleType = normalizeScadenzaAlertRuleType(value);
+  if (normalizedRuleType) return normalizedRuleType;
   const raw = String(value || "")
     .trim()
     .toUpperCase();
-  return raw === "MANUALE_INTERNO" || raw === "MANUALE" || raw === "MANUALE INTERNO"
-    ? "MANUALE_INTERNO"
-    : "AUTO_CLIENTE";
-}
-
-function normalizeTargetCompat(value: unknown) {
-  const raw = String(value || "")
-    .trim()
-    .toUpperCase();
-  if (raw === "ART_TECH" || raw === "ARTTECH") return "ART_TECH";
-  if (raw === "CLIENTE_E_ART_TECH" || raw === "CLIENTE+ART_TECH") return "CLIENTE_E_ART_TECH";
-  return "CLIENTE";
+  if (raw === "GENERICO") return "GENERICO";
+  return null;
 }
 
 export function getScadenzaAlertGlobalRuleTipo(row: Record<string, unknown> | null | undefined) {
@@ -82,131 +75,124 @@ export function getScadenzaAlertGlobalRuleTipo(row: Record<string, unknown> | nu
   );
 }
 
-export function detectScadenzaAlertGlobalRuleStorageMode(
-  rows: Array<Record<string, unknown>> | null | undefined
-): ScadenzaAlertGlobalRuleStorageMode {
-  for (const row of rows || []) {
-    if (
-      row &&
-      (Object.prototype.hasOwnProperty.call(row, "tipo_scadenza") ||
-        Object.prototype.hasOwnProperty.call(row, "enabled_steps") ||
-        Object.prototype.hasOwnProperty.call(row, "default_template_id"))
-    ) {
-      return "legacy";
-    }
-    if (
-      row &&
-      (Object.prototype.hasOwnProperty.call(row, "tipo") ||
-        Object.prototype.hasOwnProperty.call(row, "step_giorni") ||
-        Object.prototype.hasOwnProperty.call(row, "preset_default"))
-    ) {
-      return "modern";
-    }
-  }
-  return "unknown";
-}
-
 export function getDefaultScadenzaAlertGlobalRule(
-  tipo_scadenza: ScadenzaAlertRuleType
+  tipo_scadenza: ScadenzaAlertRuleType,
+  giorni_preavviso: number
 ): ScadenzaAlertGlobalRuleRow {
   return {
     tipo_scadenza,
+    giorni_preavviso,
+    preset_id: null,
     attivo: true,
-    enabled_steps: [...SCADENZE_ALERT_STEP_OPTIONS],
-    default_delivery_mode: "AUTO_CLIENTE",
-    default_target: "CLIENTE",
-    default_template_id: null,
-    note: null,
   };
 }
 
 export function normalizeScadenzaAlertGlobalRule(
   row: ScadenzaAlertGlobalRuleCompatRow | null | undefined,
-  tipo_scadenza: ScadenzaAlertRuleType
+  fallbackTipo: ScadenzaAlertRuleType,
+  fallbackGiorni = 30
 ): ScadenzaAlertGlobalRuleRow {
-  const base = getDefaultScadenzaAlertGlobalRule(tipo_scadenza);
-  const compatSteps = Array.isArray(row?.enabled_steps)
-    ? row.enabled_steps
-    : Array.isArray(row?.step_giorni)
-    ? row.step_giorni
-    : null;
-  const enabled_steps = Array.isArray(compatSteps)
-    ? Array.from(
-        new Set(
-          compatSteps
-            .map((value) => Number(value))
-            .filter((value) =>
-              SCADENZE_ALERT_STEP_OPTIONS.includes(value as ScadenzaAlertStep)
-            )
-        )
-      )
-    : base.enabled_steps;
-  const raw = (row || {}) as Record<string, unknown>;
-  const defaultTemplateId =
-    typeof raw.default_template_id === "string" && raw.default_template_id.trim()
-      ? raw.default_template_id.trim()
-      : typeof raw.preset_default === "string" && raw.preset_default.trim()
-      ? raw.preset_default.trim()
-      : null;
-  const noteValue =
-    typeof raw.note === "string" && raw.note.trim()
-      ? raw.note
-      : typeof raw.note_default === "string" && raw.note_default.trim()
-      ? raw.note_default
+  const tipo_scadenza = getScadenzaAlertGlobalRuleTipo(row) || fallbackTipo;
+  const giorni_preavviso =
+    normalizeInteger(row?.giorni_preavviso) ??
+    normalizeInteger(row?.step) ??
+    normalizeInteger(fallbackGiorni) ??
+    30;
+  const presetRaw =
+    typeof row?.preset_id === "string" && row.preset_id.trim()
+      ? row.preset_id.trim()
+      : typeof row?.default_template_id === "string" && row.default_template_id.trim()
+      ? row.default_template_id.trim()
+      : typeof row?.preset_default === "string" && row.preset_default.trim()
+      ? row.preset_default.trim()
       : null;
   return {
-    ...base,
+    ...getDefaultScadenzaAlertGlobalRule(tipo_scadenza, giorni_preavviso),
     ...(row || {}),
     tipo_scadenza,
+    giorni_preavviso,
+    preset_id: presetRaw,
     attivo:
-      typeof raw.attivo === "boolean"
-        ? raw.attivo
-        : typeof raw.attiva === "boolean"
-        ? raw.attiva
+      typeof row?.attivo === "boolean"
+        ? row.attivo
+        : typeof row?.attiva === "boolean"
+        ? row.attiva
         : true,
-    enabled_steps: enabled_steps.length > 0 ? enabled_steps : [...base.enabled_steps],
-    default_delivery_mode: normalizeDeliveryModeCompat(
-      raw.default_delivery_mode ?? raw.modalita_invio ?? base.default_delivery_mode
-    ),
-    default_target: normalizeTargetCompat(
-      raw.default_target ?? raw.destinatario_default ?? base.default_target
-    ),
-    default_template_id: defaultTemplateId,
-    note: noteValue,
   };
 }
 
-export function buildLegacyScadenzaAlertGlobalRulePayload(rule: ScadenzaAlertGlobalRuleRow) {
-  const normalized = normalizeScadenzaAlertGlobalRule(rule, rule.tipo_scadenza);
+function normalizeStepList(values: unknown) {
+  const rawList = Array.isArray(values)
+    ? values
+    : typeof values === "number"
+    ? [values]
+    : typeof values === "string" && values.trim()
+    ? values
+        .split(",")
+        .map((entry) => entry.trim())
+        .filter(Boolean)
+    : [];
+  return Array.from(
+    new Set(
+      rawList
+        .map((value) => normalizeInteger(value))
+        .filter(
+          (value): value is number =>
+            value != null &&
+            SCADENZE_ALERT_STEP_OPTIONS.includes(value as ScadenzaAlertStep)
+        )
+    )
+  ).sort((a, b) => b - a);
+}
+
+export function expandScadenzaAlertGlobalRuleRows(
+  rows: Array<Record<string, unknown>> | null | undefined
+): ScadenzaAlertGlobalRuleRow[] {
+  const out: ScadenzaAlertGlobalRuleRow[] = [];
+  for (const row of rows || []) {
+    const tipo_scadenza = getScadenzaAlertGlobalRuleTipo(row);
+    if (!tipo_scadenza) continue;
+
+    const hasSingleStep =
+      Object.prototype.hasOwnProperty.call(row, "giorni_preavviso") ||
+      Object.prototype.hasOwnProperty.call(row, "preset_id");
+    if (hasSingleStep) {
+      out.push(normalizeScadenzaAlertGlobalRule(row, tipo_scadenza));
+      continue;
+    }
+
+    const legacySteps = normalizeStepList(
+      row?.enabled_steps ?? row?.step_giorni ?? row?.giorni_preavviso
+    );
+    const steps = legacySteps.length > 0 ? legacySteps : [...SCADENZE_ALERT_STEP_OPTIONS];
+    for (const step of steps) {
+      out.push(normalizeScadenzaAlertGlobalRule(row, tipo_scadenza, step));
+    }
+  }
+
+  const dedup = new Map<string, ScadenzaAlertGlobalRuleRow>();
+  for (const row of out) {
+    dedup.set(`${row.tipo_scadenza}:${row.giorni_preavviso}`, row);
+  }
+  return Array.from(dedup.values()).sort((a, b) => {
+    if (a.tipo_scadenza !== b.tipo_scadenza) {
+      return a.tipo_scadenza.localeCompare(b.tipo_scadenza);
+    }
+    return b.giorni_preavviso - a.giorni_preavviso;
+  });
+}
+
+export function buildScadenzaAlertGlobalRulePayload(rule: ScadenzaAlertGlobalRuleRow) {
+  const normalized = normalizeScadenzaAlertGlobalRule(
+    rule,
+    rule.tipo_scadenza,
+    rule.giorni_preavviso
+  );
   return {
     tipo_scadenza: normalized.tipo_scadenza,
+    giorni_preavviso: normalized.giorni_preavviso,
+    preset_id: normalized.preset_id,
     attivo: normalized.attivo,
-    enabled_steps: normalized.enabled_steps,
-    default_delivery_mode: normalized.default_delivery_mode,
-    default_target: normalized.default_target,
-    default_template_id: normalized.default_template_id,
-    note: normalized.note,
-  };
-}
-
-export function buildModernScadenzaAlertGlobalRulePayload(rule: ScadenzaAlertGlobalRuleRow) {
-  const normalized = normalizeScadenzaAlertGlobalRule(rule, rule.tipo_scadenza);
-  return {
-    tipo: normalized.tipo_scadenza,
-    attiva: normalized.attivo,
-    step_giorni: normalized.enabled_steps,
-    modalita_invio:
-      normalized.default_delivery_mode === "MANUALE_INTERNO"
-        ? "manuale_interno"
-        : "automatico_cliente",
-    destinatario_default:
-      normalized.default_target === "CLIENTE_E_ART_TECH"
-        ? "cliente_e_art_tech"
-        : normalized.default_target === "ART_TECH"
-        ? "art_tech"
-        : "cliente",
-    preset_default: normalized.default_template_id,
-    note_default: normalized.note,
   };
 }
 
@@ -228,26 +214,33 @@ export function buildScadenzaAlertGlobalRuleSummary(
   templateTitle?: string | null
 ) {
   if (!rule || !rule.attivo) {
-    return "Nessuna regola globale attiva.";
+    return "Regola non attiva.";
   }
-  const steps = [...rule.enabled_steps].sort((a, b) => b - a).join(" / ");
-  const targetLabel =
-    rule.default_target === "CLIENTE_E_ART_TECH"
-      ? "Cliente + Art Tech"
-      : rule.default_target === "ART_TECH"
-      ? "Art Tech"
-      : "Cliente";
-  const deliveryLabel =
-    rule.default_delivery_mode === "MANUALE_INTERNO"
-      ? "Manuale interno"
-      : "Automatico al cliente";
   return [
     `Tipo: ${rule.tipo_scadenza}`,
-    `Step automatici: ${steps} giorni`,
-    `Modalità default: ${deliveryLabel}`,
-    `Destinatario default: ${targetLabel}`,
-    `Preset default: ${templateTitle || "nessuno"}`,
+    `Preavviso: ${rule.giorni_preavviso} giorni`,
+    `Preset associato: ${templateTitle || "nessuno"}`,
   ].join("\n");
+}
+
+export function buildScadenzaAlertGlobalRulesSummary(
+  rules: ScadenzaAlertGlobalRuleRow[] | null | undefined,
+  templatesById?: Map<string, { titolo?: string | null }>
+) {
+  const list = (rules || []).filter((rule) => rule.attivo !== false);
+  if (list.length === 0) {
+    return "Nessuna regola globale attiva.";
+  }
+  return list
+    .slice()
+    .sort((a, b) => b.giorni_preavviso - a.giorni_preavviso)
+    .map((rule) => {
+      const title = rule.preset_id
+        ? templatesById?.get(rule.preset_id)?.titolo || "Preset selezionato"
+        : "nessuno";
+      return `${rule.giorni_preavviso} giorni → ${title}`;
+    })
+    .join("\n");
 }
 
 export function renderTemplateText(

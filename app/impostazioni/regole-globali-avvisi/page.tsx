@@ -6,17 +6,13 @@ import ConfigMancante from "@/components/ConfigMancante";
 import { isSupabaseConfigured } from "@/lib/supabaseClient";
 import { dbFrom } from "@/lib/clientDbBroker";
 import {
-  buildLegacyScadenzaAlertGlobalRulePayload,
-  buildModernScadenzaAlertGlobalRulePayload,
-  buildScadenzaAlertGlobalRuleSummary,
-  detectScadenzaAlertGlobalRuleStorageMode,
+  buildScadenzaAlertGlobalRulePayload,
+  buildScadenzaAlertGlobalRulesSummary,
+  expandScadenzaAlertGlobalRuleRows,
   getDefaultScadenzaAlertGlobalRule,
-  getScadenzaAlertGlobalRuleTipo,
-  normalizeScadenzaAlertGlobalRule,
   SCADENZE_ALERT_RULE_TYPES,
   SCADENZE_ALERT_STEP_OPTIONS,
   type ScadenzaAlertGlobalRuleRow,
-  type ScadenzaAlertGlobalRuleStorageMode,
   type ScadenzaAlertRuleType,
 } from "@/lib/scadenzeAlertConfig";
 
@@ -27,95 +23,67 @@ type AlertTemplateRow = {
   attivo: boolean | null;
 };
 
+function buildDefaultRulesByTipo() {
+  return Object.fromEntries(
+    SCADENZE_ALERT_RULE_TYPES.map((tipo) => [
+      tipo,
+      [...SCADENZE_ALERT_STEP_OPTIONS].map((step) => getDefaultScadenzaAlertGlobalRule(tipo, step)),
+    ])
+  ) as Record<ScadenzaAlertRuleType, ScadenzaAlertGlobalRuleRow[]>;
+}
+
 export default function RegoleGlobaliAvvisiPage() {
   if (!isSupabaseConfigured) {
     return <ConfigMancante />;
   }
 
-  const [rules, setRules] = useState<Record<ScadenzaAlertRuleType, ScadenzaAlertGlobalRuleRow>>(() =>
-    Object.fromEntries(
-      SCADENZE_ALERT_RULE_TYPES.map((tipo) => [tipo, getDefaultScadenzaAlertGlobalRule(tipo)])
-    ) as Record<ScadenzaAlertRuleType, ScadenzaAlertGlobalRuleRow>
+  const [rulesByTipo, setRulesByTipo] = useState<Record<ScadenzaAlertRuleType, ScadenzaAlertGlobalRuleRow[]>>(
+    () => buildDefaultRulesByTipo()
   );
   const [templates, setTemplates] = useState<AlertTemplateRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [savingTipo, setSavingTipo] = useState<ScadenzaAlertRuleType | null>(null);
-  const [storageMode, setStorageMode] = useState<ScadenzaAlertGlobalRuleStorageMode>("unknown");
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-
-  async function loadRulesRows() {
-    const legacyRes = await dbFrom("scadenze_alert_global_rules")
-      .select("*")
-      .order("tipo_scadenza", { ascending: true });
-    if (!legacyRes.error) {
-      return {
-        data: ((legacyRes.data as any[]) || []) as Record<string, unknown>[],
-        error: null,
-        mode:
-          detectScadenzaAlertGlobalRuleStorageMode(
-            ((legacyRes.data as any[]) || []) as Record<string, unknown>[]
-          ) || "legacy",
-      };
-    }
-
-    const modernRes = await dbFrom("scadenze_alert_global_rules")
-      .select("*")
-      .order("tipo", { ascending: true });
-    if (!modernRes.error) {
-      return {
-        data: ((modernRes.data as any[]) || []) as Record<string, unknown>[],
-        error: null,
-        mode:
-          detectScadenzaAlertGlobalRuleStorageMode(
-            ((modernRes.data as any[]) || []) as Record<string, unknown>[]
-          ) || "modern",
-      };
-    }
-
-    return {
-      data: [] as Record<string, unknown>[],
-      error: legacyRes.error || modernRes.error,
-      mode: "unknown" as ScadenzaAlertGlobalRuleStorageMode,
-    };
-  }
 
   async function loadData() {
     setLoading(true);
     setError(null);
     const [rulesRes, templatesRes] = await Promise.all([
-      loadRulesRows(),
+      dbFrom("scadenze_alert_global_rules").select("*"),
       dbFrom("alert_message_templates")
         .select("id,titolo,tipo,attivo")
         .eq("attivo", true)
         .order("titolo", { ascending: true }),
     ]);
 
-    const nextRules = Object.fromEntries(
-      SCADENZE_ALERT_RULE_TYPES.map((tipo) => [tipo, getDefaultScadenzaAlertGlobalRule(tipo)])
-    ) as Record<ScadenzaAlertRuleType, ScadenzaAlertGlobalRuleRow>;
-    const ruleRows = rulesRes.error ? [] : (rulesRes.data as Record<string, unknown>[]);
-    const rulesByTipo = new Map<ScadenzaAlertRuleType, Record<string, unknown>>();
-    for (const row of ruleRows) {
-      const tipo = getScadenzaAlertGlobalRuleTipo(row);
-      if (!tipo) continue;
-      rulesByTipo.set(tipo, row);
+    const nextRules = buildDefaultRulesByTipo();
+    if (!rulesRes.error) {
+      const expanded = expandScadenzaAlertGlobalRuleRows(
+        ((rulesRes.data as any[]) || []) as Record<string, unknown>[]
+      );
+      for (const tipo of SCADENZE_ALERT_RULE_TYPES) {
+        const byTipo = expanded
+          .filter((row) => row.tipo_scadenza === tipo)
+          .sort((a, b) => b.giorni_preavviso - a.giorni_preavviso);
+        if (byTipo.length > 0) {
+          const merged = [...SCADENZE_ALERT_STEP_OPTIONS].map((step) => {
+            return (
+              byTipo.find((row) => row.giorni_preavviso === step) ||
+              getDefaultScadenzaAlertGlobalRule(tipo, step)
+            );
+          });
+          nextRules[tipo] = merged;
+        }
+      }
     }
-    for (const tipo of SCADENZE_ALERT_RULE_TYPES) {
-      nextRules[tipo] = normalizeScadenzaAlertGlobalRule(rulesByTipo.get(tipo) || null, tipo);
-    }
-    setRules(nextRules);
-    setStorageMode(rulesRes.mode);
-    setTemplates(
-      templatesRes.error ? [] : (((templatesRes.data as any[]) || []) as AlertTemplateRow[])
-    );
+
+    setRulesByTipo(nextRules);
+    setTemplates(templatesRes.error ? [] : (((templatesRes.data as any[]) || []) as AlertTemplateRow[]));
+
     const errors: string[] = [];
-    if (rulesRes.error) {
-      errors.push(`Errore caricamento regole globali: ${rulesRes.error.message}`);
-    }
-    if (templatesRes.error) {
-      errors.push(`Errore caricamento preset: ${templatesRes.error.message}`);
-    }
+    if (rulesRes.error) errors.push(`Errore caricamento regole globali: ${rulesRes.error.message}`);
+    if (templatesRes.error) errors.push(`Errore caricamento preset: ${templatesRes.error.message}`);
     setError(errors.length > 0 ? errors.join(" • ") : null);
     setLoading(false);
   }
@@ -132,73 +100,52 @@ export default function RegoleGlobaliAvvisiPage() {
     return map;
   }, [templates]);
 
-  function updateRule(tipo: ScadenzaAlertRuleType, patch: Partial<ScadenzaAlertGlobalRuleRow>) {
-    setRules((prev) => ({
+  function updateRuleRow(
+    tipo: ScadenzaAlertRuleType,
+    giorni_preavviso: number,
+    patch: Partial<ScadenzaAlertGlobalRuleRow>
+  ) {
+    setRulesByTipo((prev) => ({
       ...prev,
-      [tipo]: normalizeScadenzaAlertGlobalRule({ ...prev[tipo], ...patch }, tipo),
+      [tipo]: prev[tipo]
+        .map((row) =>
+          row.giorni_preavviso === giorni_preavviso ? { ...row, ...patch, tipo_scadenza: tipo } : row
+        )
+        .sort((a, b) => b.giorni_preavviso - a.giorni_preavviso),
     }));
   }
 
-  async function saveRule(tipo: ScadenzaAlertRuleType) {
+  async function saveTipo(tipo: ScadenzaAlertRuleType) {
     setSavingTipo(tipo);
     setError(null);
     setNotice(null);
-    const payload = normalizeScadenzaAlertGlobalRule(rules[tipo], tipo);
-    const attempts =
-      storageMode === "modern"
-        ? [
-            {
-              mode: "modern" as const,
-              onConflict: "tipo",
-              payload: buildModernScadenzaAlertGlobalRulePayload(payload),
-            },
-            {
-              mode: "legacy" as const,
-              onConflict: "tipo_scadenza",
-              payload: buildLegacyScadenzaAlertGlobalRulePayload(payload),
-            },
-          ]
-        : [
-            {
-              mode: "legacy" as const,
-              onConflict: "tipo_scadenza",
-              payload: buildLegacyScadenzaAlertGlobalRulePayload(payload),
-            },
-            {
-              mode: "modern" as const,
-              onConflict: "tipo",
-              payload: buildModernScadenzaAlertGlobalRulePayload(payload),
-            },
-          ];
+    const payload = rulesByTipo[tipo].map((row) => buildScadenzaAlertGlobalRulePayload(row));
+    const result = await dbFrom("scadenze_alert_global_rules")
+      .upsert(payload, { onConflict: "tipo_scadenza,giorni_preavviso" })
+      .select("*");
 
-    let savedData: any = null;
-    let savedMode: ScadenzaAlertGlobalRuleStorageMode = storageMode;
-    let saveErr: { message: string } | null = null;
-    for (const attempt of attempts) {
-      const result = await dbFrom("scadenze_alert_global_rules")
-        .upsert(attempt.payload, { onConflict: attempt.onConflict })
-        .select("*")
-        .single();
-      if (!result.error) {
-        savedData = result.data;
-        savedMode = attempt.mode;
-        saveErr = null;
-        break;
-      }
-      saveErr = result.error;
-    }
-
-    if (saveErr) {
-      setError(`Errore salvataggio regola ${tipo}: ${saveErr.message}`);
+    if (result.error) {
+      setError(`Errore salvataggio regole ${tipo}: ${result.error.message}`);
       setSavingTipo(null);
       return;
     }
-    setRules((prev) => ({
+
+    const normalized = expandScadenzaAlertGlobalRuleRows(
+      ((result.data as any[]) || []) as Record<string, unknown>[]
+    ).filter((row) => row.tipo_scadenza === tipo);
+    setRulesByTipo((prev) => ({
       ...prev,
-      [tipo]: normalizeScadenzaAlertGlobalRule((savedData as any) || payload, tipo),
+      [tipo]:
+        normalized.length > 0
+          ? [...SCADENZE_ALERT_STEP_OPTIONS].map((step) => {
+              return (
+                normalized.find((row) => row.giorni_preavviso === step) ||
+                getDefaultScadenzaAlertGlobalRule(tipo, step)
+              );
+            })
+          : prev[tipo],
     }));
-    setStorageMode(savedMode);
-    setNotice(`✅ Regola globale ${tipo} salvata.`);
+    setNotice(`✅ Regole globali ${tipo} salvate.`);
     setSavingTipo(null);
   }
 
@@ -208,7 +155,7 @@ export default function RegoleGlobaliAvvisiPage() {
         <div>
           <h1 style={{ margin: 0, fontSize: 30 }}>Regole globali avvisi</h1>
           <div style={{ marginTop: 4, fontSize: 12, opacity: 0.75 }}>
-            Default automatici per tipo scadenza. Gli override cliente hanno priorità su queste regole.
+            Source of truth dei trigger automatici: una riga per tipo scadenza e giorni di preavviso.
           </div>
         </div>
         <Link
@@ -248,14 +195,7 @@ export default function RegoleGlobaliAvvisiPage() {
       ) : (
         <div style={{ marginTop: 18, display: "grid", gap: 14 }}>
           {SCADENZE_ALERT_RULE_TYPES.map((tipo) => {
-            const rule = rules[tipo];
-            const presetTitle = rule.default_template_id
-              ? templatesById.get(rule.default_template_id)?.titolo || "Preset selezionato"
-              : null;
-            const matchingTemplates = templates.filter((template) => {
-              const templateTipo = String(template.tipo || "").toUpperCase();
-              return templateTipo === tipo || templateTipo === "GENERICO";
-            });
+            const rows = rulesByTipo[tipo];
             return (
               <div
                 key={tipo}
@@ -270,133 +210,98 @@ export default function RegoleGlobaliAvvisiPage() {
               >
                 <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
                   <div style={{ fontSize: 18, fontWeight: 800 }}>{tipo}</div>
-                  <label style={{ display: "flex", gap: 6, alignItems: "center", fontSize: 12 }}>
-                    <input
-                      type="checkbox"
-                      checked={rule.attivo}
-                      onChange={(e) => updateRule(tipo, { attivo: e.target.checked })}
-                    />
-                    Regola attiva
-                  </label>
+                  <div
+                    style={{
+                      whiteSpace: "pre-line",
+                      fontSize: 12,
+                      color: "#374151",
+                      background: "#f8fafc",
+                      border: "1px solid #e5e7eb",
+                      borderRadius: 10,
+                      padding: 10,
+                      flex: 1,
+                      minWidth: 260,
+                    }}
+                  >
+                    {buildScadenzaAlertGlobalRulesSummary(rows, templatesById)}
+                  </div>
                 </div>
 
                 <div
                   style={{
-                    whiteSpace: "pre-line",
-                    fontSize: 12,
-                    color: "#374151",
-                    background: "#f8fafc",
-                    border: "1px solid #e5e7eb",
-                    borderRadius: 10,
-                    padding: 10,
+                    display: "grid",
+                    gridTemplateColumns: "140px minmax(260px, 1fr) 140px",
+                    gap: 12,
+                    alignItems: "center",
                   }}
                 >
-                  {buildScadenzaAlertGlobalRuleSummary(rule, presetTitle)}
+                  <div style={{ fontSize: 12, fontWeight: 700, color: "#374151" }}>Giorni preavviso</div>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: "#374151" }}>Preset associato</div>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: "#374151" }}>Attivo</div>
+
+                  {rows.map((row) => {
+                    const matchingTemplates = templates.filter((template) => {
+                      return String(template.tipo || "").trim().toUpperCase() === tipo;
+                    });
+                    const selectedTemplate =
+                      row.preset_id && templatesById.get(row.preset_id)
+                        ? templatesById.get(row.preset_id)
+                        : null;
+                    const selectOptions =
+                      selectedTemplate && !matchingTemplates.some((template) => template.id === selectedTemplate.id)
+                        ? [selectedTemplate, ...matchingTemplates]
+                        : matchingTemplates;
+                    return (
+                      <>
+                        <div
+                          key={`${tipo}-${row.giorni_preavviso}-step`}
+                          style={{ fontSize: 13, fontWeight: 700 }}
+                        >
+                          {row.giorni_preavviso} giorni
+                        </div>
+                        <label
+                          key={`${tipo}-${row.giorni_preavviso}-preset`}
+                          style={{ display: "block", fontSize: 12 }}
+                        >
+                          <select
+                            value={row.preset_id || ""}
+                            onChange={(e) =>
+                              updateRuleRow(tipo, row.giorni_preavviso, {
+                                preset_id: e.target.value || null,
+                              })
+                            }
+                            style={{ width: "100%", padding: 8, marginTop: 2 }}
+                          >
+                            <option value="">— Nessun preset —</option>
+                            {selectOptions.map((template) => (
+                              <option key={template.id} value={template.id}>
+                                {template.titolo || template.id}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        <label
+                          key={`${tipo}-${row.giorni_preavviso}-attivo`}
+                          style={{ display: "flex", gap: 8, alignItems: "center", fontSize: 12 }}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={row.attivo}
+                            onChange={(e) =>
+                              updateRuleRow(tipo, row.giorni_preavviso, { attivo: e.target.checked })
+                            }
+                          />
+                          Attiva
+                        </label>
+                      </>
+                    );
+                  })}
                 </div>
-
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 12 }}>
-                  <div>
-                    <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>Step automatici</div>
-                    <div style={{ display: "flex", gap: 10, flexWrap: "wrap", fontSize: 12 }}>
-                      {SCADENZE_ALERT_STEP_OPTIONS.map((step) => {
-                        const checked = rule.enabled_steps.includes(step);
-                        return (
-                          <label key={step} style={{ display: "flex", gap: 6, alignItems: "center" }}>
-                            <input
-                              type="checkbox"
-                              checked={checked}
-                              onChange={(e) =>
-                                updateRule(tipo, {
-                                  enabled_steps: e.target.checked
-                                    ? [...rule.enabled_steps, step]
-                                    : rule.enabled_steps.filter((value) => value !== step),
-                                })
-                              }
-                            />
-                            {step} giorni
-                          </label>
-                        );
-                      })}
-                    </div>
-                  </div>
-
-                  <label style={{ display: "block", fontSize: 12 }}>
-                    Modalità invio default
-                    <select
-                      value={rule.default_delivery_mode}
-                      onChange={(e) =>
-                        updateRule(tipo, {
-                          default_delivery_mode:
-                            e.target.value === "MANUALE_INTERNO" ? "MANUALE_INTERNO" : "AUTO_CLIENTE",
-                        })
-                      }
-                      style={{ width: "100%", padding: 8, marginTop: 6 }}
-                    >
-                      <option value="AUTO_CLIENTE">Automatico al cliente</option>
-                      <option value="MANUALE_INTERNO">Manuale interno</option>
-                    </select>
-                  </label>
-
-                  <label style={{ display: "block", fontSize: 12 }}>
-                    Destinatario default
-                    <select
-                      value={rule.default_target}
-                      onChange={(e) =>
-                        updateRule(tipo, {
-                          default_target:
-                            e.target.value === "ART_TECH"
-                              ? "ART_TECH"
-                              : e.target.value === "CLIENTE_E_ART_TECH"
-                              ? "CLIENTE_E_ART_TECH"
-                              : "CLIENTE",
-                        })
-                      }
-                      style={{ width: "100%", padding: 8, marginTop: 6 }}
-                    >
-                      <option value="CLIENTE">Cliente</option>
-                      <option value="ART_TECH">Art Tech</option>
-                      <option value="CLIENTE_E_ART_TECH">Cliente + Art Tech</option>
-                    </select>
-                  </label>
-
-                  <label style={{ display: "block", fontSize: 12 }}>
-                    Preset default
-                    <select
-                      value={rule.default_template_id || ""}
-                      onChange={(e) =>
-                        updateRule(tipo, { default_template_id: e.target.value || null })
-                      }
-                      style={{ width: "100%", padding: 8, marginTop: 6 }}
-                    >
-                      <option value="">— Nessun preset —</option>
-                      {matchingTemplates.map((template) => (
-                        <option key={template.id} value={template.id}>
-                          {template.titolo || template.id}
-                        </option>
-                      ))}
-                      {matchingTemplates.length === 0 ? (
-                        <option value="" disabled>
-                          Nessun preset disponibile per questo tipo
-                        </option>
-                      ) : null}
-                    </select>
-                  </label>
-                </div>
-
-                <label style={{ display: "block", fontSize: 12 }}>
-                  Note / testo default
-                  <textarea
-                    value={rule.note || ""}
-                    onChange={(e) => updateRule(tipo, { note: e.target.value })}
-                    rows={3}
-                    style={{ width: "100%", padding: 8, marginTop: 6 }}
-                  />
-                </label>
 
                 <div style={{ display: "flex", justifyContent: "flex-end" }}>
                   <button
                     type="button"
-                    onClick={() => saveRule(tipo)}
+                    onClick={() => saveTipo(tipo)}
                     disabled={savingTipo === tipo}
                     style={{
                       padding: "8px 12px",
@@ -408,7 +313,7 @@ export default function RegoleGlobaliAvvisiPage() {
                       cursor: savingTipo === tipo ? "default" : "pointer",
                     }}
                   >
-                    {savingTipo === tipo ? "Salvataggio..." : "Salva regola"}
+                    {savingTipo === tipo ? "Salvataggio..." : "Salva regole"}
                   </button>
                 </div>
               </div>

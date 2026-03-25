@@ -1,5 +1,42 @@
 # AGENT MEMORY — Snapshot Operativo
 
+## Snapshot 2026-03-25 - Scadenze/avvisi rifattorizzati con regole globali per step
+- `Preset avvisi`
+  - non usano piu il concetto applicativo di `trigger`
+  - restano template di contenuto, con tipi ufficiali:
+    - `LICENZA`
+    - `TAGLIANDO`
+    - `GARANZIA`
+    - `SAAS`
+    - `CMS`
+  - `trigger` puo' esistere ancora a DB come compatibilita' legacy, ma non va piu usato per filtro o logica UI
+- `scadenze_alert_global_rules`
+  - nuova chiave logica: `tipo_scadenza + giorni_preavviso`
+  - campi business usati dal codice:
+    - `tipo_scadenza`
+    - `giorni_preavviso`
+    - `preset_id`
+    - `attivo`
+  - non usare piu nel codice nuovo:
+    - `enabled_steps`
+    - `default_template_id`
+    - `default_target`
+    - `default_delivery_mode`
+- Compatibilita':
+  - `lib/scadenzeAlertConfig.ts` contiene i normalizer per leggere ancora shape legacy (`tipo`, `step_giorni`, `enabled_steps`, `preset_default`, `default_template_id`)
+  - la migrazione da eseguire su Supabase e':
+    - `scripts/20260325_refactor_scadenze_alert_global_rules.sql`
+- Cron:
+  - `app/api/cron/scadenze-alert/route.ts` usa ora la regola per step esatto
+  - la finestra cron deve coprire il massimo step configurato (`60`)
+- Popup invio manuale:
+  - `components/RenewalsAlertModal.tsx`
+  - se manca email cliente in anagrafica, mostra input editabile
+  - la pagina chiamante salva l'email in `clienti_anagrafica` prima dell'invio
+- Regola operativa:
+  - i trigger automatici vanno configurati solo in `Regole globali avvisi`
+  - i preset non devono piu portare semantica temporale (`60GG`, `30GG`, ecc.)
+
 ## Snapshot 2026-03-24 - Note operative condivise multi-pagina
 - Source of truth unica:
   - `cronoprogramma_meta.descrizione_attivita` = nota operativa corrente

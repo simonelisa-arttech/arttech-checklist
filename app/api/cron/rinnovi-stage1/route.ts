@@ -6,6 +6,7 @@ import { buildClienteEmailList } from "@/lib/clientiEmail";
 import { sendEmail } from "@/lib/email";
 import { RENEWAL_ALERT_PROGRESSIVE_DAYS } from "@/lib/renewalAlertRules";
 import {
+  expandScadenzaAlertGlobalRuleRows,
   normalizeScadenzaAlertRuleType,
   type ScadenzaAlertGlobalRuleRow,
 } from "@/lib/scadenzeAlertConfig";
@@ -268,11 +269,15 @@ export async function GET(request: Request) {
   if (globalRulesErr) {
     return NextResponse.json({ error: globalRulesErr.message }, { status: 500 });
   }
-  const globalRulesMap = new Map<string, ScadenzaAlertGlobalRuleRow>();
-  for (const row of (globalRulesData || []) as ScadenzaAlertGlobalRuleRow[]) {
+  const globalRulesMap = new Map<string, ScadenzaAlertGlobalRuleRow[]>();
+  for (const row of expandScadenzaAlertGlobalRuleRows(
+    ((globalRulesData || []) as any[]) as Record<string, unknown>[]
+  )) {
     const tipo = normalizeScadenzaAlertRuleType(row.tipo_scadenza);
     if (!tipo) continue;
-    globalRulesMap.set(tipo, row);
+    const list = globalRulesMap.get(tipo) || [];
+    list.push(row);
+    globalRulesMap.set(tipo, list);
   }
 
   if (rulesMap.size === 0 && globalRulesMap.size === 0) {
@@ -369,8 +374,8 @@ export async function GET(request: Request) {
   for (const [groupKey, list] of grouped.entries()) {
     const [cliente, tipo] = groupKey.split("::");
     const rule = rulesMap.get(String(cliente || "").trim().toLowerCase()) || null;
-    const globalRule = globalRulesMap.get(String(tipo || "").trim().toUpperCase()) || null;
-    if (!rule && !globalRule) continue;
+    const globalRules = globalRulesMap.get(String(tipo || "").trim().toUpperCase()) || [];
+    if (!rule && globalRules.length === 0) continue;
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const checklistIds = Array.from(
@@ -407,8 +412,8 @@ export async function GET(request: Request) {
       dt.setHours(0, 0, 0, 0);
       const diff = Math.ceil((dt.getTime() - today.getTime()) / 86400000);
       const allowedSteps =
-        globalRule && Array.isArray(globalRule.enabled_steps) && globalRule.enabled_steps.length > 0
-          ? globalRule.enabled_steps.map((value) => Number(value))
+        globalRules.length > 0
+          ? globalRules.map((value) => Number(value.giorni_preavviso))
           : [...RENEWAL_ALERT_PROGRESSIVE_DAYS];
       if (!allowedSteps.includes(diff)) {
         return false;
@@ -436,7 +441,7 @@ export async function GET(request: Request) {
     const recipients: Array<{ email: string; name: string | null; operatoreId: string | null }> = [];
     const shouldSendToArtTech = rule
       ? rule.send_to_art_tech
-      : globalRule?.default_target === "ART_TECH" || globalRule?.default_target === "CLIENTE_E_ART_TECH";
+      : false;
     if (shouldSendToArtTech) {
       if (rule && String(rule.art_tech_mode || "").toUpperCase() === "EMAIL") {
         const email = String(rule.art_tech_email || "").trim();
@@ -455,12 +460,7 @@ export async function GET(request: Request) {
     }
     const shouldSendToCliente = rule
       ? rule.send_to_cliente
-      : Boolean(
-          globalRule &&
-            globalRule.default_delivery_mode === "AUTO_CLIENTE" &&
-            (globalRule.default_target === "CLIENTE" ||
-              globalRule.default_target === "CLIENTE_E_ART_TECH")
-        );
+      : true;
     if (shouldSendToCliente) {
       const clienteId = String(eligible[0]?.checklists?.cliente_id || eligible[0]?.cliente_id || "").trim();
       const deliveryMode = clienteId

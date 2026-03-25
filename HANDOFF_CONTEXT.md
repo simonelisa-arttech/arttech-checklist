@@ -1,5 +1,48 @@
 # Handoff Context — AT SYSTEM (arttech-checklist)
 
+## Update 2026-03-25 - Refactor scadenze/avvisi: preset senza trigger, regole globali per step
+
+- Refactor principale completato per separare in modo netto:
+  - `Preset avvisi` = solo contenuto/template (`titolo`, `codice`, `tipo`, `subject`, `messaggio`, `attivo`)
+  - `Regole globali avvisi` = source of truth dei trigger automatici
+  - `Override locale` = solo popup invio manuale
+- Contratto applicativo nuovo per `scadenze_alert_global_rules`:
+  - `tipo_scadenza`
+  - `giorni_preavviso`
+  - `preset_id`
+  - `attivo`
+- Compatibilita' dati mantenuta:
+  - `lib/scadenzeAlertConfig.ts` espande ancora i record legacy con `enabled_steps`, `default_template_id`, `tipo` o `step_giorni`
+  - `app/api/alert-templates/route.ts` continua a scrivere `trigger = MANUALE` solo come compat DB se la colonna legacy esiste, ma il trigger non e' piu usato dalla logica applicativa
+- `CMS` aggiunto ai tipi ufficiali per preset e regole globali
+- `app/impostazioni/preset-avvisi/page.tsx`
+  - rimossi filtro e dropdown `trigger`
+  - il preset non gestisce piu timing/step
+- `app/impostazioni/regole-globali-avvisi/page.tsx`
+  - una card per tipo scadenza
+  - righe ordinate `giorni_preavviso DESC`
+  - selezione `preset associato` + `attivo` per ogni step
+- `app/api/cron/scadenze-alert/route.ts`
+  - legge ora la regola per chiave `(tipo_scadenza, giorni_preavviso)`
+  - la finestra cron arriva fino al massimo step configurato (ora include 60 giorni)
+  - la regola globale decide solo step+preset; il recapito automatico continua a usare la preferenza cliente (`AUTO_CLIENTE` / `MANUALE_INTERNO`)
+- `app/api/cron/rinnovi-stage1/route.ts`
+  - riallineato per non dipendere piu da `enabled_steps/default_target/default_delivery_mode`
+- Popup `Invia avviso`
+  - `components/RenewalsAlertModal.tsx`
+  - se manca email cliente in anagrafica, mostra input editabile nel manuale
+  - il submit passa l'override alla pagina chiamante
+- Salvataggio automatico email cliente:
+  - `app/clienti/[cliente]/page.tsx`
+  - `app/checklists/[id]/page.tsx`
+  - se l'utente invia al cliente con email mancante, l'email inserita viene usata per l'invio e salvata subito in `clienti_anagrafica`
+- SQL:
+  - nuovo script `scripts/20260325_refactor_scadenze_alert_global_rules.sql`
+    - allinea definitivamente `tipo_scadenza`
+    - aggiunge `giorni_preavviso` e `preset_id`
+    - espande le vecchie regole array in righe singole
+  - `scripts/create_scadenze_alert_global_rules.sql` aggiornato al nuovo schema finale
+
 ## Update 2026-03-24 - Note operative riusate fuori dal cronoprogramma
 
 - Source of truth unica confermata:
