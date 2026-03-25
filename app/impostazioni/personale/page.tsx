@@ -293,7 +293,7 @@ export default function PersonalePage() {
       {
         id: createTempId("personale-doc"),
         personale_id: personaleId,
-        tipo_documento: documentTypeOptions[0] || "",
+        tipo_documento: "",
         data_rilascio: "",
         data_scadenza: "",
         note: "",

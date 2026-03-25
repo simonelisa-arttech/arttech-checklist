@@ -248,7 +248,7 @@ export default function AziendePage() {
       {
         id: createTempId("azienda-doc"),
         azienda_id: aziendaId,
-        tipo_documento: documentTypeOptions[0] || "",
+        tipo_documento: "",
         data_scadenza: "",
         note: "",
         file_url: "",

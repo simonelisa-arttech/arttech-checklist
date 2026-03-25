@@ -12,6 +12,9 @@
     - salvataggio
     - eliminazione
   - i record legacy con solo `codice` sporco vengono mostrati puliti e possono essere corretti direttamente da UI
+  - `+ Documento persona` / `+ Documento azienda` non preselezionano piu' automaticamente il primo tipo documento:
+    - il campo parte vuoto su `— Seleziona —`
+    - evita falsi positivi nell'elenco standard atteso prima di una scelta esplicita
 
 ## Update 2026-03-25 - Import progetti idempotente con update server-side di default
 

@@ -6,6 +6,8 @@
 - regola da mantenere:
   - le etichette visibili dei documenti/corsi necessari devono usare sempre il nome utente-visibile
   - non esporre in UI codici tecnici come `PERSONALE_PLE` o `AZIENDA_DVR`
+  - i nuovi documenti assegnati non devono precompilare automaticamente il primo `tipo_documento` disponibile
+  - il select deve partire su `— Seleziona —` finche' l'utente non sceglie esplicitamente
 - storage:
   - `document_types.codice` puo' restare uno slug tecnico, ma senza prefissi forzati di dominio
   - `document_types.nome` e' il riferimento principale per select ed elenco standard esteso
