@@ -575,6 +575,7 @@ export default function Page() {
   const [clientiMissingEmailCount, setClientiMissingEmailCount] = useState(0);
   const [showMissingEmailInfo, setShowMissingEmailInfo] = useState(false);
   const [expandedSaasNoteId, setExpandedSaasNoteId] = useState<string | null>(null);
+  const [expandedDashboardNoteId, setExpandedDashboardNoteId] = useState<string | null>(null);
   const [serialsByChecklistId, setSerialsByChecklistId] = useState<
     Record<string, { seriali: string[] }>
   >({});
@@ -2786,26 +2787,80 @@ export default function Page() {
                         <td style={{ padding: "10px 12px", fontWeight: 700 }}>
                           <div style={{ display: "grid", gap: 6 }}>
                             <div>{c.nome_checklist}</div>
-                            <OperativeNotesPanel
-                              compact
-                              title="Note operative"
-                              items={[
-                                {
-                                  rowKind: "INSTALLAZIONE",
-                                  rowRefId: c.id,
-                                  label: "Installazione",
-                                },
-                                ...(String(c.noleggio_vendita || "").trim().toUpperCase() === "NOLEGGIO"
-                                  ? [
-                                      {
-                                        rowKind: "DISINSTALLAZIONE" as const,
-                                        rowRefId: c.id,
-                                        label: "Disinstallazione",
-                                      },
-                                    ]
-                                  : []),
-                              ]}
-                            />
+                            <div
+                              style={{
+                                border: "1px solid #eef2f7",
+                                borderRadius: 10,
+                                padding: "8px 10px",
+                                background: "#f9fafb",
+                                display: "grid",
+                                gap: 8,
+                              }}
+                            >
+                              <div
+                                style={{
+                                  display: "flex",
+                                  alignItems: "center",
+                                  justifyContent: "space-between",
+                                  gap: 8,
+                                }}
+                              >
+                                <div style={{ fontSize: 12, fontWeight: 800, opacity: 0.85 }}>
+                                  Note operative
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setExpandedDashboardNoteId((prev) => (prev === c.id ? null : c.id));
+                                  }}
+                                  style={{
+                                    padding: "4px 8px",
+                                    borderRadius: 8,
+                                    border: "1px solid #d1d5db",
+                                    background: "white",
+                                    cursor: "pointer",
+                                    fontSize: 12,
+                                    fontWeight: 700,
+                                  }}
+                                >
+                                  {expandedDashboardNoteId === c.id ? "Chiudi" : "Apri"}
+                                </button>
+                              </div>
+                              {expandedDashboardNoteId === c.id ? (
+                                <OperativeNotesPanel
+                                  compact
+                                  items={[
+                                    {
+                                      rowKind: "INSTALLAZIONE",
+                                      rowRefId: c.id,
+                                      label: "Installazione",
+                                    },
+                                    ...(String(c.noleggio_vendita || "").trim().toUpperCase() === "NOLEGGIO"
+                                      ? [
+                                          {
+                                            rowKind: "DISINSTALLAZIONE" as const,
+                                            rowRefId: c.id,
+                                            label: "Disinstallazione",
+                                          },
+                                        ]
+                                      : []),
+                                  ]}
+                                />
+                              ) : (
+                                <div
+                                  style={{
+                                    fontSize: 12,
+                                    opacity: 0.7,
+                                    whiteSpace: "nowrap",
+                                    overflow: "hidden",
+                                    textOverflow: "ellipsis",
+                                  }}
+                                >
+                                  —
+                                </div>
+                              )}
+                            </div>
                           </div>
                         </td>
                         <td style={{ padding: "10px 12px", opacity: 0.85 }}>
