@@ -48,22 +48,32 @@ function normalizeText(value?: string | null) {
     .replace(/[\u0300-\u036f]/g, "");
 }
 
-function buildDocumentTypeCode(kind: "AZIENDA", label: string) {
-  const slug = label
+function buildDocumentTypeCode(label: string) {
+  return label
     .trim()
     .toUpperCase()
     .normalize("NFD")
     .replace(/[\u0300-\u036f]/g, "")
     .replace(/[^A-Z0-9]+/g, "_")
     .replace(/^_+|_+$/g, "");
-  return `${kind}_${slug}`;
+}
+
+function getDocumentTypeLabel(row: DocumentTypeRow) {
+  const nome = String(row.nome || "").trim();
+  if (nome) return nome;
+  return String(row.codice || "")
+    .trim()
+    .replace(/^PERSONALE_+/i, "")
+    .replace(/^AZIENDA_+/i, "")
+    .replace(/_/g, " ")
+    .trim();
 }
 
 function buildAziendaDocumentTypeOptions(documentTypes: DocumentTypeRow[]) {
   return Array.from(
     new Set([
       ...AZIENDA_STANDARD_DOCUMENTS.map((item) => item.label),
-      ...documentTypes.flatMap((row) => [String(row.nome || "").trim(), String(row.codice || "").trim()]),
+      ...documentTypes.map((row) => getDocumentTypeLabel(row)),
     ].filter(Boolean))
   ).sort((a, b) => a.localeCompare(b, "it"));
 }
@@ -329,7 +339,7 @@ export default function AziendePage() {
     setNotice(null);
 
     const result = await dbFrom("document_types").insert({
-      codice: buildDocumentTypeCode("AZIENDA", nome),
+      codice: buildDocumentTypeCode(nome),
       nome,
     });
 
@@ -343,6 +353,70 @@ export default function AziendePage() {
     setNewDocumentTypeName("");
     setNewDocumentTypeOpen(false);
     setNotice(`Tipo documento ${nome} aggiunto.`);
+    setSavingKey(null);
+  }
+
+  function updateDocumentType(targetId: string, patch: Partial<DocumentTypeRow>) {
+    setDocumentTypes((prev) =>
+      prev.map((row) => (row.id === targetId ? { ...row, ...patch } : row))
+    );
+  }
+
+  async function saveDocumentType(row: DocumentTypeRow) {
+    const nome = String(row.nome || "").trim();
+    if (!nome) {
+      setError("Il nome del tipo documento è obbligatorio.");
+      return;
+    }
+    if (
+      documentTypes.some(
+        (option) => option.id !== row.id && normalizeText(getDocumentTypeLabel(option)) === normalizeText(nome)
+      )
+    ) {
+      setError("Esiste già un tipo documento con questo nome.");
+      return;
+    }
+
+    setSavingKey(`document-type:${row.id}`);
+    setError(null);
+    setNotice(null);
+
+    const result = await dbFrom("document_types")
+      .update({
+        nome,
+        codice: buildDocumentTypeCode(nome),
+      })
+      .eq("id", row.id);
+
+    if (result.error) {
+      setError(`Errore aggiornamento tipo documento: ${result.error.message}`);
+      setSavingKey(null);
+      return;
+    }
+
+    await loadData();
+    setNotice(`Tipo documento ${nome} aggiornato.`);
+    setSavingKey(null);
+  }
+
+  async function deleteDocumentType(row: DocumentTypeRow) {
+    const label = getDocumentTypeLabel(row) || "selezionato";
+    const ok = window.confirm(`Eliminare il tipo documento ${label}?`);
+    if (!ok) return;
+
+    setSavingKey(`document-type:${row.id}`);
+    setError(null);
+    setNotice(null);
+
+    const result = await dbFrom("document_types").delete().eq("id", row.id);
+    if (result.error) {
+      setError(`Errore eliminazione tipo documento: ${result.error.message}`);
+      setSavingKey(null);
+      return;
+    }
+
+    await loadData();
+    setNotice(`Tipo documento ${label} eliminato.`);
     setSavingKey(null);
   }
 
@@ -437,37 +511,93 @@ export default function AziendePage() {
             borderRadius: 12,
             background: "white",
             padding: 12,
-            display: "flex",
-            gap: 10,
-            alignItems: "end",
-            flexWrap: "wrap",
+            display: "grid",
+            gap: 12,
           }}
         >
-          <label style={{ display: "grid", gap: 6, minWidth: 280, fontSize: 12 }}>
-            Nuovo tipo documento necessario
-            <input
-              value={newDocumentTypeName}
-              onChange={(e) => setNewDocumentTypeName(e.target.value)}
-              placeholder="Es. Contratto quadro sicurezza"
-              style={{ width: "100%", padding: 8 }}
-            />
-          </label>
-          <button
-            type="button"
-            onClick={addDocumentType}
-            disabled={savingKey === "document-type:azienda"}
-            style={{
-              padding: "8px 12px",
-              borderRadius: 10,
-              border: "1px solid #111",
-              background: "#111",
-              color: "white",
-              cursor: "pointer",
-              opacity: savingKey === "document-type:azienda" ? 0.7 : 1,
-            }}
-          >
-            {savingKey === "document-type:azienda" ? "Salvataggio..." : "Salva tipo"}
-          </button>
+          <div style={{ display: "flex", gap: 10, alignItems: "end", flexWrap: "wrap" }}>
+            <label style={{ display: "grid", gap: 6, minWidth: 280, fontSize: 12 }}>
+              Nuovo tipo documento necessario
+              <input
+                value={newDocumentTypeName}
+                onChange={(e) => setNewDocumentTypeName(e.target.value)}
+                placeholder="Es. Contratto quadro sicurezza"
+                style={{ width: "100%", padding: 8 }}
+              />
+            </label>
+            <button
+              type="button"
+              onClick={addDocumentType}
+              disabled={savingKey === "document-type:azienda"}
+              style={{
+                padding: "8px 12px",
+                borderRadius: 10,
+                border: "1px solid #111",
+                background: "#111",
+                color: "white",
+                cursor: "pointer",
+                opacity: savingKey === "document-type:azienda" ? 0.7 : 1,
+              }}
+            >
+              {savingKey === "document-type:azienda" ? "Salvataggio..." : "Salva tipo"}
+            </button>
+          </div>
+
+          {documentTypes.length > 0 ? (
+            <div style={{ display: "grid", gap: 8 }}>
+              <div style={{ fontSize: 12, fontWeight: 700, color: "#374151" }}>
+                Tipi documento aggiunti
+              </div>
+              {documentTypes.map((row) => (
+                <div
+                  key={row.id}
+                  style={{
+                    display: "grid",
+                    gap: 10,
+                    gridTemplateColumns: "minmax(240px, 1fr) auto auto",
+                    alignItems: "center",
+                  }}
+                >
+                  <input
+                    value={row.nome || getDocumentTypeLabel(row)}
+                    onChange={(e) => updateDocumentType(row.id, { nome: e.target.value })}
+                    placeholder="Nome tipo documento"
+                    style={{ width: "100%", padding: 8, borderRadius: 10, border: "1px solid #d1d5db" }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => saveDocumentType(row)}
+                    disabled={savingKey === `document-type:${row.id}`}
+                    style={{
+                      padding: "8px 12px",
+                      borderRadius: 10,
+                      border: "1px solid #111",
+                      background: "#111",
+                      color: "white",
+                      cursor: "pointer",
+                      opacity: savingKey === `document-type:${row.id}` ? 0.7 : 1,
+                    }}
+                  >
+                    {savingKey === `document-type:${row.id}` ? "Salvataggio..." : "Salva"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => deleteDocumentType(row)}
+                    disabled={savingKey === `document-type:${row.id}`}
+                    style={{
+                      padding: "8px 12px",
+                      borderRadius: 10,
+                      border: "1px solid #ddd",
+                      background: "white",
+                      cursor: "pointer",
+                    }}
+                  >
+                    Elimina
+                  </button>
+                </div>
+              ))}
+            </div>
+          ) : null}
         </div>
       ) : null}
 

@@ -1,5 +1,18 @@
 # Handoff Context — AT SYSTEM (arttech-checklist)
 
+## Update 2026-03-25 - Tipi documento safety puliti e modificabili
+
+- `app/impostazioni/personale/page.tsx`
+- `app/impostazioni/aziende/page.tsx`
+  - i tipi documento custom non espongono piu' in UI i prefissi tecnici `PERSONALE_` / `AZIENDA_`
+  - il codice salvato in `document_types.codice` e' ora uno slug neutro basato sul nome, senza prefissi di dominio
+  - le liste `extraDocumentLabels` usano il nome utente-visibile (`nome`, oppure fallback pulito da `codice`)
+  - aggiunta gestione inline dei tipi documento custom:
+    - modifica nome
+    - salvataggio
+    - eliminazione
+  - i record legacy con solo `codice` sporco vengono mostrati puliti e possono essere corretti direttamente da UI
+
 ## Update 2026-03-25 - Import progetti idempotente con update server-side di default
 
 - `app/api/import/progetti-csv/route.ts`

@@ -1,5 +1,18 @@
 # AGENT MEMORY — Snapshot Operativo
 
+## Snapshot 2026-03-25 - Tipi documento safety: niente prefissi tecnici in UI
+- `app/impostazioni/personale/page.tsx`
+- `app/impostazioni/aziende/page.tsx`
+- regola da mantenere:
+  - le etichette visibili dei documenti/corsi necessari devono usare sempre il nome utente-visibile
+  - non esporre in UI codici tecnici come `PERSONALE_PLE` o `AZIENDA_DVR`
+- storage:
+  - `document_types.codice` puo' restare uno slug tecnico, ma senza prefissi forzati di dominio
+  - `document_types.nome` e' il riferimento principale per select ed elenco standard esteso
+- UX:
+  - i tipi documento custom devono essere modificabili ed eliminabili dalle pagine `Personale` e `Aziende`
+  - i record legacy con `codice` prefissato vanno ripuliti in visualizzazione e corretti inline se necessario
+
 ## Snapshot 2026-03-25 - Import progetti: conflict mode di default = `update`
 - regola da mantenere:
   - se il progetto esiste gia', l'import progetti deve aggiornare i campi valorizzati del file
