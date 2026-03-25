@@ -64,6 +64,8 @@ const HEADER_ALIASES = new Map<string, string>([
   ["scadenza licenza", "licenza_scadenza"],
   ["link maps", "indirizzo"],
   ["google maps", "indirizzo"],
+  ["purchase order", "po"],
+  ["purchase_order", "po"],
   ["tipo struttura", "tipo_struttura"],
   ["saas note", "saas_note"],
   ["accessori ricambi", "accessori_ricambi"],
@@ -105,6 +107,7 @@ const EXPECTED_IMPORT_HEADERS = new Set(
     "licenze",
     "accessori_ricambi",
     "proforma",
+    "po",
     "stato_progetto",
     "nome_checklist",
     "email",
@@ -888,6 +891,9 @@ export async function POST(request: Request) {
       const csvProformaNormalized = normalizeProformaInput(csvProformaRaw);
       if (csvProformaNormalized.changed) autoFixFields.add("proforma");
       const csvProforma = csvProformaNormalized.value;
+      const purchaseOrder = parseOptionalText(
+        getRowValue(row, "po", "purchase_order", "purchase order")
+      );
       const projectTag = normalizeCatalogCode(nome_progetto);
       const tipo = parseOptionalUpper(getRowValue(row, "tipo"));
       const stato = parseOptionalUpper(getRowValue(row, "stato", "stato_progetto"));
@@ -994,6 +1000,7 @@ export async function POST(request: Request) {
         cliente: clienteDenominazione,
         cliente_id: clienteRow?.id || null,
         proforma: csvProforma ? csvProforma.trim() : null,
+        po: purchaseOrder,
         noleggio_vendita: tipo,
         stato_progetto: stato,
         data_prevista: dataPrevista,

@@ -57,6 +57,7 @@ type Checklist = {
   cliente_id: string | null;
   nome_checklist: string;
   proforma: string | null;
+  po: string | null;
   magazzino_importazione: string | null;
   magazzino_drive_url: string | null;
   tipo_saas: string | null;
@@ -310,6 +311,7 @@ type FormData = {
   cliente_id: string;
   nome_checklist: string;
   proforma: string;
+  po: string;
   magazzino_importazione: string;
   magazzino_drive_url: string;
   saas_tipo: string | null;
@@ -1515,6 +1517,7 @@ function buildFormData(c: Checklist): FormData {
       cliente_id: asText(c.cliente_id),
       nome_checklist: asText(c.nome_checklist),
       proforma: asText(c.proforma),
+      po: asText(c.po),
       magazzino_importazione: magazzino.codice,
       magazzino_drive_url: magazzino.driveUrl,
       saas_tipo: asText(c.saas_tipo),
@@ -4864,6 +4867,7 @@ function buildFormData(c: Checklist): FormData {
         ? formData.nome_checklist.trim()
         : null,
       proforma: formData.proforma.trim() ? formData.proforma.trim() : null,
+      po: formData.po.trim() ? formData.po.trim() : null,
       magazzino_importazione: formData.magazzino_importazione.trim()
         ? formData.magazzino_importazione.trim()
         : null,
@@ -6065,6 +6069,20 @@ function buildFormData(c: Checklist): FormData {
                       "—"
                     )}
                   </div>
+                ) : undefined
+              }
+              isEdit={isEdit}
+            />
+            <FieldRow
+              label="PO"
+              view={checklist.po || "—"}
+              edit={
+                isEdit ? (
+                  <input
+                    value={formData.po}
+                    onChange={(e) => setFormData({ ...formData, po: e.target.value })}
+                    style={{ width: "100%", padding: 10 }}
+                  />
                 ) : undefined
               }
               isEdit={isEdit}

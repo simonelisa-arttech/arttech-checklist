@@ -554,6 +554,7 @@ type ChecklistRow = {
   cliente: string | null;
   nome_checklist: string | null;
   proforma: string | null;
+  po: string | null;
   magazzino_importazione: string | null;
   dimensioni: string | null;
   numero_facce: number | null;
@@ -7683,7 +7684,7 @@ ${rinnovi30ggBreakdown.debugSample
             <div
               style={{
                 display: "grid",
-                gridTemplateColumns: "2fr 1fr 1fr 1fr 1fr 1fr 1fr 1fr",
+                gridTemplateColumns: "2fr 1fr 1fr 1fr 1fr 1fr 1fr 1fr 1fr",
                 padding: "10px 12px",
                 fontWeight: 800,
                 background: "#fafafa",
@@ -7692,6 +7693,7 @@ ${rinnovi30ggBreakdown.debugSample
             >
               <div>Progetto</div>
               <div>Proforma</div>
+              <div>PO</div>
               <div>Dimensioni</div>
               <div>m2</div>
               <div>Passo</div>
@@ -7714,7 +7716,7 @@ ${rinnovi30ggBreakdown.debugSample
                 }}
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "2fr 1fr 1fr 1fr 1fr 1fr 1fr 1fr",
+                  gridTemplateColumns: "2fr 1fr 1fr 1fr 1fr 1fr 1fr 1fr 1fr",
                   padding: "10px 12px",
                   borderBottom: "1px solid #f3f4f6",
                   alignItems: "center",
@@ -7737,6 +7739,7 @@ ${rinnovi30ggBreakdown.debugSample
                   />
                 </div>
                 <div>{c.proforma ?? "—"}</div>
+                <div>{c.po ?? "—"}</div>
                 <div>{c.dimensioni ?? "—"}</div>
                 <div>
                   {calcM2(c.dimensioni, c.numero_facce) != null

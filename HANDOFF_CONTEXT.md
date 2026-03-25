@@ -1,5 +1,30 @@
 # Handoff Context — AT SYSTEM (arttech-checklist)
 
+## Update 2026-03-25 - Campo `PO` aggiunto al flusso progetti
+
+- Migration:
+  - `scripts/20260325_add_checklists_po.sql`
+  - aggiunge `checklists.po text null`
+- `app/api/import/progetti-csv/route.ts`
+  - supporta header import:
+    - `PO`
+    - `po`
+    - `purchase_order`
+    - `purchase order`
+  - salva il valore in `checklists.po`
+  - resta compatibile con schema runtime: se la colonna manca, il fallback checklist non rompe l'import
+- `app/api/dashboard/route.ts`
+  - include `po` nel select e nella ricerca dashboard
+- `app/page.tsx`
+  - nuova colonna `PO` in dashboard vicino a `Proforma`
+- `app/checklists/[id]/page.tsx`
+  - `PO` visibile nel blocco `PROGETTO`
+  - supportato anche in edit/salvataggio scheda progetto
+- `app/clienti/[cliente]/page.tsx`
+  - `PO` visibile nella tabella `PROGETTO del cliente`
+- `app/import-progetti/page.tsx`
+  - testo colonne supportate aggiornato con `po`
+
 ## Update 2026-03-25 - Pagina `Importa progetti` riallineata al route corretto
 
 - `app/import-progetti/page.tsx`

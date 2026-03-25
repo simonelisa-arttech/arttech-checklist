@@ -65,7 +65,7 @@ export async function GET(request: Request) {
   }
 
   const checklistFieldsBase = `
-      id, cliente, cliente_id, nome_checklist, proforma, magazzino_importazione,
+      id, cliente, cliente_id, nome_checklist, proforma, po, magazzino_importazione,
       created_by_operatore, updated_by_operatore,
       tipo_saas, saas_piano, saas_scadenza, saas_stato, saas_tipo, saas_note,
       m2_calcolati, m2_inclusi, m2_allocati,
@@ -187,6 +187,7 @@ export async function GET(request: Request) {
         c?.impianto_indirizzo,
         c?.dimensioni,
         c?.proforma,
+        c?.po,
         c?.magazzino_importazione,
         c?.saas_piano,
         c?.saas_scadenza,

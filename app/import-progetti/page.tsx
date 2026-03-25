@@ -80,7 +80,7 @@ export default function ImportProgettiPage() {
           <div style={{ marginTop: 4, fontSize: 13, opacity: 0.7 }}>
             Carica un file CSV/TSV per creare piu progetti. Colonne supportate incluse:
             <code style={{ marginLeft: 6 }}>
-              cliente;nome_progetto;indirizzo;saas_scadenza;licenza_scadenza
+              cliente;nome_progetto;po;indirizzo;saas_scadenza;licenza_scadenza
             </code>
           </div>
         </div>

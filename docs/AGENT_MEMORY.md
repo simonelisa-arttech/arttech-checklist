@@ -1,5 +1,23 @@
 # AGENT MEMORY — Snapshot Operativo
 
+## Snapshot 2026-03-25 - `PO` e' un campo dedicato del progetto
+- storage:
+  - `checklists.po`
+- import progetti:
+  - header supportati:
+    - `PO`
+    - `po`
+    - `purchase_order`
+    - `purchase order`
+- UI:
+  - dashboard mostra una colonna `PO`
+  - pagina progetto mostra `PO` nel blocco `PROGETTO`
+  - scheda cliente lo mostra nella tabella progetti
+- compatibilita':
+  - la migration da eseguire su Supabase e':
+    - `scripts/20260325_add_checklists_po.sql`
+  - il fallback delle colonne checklist deve evitare crash anche se la migration non e' ancora applicata
+
 ## Snapshot 2026-03-25 - `Importa progetti` deve usare solo il route progetti
 - pagina coinvolta:
   - `app/import-progetti/page.tsx`

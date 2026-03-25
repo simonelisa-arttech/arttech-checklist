@@ -363,6 +363,7 @@ type Checklist = {
   clienti_anagrafica?: { denominazione: string | null } | null;
   nome_checklist: string;
   proforma: string | null;
+  po: string | null;
   magazzino_importazione: string | null;
   created_by_operatore: string | null;
   updated_by_operatore: string | null;
@@ -712,6 +713,7 @@ export default function Page() {
     | "dimensioni"
     | "m2_calcolati"
     | "proforma"
+    | "po"
     | "proforma_doc"
     | "magazzino_importazione"
     | "saas_piano"
@@ -834,6 +836,7 @@ export default function Page() {
           ? getChecklistM2(c)?.toFixed(2) ?? ""
           : "",
         c.proforma ?? "",
+        c.po ?? "",
         c.magazzino_importazione ?? "",
         c.tipo_saas ?? "",
         c.saas_piano ?? "",
@@ -2183,6 +2186,7 @@ export default function Page() {
                   <col style={{ width: 170 }} />  {/* PROGETTO */}
                   <col style={{ width: 140 }} />  {/* Cliente */}
                   <col style={{ width: 140 }} />  {/* Proforma */}
+                  <col style={{ width: 120 }} />  {/* PO */}
                   <col style={{ width: 110 }} />  {/* Data prevista */}
                   <col style={{ width: 110 }} />  {/* Data tassativa */}
                   <col style={{ width: 110 }} />  {/* Dimensioni */}
@@ -2267,6 +2271,23 @@ export default function Page() {
                     >
                       Proforma
                       {sortIcon("proforma_doc")}
+                    </th>
+                    <th
+                      onClick={() => toggleSort("po")}
+                      title="Ordina per PO"
+                      style={{
+                        textAlign: "left",
+                        padding: "10px 12px",
+                        cursor: "pointer",
+                        position: "sticky",
+                        top: 0,
+                        background: "white",
+                        zIndex: 2,
+                        boxShadow: "0 2px 6px rgba(0, 0, 0, 0.06)",
+                      }}
+                    >
+                      PO
+                      {sortIcon("po")}
                     </th>
                     <th
                       onClick={() => toggleSort("data_prevista")}
@@ -2913,6 +2934,9 @@ export default function Page() {
                               </div>
                             );
                           })()}
+                        </td>
+                        <td style={{ padding: "10px 12px", opacity: 0.85 }}>
+                          {c.po ?? "—"}
                         </td>
                         <td style={{ padding: "10px 12px", opacity: 0.85 }}>
                           {c.data_prevista
