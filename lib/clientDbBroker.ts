@@ -28,6 +28,7 @@ async function callDb<T>(payload: DbPayload): Promise<DbResponse<T>> {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       cache: "no-store",
+      credentials: "include",
       body: JSON.stringify(payload),
     });
     const json = await res.json().catch(() => ({} as any));

@@ -90,6 +90,7 @@ export default function OperativeNotesPanel({ items, compact = false, title }: P
         const res = await fetch("/api/cronoprogramma", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
+          credentials: "include",
           body: JSON.stringify({
             action: "load",
             rows: normalizedItems.map((item) => ({
@@ -132,6 +133,7 @@ export default function OperativeNotesPanel({ items, compact = false, title }: P
       const res = await fetch("/api/cronoprogramma", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({
           action: "set_operativi",
           row_kind: item.rowKind,
@@ -173,6 +175,7 @@ export default function OperativeNotesPanel({ items, compact = false, title }: P
       const res = await fetch("/api/cronoprogramma", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({
           action: "add_comment",
           row_kind: item.rowKind,

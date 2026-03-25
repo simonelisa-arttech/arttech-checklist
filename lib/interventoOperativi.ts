@@ -78,6 +78,7 @@ export async function loadInterventoOperativi(rowRefId: string) {
   const res = await fetch("/api/cronoprogramma", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
+    credentials: "include",
     body: JSON.stringify({
       action: "load",
       rows: [{ row_kind: "INTERVENTO", row_ref_id: rowRefId }],
@@ -101,6 +102,7 @@ export async function saveInterventoOperativi(
   const res = await fetch("/api/cronoprogramma", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
+    credentials: "include",
     body: JSON.stringify({
       action: "set_operativi",
       row_kind: "INTERVENTO",

@@ -1,5 +1,22 @@
 # Handoff Context — AT SYSTEM (arttech-checklist)
 
+## Update 2026-03-25 - Fix sessione browser su fetch client-side protette
+
+- `lib/clientDbBroker.ts`
+  - il broker client verso `/api/db` invia ora sempre `credentials: "include"`
+  - evita i fallback `Unauthorized` nelle viste client che leggono dati via broker con sessione browser gia' attiva
+- `components/OperativeNotesPanel.tsx`
+  - tutte le chiamate verso `/api/cronoprogramma` (`load`, `set_operativi`, `add_comment`) inviano ora esplicitamente i cookie di sessione
+  - risolve il fallback `No auth cookie` visto nelle note operative della scheda cliente/progetto
+- `lib/interventoOperativi.ts`
+  - stesso allineamento per load/save dei dati operativi intervento
+- Impatto pratico:
+  - scheda cliente piu' stabile su:
+    - note operative
+    - personale selector
+    - blocchi che leggono via `dbFrom(...)`
+  - il fix e' mirato al trasporto sessione, senza cambiare la logica auth server
+
 ## Update 2026-03-25 - `AVVISATO` solo con destinatari validi
 
 - `app/api/cron/rinnovi-stage1/route.ts`

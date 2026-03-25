@@ -1,5 +1,17 @@
 # AGENT MEMORY — Snapshot Operativo
 
+## Snapshot 2026-03-25 - Fetch client protette devono inviare i cookie di sessione
+- pattern da mantenere:
+  - tutte le fetch client-side verso route protette (`/api/db`, `/api/cronoprogramma` e simili) devono impostare `credentials: "include"`
+- copertura aggiunta:
+  - `lib/clientDbBroker.ts`
+  - `components/OperativeNotesPanel.tsx`
+  - `lib/interventoOperativi.ts`
+- sintomo da riconoscere:
+  - UI visibile ma pannelli secondari in errore con `Unauthorized` o `No auth cookie`
+- regola operativa:
+  - se una nuova vista client usa route protette e non passa dal broker centralizzato, aggiungere esplicitamente `credentials: "include"`
+
 ## Snapshot 2026-03-25 - Guardrail invio avvisi scadenze/rinnovi
 - regola da mantenere:
   - `AVVISATO` puo' essere impostato solo se esiste almeno un destinatario effettivo con email valida
