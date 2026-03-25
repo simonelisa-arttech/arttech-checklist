@@ -1005,6 +1005,15 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
   if (!isSupabaseConfigured) {
     return <ConfigMancante />;
   }
+  const projectSectionLinks = [
+    { id: "section-dati-operativi", label: "Dati operativi" },
+    { id: "section-scadenze-rinnovi", label: "Scadenze e rinnovi" },
+    { id: "section-servizi", label: "Servizi" },
+    { id: "section-licenze", label: "Licenze" },
+    { id: "section-interventi", label: "Interventi" },
+    { id: "section-foto-video", label: "Foto / Video" },
+    { id: "section-checklist-operativa", label: "Check list operativa" },
+  ] as const;
   const mainSectionStyle: CSSProperties = {
     marginTop: 22,
     border: "1px solid #eee",
@@ -3902,6 +3911,13 @@ function buildFormData(c: Checklist): FormData {
     });
   }
 
+  function scrollToProjectSection(sectionId: string) {
+    if (typeof window === "undefined") return;
+    const node = document.getElementById(sectionId);
+    if (!node) return;
+    node.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
   function getEligibleOperatori(task: ChecklistTask | null) {
     if (!task) return [];
     const taskTarget = normalizeRuleTargetValue(task.target);
@@ -5876,6 +5892,40 @@ function buildFormData(c: Checklist): FormData {
         )}
       </div>
 
+      <div
+        style={{
+          display: "flex",
+          gap: 8,
+          flexWrap: "nowrap",
+          overflowX: "auto",
+          paddingBottom: 4,
+          marginBottom: 14,
+          scrollbarWidth: "thin",
+        }}
+      >
+        {projectSectionLinks.map((section) => (
+          <button
+            key={section.id}
+            type="button"
+            onClick={() => scrollToProjectSection(section.id)}
+            style={{
+              padding: "7px 12px",
+              borderRadius: 999,
+              border: "1px solid #e5e7eb",
+              background: "white",
+              cursor: "pointer",
+              whiteSpace: "nowrap",
+              fontSize: 13,
+              fontWeight: 700,
+              color: "#374151",
+              flex: "0 0 auto",
+            }}
+          >
+            {section.label}
+          </button>
+        ))}
+      </div>
+
       <div style={{ marginTop: 10, marginBottom: 12 }}>
         <OperativeNotesPanel
           title="Note operative principali"
@@ -6880,7 +6930,7 @@ function buildFormData(c: Checklist): FormData {
           </div>
         </div>
       )}
-      <div style={mainSectionStyle}>
+      <div id="section-dati-operativi" style={{ ...mainSectionStyle, scrollMarginTop: 96 }}>
         <div style={mainSectionTitleStyle}>Dati operativi / cronoprogramma</div>
         <div style={{ display: "grid", gap: 12 }}>
           {renderCronoOperativiSection(
@@ -6932,7 +6982,7 @@ function buildFormData(c: Checklist): FormData {
         onSubmitManual={sendProjectRinnoviAlert}
         onSaveRule={saveProjectRinnoviAlertRule}
       />
-      <div style={{ marginTop: 12 }}>
+      <div id="section-scadenze-rinnovi" style={{ marginTop: 12, scrollMarginTop: 96 }}>
         <div
           style={{
             border: "1px solid #eee",
@@ -7174,7 +7224,7 @@ function buildFormData(c: Checklist): FormData {
           />
         </div>
       </div>
-      <div style={mainSectionStyle}>
+      <div id="section-servizi" style={{ ...mainSectionStyle, scrollMarginTop: 96 }}>
         <h2 style={mainSectionTitleStyle}>Servizi</h2>
 
         <ServiziBox title="SERVIZI">
@@ -7341,7 +7391,7 @@ function buildFormData(c: Checklist): FormData {
           />
         </ServiziBox>
 
-        <div style={{ marginTop: 12 }}>
+        <div id="section-licenze" style={{ marginTop: 12, scrollMarginTop: 96 }}>
           <h2 style={mainSectionTitleStyle}>Licenze</h2>
           <div style={{ marginBottom: 10, fontSize: 12, opacity: 0.7 }}>
             Licenze dettaglio (dashboard):{" "}
@@ -7796,11 +7846,13 @@ function buildFormData(c: Checklist): FormData {
             </div>
           </div>
 
-          <div style={{ marginTop: 12 }}>{projectInterventiBlock}</div>
+          <div id="section-interventi" style={{ marginTop: 12, scrollMarginTop: 96 }}>
+            {projectInterventiBlock}
+          </div>
         </div>
       </div>
 
-      <div style={mainSectionStyle}>
+      <div id="section-foto-video" style={{ ...mainSectionStyle, scrollMarginTop: 96 }}>
         <h2 style={mainSectionTitleStyle}>Foto / Video</h2>
         <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 10 }}>
           Media di progetto separati dagli allegati delle task operative.
@@ -7817,7 +7869,10 @@ function buildFormData(c: Checklist): FormData {
       </div>
 
       {tasks.length > 0 && (
-        <div style={{ ...mainSectionStyle, marginTop: 24 }}>
+        <div
+          id="section-checklist-operativa"
+          style={{ ...mainSectionStyle, marginTop: 24, scrollMarginTop: 96 }}
+        >
           <h2 style={mainSectionTitleStyle}>Checklist operativa</h2>
           {alertNotice && (
             <div style={{ marginTop: 8, marginBottom: 10, fontSize: 12, color: "#166534" }}>

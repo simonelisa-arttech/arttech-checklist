@@ -1,5 +1,20 @@
 # Handoff Context — AT SYSTEM (arttech-checklist)
 
+## Update 2026-03-25 - Indice orizzontale nella pagina progetto
+
+- `app/checklists/[id]/page.tsx`
+  - aggiunto sotto il titolo pagina un indice orizzontale cliccabile stile pill
+  - voci collegate ai blocchi principali della scheda progetto:
+    - `Dati operativi`
+    - `Scadenze e rinnovi`
+    - `Servizi`
+    - `Licenze`
+    - `Interventi`
+    - `Foto / Video`
+    - `Check list operativa`
+  - ogni blocco ha ora `id` dedicato e `scrollMarginTop` per uno scroll piu' pulito
+  - nessuna modifica a logica, query o dati della pagina progetto
+
 ## Update 2026-03-25 - Dashboard "Aggiungi intervento" ora apre direttamente il progetto
 
 - `app/page.tsx`

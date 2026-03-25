@@ -1,5 +1,14 @@
 # AGENT MEMORY — Snapshot Operativo
 
+## Snapshot 2026-03-25 - Indice rapido nella pagina progetto
+- `app/checklists/[id]/page.tsx`
+  - aggiunto indice orizzontale sotto il titolo `PROGETTO`
+  - i link scorrono ai blocchi principali della scheda senza cambiare route o stato dati
+  - per nuove sezioni simili, mantenere questo pattern:
+    - aggiungere un `id` stabile al blocco
+    - aggiungere la label all'indice
+    - usare `scrollMarginTop` per non incollare il titolo al bordo viewport
+
 ## Snapshot 2026-03-25 - Dashboard add intervento -> pagina progetto
 - Flusso dashboard allineato al contesto operativo:
   - da `app/page.tsx` il modal `Aggiungi intervento` porta ora a `/checklists/[id]?focus=interventi&addIntervento=1`
