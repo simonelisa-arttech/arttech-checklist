@@ -1261,7 +1261,7 @@ export default function NuovaChecklistPage() {
               <option value="IN_CORSO">IN_CORSO</option>
               <option value="CONSEGNATO">CONSEGNATO</option>
               <option value="RIENTRATO">RIENTRATO</option>
-              <option value="CHIUSO">CHIUSO</option>
+              <option value="OPERATIVO">OPERATIVO</option>
               <option value="SOSPESO">SOSPESO</option>
             </select>
           </label>

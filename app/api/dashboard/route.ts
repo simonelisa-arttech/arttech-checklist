@@ -2,22 +2,13 @@ export const runtime = "nodejs";
 
 import { NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import { getEffectiveProjectStatus, type RawProjectStatus } from "@/lib/projectStatus";
 
 type SaasFilter = "EVENTS" | "ULTRA" | "PREMIUM" | "PLUS";
-type ProjectStatus = "IN_CORSO" | "CONSEGNATO" | "RIENTRATO" | "SOSPESO" | "CHIUSO";
+type ProjectStatus = RawProjectStatus;
 
 function normalizeProjectStatus(value?: string | null): ProjectStatus | null {
-  const raw = String(value || "")
-    .trim()
-    .toUpperCase()
-    .replace(/\s+/g, "_");
-  if (raw === "IN_LAVORAZIONE") return "IN_CORSO";
-  if (raw === "IN_CORSO") return "IN_CORSO";
-  if (raw === "CONSEGNATO") return "CONSEGNATO";
-  if (raw === "RIENTRATO") return "RIENTRATO";
-  if (raw === "SOSPESO") return "SOSPESO";
-  if (raw === "CHIUSO") return "CHIUSO";
-  return null;
+  return getEffectiveProjectStatus({ stato_progetto: value });
 }
 
 function matchesSaasFilter(row: any, filter: SaasFilter) {
@@ -163,12 +154,6 @@ export async function GET(request: Request) {
   if (missingDataDisinstallazione) {
     filteredChecklists = filteredChecklists.map((row: any) => ({ ...row, data_disinstallazione: null }));
   }
-  if (statuses.length > 0) {
-    filteredChecklists = filteredChecklists.filter((c: any) => {
-      const status = normalizeProjectStatus(c?.stato_progetto);
-      return !!status && statuses.includes(status);
-    });
-  }
   if (saasFilters.length > 0) {
     filteredChecklists = filteredChecklists.filter((c: any) =>
       saasFilters.every((f) => matchesSaasFilter(c, f))
@@ -227,6 +212,28 @@ export async function GET(request: Request) {
   const filterByChecklist = (rows: any[] | null | undefined) =>
     (rows || []).filter((r) => checklistIds.has(String(r?.checklist_id || "")));
 
+  const filteredSections = filterByChecklist(sections);
+  const pctByChecklistId = new Map<string, number | null>();
+  for (const row of filteredSections) {
+    pctByChecklistId.set(String(row?.checklist_id || ""), row?.pct_complessivo ?? null);
+  }
+
+  filteredChecklists = filteredChecklists.map((row: any) => ({
+    ...row,
+    stato_progetto:
+      getEffectiveProjectStatus({
+        stato_progetto: row?.stato_progetto,
+        pct_complessivo: pctByChecklistId.get(String(row?.id || "")) ?? null,
+      }) || row?.stato_progetto || null,
+  }));
+
+  if (statuses.length > 0) {
+    filteredChecklists = filteredChecklists.filter((c: any) => {
+      const status = normalizeProjectStatus(c?.stato_progetto);
+      return !!status && statuses.includes(status);
+    });
+  }
+
   return NextResponse.json({
     ok: true,
     auth_mode: "service_role",
@@ -238,7 +245,7 @@ export async function GET(request: Request) {
       : undefined,
     data: {
       checklists: filteredChecklists,
-      sections: filterByChecklist(sections),
+      sections: filteredSections,
       licenseSummary: filterByChecklist(licenseSummary),
       licenses: filterByChecklist(licenses),
       serials: filterByChecklist(serials),

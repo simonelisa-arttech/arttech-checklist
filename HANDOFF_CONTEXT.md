@@ -1,5 +1,40 @@
 # Handoff Context — AT SYSTEM (arttech-checklist)
 
+## Update 2026-03-25 - Stato progetto legacy `CHIUSO` riallineato a `OPERATIVO`
+
+- helper condiviso:
+  - `lib/projectStatus.ts`
+  - regole nuove:
+    - `OPERATIVO` = progetto in esercizio / non chiuso
+    - `CHIUSO` = solo stato finale reale
+  - retrocompat:
+    - se un record storico ha `stato_progetto = CHIUSO` ma la checklist operativa non e' completa, il mapping effettivo lo espone come `OPERATIVO`
+    - se la checklist operativa e' completa (`pct_complessivo >= 100` oppure tutti i task completati nella pagina progetto), lo stato effettivo diventa `CHIUSO`
+- `app/page.tsx`
+  - filtro dashboard aggiornato:
+    - aggiunto `Operativo`
+    - `Chiuso` resta come stato finale reale
+  - label stato progetto riallineata al nuovo mapping
+- `app/api/dashboard/route.ts`
+  - restituisce `stato_progetto` gia' normalizzato sullo stato effettivo usando `checklist_sections_view.pct_complessivo`
+  - il filtro `stati` ora distingue correttamente `OPERATIVO` da `CHIUSO`
+- `app/checklists/[id]/page.tsx`
+  - la pagina progetto mostra `OPERATIVO` per i vecchi `CHIUSO` legacy non realmente chiusi
+  - il dropdown stato propone `OPERATIVO`
+  - `CHIUSO` compare solo se la checklist operativa e' effettivamente completa
+  - in salvataggio, un `CHIUSO` scelto senza checklist completa viene normalizzato a `OPERATIVO`
+- `app/checklists/nuova/page.tsx`
+  - `CHIUSO` rimosso dal form creazione e sostituito con `OPERATIVO`
+- `app/clienti/[cliente]/page.tsx`
+  - colonna stato progetto riallineata al mapping effettivo
+- import:
+  - `app/api/import/progetti-csv/route.ts`
+  - `app/api/import/checklists-csv/route.ts`
+  - gli import normalizzano lo stato legacy `CHIUSO` a `OPERATIVO` in persistenza
+- migration SQL:
+  - `scripts/20260325_normalize_legacy_chiuso_to_operativo.sql`
+  - converte a DB i record legacy `CHIUSO` -> `OPERATIVO` quando `pct_complessivo < 100`
+
 ## Update 2026-03-25 - Tipi documento safety puliti e modificabili
 
 - `app/impostazioni/personale/page.tsx`

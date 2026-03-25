@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import ConfigMancante from "@/components/ConfigMancante";
 import DashboardTable from "./components/DashboardTable";
 import OperativeNotesPanel from "@/components/OperativeNotesPanel";
+import { getEffectiveProjectStatus } from "@/lib/projectStatus";
 import Toast from "@/components/Toast";
 import { calcM2FromDimensioni } from "@/lib/parseDimensioni";
 import { isSupabaseConfigured, supabase } from "@/lib/supabaseClient";
@@ -51,6 +52,7 @@ type ProjectStatusFilter =
   | "NOLEGGIO_ATTIVO"
   | "RIENTRATO"
   | "SOSPESO"
+  | "OPERATIVO"
   | "CHIUSO";
 type DashboardScadenzeBreakdown = {
   garanzie: number;
@@ -109,35 +111,24 @@ function normalizeProjectStatus(project: {
   stato_progetto?: string | null;
   noleggio_vendita?: string | null;
   data_disinstallazione?: string | null;
+  pct_complessivo?: number | null;
 }): ProjectStatusFilter | null {
   const { isNoleggioAttivo } = getProjectNoleggioState(project);
   if (isNoleggioAttivo) return "NOLEGGIO_ATTIVO";
-  const raw = String(project.stato_progetto || "")
-    .trim()
-    .toUpperCase()
-    .replace(/\s+/g, "_");
-  if (raw === "IN_LAVORAZIONE") return "IN_CORSO";
-  if (raw === "IN_CORSO") return "IN_CORSO";
-  if (raw === "CONSEGNATO") return "CONSEGNATO";
-  if (raw === "RIENTRATO") return "RIENTRATO";
-  if (raw === "SOSPESO") return "SOSPESO";
-  if (raw === "CHIUSO") return "CHIUSO";
-  return null;
+  return getEffectiveProjectStatus(project);
 }
 
 function getProjectStatusLabel(project: {
   stato_progetto?: string | null;
   noleggio_vendita?: string | null;
   data_disinstallazione?: string | null;
+  pct_complessivo?: number | null;
 }) {
   const { isNoleggioAttivo } = getProjectNoleggioState(project);
-  const raw = String(project.stato_progetto || "")
-    .trim()
-    .toUpperCase()
-    .replace(/\s+/g, "_");
-  if (raw === "CONSEGNATO" && isNoleggioAttivo) return "CONSEGNATO + IN_CORSO";
-  if (raw === "IN_CORSO" || raw === "IN_LAVORAZIONE") return "IN_LAVORAZIONE";
-  return raw || "—";
+  const effective = getEffectiveProjectStatus(project);
+  if (effective === "CONSEGNATO" && isNoleggioAttivo) return "CONSEGNATO + IN_CORSO";
+  if (effective === "IN_CORSO") return "IN_LAVORAZIONE";
+  return effective || "—";
 }
 
 function getProjectNoleggioState(project: {
@@ -698,6 +689,7 @@ export default function Page() {
     NOLEGGIO_ATTIVO: false,
     RIENTRATO: false,
     SOSPESO: false,
+    OPERATIVO: false,
     CHIUSO: false,
   });
   type SortDir = "asc" | "desc";
@@ -2080,6 +2072,7 @@ export default function Page() {
                           NOLEGGIO_ATTIVO: checked,
                           RIENTRATO: checked,
                           SOSPESO: checked,
+                          OPERATIVO: checked,
                           CHIUSO: checked,
                         });
                       }}
@@ -2144,6 +2137,16 @@ export default function Page() {
                       }
                     />
                     Sospeso
+                  </label>
+                  <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    <input
+                      type="checkbox"
+                      checked={projectStatusFilter.OPERATIVO}
+                      onChange={(e) =>
+                        setProjectStatusFilter((prev) => ({ ...prev, OPERATIVO: e.target.checked }))
+                      }
+                    />
+                    Operativo
                   </label>
                   <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
                     <input

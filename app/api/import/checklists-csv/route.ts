@@ -3,6 +3,7 @@ export const runtime = "nodejs";
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import { normalizeProjectStatusForStorage } from "@/lib/projectStatus";
 
 type CsvRow = Record<string, string>;
 
@@ -381,7 +382,7 @@ export async function POST(request: Request) {
         cliente: clienteDenominazione,
         cliente_id: clienteRow?.id || null,
         impianto_descrizione: parseOptionalText(getRowValue(row, "descrizione_impianto")),
-        stato_progetto: parseOptionalText(getRowValue(row, "stato_progetto")),
+        stato_progetto: normalizeProjectStatusForStorage(parseOptionalText(getRowValue(row, "stato_progetto"))),
         data_prevista: parseOptionalDate(getRowValue(row, "data_installazione_prevista", "data_prevista")),
         data_tassativa: parseOptionalDate(getRowValue(row, "data_tassativa")),
         data_installazione_reale: parseOptionalDate(getRowValue(row, "data_installazione_reale")),

@@ -30,6 +30,7 @@ import {
 import { isSupabaseConfigured, supabase } from "@/lib/supabaseClient";
 import { dbFrom } from "@/lib/clientDbBroker";
 import { storageRemove, storageSignedUrl, storageUpload } from "@/lib/clientStorageApi";
+import { getEffectiveProjectStatus } from "@/lib/projectStatus";
 import { sendAlert } from "@/lib/sendAlert";
 
 function parseLocalDay(value?: string | null): Date | null {
@@ -7762,7 +7763,7 @@ ${rinnovi30ggBreakdown.debugSample
                       : "—"}
                   </div>
                 </div>
-                <div>{c.stato_progetto ?? "—"}</div>
+                <div>{getEffectiveProjectStatus({ stato_progetto: c.stato_progetto }) ?? "—"}</div>
               </div>
             ))}
           </div>

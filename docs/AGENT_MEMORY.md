@@ -1,5 +1,25 @@
 # AGENT MEMORY — Snapshot Operativo
 
+## Snapshot 2026-03-25 - `CHIUSO` legacy progetto rinominato in `OPERATIVO`
+- helper di dominio:
+  - `lib/projectStatus.ts`
+- regola da mantenere:
+  - `OPERATIVO` = progetto in esercizio / non chiuso
+  - `CHIUSO` = solo stato finale reale
+- retrocompat:
+  - i vecchi record con `stato_progetto = CHIUSO` ma checklist non completata vanno esposti come `OPERATIVO`
+  - il vero `CHIUSO` deriva da checklist operativa completata:
+    - `pct_complessivo >= 100` lato dashboard/API
+    - oppure tutti i task completati lato pagina progetto
+- UI/flow allineati:
+  - dashboard filtra `OPERATIVO` e `CHIUSO` separatamente
+  - pagina progetto propone `OPERATIVO`; `CHIUSO` e' selezionabile solo a checklist completa
+  - creazione progetto non deve piu' proporre `CHIUSO`
+- import:
+  - gli import progetto/checklist devono normalizzare il legacy `CHIUSO` in `OPERATIVO`
+- migration da eseguire su Supabase:
+  - `scripts/20260325_normalize_legacy_chiuso_to_operativo.sql`
+
 ## Snapshot 2026-03-25 - Tipi documento safety: niente prefissi tecnici in UI
 - `app/impostazioni/personale/page.tsx`
 - `app/impostazioni/aziende/page.tsx`

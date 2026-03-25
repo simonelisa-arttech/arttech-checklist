@@ -50,6 +50,11 @@ import {
   durationToInputValue,
   normalizeOperativiDate,
 } from "@/lib/operativiSchedule";
+import {
+  getEffectiveProjectStatus,
+  isChecklistOperativaCompletedFromTasks,
+  normalizeProjectStatusForStorage,
+} from "@/lib/projectStatus";
 
 type Checklist = {
   id: string;
@@ -651,15 +656,16 @@ function getChecklistProjectStatusLabel(project: {
   stato_progetto?: string | null;
   noleggio_vendita?: string | null;
   data_disinstallazione?: string | null;
+  checklistCompleted?: boolean;
 }) {
   const { isNoleggioAttivo } = getChecklistNoleggioState(project);
-  const raw = String(project.stato_progetto || "")
-    .trim()
-    .toUpperCase()
-    .replace(/\s+/g, "_");
-  if (raw === "CONSEGNATO" && isNoleggioAttivo) return "CONSEGNATO + IN_CORSO";
-  if (raw === "IN_CORSO" || raw === "IN_LAVORAZIONE") return "IN_LAVORAZIONE";
-  return raw || "—";
+  const effective = getEffectiveProjectStatus({
+    stato_progetto: project.stato_progetto,
+    checklistCompleted: project.checklistCompleted,
+  });
+  if (effective === "CONSEGNATO" && isNoleggioAttivo) return "CONSEGNATO + IN_CORSO";
+  if (effective === "IN_CORSO") return "IN_LAVORAZIONE";
+  return effective || "—";
 }
 
 function getChecklistNoleggioState(project: {
@@ -1072,6 +1078,7 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
     fornitore: string;
   } | null>(null);
   const [assetSerials, setAssetSerials] = useState<AssetSerial[]>([]);
+  const checklistIsClosed = useMemo(() => isChecklistOperativaCompletedFromTasks(tasks), [tasks]);
   const [serialControlInput, setSerialControlInput] = useState("");
   const [serialControlDeviceCode, setSerialControlDeviceCode] = useState("");
   const [serialControlDeviceDescrizione, setSerialControlDeviceDescrizione] = useState("");
@@ -4931,7 +4938,9 @@ function buildFormData(c: Checklist): FormData {
       mercato: formData.mercato.trim() ? formData.mercato.trim() : null,
       modello: formData.modello.trim() ? formData.modello.trim() : null,
       stato_progetto: formData.stato_progetto.trim()
-        ? formData.stato_progetto.trim()
+        ? normalizeProjectStatusForStorage(formData.stato_progetto.trim(), {
+            checklistCompleted: checklistIsClosed,
+          })
         : null,
       data_installazione_reale: formData.data_installazione_reale.trim()
         ? formData.data_installazione_reale.trim()
@@ -6113,7 +6122,12 @@ function buildFormData(c: Checklist): FormData {
               label="Stato progetto"
               view={
                 <div style={{ display: "flex", flexDirection: "column", gap: 6, alignItems: "flex-start" }}>
-                  <span>{getChecklistProjectStatusLabel(checklist)}</span>
+                  <span>
+                    {getChecklistProjectStatusLabel({
+                      ...checklist,
+                      checklistCompleted: checklistIsClosed,
+                    })}
+                  </span>
                   {getChecklistNoleggioState(checklist).isNoleggioAttivo ? (
                     <span
                       style={{
@@ -6150,9 +6164,17 @@ function buildFormData(c: Checklist): FormData {
                 isEdit ? (
                   <select
                     value={
-                      String(formData.stato_progetto || "").trim().toUpperCase() === "IN_CORSO"
+                      String(
+                        getEffectiveProjectStatus({
+                          stato_progetto: formData.stato_progetto,
+                          checklistCompleted: checklistIsClosed,
+                        }) || ""
+                      ).trim().toUpperCase() === "IN_CORSO"
                         ? "IN_LAVORAZIONE"
-                        : formData.stato_progetto
+                        : getEffectiveProjectStatus({
+                            stato_progetto: formData.stato_progetto,
+                            checklistCompleted: checklistIsClosed,
+                          }) || ""
                     }
                     onChange={(e) =>
                       setFormData({
@@ -6165,7 +6187,8 @@ function buildFormData(c: Checklist): FormData {
                     <option value="IN_LAVORAZIONE">IN_LAVORAZIONE</option>
                     <option value="CONSEGNATO">CONSEGNATO</option>
                     <option value="RIENTRATO">RIENTRATO</option>
-                    <option value="CHIUSO">CHIUSO</option>
+                    <option value="OPERATIVO">OPERATIVO</option>
+                    {checklistIsClosed ? <option value="CHIUSO">CHIUSO</option> : null}
                     <option value="SOSPESO">SOSPESO</option>
                   </select>
                 ) : undefined

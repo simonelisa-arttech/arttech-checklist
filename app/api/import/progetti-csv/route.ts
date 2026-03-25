@@ -3,6 +3,7 @@ export const runtime = "nodejs";
 import { NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { requireOperatore } from "@/lib/adminAuth";
+import { normalizeProjectStatusForStorage } from "@/lib/projectStatus";
 import { calcM2FromDimensioni, parseDimensioniToWH } from "@/lib/parseDimensioni";
 
 type CsvRow = Record<string, string>;
@@ -937,7 +938,9 @@ export async function POST(request: Request) {
       );
       const projectTag = normalizeCatalogCode(nome_progetto);
       const tipo = parseOptionalUpper(getRowValue(row, "tipo"));
-      const stato = parseOptionalUpper(getRowValue(row, "stato", "stato_progetto"));
+      const stato = normalizeProjectStatusForStorage(
+        parseOptionalUpper(getRowValue(row, "stato", "stato_progetto"))
+      );
       const dataPrevista = parseOptionalDate(getRowValue(row, "data_prevista"));
       const dataTassativa = parseOptionalDate(getRowValue(row, "data_tassativa"));
       const dataInstallazioneReale = parseOptionalDate(getRowValue(row, "data_installazione_reale"));
