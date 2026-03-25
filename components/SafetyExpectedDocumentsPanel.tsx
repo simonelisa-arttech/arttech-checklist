@@ -9,7 +9,16 @@ import {
 type Props = {
   kind: "PERSONALE" | "AZIENDA";
   docs: Array<{ tipo_documento: string; data_scadenza: string | null }>;
+  extraDocumentLabels?: string[];
 };
+
+function normalizeText(value?: string | null) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+}
 
 function getStateStyle(state: SafetyExpectedDocumentItem["state"]) {
   if (state === "PRESENTE_VALIDO") {
@@ -24,11 +33,68 @@ function getStateStyle(state: SafetyExpectedDocumentItem["state"]) {
   return { border: "#fca5a5", background: "#fff1f2", color: "#b91c1c", label: "Mancante" };
 }
 
-export default function SafetyExpectedDocumentsPanel({ kind, docs }: Props) {
+function computeExtraDocumentState(
+  label: string,
+  docs: Array<{ tipo_documento: string; data_scadenza: string | null }>
+): Pick<SafetyExpectedDocumentItem, "state" | "detail"> {
+  const matching = docs.filter((doc) => normalizeText(doc.tipo_documento) === normalizeText(label));
+  if (matching.length === 0) {
+    return { state: "MANCANTE", detail: `${label} mancante` };
+  }
+  const sorted = [...matching].sort((a, b) =>
+    String(b.data_scadenza || "").localeCompare(String(a.data_scadenza || ""))
+  );
+  const best = sorted[0] || null;
+  const rawDate = String(best?.data_scadenza || "").trim();
+  if (!rawDate) {
+    return { state: "PRESENTE_VALIDO", detail: `${label} presente` };
+  }
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const expiry = new Date(`${rawDate}T00:00:00`);
+  if (!Number.isFinite(expiry.getTime())) {
+    return { state: "PRESENTE_VALIDO", detail: `${label} presente` };
+  }
+  if (expiry < today) {
+    return { state: "SCADUTO", detail: `${label} scaduto (${expiry.toLocaleDateString("it-IT")})` };
+  }
+  const warningLimit = new Date(today);
+  warningLimit.setDate(warningLimit.getDate() + 30);
+  if (expiry <= warningLimit) {
+    return {
+      state: "IN_SCADENZA",
+      detail: `${label} in scadenza (${expiry.toLocaleDateString("it-IT")})`,
+    };
+  }
+  return {
+    state: "PRESENTE_VALIDO",
+    detail: `${label} valido (${expiry.toLocaleDateString("it-IT")})`,
+  };
+}
+
+export default function SafetyExpectedDocumentsPanel({
+  kind,
+  docs,
+  extraDocumentLabels = [],
+}: Props) {
   const items =
     kind === "PERSONALE"
       ? evaluatePersonaleExpectedDocuments(docs)
       : evaluateAziendaExpectedDocuments(docs);
+
+  const builtInLabels = new Set(items.map((item) => normalizeText(item.label)));
+  const extraItems: SafetyExpectedDocumentItem[] = Array.from(
+    new Set(extraDocumentLabels.map((label) => String(label || "").trim()).filter(Boolean))
+  )
+    .filter((label) => !builtInLabels.has(normalizeText(label)))
+    .map((label) => ({
+      key: `EXTRA_${normalizeText(label)}`,
+      label,
+      required: false,
+      ...computeExtraDocumentState(label, docs),
+    }));
+
+  const allItems = [...items, ...extraItems];
 
   return (
     <div
@@ -45,7 +111,7 @@ export default function SafetyExpectedDocumentsPanel({ kind, docs }: Props) {
         Elenco standard atteso {kind === "PERSONALE" ? "persona" : "azienda"}
       </div>
       <div style={{ display: "grid", gap: 8 }}>
-        {items.map((item) => {
+        {allItems.map((item) => {
           const style = getStateStyle(item.state);
           return (
             <div

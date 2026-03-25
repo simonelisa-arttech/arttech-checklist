@@ -1,5 +1,23 @@
 # Handoff Context — AT SYSTEM (arttech-checklist)
 
+## Update 2026-03-25 - Pagine `Personale` e `Aziende` rese compatte con documenti collassati
+
+- `app/impostazioni/personale/page.tsx`
+  - aggiunto campo `Cerca` per filtro nome/cognome
+  - i documenti persona sono chiusi di default
+  - apertura/chiusura solo con pulsante `Elenco`
+  - `+ Documento persona` usa solo `select` da elenco tipi documento, niente input libero
+  - aggiunto bottone separato `+ Documento` per creare un nuovo tipo documento necessario in `document_types`
+- `app/impostazioni/aziende/page.tsx`
+  - aggiunto campo `Cerca` per filtro ragione sociale
+  - i documenti azienda sono chiusi di default
+  - apertura/chiusura solo con pulsante `Elenco`
+  - `+ Documento azienda` usa solo `select` da elenco tipi documento, niente input libero
+  - aggiunto bottone separato `+ Documento` per creare un nuovo tipo documento necessario in `document_types`
+- `components/SafetyExpectedDocumentsPanel.tsx`
+  - supporta `extraDocumentLabels`
+  - oltre ai documenti standard safety mostra anche eventuali nuovi tipi documento aggiunti manualmente, senza cambiare i criteri minimi di conformita'
+
 ## Update 2026-03-25 - Indice orizzontale nella pagina progetto
 
 - `app/checklists/[id]/page.tsx`

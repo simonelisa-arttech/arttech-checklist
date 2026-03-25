@@ -1,5 +1,20 @@
 # AGENT MEMORY — Snapshot Operativo
 
+## Snapshot 2026-03-25 - Modulo safety anagrafiche reso piu' compatto
+- `app/impostazioni/personale/page.tsx`
+  - usare `Elenco` per aprire i documenti persona; default chiuso
+  - `Cerca` filtra per nome/cognome
+  - `+ Documento persona` puo' scegliere solo tipi da dropdown
+  - `+ Documento` crea un nuovo tipo standard in `document_types`
+- `app/impostazioni/aziende/page.tsx`
+  - usare `Elenco` per aprire i documenti azienda; default chiuso
+  - `Cerca` filtra per ragione sociale
+  - `+ Documento azienda` puo' scegliere solo tipi da dropdown
+  - `+ Documento` crea un nuovo tipo standard in `document_types`
+- `components/SafetyExpectedDocumentsPanel.tsx`
+  - puo' visualizzare anche tipi documento extra oltre al set standard
+  - non usare questo pannello per cambiare la logica minima safety: resta solo un quadro visivo
+
 ## Snapshot 2026-03-25 - Indice rapido nella pagina progetto
 - `app/checklists/[id]/page.tsx`
   - aggiunto indice orizzontale sotto il titolo `PROGETTO`
