@@ -11,7 +11,8 @@
   - `rif progetto`
 - attenzione:
   - gli header vanno sempre normalizzati prima del mapping
-  - non reintrodurre validazioni bloccanti che chiedono `nome_checklist / cliente`
+  - la validazione deve usare solo le variabili gia' mappate (`cliente`, `nome_progetto`)
+  - non reintrodurre validazioni bloccanti che leggono campi raw o che chiedono `nome_checklist / cliente`
 
 ## Snapshot 2026-03-25 - Fetch client protette devono inviare i cookie di sessione
 - pattern da mantenere:

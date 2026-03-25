@@ -879,16 +879,16 @@ export async function POST(request: Request) {
 
     try {
       const autoFixFields = new Set<string>();
-      const nomeProgettoCsv =
+      const cliente = getRowValue(row, "cliente");
+      const nome_progetto =
         getRowValue(row, "nome_progetto", "nome progetto", "nome_checklist", "rif progetto") ||
         "";
-      const clienteInput = getRowValue(row, "cliente");
       const codiceProgetto = getRowValue(row, "codice_progetto", "nome_checklist");
       const csvProformaRaw = getRowValue(row, "proforma");
       const csvProformaNormalized = normalizeProformaInput(csvProformaRaw);
       if (csvProformaNormalized.changed) autoFixFields.add("proforma");
       const csvProforma = csvProformaNormalized.value;
-      const projectTag = normalizeCatalogCode(nomeProgettoCsv);
+      const projectTag = normalizeCatalogCode(nome_progetto);
       const tipo = parseOptionalUpper(getRowValue(row, "tipo"));
       const stato = parseOptionalUpper(getRowValue(row, "stato", "stato_progetto"));
       const dataPrevista = parseOptionalDate(getRowValue(row, "data_prevista"));
@@ -927,11 +927,12 @@ export async function POST(request: Request) {
       const legacyNote = parseOptionalText(getRowValue(row, "note"));
 
       console.log("[import-progetti-csv][row-debug]", {
-        normalized_headers: detectedDelimiter.normalizedHeaders,
+        cliente,
+        nome_progetto,
         sample_row: row,
       });
 
-      if (!projectTag || !clienteInput) {
+      if (!cliente || !nome_progetto) {
         throw new Error("campi obbligatori mancanti: nome_progetto / cliente");
       }
 
@@ -967,10 +968,14 @@ export async function POST(request: Request) {
         });
       }
 
-      const clienteRow = await ensureClienteAnagraficaRow(supabaseAdmin, clienteInput);
-      const cliente = clienteRow?.denominazione || clienteInput.trim();
+      const clienteRow = await ensureClienteAnagraficaRow(supabaseAdmin, cliente);
+      const clienteDenominazione = clienteRow?.denominazione || cliente.trim();
 
-      const similarWarning = await findSimilarProjectWarning(supabaseAdmin, cliente, projectTag);
+      const similarWarning = await findSimilarProjectWarning(
+        supabaseAdmin,
+        clienteDenominazione,
+        projectTag
+      );
       if (similarWarning) {
         warnings.push({ row: rowNumber, reason: similarWarning });
       }
@@ -986,7 +991,7 @@ export async function POST(request: Request) {
 
       const payload: Record<string, any> = {
         nome_checklist: projectTag,
-        cliente,
+        cliente: clienteDenominazione,
         cliente_id: clienteRow?.id || null,
         proforma: csvProforma ? csvProforma.trim() : null,
         noleggio_vendita: tipo,

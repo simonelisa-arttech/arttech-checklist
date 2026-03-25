@@ -12,8 +12,10 @@
     - `cliente`
     - `nome_progetto`
   - non richiede piu' `nome_checklist` come campo obbligatorio esplicito
+  - la validazione usa solo le variabili mappate `cliente` + `nome_progetto`, non i campi raw della row
   - aggiunto debug temporaneo per troubleshooting import:
-    - `normalized_headers`
+    - `cliente`
+    - `nome_progetto`
     - `sample_row`
 
 ## Update 2026-03-25 - Fix sessione browser su fetch client-side protette
