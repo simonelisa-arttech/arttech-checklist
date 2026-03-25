@@ -1,5 +1,20 @@
 # AGENT MEMORY — Snapshot Operativo
 
+## Snapshot 2026-03-25 - `Importa progetti` deve usare solo il route progetti
+- pagina coinvolta:
+  - `app/import-progetti/page.tsx`
+- regola da mantenere:
+  - la UI `Importa progetti` deve chiamare solo `/api/import/progetti-csv`
+  - non deve mai riusare `/api/import/checklists-csv`
+- sintomo del wiring errato:
+  - in UI riappare il messaggio legacy `Campi obbligatori mancanti: nome_checklist / cliente`
+- shape risposta da rispettare lato UI:
+  - `inserted`
+  - `skipped`
+  - `errors[].reason`
+  - `warnings[]`
+  - `delimiter`
+
 ## Snapshot 2026-03-25 - Import progetti: obbligatorio `nome_progetto`, non `nome_checklist`
 - regola da mantenere:
   - il campo progetto obbligatorio dell'import e' `nome_progetto`

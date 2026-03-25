@@ -1,5 +1,21 @@
 # Handoff Context — AT SYSTEM (arttech-checklist)
 
+## Update 2026-03-25 - Pagina `Importa progetti` riallineata al route corretto
+
+- `app/import-progetti/page.tsx`
+  - la UI chiamava ancora hardcoded il route legacy `/api/import/checklists-csv`
+  - ora usa solo `/api/import/progetti-csv`
+  - allineata anche la lettura della risposta reale del route progetti:
+    - `errors[].reason`
+    - `warnings[]`
+    - `delimiter`
+  - aggiunto debug temporaneo lato UI:
+    - log console con endpoint realmente chiamato e filename
+    - riepilogo in pagina con `Endpoint: /api/import/progetti-csv`
+- causa reale del bug:
+  - wiring errato della pagina, non parser progetti
+  - per questo in UI compariva ancora il messaggio legacy `nome_checklist / cliente`
+
 ## Update 2026-03-25 - Import progetti accetta di nuovo `nome_progetto` come campo obbligatorio reale
 
 - `app/api/import/progetti-csv/route.ts`

@@ -5,15 +5,17 @@ import Link from "next/link";
 
 type ImportErrorRow = {
   row: number;
-  nome_checklist: string | null;
-  cliente: string | null;
-  error: string;
+  reason: string;
 };
 
 type ImportResponse = {
+  delimiter?: string;
+  dry_run?: boolean;
+  on_conflict?: string;
   inserted: number;
   skipped: number;
   errors: ImportErrorRow[];
+  warnings: ImportErrorRow[];
 };
 
 export default function ImportProgettiPage() {
@@ -35,8 +37,16 @@ export default function ImportProgettiPage() {
     try {
       const form = new FormData();
       form.append("file", file);
+      form.append("dry_run", "false");
+      form.append("on_conflict", "skip");
 
-      const res = await fetch("/api/import/checklists-csv", {
+      const endpoint = "/api/import/progetti-csv";
+      console.log("[import-progetti-ui] submit", {
+        endpoint,
+        filename: file.name,
+      });
+
+      const res = await fetch(endpoint, {
         method: "POST",
         body: form,
         credentials: "include",
@@ -47,9 +57,13 @@ export default function ImportProgettiPage() {
       }
 
       setResult({
+        delimiter: typeof json?.delimiter === "string" ? json.delimiter : undefined,
+        dry_run: Boolean(json?.dry_run),
+        on_conflict: typeof json?.on_conflict === "string" ? json.on_conflict : undefined,
         inserted: Number(json?.inserted || 0),
         skipped: Number(json?.skipped || 0),
         errors: Array.isArray(json?.errors) ? json.errors : [],
+        warnings: Array.isArray(json?.warnings) ? json.warnings : [],
       });
     } catch (err: any) {
       setError(String(err?.message || "Errore import CSV"));
@@ -180,6 +194,27 @@ export default function ImportProgettiPage() {
                 <div style={{ fontSize: 12, fontWeight: 700, opacity: 0.8 }}>❌ ERRORI</div>
                 <div style={{ marginTop: 6, fontSize: 28, fontWeight: 800 }}>{result.errors.length}</div>
               </div>
+              <div
+                style={{
+                  padding: 14,
+                  borderRadius: 12,
+                  border: "1px solid #bfdbfe",
+                  background: "#eff6ff",
+                }}
+              >
+                <div style={{ fontSize: 12, fontWeight: 700, opacity: 0.8 }}>ℹ WARNING</div>
+                <div style={{ marginTop: 6, fontSize: 28, fontWeight: 800 }}>{result.warnings.length}</div>
+              </div>
+            </div>
+
+            <div style={{ fontSize: 12, opacity: 0.75 }}>
+              Endpoint: <code>/api/import/progetti-csv</code>
+              {result.delimiter ? (
+                <>
+                  {" "}
+                  · Delimitatore rilevato: <strong>{result.delimiter}</strong>
+                </>
+              ) : null}
             </div>
 
             {result.errors.length > 0 ? (
@@ -194,25 +229,48 @@ export default function ImportProgettiPage() {
                   <thead style={{ background: "#f9fafb" }}>
                     <tr>
                       <th style={{ padding: 10, textAlign: "left", borderBottom: "1px solid #e5e7eb" }}>Riga</th>
-                      <th style={{ padding: 10, textAlign: "left", borderBottom: "1px solid #e5e7eb" }}>Progetto</th>
-                      <th style={{ padding: 10, textAlign: "left", borderBottom: "1px solid #e5e7eb" }}>Cliente</th>
                       <th style={{ padding: 10, textAlign: "left", borderBottom: "1px solid #e5e7eb" }}>Errore</th>
                     </tr>
                   </thead>
                   <tbody>
                     {result.errors.map((row, index) => (
-                      <tr key={`${row.row}-${row.nome_checklist || "empty"}-${index}`}>
+                      <tr key={`${row.row}-${index}`}>
                         <td style={{ padding: 10, borderBottom: "1px solid #f3f4f6", whiteSpace: "nowrap" }}>
                           {row.row}
                         </td>
-                        <td style={{ padding: 10, borderBottom: "1px solid #f3f4f6" }}>
-                          {row.nome_checklist || "—"}
-                        </td>
-                        <td style={{ padding: 10, borderBottom: "1px solid #f3f4f6" }}>
-                          {row.cliente || "—"}
-                        </td>
                         <td style={{ padding: 10, borderBottom: "1px solid #f3f4f6", color: "#991b1b" }}>
-                          {row.error}
+                          {row.reason}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : null}
+
+            {result.warnings.length > 0 ? (
+              <div
+                style={{
+                  border: "1px solid #e5e7eb",
+                  borderRadius: 12,
+                  overflowX: "auto",
+                }}
+              >
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 14 }}>
+                  <thead style={{ background: "#f9fafb" }}>
+                    <tr>
+                      <th style={{ padding: 10, textAlign: "left", borderBottom: "1px solid #e5e7eb" }}>Riga</th>
+                      <th style={{ padding: 10, textAlign: "left", borderBottom: "1px solid #e5e7eb" }}>Warning</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {result.warnings.map((row, index) => (
+                      <tr key={`${row.row}-warning-${index}`}>
+                        <td style={{ padding: 10, borderBottom: "1px solid #f3f4f6", whiteSpace: "nowrap" }}>
+                          {row.row}
+                        </td>
+                        <td style={{ padding: 10, borderBottom: "1px solid #f3f4f6", color: "#92400e" }}>
+                          {row.reason}
                         </td>
                       </tr>
                     ))}
