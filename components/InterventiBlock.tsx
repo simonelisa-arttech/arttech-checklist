@@ -54,6 +54,11 @@ export type InterventoFormState = {
   commercialeArtTechContatto: string;
 };
 
+export type PendingInterventoLink = {
+  title: string;
+  url: string;
+};
+
 type Props = {
   checklists: InterventiChecklistOption[];
   interventi: InterventoRow[];
@@ -72,6 +77,8 @@ type Props = {
   setNewIntervento: (value: InterventoFormState) => void;
   newInterventoFiles: File[];
   setNewInterventoFiles: (files: File[]) => void;
+  newInterventoLinks: PendingInterventoLink[];
+  setNewInterventoLinks: (links: PendingInterventoLink[]) => void;
   addIntervento: () => void;
   editInterventoId: string | null;
   setEditInterventoId: (value: string | null) => void;
@@ -421,6 +428,8 @@ export default function InterventiBlock({
   setNewIntervento,
   newInterventoFiles,
   setNewInterventoFiles,
+  newInterventoLinks,
+  setNewInterventoLinks,
   addIntervento,
   editInterventoId,
   setEditInterventoId,
@@ -481,6 +490,29 @@ export default function InterventiBlock({
   const topScrollbarRef = useRef<HTMLDivElement | null>(null);
   const tableScrollRef = useRef<HTMLDivElement | null>(null);
   const [topScrollbarWidth, setTopScrollbarWidth] = useState(1410);
+  const [newLinkTitle, setNewLinkTitle] = useState("");
+  const [newLinkUrl, setNewLinkUrl] = useState("");
+
+  function isHttpUrl(url: string) {
+    return /^https?:\/\//i.test(String(url || "").trim());
+  }
+
+  function addPendingLink() {
+    const url = newLinkUrl.trim();
+    const title = newLinkTitle.trim() || url;
+    if (!isHttpUrl(url)) {
+      setInterventiNotice("URL link non valido: usa http(s).");
+      return;
+    }
+    setNewInterventoLinks([...newInterventoLinks, { title, url }]);
+    setNewLinkTitle("");
+    setNewLinkUrl("");
+    setInterventiNotice(null);
+  }
+
+  function removePendingLink(index: number) {
+    setNewInterventoLinks(newInterventoLinks.filter((_, current) => current !== index));
+  }
 
   useEffect(() => {
     const tableEl = tableScrollRef.current;
@@ -753,6 +785,85 @@ export default function InterventiBlock({
             <div style={{ marginTop: 6, fontSize: 12, opacity: 0.75 }}>
               Dopo il primo salvataggio il pannello dettagli resta riutilizzabile per link Drive e altri allegati.
             </div>
+          </div>
+
+          <div style={{ marginTop: 10 }}>
+            <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 6 }}>Link allegati (opzionale)</div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1.4fr auto", gap: 8 }}>
+              <input
+                value={newLinkTitle}
+                onChange={(e) => setNewLinkTitle(e.target.value)}
+                placeholder="Titolo link (opzionale)"
+                style={{ width: "100%", padding: 8 }}
+              />
+              <input
+                value={newLinkUrl}
+                onChange={(e) => setNewLinkUrl(e.target.value)}
+                placeholder="https://drive.google.com/..."
+                style={{ width: "100%", padding: 8 }}
+              />
+              <button
+                type="button"
+                onClick={addPendingLink}
+                style={{
+                  padding: "8px 10px",
+                  borderRadius: 8,
+                  border: "1px solid #111",
+                  background: "white",
+                  cursor: "pointer",
+                  whiteSpace: "nowrap",
+                }}
+              >
+                Aggiungi link
+              </button>
+            </div>
+            {newInterventoLinks.length > 0 ? (
+              <div style={{ display: "grid", gap: 6, marginTop: 8 }}>
+                {newInterventoLinks.map((link, index) => (
+                  <div
+                    key={`${link.url}-${index}`}
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "1fr auto",
+                      gap: 8,
+                      alignItems: "center",
+                      border: "1px solid #e5e7eb",
+                      borderRadius: 10,
+                      padding: "8px 10px",
+                      background: "#fcfcfd",
+                    }}
+                  >
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontSize: 13, fontWeight: 600 }}>{link.title || link.url}</div>
+                      <div
+                        style={{
+                          fontSize: 12,
+                          opacity: 0.7,
+                          whiteSpace: "nowrap",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                        }}
+                      >
+                        {link.url}
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => removePendingLink(index)}
+                      style={{
+                        padding: "6px 10px",
+                        borderRadius: 8,
+                        border: "1px solid #ddd",
+                        background: "white",
+                        cursor: "pointer",
+                      }}
+                    >
+                      Rimuovi
+                    </button>
+                  </div>
+                ))}
+              </div>
+            ) : null}
           </div>
 
           <div style={{ marginTop: 10 }}>

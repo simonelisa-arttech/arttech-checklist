@@ -15,7 +15,7 @@ import Link from "next/link";
 import ConfigMancante from "@/components/ConfigMancante";
 import ClientiCombobox from "@/components/ClientiCombobox";
 import AttachmentsPanel from "@/components/AttachmentsPanel";
-import InterventiBlock from "@/components/InterventiBlock";
+import InterventiBlock, { type PendingInterventoLink } from "@/components/InterventiBlock";
 import PersonaleMultiSelect from "@/components/PersonaleMultiSelect";
 import OperativeNotesPanel from "@/components/OperativeNotesPanel";
 import RenewalsAlertModal from "@/components/RenewalsAlertModal";
@@ -1225,6 +1225,7 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
   const [projectInterventoEditForm, setProjectInterventoEditForm] = useState<ProjectInterventoForm | null>(null);
   const [projectInterventoAttachmentCounts, setProjectInterventoAttachmentCounts] = useState<Map<string, number>>(new Map());
   const [projectInterventoFiles, setProjectInterventoFiles] = useState<File[]>([]);
+  const [projectInterventoLinks, setProjectInterventoLinks] = useState<PendingInterventoLink[]>([]);
   const [projectInterventoAlertId, setProjectInterventoAlertId] = useState<string | null>(null);
   const [projectInterventoAlertToOperatoreId, setProjectInterventoAlertToOperatoreId] = useState("");
   const [projectInterventoAlertMsg, setProjectInterventoAlertMsg] = useState("");
@@ -1780,6 +1781,9 @@ function buildFormData(c: Checklist): FormData {
     if (inserted?.id && projectInterventoFiles.length > 0) {
       await uploadInterventoRowFilesList(inserted.id, projectInterventoFiles);
     }
+    if (inserted?.id && projectInterventoLinks.length > 0) {
+      await uploadInterventoRowLinksList(inserted.id, projectInterventoLinks);
+    }
     const list = await loadProjectInterventi(id);
     setProjectInterventi(list);
     await loadInterventoRowAttachmentCounts(list);
@@ -1788,6 +1792,7 @@ function buildFormData(c: Checklist): FormData {
       buildEmptyProjectInterventoForm(checklist.proforma || "", magazzino.codice || "")
     );
     setProjectInterventoFiles([]);
+    setProjectInterventoLinks([]);
     if (inserted?.id) {
       const created = list.find((row) => row.id === inserted?.id) || null;
       if (created) {
@@ -1998,6 +2003,34 @@ function buildFormData(c: Checklist): FormData {
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         setProjectInterventiError(String(data?.error || "Errore salvataggio allegato"));
+        return;
+      }
+    }
+  }
+
+  async function uploadInterventoRowLinksList(interventoId: string, links: PendingInterventoLink[]) {
+    for (const link of links) {
+      const url = String(link.url || "").trim();
+      const title = String(link.title || "").trim() || url;
+      if (!/^https?:\/\//i.test(url)) {
+        setProjectInterventiError("URL link intervento non valido.");
+        return;
+      }
+      const res = await fetch("/api/attachments", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          source: "LINK",
+          entity_type: "INTERVENTO",
+          entity_id: interventoId,
+          title,
+          url,
+          provider: url.toLowerCase().includes("drive.google.com") ? "GOOGLE_DRIVE" : "GENERIC",
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setProjectInterventiError(String(data?.error || "Errore salvataggio link intervento"));
         return;
       }
     }
@@ -5506,6 +5539,8 @@ function buildFormData(c: Checklist): FormData {
       }
       newInterventoFiles={projectInterventoFiles}
       setNewInterventoFiles={setProjectInterventoFiles}
+      newInterventoLinks={projectInterventoLinks}
+      setNewInterventoLinks={setProjectInterventoLinks}
       addIntervento={addInterventoRow}
       editInterventoId={projectInterventoEditId}
       setEditInterventoId={setProjectInterventoEditId}

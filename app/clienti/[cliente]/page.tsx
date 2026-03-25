@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import ConfigMancante from "@/components/ConfigMancante";
 import AttachmentsPanel from "@/components/AttachmentsPanel";
 import InterventiBlock from "@/components/InterventiBlock";
+import type { PendingInterventoLink } from "@/components/InterventiBlock";
 import OperativeNotesPanel from "@/components/OperativeNotesPanel";
 import RenewalsAlertModal from "@/components/RenewalsAlertModal";
 import RenewalsBlock from "@/components/RenewalsBlock";
@@ -872,6 +873,7 @@ export default function ClientePage({
     {}
   );
   const [newInterventoFiles, setNewInterventoFiles] = useState<File[]>([]);
+  const [newInterventoLinks, setNewInterventoLinks] = useState<PendingInterventoLink[]>([]);
   const [alertOperatori, setAlertOperatori] = useState<OperatoreRow[]>([]);
   const [alertInterventoId, setAlertInterventoId] = useState<string | null>(null);
   const [alertDestinatarioId, setAlertDestinatarioId] = useState("");
@@ -2297,6 +2299,35 @@ export default function ClientePage({
     }
   }
 
+  async function uploadInterventoLinksList(interventoId: string, links: PendingInterventoLink[]) {
+    if (links.length === 0) return;
+    for (const link of links) {
+      const url = String(link.url || "").trim();
+      const title = String(link.title || "").trim() || url;
+      if (!/^https?:\/\//i.test(url)) {
+        setInterventiError("URL link intervento non valido.");
+        return;
+      }
+      const res = await fetch("/api/attachments", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          source: "LINK",
+          entity_type: "INTERVENTO",
+          entity_id: interventoId,
+          title,
+          url,
+          provider: url.toLowerCase().includes("drive.google.com") ? "GOOGLE_DRIVE" : "GENERIC",
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setInterventiError(String(data?.error || "Errore salvataggio link intervento"));
+        return;
+      }
+    }
+  }
+
   async function openInterventoFile(file: InterventoFile) {
     const { data, error: urlErr } = await storageSignedUrl(file.storage_path);
     if (urlErr || !data?.signedUrl) {
@@ -3427,6 +3458,9 @@ export default function ClientePage({
     if (inserted?.id && newInterventoFiles.length > 0) {
       await uploadInterventoFilesList(inserted.id, newInterventoFiles);
     }
+    if (inserted?.id && newInterventoLinks.length > 0) {
+      await uploadInterventoLinksList(inserted.id, newInterventoLinks);
+    }
 
     await loadInterventiForCliente(
       clienteKey,
@@ -3461,6 +3495,7 @@ export default function ClientePage({
       commercialeArtTechContatto: "",
     });
     setNewInterventoFiles([]);
+    setNewInterventoLinks([]);
     setInterventiError(operativiSaveError);
   }
 
@@ -7158,6 +7193,8 @@ ${rinnovi30ggBreakdown.debugSample
         }}
         newInterventoFiles={newInterventoFiles}
         setNewInterventoFiles={setNewInterventoFiles}
+        newInterventoLinks={newInterventoLinks}
+        setNewInterventoLinks={setNewInterventoLinks}
         addIntervento={addIntervento}
         editInterventoId={editInterventoId}
         setEditInterventoId={setEditInterventoId}

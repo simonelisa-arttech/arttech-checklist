@@ -1,5 +1,23 @@
 # Handoff Context — AT SYSTEM (arttech-checklist)
 
+## Update 2026-03-25 - Link allegati in creazione intervento
+
+- `components/InterventiBlock.tsx`
+  - il form `Aggiungi intervento` supporta ora anche una coda di link allegati oltre ai file
+  - UI nuova:
+    - titolo link opzionale
+    - URL link
+    - bottone `Aggiungi link`
+    - lista link accodati con `Rimuovi`
+- `app/checklists/[id]/page.tsx`
+  - dopo la creazione intervento salva anche i link accodati su `attachments` con:
+    - `entity_type = INTERVENTO`
+    - `source = LINK`
+- `app/clienti/[cliente]/page.tsx`
+  - stesso supporto allineato sul blocco condiviso interventi
+- Nessuna modifica al pannello allegati esistente dei dettagli intervento:
+  - i link nuovi usano la stessa source of truth (`/api/attachments`) gia' usata da `AttachmentsPanel`
+
 ## Update 2026-03-25 - Pagine `Personale` e `Aziende` rese compatte con documenti collassati
 
 - `app/impostazioni/personale/page.tsx`

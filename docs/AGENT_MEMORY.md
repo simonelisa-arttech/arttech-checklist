@@ -1,5 +1,16 @@
 # AGENT MEMORY — Snapshot Operativo
 
+## Snapshot 2026-03-25 - Nuovo intervento con link allegati
+- `components/InterventiBlock.tsx`
+  - il form di creazione intervento non supporta piu' solo file locali
+  - puo' accodare anche link prima del primo salvataggio
+- Persistenza:
+  - progetto e cliente salvano i link solo dopo aver ottenuto l`id` intervento
+  - i link vanno sempre su `attachments` con `entity_type = INTERVENTO`
+- Regola operativa:
+  - per i link intervento usare il canale moderno `attachments`
+  - non introdurre storage parallelo custom per i link
+
 ## Snapshot 2026-03-25 - Modulo safety anagrafiche reso piu' compatto
 - `app/impostazioni/personale/page.tsx`
   - usare `Elenco` per aprire i documenti persona; default chiuso
