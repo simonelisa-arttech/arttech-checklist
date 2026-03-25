@@ -1,5 +1,22 @@
 # AGENT MEMORY — Snapshot Operativo
 
+## Snapshot 2026-03-25 - Import progetti: conflict mode di default = `update`
+- regola da mantenere:
+  - se il progetto esiste gia', l'import progetti deve aggiornare i campi valorizzati del file
+  - non deve fare `skip` di default
+- default:
+  - `on_conflict = update`
+- update checklist:
+  - usare solo campi non vuoti / non null
+  - non azzerare valori esistenti con stringhe vuote o `null`
+- conteggi standard da esporre:
+  - `inserted`
+  - `updated`
+  - `skipped`
+- deduplica:
+  - priorita' a `cliente + nome_progetto`
+  - mantenere fallback compatibile sul tag progetto gia' esistente
+
 ## Snapshot 2026-03-25 - `PO` e' un campo dedicato del progetto
 - storage:
   - `checklists.po`

@@ -435,6 +435,17 @@ function mergeNoteSections(...values: Array<string | null | undefined>) {
   return out.length > 0 ? out.join("\n") : null;
 }
 
+function buildChecklistUpdatePayload(payload: Record<string, any>) {
+  const out: Record<string, any> = {};
+  for (const [key, value] of Object.entries(payload)) {
+    if (value === null || value === undefined) continue;
+    if (typeof value === "string" && value.trim() === "") continue;
+    if (typeof value === "number" && !Number.isFinite(value)) continue;
+    out[key] = value;
+  }
+  return out;
+}
+
 function isColumnMissingError(error: any, column: string) {
   const msg = `${error?.message || ""}`.toLowerCase();
   const details = `${error?.details || ""}`.toLowerCase();
@@ -592,11 +603,13 @@ async function ensureClienteAnagraficaRow(
 
 async function findChecklistByProjectTag(
   supabaseAdmin: ReturnType<typeof getSupabaseAdmin>,
-  projectTag: string
+  projectTag: string,
+  cliente?: string | null,
+  clienteId?: string | null
 ) {
   const { data, error } = await supabaseAdmin
     .from("checklists")
-    .select("id, nome_checklist, cliente, stato_progetto, proforma")
+    .select("id, nome_checklist, cliente, cliente_id, stato_progetto, proforma")
     .ilike("nome_checklist", `%${projectTag}%`)
     .limit(25);
   if (error) throw error;
@@ -604,15 +617,30 @@ async function findChecklistByProjectTag(
     id: string;
     nome_checklist: string | null;
     cliente: string | null;
+    cliente_id: string | null;
     stato_progetto: string | null;
     proforma: string | null;
   }>;
-  return (rows.find((row) => normalizeCatalogCode(String(row.nome_checklist || "")) === projectTag) ??
-    null) as
+  const exactTagRows = rows.filter(
+    (row) => normalizeCatalogCode(String(row.nome_checklist || "")) === projectTag
+  );
+  const normalizedCliente = normalizeTextKey(String(cliente || ""));
+  const normalizedClienteId = String(clienteId || "").trim();
+  const exactByClient =
+    exactTagRows.find((row) => normalizedClienteId && String(row.cliente_id || "").trim() === normalizedClienteId) ||
+    exactTagRows.find(
+      (row) =>
+        normalizedCliente &&
+        normalizeTextKey(String(row.cliente || "")) === normalizedCliente
+    ) ||
+    exactTagRows[0] ||
+    null;
+  return exactByClient as
     | {
         id: string;
         nome_checklist: string | null;
         cliente: string | null;
+        cliente_id: string | null;
         stato_progetto: string | null;
         proforma: string | null;
       }
@@ -841,7 +869,7 @@ export async function POST(request: Request) {
   const modeRaw = String(form.get("on_conflict") || "")
     .trim()
     .toLowerCase();
-  const onConflict: ProjectImportMode = modeRaw === "update" ? "update" : "skip";
+  const onConflict: ProjectImportMode = modeRaw === "skip" ? "skip" : "update";
 
   const csvText = await file.text();
   let detectedDelimiter: ParsedCsvCandidate;
@@ -872,6 +900,7 @@ export async function POST(request: Request) {
   const seenProjectTags = new Set<string>();
 
   let inserted = 0;
+  let updated = 0;
   let skipped = 0;
   const errors: ImportError[] = [];
   const warnings: ImportWarning[] = [];
@@ -1027,25 +1056,37 @@ export async function POST(request: Request) {
         tipo_struttura: tipoStruttura,
         note: payloadNote,
       };
+      const updatePayload = buildChecklistUpdatePayload(payload);
 
       let checklistId = "";
       let checklistStrippedColumns = new Set<string>();
 
       if (projectTag) {
-        const existingByCode = await findChecklistByProjectTag(supabaseAdmin, projectTag);
+        const existingByCode = await findChecklistByProjectTag(
+          supabaseAdmin,
+          projectTag,
+          clienteDenominazione,
+          clienteRow?.id || null
+        );
         console.info("[import-progetti-csv][dedupe]", {
           row: rowNumber,
           csv_tag: projectTag,
+          csv_cliente: clienteDenominazione,
           db_match: existingByCode?.nome_checklist || null,
           checklist_id: existingByCode?.id || null,
         });
         if (existingByCode?.id) {
           if (onConflict === "update") {
             checklistId = existingByCode.id;
-            if (!dryRun) {
-              const result = await updateChecklistWithFallback(supabaseAdmin, existingByCode.id, payload);
+            if (!dryRun && Object.keys(updatePayload).length > 0) {
+              const result = await updateChecklistWithFallback(
+                supabaseAdmin,
+                existingByCode.id,
+                updatePayload
+              );
               checklistStrippedColumns = result.strippedColumns;
             }
+            updated += 1;
             warnings.push({
               row: rowNumber,
               reason: `nome_progetto già esistente: aggiornato progetto ${existingByCode.nome_checklist || existingByCode.id}`,
@@ -1064,12 +1105,14 @@ export async function POST(request: Request) {
       if (!checklistId) {
         const duplicate = await existsActiveChecklistDuplicate(supabaseAdmin, payload.nome_checklist);
         if (duplicate) {
-          skipped += 1;
-          warnings.push({
-            row: rowNumber,
-            reason: `nome_progetto già esistente: ${payload.nome_checklist}`,
-          });
-          continue;
+          if (onConflict === "skip") {
+            skipped += 1;
+            warnings.push({
+              row: rowNumber,
+              reason: `nome_progetto già esistente: ${payload.nome_checklist}`,
+            });
+            continue;
+          }
         }
 
         if (dryRun) {
@@ -1141,12 +1184,21 @@ export async function POST(request: Request) {
     }
   }
 
+  console.info("[import-progetti-csv][summary]", {
+    inserted,
+    updated,
+    skipped,
+    dry_run: dryRun,
+    on_conflict: onConflict,
+  });
+
   return NextResponse.json({
     ok: true,
     dry_run: dryRun,
     on_conflict: onConflict,
     delimiter: formatDelimiterLabel(detectedDelimiter.delimiter),
     inserted,
+    updated,
     skipped,
     errors,
     warnings,

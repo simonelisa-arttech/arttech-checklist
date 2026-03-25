@@ -1,5 +1,25 @@
 # Handoff Context — AT SYSTEM (arttech-checklist)
 
+## Update 2026-03-25 - Import progetti idempotente con update server-side di default
+
+- `app/api/import/progetti-csv/route.ts`
+  - `on_conflict` default ora e' `update`
+  - se il progetto esiste gia':
+    - non fa piu' `skip` di default
+    - aggiorna server-side solo i campi checklist valorizzati nel file
+    - non sovrascrive con `null` o stringhe vuote
+  - matching esistente:
+    - priorita' a `nome_checklist` + `cliente_id/cliente`
+    - fallback compatibile sulla deduplica storica per tag progetto
+  - output JSON e log summary ora includono:
+    - `inserted`
+    - `updated`
+    - `skipped`
+- campi checklist aggiornati solo se presenti:
+  - incluso `po`, `impianto_indirizzo`, `saas_scadenza` e gli altri gia' mappati nella route
+- child entities:
+  - seriali / licenze / accessori continuano a seguire il ramo esistente post-persistenza
+
 ## Update 2026-03-25 - Campo `PO` aggiunto al flusso progetti
 
 - Migration:
