@@ -3280,14 +3280,12 @@ export default function Page() {
                     return;
                   }
                   const params = new URLSearchParams();
+                  params.set("focus", "interventi");
                   params.set("addIntervento", "1");
-                  params.set("checklist_id", addInterventoChecklistId);
                   if (addInterventoDescrizione.trim()) {
                     params.set("descrizione", addInterventoDescrizione.trim());
                   }
-                  router.push(
-                    `/clienti/${encodeURIComponent(addInterventoCliente)}?${params.toString()}`
-                  );
+                  router.push(`/checklists/${addInterventoChecklistId}?${params.toString()}`);
                   closeAddIntervento("submit");
                 }}
                 style={{

@@ -1,5 +1,17 @@
 # Handoff Context — AT SYSTEM (arttech-checklist)
 
+## Update 2026-03-25 - Dashboard "Aggiungi intervento" ora apre direttamente il progetto
+
+- `app/page.tsx`
+  - il submit del modal `Aggiungi intervento` non passa piu' da `/clienti/[cliente]`
+  - redirect diretto a `/checklists/[id]?focus=interventi&addIntervento=1`
+  - mantiene il prefill opzionale `descrizione`
+- `app/checklists/[id]/page.tsx`
+  - legge `focus=interventi` / `addIntervento=1` dalla query
+  - fa scroll automatico al blocco `Aggiungi intervento` (`#add-intervento`)
+  - precompila la descrizione dell'intervento se presente in query
+- Nessuna modifica alla logica interventi o alla navigazione cliente standard fuori da questo flusso dashboard.
+
 ## Update 2026-03-25 - Personale operativo su `personale_ids` con fallback legacy
 
 - Source of truth nuova per personale operativo:

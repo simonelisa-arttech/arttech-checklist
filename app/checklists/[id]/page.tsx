@@ -1241,6 +1241,7 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
   const [newProjectIntervento, setNewProjectIntervento] = useState<ProjectInterventoForm>(
     buildEmptyProjectInterventoForm()
   );
+  const prefillInterventoRef = useRef(false);
   const isPerfEnabled = () =>
     process.env.NODE_ENV !== "production" ||
     (typeof window !== "undefined" && new URLSearchParams(window.location.search).has("perf"));
@@ -1425,6 +1426,24 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
     return () => {
       if (toastTimerRef.current) clearTimeout(toastTimerRef.current);
     };
+  }, []);
+
+  useEffect(() => {
+    if (prefillInterventoRef.current) return;
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const shouldFocusInterventi =
+      params.get("focus") === "interventi" || params.get("addIntervento") === "1";
+    if (!shouldFocusInterventi) return;
+    prefillInterventoRef.current = true;
+    const descrizione = String(params.get("descrizione") || "").trim();
+    if (descrizione) {
+      setNewProjectIntervento((prev) => ({ ...prev, descrizione }));
+    }
+    setTimeout(() => {
+      const el = document.getElementById("add-intervento");
+      if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 100);
   }, []);
 
   useEffect(() => {

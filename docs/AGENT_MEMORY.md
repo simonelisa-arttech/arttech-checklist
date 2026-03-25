@@ -1,5 +1,14 @@
 # AGENT MEMORY — Snapshot Operativo
 
+## Snapshot 2026-03-25 - Dashboard add intervento -> pagina progetto
+- Flusso dashboard allineato al contesto operativo:
+  - da `app/page.tsx` il modal `Aggiungi intervento` porta ora a `/checklists/[id]?focus=interventi&addIntervento=1`
+  - non usare piu' la scheda cliente come passaggio intermedio per questo entrypoint
+- `app/checklists/[id]/page.tsx`
+  - consuma `focus=interventi` / `addIntervento=1`
+  - scrolla a `#add-intervento`
+  - puo' precompilare la `descrizione` iniziale dalla query
+
 ## Snapshot 2026-03-25 - Personale operativo su ID, non piu' su testo libero
 - Nuova source of truth:
   - `cronoprogramma_meta.personale_ids` (`uuid[]`)
