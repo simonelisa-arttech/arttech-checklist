@@ -4521,7 +4521,21 @@ export default function ClientePage({
     setRinnoviAlertErr(null);
     setRinnoviAlertOk(null);
     try {
+      const manualCustomerEmail = String(payload.clienteEmailOverride || "").trim();
+      const e2eHasValidRecipient =
+        (payload.toArtTech &&
+          (payload.artTechMode === "operatore"
+            ? Boolean(payload.operatoreId)
+            : payload.manualEmail.trim().includes("@"))) ||
+        (payload.toCliente &&
+          ((clienteAnagraficaEmails.length > 0 &&
+            clienteAnagraficaEmails.some((email) => String(email || "").trim().includes("@"))) ||
+            manualCustomerEmail.includes("@")));
       if (isE2EMode) {
+        if (!e2eHasValidRecipient) {
+          setRinnoviAlertErr("Email cliente mancante");
+          return;
+        }
         const list =
           rinnoviAlertItems.length > 0
             ? rinnoviAlertItems
@@ -4562,10 +4576,9 @@ export default function ClientePage({
         return;
       }
       let customerEmailsForSend = [...clienteAnagraficaEmails];
-      const manualCustomerEmail = String(payload.clienteEmailOverride || "").trim();
       if (payload.toCliente && customerEmailsForSend.length === 0) {
         if (!manualCustomerEmail.includes("@")) {
-          setRinnoviAlertErr("Nessuna email valida trovata nell'anagrafica cliente.");
+          setRinnoviAlertErr("Email cliente mancante");
           return;
         }
         const clienteId =

@@ -302,7 +302,7 @@ export default function RenewalsAlertModal({
           {normalizedCustomerEmails.length > 0
             ? normalizedCustomerEmails.join(", ")
             : "mancante o non valida"}
-          {normalizedCustomerEmails.length === 0 ? " · puoi inserirla qui per questo invio." : ""}
+          {normalizedCustomerEmails.length === 0 ? " · Email cliente mancante: puoi inserirla qui per questo invio." : ""}
         </div>
 
         {mode === "MANUALE" ? (

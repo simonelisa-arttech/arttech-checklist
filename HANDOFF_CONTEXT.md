@@ -1,5 +1,21 @@
 # Handoff Context — AT SYSTEM (arttech-checklist)
 
+## Update 2026-03-25 - `AVVISATO` solo con destinatari validi
+
+- `app/api/cron/rinnovi-stage1/route.ts`
+  - il cron stage1 non puo' piu' procedere con `AVVISATO` se la lista destinatari effettivi e' vuota
+  - ora filtra i recipient con email valida, logga l'errore e salta l'update stato
+- `app/api/cron/scadenze-alert/route.ts`
+  - allineato lo stesso controllo su recipient effettivi con email valida
+  - messaggio errore normalizzato a `Email cliente mancante` quando il problema e' il cliente
+- `app/clienti/[cliente]/page.tsx`
+  - il flusso manuale non aggiorna piu' `AVVISATO` senza destinatari
+  - corretto anche il ramo `E2E mock`, che prima marcava `AVVISATO` senza validazione recipient
+- `app/checklists/[id]/page.tsx`
+  - messaggio manuale progetto allineato a `Email cliente mancante`
+- `components/RenewalsAlertModal.tsx`
+  - testo helper piu' esplicito quando manca email cliente
+
 ## Update 2026-03-25 - Link allegati in creazione intervento
 
 - `components/InterventiBlock.tsx`

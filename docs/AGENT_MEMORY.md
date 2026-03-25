@@ -1,5 +1,19 @@
 # AGENT MEMORY — Snapshot Operativo
 
+## Snapshot 2026-03-25 - Guardrail invio avvisi scadenze/rinnovi
+- regola da mantenere:
+  - `AVVISATO` puo' essere impostato solo se esiste almeno un destinatario effettivo con email valida
+- copertura:
+  - `app/api/cron/rinnovi-stage1/route.ts`
+  - `app/api/cron/scadenze-alert/route.ts`
+  - `app/clienti/[cliente]/page.tsx`
+  - `app/checklists/[id]/page.tsx`
+- caso cliente senza email:
+  - errore esplicito `Email cliente mancante`
+  - nessun update stato
+- attenzione:
+  - anche i rami `E2E mock` devono rispettare questa regola, altrimenti i test falsano il dominio
+
 ## Snapshot 2026-03-25 - Nuovo intervento con link allegati
 - `components/InterventiBlock.tsx`
   - il form di creazione intervento non supporta piu' solo file locali

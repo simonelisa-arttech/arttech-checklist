@@ -2689,7 +2689,7 @@ function buildFormData(c: Checklist): FormData {
       const manualCustomerEmail = String(payload.clienteEmailOverride || "").trim();
       if (payload.toCliente && customerEmailsForSend.length === 0) {
         if (!manualCustomerEmail.includes("@")) {
-          setProjectRinnoviAlertErr("Cliente senza email valida in anagrafica.");
+          setProjectRinnoviAlertErr("Email cliente mancante");
           return;
         }
         let clienteId = String(checklist?.cliente_id || "").trim();

@@ -281,7 +281,11 @@ export async function GET(request: Request) {
       }
     }
 
-    if (recipients.length === 0) {
+    const effectiveRecipients = recipients.filter((recipient) =>
+      String(recipient.email || "").trim().includes("@")
+    );
+
+    if (effectiveRecipients.length === 0) {
       skippedMissingRecipient += unsentRows.length;
       errors.push({
         cliente: first.cliente || null,
@@ -289,7 +293,7 @@ export async function GET(request: Request) {
         error:
           deliveryMode === "MANUALE_INTERNO"
             ? "Destinatario interno Art Tech mancante"
-            : "Email cliente mancante per AUTO_CLIENTE",
+            : "Email cliente mancante",
       });
       await supabase.from("checklist_alert_log").insert({
         checklist_id: first.checklist_id || null,
@@ -299,14 +303,14 @@ export async function GET(request: Request) {
         stato: first.workflow_stato || first.stato || null,
         destinatario: `Scadenze auto ${step}gg`,
         to_operatore_id: internalRecipient?.id || null,
-        to_email: recipients[0]?.email || null,
-        to_nome: recipients[0]?.name || internalRecipient?.nome || null,
+        to_email: effectiveRecipients[0]?.email || null,
+        to_nome: effectiveRecipients[0]?.name || internalRecipient?.nome || null,
         from_operatore_id: systemId,
         subject: buildScadenzeAlertSubject(first.cliente || null, step),
         messaggio:
           deliveryMode === "MANUALE_INTERNO"
             ? "Destinatario interno Art Tech mancante"
-            : "Email cliente mancante per AUTO_CLIENTE",
+            : "Email cliente mancante",
         inviato_email: false,
         trigger: `SCADENZE_${step}GG_ERROR`,
         canale: "scadenze_auto_error",
@@ -327,7 +331,7 @@ export async function GET(request: Request) {
     const text = customBody ? `${customBody}\n\n${fallbackText}` : fallbackText;
     const html = customBody ? buildCustomHtml(customBody, fallbackHtml) : fallbackHtml;
 
-    for (const recipient of recipients) {
+    for (const recipient of effectiveRecipients) {
       try {
         await sendEmail({ to: recipient.email, subject, text, html });
         emailsSent += 1;

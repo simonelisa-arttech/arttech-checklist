@@ -370,6 +370,7 @@ export async function GET(request: Request) {
 
   let processedClients = 0;
   let processedRows = 0;
+  let skippedMissingRecipient = 0;
   const nowIso = new Date().toISOString();
   for (const [groupKey, list] of grouped.entries()) {
     const [cliente, tipo] = groupKey.split("::");
@@ -475,8 +476,30 @@ export async function GET(request: Request) {
     }
     const dedupRecipients = Array.from(
       new Map(recipients.map((recipient) => [recipient.email.toLowerCase(), recipient])).values()
-    );
-    if (dedupRecipients.length === 0) continue;
+    ).filter((recipient) => String(recipient.email || "").trim().includes("@"));
+    if (dedupRecipients.length === 0) {
+      skippedMissingRecipient += eligible.length;
+      const missingRecipientDiff = eligible[0]?.scadenza
+        ? Math.ceil((new Date(String(eligible[0].scadenza)).setHours(0, 0, 0, 0) - today.getTime()) / 86400000)
+        : null;
+      await supabase.from("checklist_alert_log").insert({
+        checklist_id: eligible[0]?.checklist_id ?? null,
+        tipo: eligible[0]?.item_tipo ?? null,
+        riferimento: eligible[0]?.riferimento ?? eligible[0]?.descrizione ?? null,
+        stato: eligible[0]?.stato ?? null,
+        destinatario: `Regola auto ${missingRecipientDiff ?? "?"}gg`,
+        from_operatore_id: systemId,
+        messaggio:
+          shouldSendToCliente && !shouldSendToArtTech
+            ? "Email cliente mancante"
+            : "Nessun destinatario valido selezionato.",
+        inviato_email: false,
+        trigger: "AUTOMATICO",
+        canale: "rinnovo_stage1_auto_error",
+        scadenza: eligible[0]?.scadenza ?? null,
+      });
+      continue;
+    }
 
     const messaggio = buildStage1Message(cliente, eligible);
     const subject = `[Art Tech] Scadenze servizi – ${cliente || "—"}`;
@@ -542,5 +565,5 @@ export async function GET(request: Request) {
     processedRows += ids.length;
   }
 
-  return NextResponse.json({ processedClients, processedRows });
+  return NextResponse.json({ processedClients, processedRows, skippedMissingRecipient });
 }
