@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState, type UIEvent } from "react";
 import Link from "next/link";
 import ConfigMancante from "@/components/ConfigMancante";
+import PersonaleMultiSelect from "@/components/PersonaleMultiSelect";
 import SafetyComplianceBadge from "@/components/SafetyComplianceBadge";
 import { isSupabaseConfigured } from "@/lib/supabaseClient";
 import {
@@ -41,6 +42,7 @@ type CronoMeta = {
   data_inizio?: string | null;
   durata_giorni?: number | null;
   personale_previsto?: string | null;
+  personale_ids?: string[] | null;
   mezzi?: string | null;
   descrizione_attivita?: string | null;
   indirizzo?: string | null;
@@ -63,6 +65,7 @@ type OperativiFields = {
   data_inizio: string;
   durata_giorni: string;
   personale_previsto: string;
+  personale_ids: string[];
   mezzi: string;
   descrizione_attivita: string;
   indirizzo: string;
@@ -77,6 +80,7 @@ const EMPTY_OPERATIVI: OperativiFields = {
   data_inizio: "",
   durata_giorni: "",
   personale_previsto: "",
+  personale_ids: [],
   mezzi: "",
   descrizione_attivita: "",
   indirizzo: "",
@@ -92,6 +96,9 @@ function extractOperativi(meta?: CronoMeta | null): OperativiFields {
     data_inizio: normalizeOperativiDate(meta?.data_inizio),
     durata_giorni: durationToInputValue(meta?.durata_giorni),
     personale_previsto: String(meta?.personale_previsto || ""),
+    personale_ids: Array.isArray(meta?.personale_ids)
+      ? meta.personale_ids.map((value) => String(value || "").trim()).filter(Boolean)
+      : [],
     mezzi: String(meta?.mezzi || ""),
     descrizione_attivita: String(meta?.descrizione_attivita || ""),
     indirizzo: String(meta?.indirizzo || ""),
@@ -154,6 +161,7 @@ function hasDefinedOperativi(meta?: CronoMeta | null) {
   return Boolean(
     operativi.data_inizio ||
       operativi.durata_giorni ||
+      operativi.personale_ids.length > 0 ||
       operativi.personale_previsto.trim() ||
       operativi.mezzi.trim() ||
       operativi.descrizione_attivita.trim() ||
@@ -1028,6 +1036,10 @@ export default function CronoprogrammaPage() {
                   ) : null}
                   <div style={{ marginTop: 6 }}>
                     <SafetyComplianceBadge
+                      personaleIds={
+                        operativiDraftByKey[key]?.personale_ids ??
+                        extractOperativi(meta).personale_ids
+                      }
                       personaleText={
                         operativiDraftByKey[key]?.personale_previsto ??
                         extractOperativi(meta).personale_previsto
@@ -1192,17 +1204,28 @@ export default function CronoprogrammaPage() {
                   </div>
                 </div>
                 <div>
-                  <textarea
-                    value={operativiDraftByKey[key]?.personale_previsto ?? ""}
-                    onChange={(e) =>
+                  <PersonaleMultiSelect
+                    personaleIds={operativiDraftByKey[key]?.personale_ids ?? []}
+                    legacyValue={
+                      operativiDraftByKey[key]?.personale_previsto ??
+                      extractOperativi(meta).personale_previsto
+                    }
+                    onChange={({ personaleIds, personaleDisplay }) =>
                       setOperativiDraftByKey((prev) => ({
                         ...prev,
-                        [key]: { ...(prev[key] || EMPTY_OPERATIVI), personale_previsto: e.target.value },
+                        [key]: {
+                          ...(prev[key] || EMPTY_OPERATIVI),
+                          personale_ids: personaleIds,
+                          personale_previsto: personaleDisplay,
+                        },
                       }))
                     }
-                    placeholder="Nominativi + incarichi"
-                    style={{ width: "100%", minHeight: 64, padding: 6, resize: "vertical" }}
                   />
+                  <div style={{ marginTop: 6, fontSize: 11, opacity: 0.7 }}>
+                    Visualizzazione compatibile:{" "}
+                    {(operativiDraftByKey[key]?.personale_previsto ??
+                      extractOperativi(meta).personale_previsto) || "—"}
+                  </div>
                 </div>
                 <div>
                   <textarea

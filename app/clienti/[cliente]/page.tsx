@@ -973,6 +973,7 @@ export default function ClientePage({
     dataInizio: "",
     durataGiorni: "",
     personalePrevisto: "",
+    personaleIds: [] as string[],
     mezzi: "",
     descrizioneAttivita: "",
     indirizzo: "",
@@ -999,6 +1000,7 @@ export default function ClientePage({
     dataInizio: "",
     durataGiorni: "",
     personalePrevisto: "",
+    personaleIds: [] as string[],
     mezzi: "",
     descrizioneAttivita: "",
     indirizzo: "",
@@ -1013,6 +1015,7 @@ export default function ClientePage({
     dataInizio: string;
     durataGiorni: string;
     personalePrevisto: string;
+    personaleIds: string[];
     mezzi: string;
     descrizioneAttivita: string;
     indirizzo: string;
@@ -1028,6 +1031,7 @@ export default function ClientePage({
       data_inizio: form.dataInizio,
       durata_giorni: form.durataGiorni,
       personale_previsto: form.personalePrevisto,
+      personale_ids: form.personaleIds,
       mezzi: form.mezzi,
       descrizione_attivita: form.descrizioneAttivita,
       indirizzo: form.indirizzo,
@@ -1036,6 +1040,27 @@ export default function ClientePage({
       referente_cliente_contatto: form.referenteClienteContatto,
       commerciale_art_tech_nome: form.commercialeArtTechNome,
       commerciale_art_tech_contatto: form.commercialeArtTechContatto,
+    };
+  }
+
+  function applyClienteInterventoOperativiForm(
+    base: typeof editIntervento,
+    form: Awaited<ReturnType<typeof loadInterventoOperativi>>["form"]
+  ) {
+    return {
+      ...base,
+      dataInizio: form.data_inizio,
+      durataGiorni: form.durata_giorni,
+      personalePrevisto: form.personale_previsto,
+      personaleIds: form.personale_ids,
+      mezzi: form.mezzi,
+      descrizioneAttivita: form.descrizione_attivita,
+      indirizzo: form.indirizzo,
+      orario: form.orario,
+      referenteClienteNome: form.referente_cliente_nome,
+      referenteClienteContatto: form.referente_cliente_contatto,
+      commercialeArtTechNome: form.commerciale_art_tech_nome,
+      commercialeArtTechContatto: form.commerciale_art_tech_contatto,
     };
   }
 
@@ -2084,6 +2109,7 @@ export default function ClientePage({
       dataInizio: "",
       durataGiorni: "",
       personalePrevisto: "",
+      personaleIds: [],
       mezzi: "",
       descrizioneAttivita: "",
       indirizzo: "",
@@ -2096,7 +2122,7 @@ export default function ClientePage({
     setEditIntervento(baseForm);
     try {
       const { form } = await loadInterventoOperativi(i.id);
-      setEditIntervento({ ...baseForm, ...form });
+      setEditIntervento(applyClienteInterventoOperativiForm(baseForm, form));
     } catch (e: any) {
       setInterventiError(String(e?.message || "Errore caricamento dati operativi intervento"));
     }
@@ -3424,6 +3450,7 @@ export default function ClientePage({
       dataInizio: "",
       durataGiorni: "",
       personalePrevisto: "",
+      personaleIds: [],
       mezzi: "",
       descrizioneAttivita: "",
       indirizzo: "",
@@ -7084,12 +7111,13 @@ ${rinnovi30ggBreakdown.debugSample
           statoIntervento: newIntervento.statoIntervento,
           esitoFatturazione: "",
           numeroFattura: newIntervento.numeroFattura,
-      fatturatoIl: newIntervento.fatturatoIl,
-      note: newIntervento.note,
-      noteTecniche: "",
-      dataInizio: newIntervento.dataInizio,
-      durataGiorni: newIntervento.durataGiorni,
-      personalePrevisto: newIntervento.personalePrevisto,
+          fatturatoIl: newIntervento.fatturatoIl,
+          note: newIntervento.note,
+          noteTecniche: "",
+          dataInizio: newIntervento.dataInizio,
+          durataGiorni: newIntervento.durataGiorni,
+          personalePrevisto: newIntervento.personalePrevisto,
+          personaleIds: newIntervento.personaleIds,
           mezzi: newIntervento.mezzi,
           descrizioneAttivita: newIntervento.descrizioneAttivita,
           indirizzo: newIntervento.indirizzo,
@@ -7117,6 +7145,7 @@ ${rinnovi30ggBreakdown.debugSample
             dataInizio: value.dataInizio,
             durataGiorni: value.durataGiorni,
             personalePrevisto: value.personalePrevisto,
+            personaleIds: value.personaleIds,
             mezzi: value.mezzi,
             descrizioneAttivita: value.descrizioneAttivita,
             indirizzo: value.indirizzo,
@@ -7155,6 +7184,7 @@ ${rinnovi30ggBreakdown.debugSample
             dataInizio: value.dataInizio,
             durataGiorni: value.durataGiorni,
             personalePrevisto: value.personalePrevisto,
+            personaleIds: value.personaleIds,
             mezzi: value.mezzi,
             descrizioneAttivita: value.descrizioneAttivita,
             indirizzo: value.indirizzo,

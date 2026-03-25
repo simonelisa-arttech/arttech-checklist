@@ -13,6 +13,7 @@ import {
 
 type Props = {
   personaleText?: string | null;
+  personaleIds?: string[] | null;
   showSummary?: boolean;
 };
 
@@ -84,7 +85,11 @@ async function loadSafetyDataset() {
   }
 }
 
-export default function SafetyComplianceBadge({ personaleText, showSummary = true }: Props) {
+export default function SafetyComplianceBadge({
+  personaleText,
+  personaleIds,
+  showSummary = true,
+}: Props) {
   const [dataset, setDataset] = useState<SafetyDataset | null>(safetyDatasetCache);
   const [error, setError] = useState<string | null>(null);
 
@@ -106,12 +111,18 @@ export default function SafetyComplianceBadge({ personaleText, showSummary = tru
   }, []);
 
   const compliance = useMemo(() => {
-    if (!String(personaleText || "").trim()) return null;
+    if (!String(personaleText || "").trim() && !(personaleIds || []).length) return null;
     if (!dataset) return null;
-    return evaluateSafetyCompliance(personaleText, dataset);
-  }, [dataset, personaleText]);
+    return evaluateSafetyCompliance(
+      {
+        personaleIds: personaleIds || [],
+        legacyAssignments: personaleText || "",
+      },
+      dataset
+    );
+  }, [dataset, personaleIds, personaleText]);
 
-  if (!String(personaleText || "").trim()) return null;
+  if (!String(personaleText || "").trim() && !(personaleIds || []).length) return null;
   if (error) {
     return (
       <span

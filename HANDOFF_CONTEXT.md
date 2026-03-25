@@ -1,5 +1,44 @@
 # Handoff Context — AT SYSTEM (arttech-checklist)
 
+## Update 2026-03-25 - Personale operativo su `personale_ids` con fallback legacy
+
+- Source of truth nuova per personale operativo:
+  - `cronoprogramma_meta.personale_ids` (`uuid[]`)
+  - `personale_previsto` resta solo come stringa derivata/compatibile per UI legacy, filtri e conflitti testuali
+- UI allineate:
+  - `app/cronoprogramma/page.tsx`
+  - `app/checklists/[id]/page.tsx`
+  - `components/InterventiBlock.tsx`
+  - usano ora solo `components/PersonaleMultiSelect.tsx`
+  - rimosso l'inserimento manuale testo libero del personale
+- `components/PersonaleMultiSelect.tsx`
+  - accetta `personaleIds` + `legacyValue`
+  - risolve automaticamente i nomi legacy in ID quando trova un match in tabella `personale`
+  - i valori non riconosciuti restano visibili come `Legacy non collegati`
+  - nessun nuovo nome puo' essere inserito manualmente
+- Safety:
+  - `components/SafetyComplianceBadge.tsx`
+  - `lib/safetyCompliance.ts`
+  - lavorano prima su `personale_ids`
+  - usano `legacyAssignments` solo come fallback
+  - per personale esterno risalgono anche all'azienda collegata per i controlli documentali
+- API / meta operativi:
+  - `app/api/cronoprogramma/route.ts`
+    - legge/salva `personale_ids`
+    - retry compatibile se la colonna non esiste ancora a DB
+  - `lib/interventoOperativi.ts`
+    - include `personale_ids` in load/save
+- Interventi progetto/cliente:
+  - i form intervento ora mantengono sia `personaleIds` sia `personalePrevisto`
+  - la stringa viene sempre derivata dalla selezione ID
+- Migrazione DB:
+  - `scripts/20260325_add_cronoprogramma_personale_ids.sql`
+    - aggiunge `cronoprogramma_meta.personale_ids uuid[]`
+    - crea indice GIN
+- Regola operativa:
+  - nuovi assegnamenti personale solo da elenco `personale`
+  - i legacy vengono auto-collegati dove possibile e segnalati dove non risolvibili
+
 ## Update 2026-03-25 - Refactor scadenze/avvisi: preset senza trigger, regole globali per step
 
 - Refactor principale completato per separare in modo netto:

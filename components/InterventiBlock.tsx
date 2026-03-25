@@ -43,6 +43,7 @@ export type InterventoFormState = {
   dataInizio: string;
   durataGiorni: string;
   personalePrevisto: string;
+  personaleIds: string[];
   mezzi: string;
   descrizioneAttivita: string;
   indirizzo: string;
@@ -273,7 +274,10 @@ function renderOperativiFields(
     <div style={{ marginTop: 10 }}>
       <div style={{ display: "grid", gap: 8, marginBottom: 8 }}>
         <div style={{ fontWeight: 700 }}>Dati operativi intervento</div>
-        <SafetyComplianceBadge personaleText={form.personalePrevisto} />
+          <SafetyComplianceBadge
+            personaleText={form.personalePrevisto}
+            personaleIds={form.personaleIds}
+          />
       </div>
       <div
         style={{
@@ -314,11 +318,18 @@ function renderOperativiFields(
         <div>
           <div style={{ fontSize: 12, marginBottom: 4 }}>Personale previsto / incarico</div>
           <PersonaleMultiSelect
-            value={form.personalePrevisto}
-            onChange={(personalePrevisto) => setForm({ ...form, personalePrevisto })}
+            personaleIds={form.personaleIds}
+            legacyValue={form.personalePrevisto}
+            onChange={({ personaleIds, personaleDisplay }) =>
+              setForm({
+                ...form,
+                personaleIds,
+                personalePrevisto: personaleDisplay,
+              })
+            }
           />
           <div style={{ marginTop: 6, fontSize: 11, opacity: 0.7 }}>
-            Salvato come stringa compatibile: {form.personalePrevisto || "—"}
+            Visualizzazione compatibile: {form.personalePrevisto || "—"}
           </div>
         </div>
         <div>

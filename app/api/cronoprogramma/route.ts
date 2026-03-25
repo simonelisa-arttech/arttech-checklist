@@ -14,6 +14,7 @@ type OperativiInput = {
   data_inizio?: string | null;
   durata_giorni?: string | number | null;
   personale_previsto?: string | null;
+  personale_ids?: string[] | null;
   mezzi?: string | null;
   descrizione_attivita?: string | null;
   indirizzo?: string | null;
@@ -66,11 +67,27 @@ function normalizeUpper(value: unknown) {
   return String(value || "").trim().toUpperCase();
 }
 
+function isUuidLike(value: string) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
+
+function cleanUuidArray(values: unknown) {
+  if (!Array.isArray(values)) return [];
+  return Array.from(
+    new Set(
+      values
+        .map((value) => String(value || "").trim())
+        .filter((value) => isUuidLike(value))
+    )
+  );
+}
+
 function toOperativiPayload(input: OperativiInput) {
   return {
     data_inizio: normalizeOperativiDate(input?.data_inizio) || null,
     durata_giorni: normalizeOperativiDuration(input?.durata_giorni),
     personale_previsto: cleanText(input?.personale_previsto),
+    personale_ids: cleanUuidArray(input?.personale_ids),
     mezzi: cleanText(input?.mezzi),
     descrizione_attivita: cleanText(input?.descrizione_attivita),
     indirizzo: cleanText(input?.indirizzo),
@@ -95,6 +112,9 @@ function mapMetaRow(row: any) {
         ? Number(row?.durata_giorni)
         : null,
     personale_previsto: row?.personale_previsto || null,
+    personale_ids: Array.isArray(row?.personale_ids)
+      ? row.personale_ids.map((value: unknown) => String(value || "").trim()).filter(Boolean)
+      : [],
     mezzi: row?.mezzi || null,
     descrizione_attivita: row?.descrizione_attivita || null,
     indirizzo: row?.indirizzo || null,
@@ -507,11 +527,22 @@ export async function POST(request: Request) {
       updated_by_operatore: operatore.id,
     };
 
-    const { data, error } = await supabaseAdmin
+    let { data, error } = await supabaseAdmin
       .from("cronoprogramma_meta")
       .upsert(payload, { onConflict: "row_kind,row_ref_id" })
       .select("*, operatore:updated_by_operatore(nome)")
       .maybeSingle();
+
+    if (error && String(error.message || "").toLowerCase().includes("personale_ids")) {
+      const { personale_ids: _skip, ...payloadLegacy } = payload as Record<string, unknown>;
+      const retry = await supabaseAdmin
+        .from("cronoprogramma_meta")
+        .upsert(payloadLegacy, { onConflict: "row_kind,row_ref_id" })
+        .select("*, operatore:updated_by_operatore(nome)")
+        .maybeSingle();
+      data = retry.data;
+      error = retry.error;
+    }
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 });

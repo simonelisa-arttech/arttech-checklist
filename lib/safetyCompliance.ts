@@ -54,6 +54,13 @@ export type SafetyComplianceResult = {
   unknownAssignments: string[];
 };
 
+export type SafetyComplianceAssignments =
+  | string
+  | {
+      personaleIds?: string[] | null;
+      legacyAssignments?: string | null;
+    };
+
 export type SafetyDocumentState = "PRESENTE_VALIDO" | "IN_SCADENZA" | "SCADUTO" | "MANCANTE";
 
 export type SafetyExpectedDocumentItem = {
@@ -314,11 +321,18 @@ function pickWorstStatus(values: SafetyStatus[]) {
 }
 
 export function evaluateSafetyCompliance(
-  rawAssignments: string | null | undefined,
+  rawAssignments: SafetyComplianceAssignments | null | undefined,
   dataset: SafetyDataset
 ): SafetyComplianceResult {
-  const tokens = toAssignmentTokens(rawAssignments);
-  if (!tokens.length) {
+  const assignment =
+    typeof rawAssignments === "string"
+      ? { personaleIds: [] as string[], legacyAssignments: rawAssignments }
+      : {
+          personaleIds: rawAssignments?.personaleIds || [],
+          legacyAssignments: rawAssignments?.legacyAssignments || "",
+        };
+  const tokens = toAssignmentTokens(assignment.legacyAssignments);
+  if (!tokens.length && assignment.personaleIds.length === 0) {
     return {
       status: "NON_ASSEGNATO",
       label: "Safety non assegnato",
@@ -335,10 +349,30 @@ export function evaluateSafetyCompliance(
   const matchedAziende: SafetyAziendaRow[] = [];
   const unknownAssignments: string[] = [];
 
+  for (const personaleId of assignment.personaleIds) {
+    const person =
+      dataset.personale.find((row) => String(row.id || "").trim() === String(personaleId || "").trim()) ||
+      null;
+    if (!person) continue;
+    if (!matchedPersonale.some((row) => row.id === person.id)) matchedPersonale.push(person);
+    if (person.azienda_id) {
+      const company = dataset.aziende.find((row) => row.id === person.azienda_id) || null;
+      if (company && !matchedAziende.some((row) => row.id === company.id)) {
+        matchedAziende.push(company);
+      }
+    }
+  }
+
   for (const token of tokens) {
     const person = matchPersonaleToken(token, dataset.personale);
     if (person) {
       if (!matchedPersonale.some((row) => row.id === person.id)) matchedPersonale.push(person);
+      if (person.azienda_id) {
+        const company = dataset.aziende.find((row) => row.id === person.azienda_id) || null;
+        if (company && !matchedAziende.some((row) => row.id === company.id)) {
+          matchedAziende.push(company);
+        }
+      }
       continue;
     }
     const company = matchAziendaToken(token, dataset.aziende);

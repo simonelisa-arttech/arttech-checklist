@@ -2,44 +2,29 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { dbFrom } from "@/lib/clientDbBroker";
+import {
+  arraysEqualAsSets,
+  normalizePersonaleSearchText,
+  resolvePersonaleSelection,
+  type PersonaleSelectionOption,
+} from "@/lib/personaleAssignments";
 
-type PersonaleOption = {
-  id: string;
-  label: string;
-  display: string;
-  search: string;
+type ChangePayload = {
+  personaleIds: string[];
+  personaleDisplay: string;
+  unresolvedLegacyTokens: string[];
 };
 
 type Props = {
-  value: string;
-  onChange: (value: string) => void;
+  personaleIds: string[];
+  legacyValue?: string | null;
+  onChange: (value: ChangePayload) => void;
   placeholder?: string;
   disabled?: boolean;
 };
 
-let personaleOptionsCache: PersonaleOption[] | null = null;
-let personaleOptionsPromise: Promise<PersonaleOption[]> | null = null;
-
-function normalizeText(value?: string | null) {
-  return String(value || "")
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .replace(/[^\p{L}\p{N}\s]/gu, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function splitLegacyValue(value: string) {
-  return Array.from(
-    new Set(
-      String(value || "")
-        .split(/[;\n,|]+/g)
-        .map((part) => part.trim())
-        .filter(Boolean)
-    )
-  );
-}
+let personaleOptionsCache: PersonaleSelectionOption[] | null = null;
+let personaleOptionsPromise: Promise<PersonaleSelectionOption[]> | null = null;
 
 async function loadPersonaleOptions() {
   if (personaleOptionsCache) return personaleOptionsCache;
@@ -52,7 +37,10 @@ async function loadPersonaleOptions() {
         .eq("attivo", true)
         .order("cognome", { ascending: true })
         .order("nome", { ascending: true }),
-      dbFrom("aziende").select("id,ragione_sociale").eq("attiva", true).order("ragione_sociale", { ascending: true }),
+      dbFrom("aziende")
+        .select("id,ragione_sociale")
+        .eq("attiva", true)
+        .order("ragione_sociale", { ascending: true }),
     ]);
 
     if (personaleRes.error) throw new Error(personaleRes.error.message);
@@ -73,11 +61,11 @@ async function loadPersonaleOptions() {
         const label = [nome, cognome].filter(Boolean).join(" ").trim();
         const display =
           tipo === "ESTERNO" && aziendaNome ? `${label} · ${aziendaNome}` : label || aziendaNome;
-        const search = normalizeText(`${label} ${aziendaNome} ${tipo}`);
+        const search = normalizePersonaleSearchText(`${label} ${aziendaNome} ${tipo}`);
         if (!id || !label) return null;
-        return { id, label, display, search } satisfies PersonaleOption;
+        return { id, label, display, search } satisfies PersonaleSelectionOption;
       })
-      .filter(Boolean) as PersonaleOption[];
+      .filter(Boolean) as PersonaleSelectionOption[];
 
     personaleOptionsCache = options;
     return options;
@@ -91,12 +79,13 @@ async function loadPersonaleOptions() {
 }
 
 export default function PersonaleMultiSelect({
-  value,
+  personaleIds,
+  legacyValue,
   onChange,
   placeholder = "Cerca e seleziona personale...",
   disabled,
 }: Props) {
-  const [options, setOptions] = useState<PersonaleOption[]>(personaleOptionsCache || []);
+  const [options, setOptions] = useState<PersonaleSelectionOption[]>(personaleOptionsCache || []);
   const [error, setError] = useState<string | null>(null);
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -129,53 +118,60 @@ export default function PersonaleMultiSelect({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  const parsed = useMemo(() => {
-    const tokens = splitLegacyValue(value);
-    const selectedIds: string[] = [];
-    const legacyTokens: string[] = [];
-    for (const token of tokens) {
-      const normalized = normalizeText(token);
-      const match =
-        options.find((option) => normalizeText(option.label) === normalized) ||
-        options.find((option) => normalized.includes(normalizeText(option.label))) ||
-        null;
-      if (match) {
-        if (!selectedIds.includes(match.id)) selectedIds.push(match.id);
-      } else {
-        legacyTokens.push(token);
-      }
+  const resolved = useMemo(
+    () => resolvePersonaleSelection(personaleIds, legacyValue, options),
+    [personaleIds, legacyValue, options]
+  );
+
+  useEffect(() => {
+    if (options.length === 0) return;
+    const nextDisplay = resolved.displayValue;
+    const currentDisplay = String(legacyValue || "").trim();
+    if (
+      !arraysEqualAsSets(resolved.selectedIds, personaleIds) ||
+      nextDisplay !== currentDisplay
+    ) {
+      onChange({
+        personaleIds: resolved.selectedIds,
+        personaleDisplay: nextDisplay,
+        unresolvedLegacyTokens: resolved.unresolvedLegacyTokens,
+      });
     }
-    return { selectedIds, legacyTokens };
-  }, [options, value]);
+  }, [legacyValue, onChange, options.length, personaleIds, resolved]);
 
   const selectedOptions = useMemo(
-    () => options.filter((option) => parsed.selectedIds.includes(option.id)),
-    [options, parsed.selectedIds]
+    () => options.filter((option) => resolved.selectedIds.includes(option.id)),
+    [options, resolved.selectedIds]
   );
 
   const filteredOptions = useMemo(() => {
-    const needle = normalizeText(query);
+    const needle = normalizePersonaleSearchText(query);
     if (!needle) return options;
     return options.filter((option) => option.search.includes(needle));
   }, [options, query]);
 
-  function emit(nextSelectedIds: string[], legacyTokens = parsed.legacyTokens) {
-    const selectedLabels = nextSelectedIds
-      .map((id) => options.find((option) => option.id === id)?.label || "")
-      .filter(Boolean);
-    onChange([...selectedLabels, ...legacyTokens].join("; "));
+  function emit(nextSelectedIds: string[], unresolvedLegacyTokens = resolved.unresolvedLegacyTokens) {
+    onChange({
+      personaleIds: nextSelectedIds,
+      personaleDisplay: resolvePersonaleSelection(nextSelectedIds, unresolvedLegacyTokens.join("; "), options)
+        .displayValue,
+      unresolvedLegacyTokens,
+    });
   }
 
   function toggleOption(optionId: string) {
     if (disabled) return;
-    const nextIds = parsed.selectedIds.includes(optionId)
-      ? parsed.selectedIds.filter((id) => id !== optionId)
-      : [...parsed.selectedIds, optionId];
+    const nextIds = resolved.selectedIds.includes(optionId)
+      ? resolved.selectedIds.filter((id) => id !== optionId)
+      : [...resolved.selectedIds, optionId];
     emit(nextIds);
   }
 
   function removeLegacyToken(token: string) {
-    emit(parsed.selectedIds, parsed.legacyTokens.filter((value) => value !== token));
+    emit(
+      resolved.selectedIds,
+      resolved.unresolvedLegacyTokens.filter((value) => value !== token)
+    );
   }
 
   return (
@@ -195,8 +191,12 @@ export default function PersonaleMultiSelect({
           cursor: disabled ? "default" : "pointer",
         }}
       >
-        {selectedOptions.length > 0 || parsed.legacyTokens.length > 0
-          ? `${selectedOptions.length} selezionati${parsed.legacyTokens.length ? ` · legacy ${parsed.legacyTokens.length}` : ""}`
+        {selectedOptions.length > 0 || resolved.unresolvedLegacyTokens.length > 0
+          ? `${selectedOptions.length} selezionati${
+              resolved.unresolvedLegacyTokens.length
+                ? ` · legacy ${resolved.unresolvedLegacyTokens.length}`
+                : ""
+            }`
           : placeholder}
       </button>
 
@@ -219,7 +219,7 @@ export default function PersonaleMultiSelect({
             {option.display}
           </span>
         ))}
-        {parsed.legacyTokens.map((token) => (
+        {resolved.unresolvedLegacyTokens.map((token) => (
           <button
             key={token}
             type="button"
@@ -236,16 +236,14 @@ export default function PersonaleMultiSelect({
               fontSize: 12,
               cursor: "pointer",
             }}
-            title="Valore legacy non riconosciuto. Clicca per rimuoverlo."
+            title="Valore legacy non collegato. Clicca per rimuoverlo."
           >
-            Legacy: {token}
+            Legacy non collegati: {token}
           </button>
         ))}
       </div>
 
-      {error ? (
-        <div style={{ marginTop: 6, fontSize: 12, color: "#b91c1c" }}>{error}</div>
-      ) : null}
+      {error ? <div style={{ marginTop: 6, fontSize: 12, color: "#b91c1c" }}>{error}</div> : null}
 
       {open ? (
         <div
@@ -274,7 +272,7 @@ export default function PersonaleMultiSelect({
               <div style={{ padding: 8, fontSize: 12, opacity: 0.7 }}>Nessuna persona trovata</div>
             ) : (
               filteredOptions.map((option) => {
-                const checked = parsed.selectedIds.includes(option.id);
+                const checked = resolved.selectedIds.includes(option.id);
                 return (
                   <label
                     key={option.id}

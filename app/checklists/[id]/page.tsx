@@ -398,6 +398,7 @@ type CronoOperativiMeta = {
   data_inizio?: string | null;
   durata_giorni?: number | null;
   personale_previsto?: string | null;
+  personale_ids?: string[] | null;
   mezzi?: string | null;
   descrizione_attivita?: string | null;
   indirizzo?: string | null;
@@ -412,6 +413,7 @@ type CronoOperativiFormState = {
   data_inizio: string;
   durata_giorni: string;
   personale_previsto: string;
+  personale_ids: string[];
   mezzi: string;
   descrizione_attivita: string;
   indirizzo: string;
@@ -609,6 +611,7 @@ const EMPTY_CRONO_OPERATIVI: CronoOperativiFormState = {
   data_inizio: "",
   durata_giorni: "",
   personale_previsto: "",
+  personale_ids: [],
   mezzi: "",
   descrizione_attivita: "",
   indirizzo: "",
@@ -624,6 +627,9 @@ function extractCronoOperativi(meta?: CronoOperativiMeta | null) {
     data_inizio: normalizeOperativiDate(meta?.data_inizio),
     durata_giorni: durationToInputValue(meta?.durata_giorni),
     personale_previsto: String(meta?.personale_previsto || ""),
+    personale_ids: Array.isArray(meta?.personale_ids)
+      ? meta.personale_ids.map((value) => String(value || "").trim()).filter(Boolean)
+      : [],
     mezzi: String(meta?.mezzi || ""),
     descrizione_attivita: String(meta?.descrizione_attivita || ""),
     indirizzo: String(meta?.indirizzo || ""),
@@ -1536,6 +1542,28 @@ function buildFormData(c: Checklist): FormData {
       data_inizio: form.data_inizio,
       durata_giorni: form.durata_giorni,
       personale_previsto: form.personale_previsto,
+      personale_ids: form.personale_ids,
+      mezzi: form.mezzi,
+      descrizione_attivita: form.descrizione_attivita,
+      indirizzo: form.indirizzo,
+      orario: form.orario,
+      referente_cliente_nome: form.referente_cliente_nome,
+      referente_cliente_contatto: form.referente_cliente_contatto,
+      commerciale_art_tech_nome: form.commerciale_art_tech_nome,
+      commerciale_art_tech_contatto: form.commerciale_art_tech_contatto,
+    };
+  }
+
+  function applyProjectInterventoOperativiForm(
+    base: ProjectInterventoForm,
+    form: InterventoOperativiFormState
+  ): ProjectInterventoForm {
+    return {
+      ...base,
+      data_inizio: form.data_inizio,
+      durata_giorni: form.durata_giorni,
+      personale_previsto: form.personale_previsto,
+      personale_ids: form.personale_ids,
       mezzi: form.mezzi,
       descrizione_attivita: form.descrizione_attivita,
       indirizzo: form.indirizzo,
@@ -1736,10 +1764,9 @@ function buildFormData(c: Checklist): FormData {
       const created = list.find((row) => row.id === inserted?.id) || null;
       if (created) {
         setProjectInterventoEditId(created.id);
-        setProjectInterventoEditForm({
-          ...buildProjectInterventoForm(created),
-          ...newInterventoOperativi,
-        });
+        setProjectInterventoEditForm(
+          applyProjectInterventoOperativiForm(buildProjectInterventoForm(created), newInterventoOperativi)
+        );
         setProjectInterventiExpandedId(created.id);
       }
     }
@@ -1751,7 +1778,7 @@ function buildFormData(c: Checklist): FormData {
     setProjectInterventoEditForm(baseForm);
     try {
       const { form } = await loadInterventoOperativi(it.id);
-      setProjectInterventoEditForm({ ...baseForm, ...form });
+      setProjectInterventoEditForm(applyProjectInterventoOperativiForm(baseForm, form));
     } catch (e: any) {
       setProjectInterventiError(
         String(e?.message || "Errore caricamento dati operativi intervento")
@@ -3661,7 +3688,10 @@ function buildFormData(c: Checklist): FormData {
     >
       <div style={{ display: "grid", gap: 8, marginBottom: 10 }}>
         <div style={{ fontWeight: 800 }}>{title}</div>
-        <SafetyComplianceBadge personaleText={form.personale_previsto} />
+        <SafetyComplianceBadge
+          personaleText={form.personale_previsto}
+          personaleIds={form.personale_ids}
+        />
       </div>
       <div
         style={{
@@ -3709,13 +3739,18 @@ function buildFormData(c: Checklist): FormData {
         <div>
           <div style={{ fontSize: 12, marginBottom: 4 }}>Personale previsto / incarico</div>
           <PersonaleMultiSelect
-            value={form.personale_previsto}
-            onChange={(personale_previsto) =>
-              setForm((prev) => ({ ...prev, personale_previsto }))
+            personaleIds={form.personale_ids}
+            legacyValue={form.personale_previsto}
+            onChange={({ personaleIds, personaleDisplay }) =>
+              setForm((prev) => ({
+                ...prev,
+                personale_ids: personaleIds,
+                personale_previsto: personaleDisplay,
+              }))
             }
           />
           <div style={{ marginTop: 6, fontSize: 11, opacity: 0.7 }}>
-            Salvato come stringa compatibile: {form.personale_previsto || "—"}
+            Visualizzazione compatibile: {form.personale_previsto || "—"}
           </div>
         </div>
         <div>
@@ -5397,6 +5432,7 @@ function buildFormData(c: Checklist): FormData {
         dataInizio: newProjectIntervento.data_inizio,
         durataGiorni: newProjectIntervento.durata_giorni,
         personalePrevisto: newProjectIntervento.personale_previsto,
+        personaleIds: newProjectIntervento.personale_ids || [],
         mezzi: newProjectIntervento.mezzi,
         descrizioneAttivita: newProjectIntervento.descrizione_attivita,
         indirizzo: newProjectIntervento.indirizzo,
@@ -5422,6 +5458,7 @@ function buildFormData(c: Checklist): FormData {
           data_inizio: value.dataInizio,
           durata_giorni: value.durataGiorni,
           personale_previsto: value.personalePrevisto,
+          personale_ids: value.personaleIds,
           mezzi: value.mezzi,
           descrizione_attivita: value.descrizioneAttivita,
           indirizzo: value.indirizzo,
@@ -5456,6 +5493,7 @@ function buildFormData(c: Checklist): FormData {
         dataInizio: projectInterventoEditForm?.data_inizio || "",
         durataGiorni: projectInterventoEditForm?.durata_giorni || "",
         personalePrevisto: projectInterventoEditForm?.personale_previsto || "",
+        personaleIds: projectInterventoEditForm?.personale_ids || [],
         mezzi: projectInterventoEditForm?.mezzi || "",
         descrizioneAttivita: projectInterventoEditForm?.descrizione_attivita || "",
         indirizzo: projectInterventoEditForm?.indirizzo || "",
@@ -5483,6 +5521,7 @@ function buildFormData(c: Checklist): FormData {
                 data_inizio: value.dataInizio,
                 durata_giorni: value.durataGiorni,
                 personale_previsto: value.personalePrevisto,
+                personale_ids: value.personaleIds,
                 mezzi: value.mezzi,
                 descrizione_attivita: value.descrizioneAttivita,
                 indirizzo: value.indirizzo,

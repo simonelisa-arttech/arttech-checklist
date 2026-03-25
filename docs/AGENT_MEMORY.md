@@ -1,5 +1,28 @@
 # AGENT MEMORY — Snapshot Operativo
 
+## Snapshot 2026-03-25 - Personale operativo su ID, non piu' su testo libero
+- Nuova source of truth:
+  - `cronoprogramma_meta.personale_ids` (`uuid[]`)
+- Compatibilita':
+  - `personale_previsto` resta solo come stringa derivata / fallback legacy
+  - non usarla piu' come campo di input autorevole
+- UI coperte:
+  - `app/cronoprogramma/page.tsx`
+  - `app/checklists/[id]/page.tsx`
+  - `components/InterventiBlock.tsx`
+  - tutte usano `components/PersonaleMultiSelect.tsx`
+- Regola operativa:
+  - non introdurre di nuovo input testo libero, `datalist` o autocomplete manuale per il personale
+  - nuovi assegnamenti solo da tabella `personale`
+  - i valori legacy devono essere solo:
+    - auto-risolti in ID quando il match e' affidabile
+    - oppure mostrati come `Legacy non collegati`
+- Safety:
+  - `lib/safetyCompliance.ts` e `components/SafetyComplianceBadge.tsx` lavorano prima su `personale_ids`
+  - il fallback parsing stringa serve solo per dati storici
+- Migrazione da eseguire su Supabase:
+  - `scripts/20260325_add_cronoprogramma_personale_ids.sql`
+
 ## Snapshot 2026-03-25 - Scadenze/avvisi rifattorizzati con regole globali per step
 - `Preset avvisi`
   - non usano piu il concetto applicativo di `trigger`
