@@ -19,6 +19,10 @@
   - incluso `po`, `impianto_indirizzo`, `saas_scadenza` e gli altri gia' mappati nella route
 - child entities:
   - seriali / licenze / accessori continuano a seguire il ramo esistente post-persistenza
+  - update licenze reso piu' robusto:
+    - log temporaneo con `po_value`, `licenza_scadenza_value`, `project_id`, `matched_license_ids`
+    - se `licenza_scadenza` e' presente in `update`, le licenze esistenti vengono aggiornate
+    - se il CSV non elenca tipi licenza ma il progetto ha gia' licenze, la route puo' riallineare la `scadenza` sugli item esistenti del checklist
 
 ## Update 2026-03-25 - Campo `PO` aggiunto al flusso progetti
 

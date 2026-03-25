@@ -16,6 +16,11 @@
 - deduplica:
   - priorita' a `cliente + nome_progetto`
   - mantenere fallback compatibile sul tag progetto gia' esistente
+- debug temporaneo utile per bug su update:
+  - `po_value`
+  - `licenza_scadenza_value`
+  - `project_id`
+  - `matched_license_ids`
 
 ## Snapshot 2026-03-25 - `PO` e' un campo dedicato del progetto
 - storage:

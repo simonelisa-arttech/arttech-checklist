@@ -742,8 +742,6 @@ async function insertLicensesCompatible(
   defaultScadenza: string | null,
   onConflict: ProjectImportMode
 ) {
-  if (!licenses.length) return;
-
   const { data: existingRows, error: existingErr } = await supabaseAdmin
     .from("licenses")
     .select("id, tipo, scadenza")
@@ -756,10 +754,22 @@ async function insertLicensesCompatible(
       .filter(([key]) => Boolean(key))
   );
 
-  if (onConflict === "update" && defaultScadenza) {
-    for (const tipo of licenses) {
-      const key = normalizeCatalogCode(tipo);
-      const existing = existingByTipo.get(key);
+  const requestedLicenseTypes = licenses
+    .map((tipo) => tipo.trim())
+    .filter(Boolean);
+  const matchedRows =
+    requestedLicenseTypes.length > 0
+      ? requestedLicenseTypes
+          .map((tipo) => existingByTipo.get(normalizeCatalogCode(tipo)) || null)
+          .filter(Boolean)
+      : ((existingRows || []) as Array<{ id?: string | null; tipo?: string | null; scadenza?: string | null }>);
+
+  const matchedLicenseIds = matchedRows
+    .map((row) => String(row?.id || "").trim())
+    .filter(Boolean);
+
+  if (onConflict === "update" && defaultScadenza && matchedRows.length > 0) {
+    for (const existing of matchedRows) {
       if (!existing?.id) continue;
       if (String(existing.scadenza || "").trim() === defaultScadenza) continue;
       const { error: updateErr } = await supabaseAdmin
@@ -770,9 +780,7 @@ async function insertLicensesCompatible(
     }
   }
 
-  const payload = licenses
-    .map((tipo) => tipo.trim())
-    .filter(Boolean)
+  const payload = requestedLicenseTypes
     .filter((tipo) => {
       const key = normalizeCatalogCode(tipo);
       if (!key || existingByTipo.has(key)) return false;
@@ -786,10 +794,14 @@ async function insertLicensesCompatible(
       note: "Import CSV progetti",
     }));
 
-  if (!payload.length) return;
+  if (payload.length > 0) {
+    const { error } = await supabaseAdmin.from("licenses").insert(payload);
+    if (error) throw error;
+  }
 
-  const { error } = await supabaseAdmin.from("licenses").insert(payload);
-  if (error) throw error;
+  return {
+    matchedLicenseIds,
+  };
 }
 
 async function insertChecklistItemsCompatible(
@@ -1058,6 +1070,13 @@ export async function POST(request: Request) {
       };
       const updatePayload = buildChecklistUpdatePayload(payload);
 
+      console.log("[import-progetti-csv][persist-debug]", {
+        row: rowNumber,
+        po_value: purchaseOrder,
+        licenza_scadenza_value: licenzaScadenza,
+        project_tag: projectTag,
+      });
+
       let checklistId = "";
       let checklistStrippedColumns = new Set<string>();
 
@@ -1150,17 +1169,27 @@ export async function POST(request: Request) {
         postImportWarnings.push(`seriali non importati: ${String(err?.message || err)}`);
       }
 
+      let matchedLicenseIds: string[] = [];
       try {
-        await insertLicensesCompatible(
+        const licensesResult = await insertLicensesCompatible(
           supabaseAdmin,
           checklistId,
           licenze,
           licenzaScadenza,
           onConflict
         );
+        matchedLicenseIds = licensesResult?.matchedLicenseIds || [];
       } catch (err: any) {
         postImportWarnings.push(`licenze non importate: ${String(err?.message || err)}`);
       }
+
+      console.log("[import-progetti-csv][license-debug]", {
+        row: rowNumber,
+        project_id: checklistId,
+        po_value: purchaseOrder,
+        licenza_scadenza_value: licenzaScadenza,
+        matched_license_ids: matchedLicenseIds,
+      });
 
       try {
         await insertChecklistItemsCompatible(
