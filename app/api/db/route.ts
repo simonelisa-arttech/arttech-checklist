@@ -3,6 +3,7 @@ export const runtime = "nodejs";
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import { getEffectiveProjectStatus } from "@/lib/projectStatus";
 
 type DbOp = "select" | "insert" | "update" | "delete" | "upsert";
 
@@ -436,6 +437,19 @@ function asTrimmedText(value: unknown) {
   return typeof value === "string" ? value.trim() : "";
 }
 
+function normalizeChecklistStatusRows(table: string, data: any) {
+  if (!(table === "checklists" || table === "checklists_backup") || !Array.isArray(data)) {
+    return data;
+  }
+  return data.map((row) => {
+    if (!row || typeof row !== "object") return row;
+    return {
+      ...row,
+      stato_progetto: getEffectiveProjectStatus({ stato_progetto: (row as any).stato_progetto }) ?? null,
+    };
+  });
+}
+
 export async function POST(request: Request) {
   try {
     const isAuthed = await assertAuthenticated(request);
@@ -663,7 +677,7 @@ export async function POST(request: Request) {
       }
     }
     if (error) return dbFailure(table, op, { ...filter, ...filterIn }, error.message);
-    return NextResponse.json({ ok: true, data: data || [] });
+    return NextResponse.json({ ok: true, data: normalizeChecklistStatusRows(table, data || []) });
     }
 
     if (op === "insert") {

@@ -4,6 +4,7 @@ import { createHash } from "crypto";
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { sendEmail } from "@/lib/email";
+import { getEffectiveProjectStatus } from "@/lib/projectStatus";
 import {
   getChecklistEligibilityDate,
   isChecklistEligibleFromToday,
@@ -230,6 +231,7 @@ export async function POST(request: Request) {
 
   const todayRome = getRomeDateString();
   const installDate = getChecklistEligibilityDate(checklist as ChecklistRow);
+  const effectiveStatus = getEffectiveProjectStatus({ stato_progetto: checklist.stato_progetto }) || "—";
   if (!isChecklistEligibleFromToday(checklist as ChecklistRow, todayRome)) {
     return NextResponse.json({ ok: true, sent: 0, skipped: "not_future" });
   }
@@ -362,6 +364,7 @@ export async function POST(request: Request) {
     const lines: string[] = [
       `Cliente: ${checklist.cliente || "—"}`,
       `Checklist: ${checklist.nome_checklist || checklist.id}`,
+      `Stato: ${effectiveStatus}`,
       `Data installazione: ${installDate}`,
       `Link: ${baseUrl}/checklists/${checklistId}`,
       "",
@@ -371,6 +374,8 @@ export async function POST(request: Request) {
       checklist.cliente || "—"
     )}<br/><strong>Checklist:</strong> ${escapeHtml(
       checklist.nome_checklist || checklist.id
+    )}<br/><strong>Stato:</strong> ${escapeHtml(
+      effectiveStatus
     )}<br/><strong>Data installazione:</strong> ${escapeHtml(
       installDate
     )}<br/><a href="${escapeHtml(baseUrl + `/checklists/${checklistId}`)}">Apri checklist</a></p><ul>`;

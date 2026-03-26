@@ -3,6 +3,7 @@ export const runtime = "nodejs";
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import { getEffectiveProjectStatus } from "@/lib/projectStatus";
 import {
   normalizeOperativiDate,
   normalizeOperativiDuration,
@@ -65,6 +66,10 @@ function cleanText(v: unknown) {
 
 function normalizeUpper(value: unknown) {
   return String(value || "").trim().toUpperCase();
+}
+
+function getEffectiveNormalizedStatus(value?: string | null) {
+  return normalizeUpper(getEffectiveProjectStatus({ stato_progetto: value }));
 }
 
 function isUuidLike(value: string) {
@@ -269,7 +274,7 @@ export async function POST(request: Request) {
       const id = String((c as any).id || "");
       if (!id) continue;
       checklistById.set(id, c as any);
-      if (["IN_CORSO", "IN_LAVORAZIONE"].includes(normalizeUpper((c as any).stato_progetto))) {
+      if (["IN_CORSO", "IN_LAVORAZIONE"].includes(getEffectiveNormalizedStatus((c as any).stato_progetto))) {
         inCorsoChecklistIds.add(id);
       }
     }
@@ -278,7 +283,7 @@ export async function POST(request: Request) {
 
     for (const c of checklists || []) {
       const cc = c as any;
-      const statoProgetto = normalizeUpper(cc.stato_progetto);
+      const statoProgetto = getEffectiveNormalizedStatus(cc.stato_progetto);
       const isNoleggio = normalizeUpper(cc.noleggio_vendita) === "NOLEGGIO";
 
       if (["IN_CORSO", "IN_LAVORAZIONE"].includes(statoProgetto)) {

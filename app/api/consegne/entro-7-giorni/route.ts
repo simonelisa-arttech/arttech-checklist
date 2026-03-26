@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireOperatore } from "@/lib/adminAuth";
+import { getEffectiveProjectStatus } from "@/lib/projectStatus";
 
 export const runtime = "nodejs";
 
@@ -61,7 +62,7 @@ export async function GET(request: Request) {
         cliente: row.cliente || "—",
         nome_checklist: row.nome_checklist || "—",
         data_consegna: dataConsegna,
-        stato_progetto: row.stato_progetto || null,
+        stato_progetto: getEffectiveProjectStatus({ stato_progetto: row.stato_progetto }) || null,
       };
     })
     .filter((row) => !isExcludedStatus(row.stato_progetto))

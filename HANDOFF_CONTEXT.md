@@ -1176,3 +1176,20 @@ Dopo il push, Vercel farà auto-deploy e i fix saranno in produzione.
   - `Scaduto`
   - `Mancante`
 - Sistemato anche l'allineamento del flag `Attivo` nella pagina personale.
+
+## Update 2026-03-26 - Normalizzazione runtime `stato_progetto` legacy
+
+- Riallineati alcuni endpoint runtime al dominio `OPERATIVO` / `CHIUSO` usando `getEffectiveProjectStatus(...)`.
+- Patch minime applicate in:
+  - `app/api/cronoprogramma/route.ts`
+  - `app/api/consegne/entro-7-giorni/route.ts`
+  - `app/api/noleggi/smontaggi-entro-7-giorni/route.ts`
+  - `app/api/notifications/on-checklist-create/route.ts`
+  - `lib/notifications/checklistEligibility.ts`
+  - `app/api/db/route.ts`
+- Nel broker `/api/db` la normalizzazione in uscita riguarda solo `checklists` e `checklists_backup`; i filtri SQL raw non sono stati cambiati.
+- Restano volutamente fuori, per patch futura separata:
+  - `app/api/noleggi/attivi/route.ts`
+  - `app/api/cron/noleggi-disinstallazione-alert/route.ts`
+  - `app/api/fatture/da-emettere/route.ts`
+  - `app/api/notifications/recover-tecnico-sw/route.ts`

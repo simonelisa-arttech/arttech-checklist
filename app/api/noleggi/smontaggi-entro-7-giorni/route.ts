@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireOperatore } from "@/lib/adminAuth";
+import { getEffectiveProjectStatus } from "@/lib/projectStatus";
 
 export const runtime = "nodejs";
 
@@ -65,7 +66,7 @@ export async function GET(request: Request) {
         id: raw.id,
         cliente: raw.cliente || "—",
         nome_checklist: raw.nome_checklist || "—",
-        stato_progetto: raw.stato_progetto || null,
+        stato_progetto: getEffectiveProjectStatus({ stato_progetto: raw.stato_progetto }) || null,
         noleggio_vendita: raw.noleggio_vendita || null,
         data_disinstallazione: missingDataDisinstallazione ? null : toIsoDay(raw.data_disinstallazione ?? null),
       };

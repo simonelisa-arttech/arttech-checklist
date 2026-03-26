@@ -1,3 +1,5 @@
+import { getEffectiveProjectStatus } from "@/lib/projectStatus";
+
 export type ChecklistEligibilityRow = {
   stato_progetto?: string | null;
   data_installazione_reale?: string | null;
@@ -18,7 +20,7 @@ export function getChecklistEligibilityDate(checklist: ChecklistEligibilityRow) 
 }
 
 export function isChecklistProjectInCorso(checklist: ChecklistEligibilityRow) {
-  return String(checklist.stato_progetto || "").trim().toUpperCase() === "IN_CORSO";
+  return getEffectiveProjectStatus({ stato_progetto: checklist.stato_progetto }) === "IN_CORSO";
 }
 
 export function isChecklistEligibleFromToday(

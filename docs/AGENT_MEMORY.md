@@ -857,3 +857,15 @@ group by checklist_id;
 - Il pannello standard e' informativo/non bloccante; i criteri minimi usati dal badge restano solo:
   - persona: visita medica, formazione generale, formazione specifica
   - azienda: DURC, visura camerale
+
+## Snapshot 2026-03-26 - Stato progetto effettivo nei runtime critici
+- Applicata normalizzazione runtime con `getEffectiveProjectStatus(...)` nei percorsi che ancora leggevano `stato_progetto` raw:
+  - cronoprogramma timeline
+  - consegne entro 7 giorni
+  - smontaggi noleggi entro 7 giorni
+  - eligibility helper notifiche
+  - testo email `on-checklist-create`
+  - broker `/api/db` solo in uscita per `checklists` / `checklists_backup`
+- Scelta conservativa:
+  - nessun refactor ampio
+  - nessuna modifica ai filtri SQL raw dei file piu' delicati non ancora riallineati
