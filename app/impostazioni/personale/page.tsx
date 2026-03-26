@@ -34,6 +34,8 @@ type PersonaleDocumentoRow = {
   data_rilascio: string;
   data_scadenza: string;
   giorni_preavviso: string;
+  alert_frequenza: string;
+  alert_stato: string;
   note: string;
   file_url: string;
   isNew?: boolean;
@@ -205,6 +207,8 @@ export default function PersonalePage() {
           row.giorni_preavviso == null || row.giorni_preavviso === ""
             ? ""
             : String(row.giorni_preavviso),
+        alert_frequenza: String(row.alert_frequenza || ""),
+        alert_stato: String(row.alert_stato || ""),
         note: String(row.note || ""),
         file_url: String(row.file_url || ""),
         isNew: false,
@@ -352,6 +356,8 @@ export default function PersonalePage() {
         data_rilascio: "",
         data_scadenza: "",
         giorni_preavviso: "",
+        alert_frequenza: "",
+        alert_stato: "",
         note: "",
         file_url: "",
         isNew: true,
@@ -389,6 +395,8 @@ export default function PersonalePage() {
       data_rilascio: row.data_rilascio || null,
       data_scadenza: row.data_scadenza || null,
       giorni_preavviso: row.giorni_preavviso.trim() ? Number(row.giorni_preavviso) : null,
+      alert_frequenza: row.alert_frequenza.trim() || null,
+      alert_stato: row.alert_stato.trim() || null,
       note: row.note.trim() || null,
       file_url: row.file_url.trim() || null,
     };
@@ -1061,7 +1069,7 @@ export default function PersonalePage() {
                                         display: "grid",
                                         gap: 10,
                                         gridTemplateColumns:
-                                          "minmax(180px, 1.1fr) minmax(140px, 0.8fr) minmax(140px, 0.8fr) minmax(120px, 0.7fr) minmax(220px, 1.2fr)",
+                                          "minmax(180px, 1.1fr) minmax(140px, 0.8fr) minmax(140px, 0.8fr) minmax(120px, 0.7fr) minmax(150px, 0.8fr) minmax(150px, 0.8fr) minmax(220px, 1.2fr)",
                                       }}
                                     >
                                       <label style={{ display: "block", fontSize: 12 }}>
@@ -1110,6 +1118,36 @@ export default function PersonalePage() {
                                           placeholder="giorni"
                                           style={{ width: "100%", padding: 8, marginTop: 6 }}
                                         />
+                                      </label>
+                                      <label style={{ display: "block", fontSize: 12 }}>
+                                        Frequenza alert
+                                        <select
+                                          value={doc.alert_frequenza}
+                                          onChange={(e) =>
+                                            updateDocumento(doc.id, { alert_frequenza: e.target.value })
+                                          }
+                                          style={{ width: "100%", padding: 8, marginTop: 6 }}
+                                        >
+                                          <option value="">—</option>
+                                          <option value="ONCE">ONCE</option>
+                                          <option value="DAILY">DAILY</option>
+                                          <option value="WEEKLY">WEEKLY</option>
+                                        </select>
+                                      </label>
+                                      <label style={{ display: "block", fontSize: 12 }}>
+                                        Stato alert
+                                        <select
+                                          value={doc.alert_stato}
+                                          onChange={(e) =>
+                                            updateDocumento(doc.id, { alert_stato: e.target.value })
+                                          }
+                                          style={{ width: "100%", padding: 8, marginTop: 6 }}
+                                        >
+                                          <option value="">—</option>
+                                          <option value="ATTIVO">ATTIVO</option>
+                                          <option value="SOSPESO">SOSPESO</option>
+                                          <option value="COMPLETATO">COMPLETATO</option>
+                                        </select>
                                       </label>
                                       <label style={{ display: "block", fontSize: 12 }}>
                                         File URL
@@ -1213,7 +1251,7 @@ export default function PersonalePage() {
                                         display: "grid",
                                         gap: 10,
                                         gridTemplateColumns:
-                                          "minmax(180px, 1.1fr) minmax(140px, 0.8fr) minmax(140px, 0.8fr) minmax(120px, 0.7fr) minmax(220px, 1.2fr)",
+                                          "minmax(180px, 1.1fr) minmax(140px, 0.8fr) minmax(140px, 0.8fr) minmax(120px, 0.7fr) minmax(150px, 0.8fr) minmax(150px, 0.8fr) minmax(220px, 1.2fr)",
                                       }}
                                     >
                                       <div style={{ display: "grid", gap: 6 }}>
@@ -1250,6 +1288,14 @@ export default function PersonalePage() {
                                         <div>
                                           {doc.giorni_preavviso ? `Preavviso: ${doc.giorni_preavviso} giorni` : "—"}
                                         </div>
+                                      </div>
+                                      <div style={{ display: "grid", gap: 6 }}>
+                                        <div style={{ fontSize: 12, color: "#6b7280" }}>Frequenza alert</div>
+                                        <div>{doc.alert_frequenza || "—"}</div>
+                                      </div>
+                                      <div style={{ display: "grid", gap: 6 }}>
+                                        <div style={{ fontSize: 12, color: "#6b7280" }}>Stato alert</div>
+                                        <div>{doc.alert_stato || "—"}</div>
                                       </div>
                                       <div style={{ display: "grid", gap: 6 }}>
                                         <div style={{ fontSize: 12, color: "#6b7280" }}>File / link</div>
