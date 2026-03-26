@@ -687,7 +687,7 @@ export default function CronoprogrammaPage() {
             background: "white",
           }}
         >
-          ← Dashboard
+          ← Home
         </Link>
       </div>
 
