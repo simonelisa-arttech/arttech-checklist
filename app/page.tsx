@@ -1,16 +1,22 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type UIEvent } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import ConfigMancante from "@/components/ConfigMancante";
-import DashboardTable from "./components/DashboardTable";
-import OperativeNotesPanel from "@/components/OperativeNotesPanel";
+import CronoprogrammaPanel from "@/components/cronoprogramma/CronoprogrammaPanel";
 import { getEffectiveProjectStatus } from "@/lib/projectStatus";
 import Toast from "@/components/Toast";
 import { calcM2FromDimensioni } from "@/lib/parseDimensioni";
 import { isSupabaseConfigured, supabase } from "@/lib/supabaseClient";
 import { dbFrom } from "@/lib/clientDbBroker";
+import {
+  buildOperativiSchedule,
+  dateToOperativiIsoDay,
+  durationToInputValue,
+  normalizeOperativiDate,
+} from "@/lib/operativiSchedule";
+import { checkOperativiConflicts } from "@/lib/operativiConflicts";
 
 const SAAS_PIANI = [
   { code: "SAAS-PL", label: "CARE PLUS (ASSISTENZA BASE)" },
@@ -520,6 +526,223 @@ function toDateInputValue(date: Date) {
   return `${year}-${month}-${day}`;
 }
 
+type TimelineRow = {
+  kind: "INSTALLAZIONE" | "DISINSTALLAZIONE" | "INTERVENTO";
+  id: string;
+  row_ref_id: string;
+  data_prevista: string;
+  data_tassativa: string;
+  cliente: string;
+  checklist_id: string | null;
+  ticket_no?: string | null;
+  proforma?: string | null;
+  progetto: string;
+  tipologia: string;
+  descrizione: string;
+  stato: string;
+  fatto: boolean;
+};
+
+type CronoMeta = {
+  fatto: boolean;
+  hidden: boolean;
+  updated_at: string | null;
+  updated_by_operatore: string | null;
+  updated_by_nome: string | null;
+  data_inizio?: string | null;
+  durata_giorni?: number | null;
+  personale_previsto?: string | null;
+  personale_ids?: string[] | null;
+  mezzi?: string | null;
+  descrizione_attivita?: string | null;
+  indirizzo?: string | null;
+  orario?: string | null;
+  referente_cliente_nome?: string | null;
+  referente_cliente_contatto?: string | null;
+  commerciale_art_tech_nome?: string | null;
+  commerciale_art_tech_contatto?: string | null;
+};
+
+type CronoComment = {
+  id: string;
+  commento: string;
+  created_at: string | null;
+  created_by_operatore: string | null;
+  created_by_nome: string | null;
+};
+
+type OperativiFields = {
+  data_inizio: string;
+  durata_giorni: string;
+  personale_previsto: string;
+  personale_ids: string[];
+  mezzi: string;
+  descrizione_attivita: string;
+  indirizzo: string;
+  orario: string;
+  referente_cliente_nome: string;
+  referente_cliente_contatto: string;
+  commerciale_art_tech_nome: string;
+  commerciale_art_tech_contatto: string;
+};
+
+const EMPTY_OPERATIVI: OperativiFields = {
+  data_inizio: "",
+  durata_giorni: "",
+  personale_previsto: "",
+  personale_ids: [],
+  mezzi: "",
+  descrizione_attivita: "",
+  indirizzo: "",
+  orario: "",
+  referente_cliente_nome: "",
+  referente_cliente_contatto: "",
+  commerciale_art_tech_nome: "",
+  commerciale_art_tech_contatto: "",
+};
+
+function extractOperativi(meta?: CronoMeta | null): OperativiFields {
+  return {
+    data_inizio: normalizeOperativiDate(meta?.data_inizio),
+    durata_giorni: durationToInputValue(meta?.durata_giorni),
+    personale_previsto: String(meta?.personale_previsto || ""),
+    personale_ids: Array.isArray(meta?.personale_ids)
+      ? meta.personale_ids.map((value) => String(value || "").trim()).filter(Boolean)
+      : [],
+    mezzi: String(meta?.mezzi || ""),
+    descrizione_attivita: String(meta?.descrizione_attivita || ""),
+    indirizzo: String(meta?.indirizzo || ""),
+    orario: String(meta?.orario || ""),
+    referente_cliente_nome: String(meta?.referente_cliente_nome || ""),
+    referente_cliente_contatto: String(meta?.referente_cliente_contatto || ""),
+    commerciale_art_tech_nome: String(meta?.commerciale_art_tech_nome || ""),
+    commerciale_art_tech_contatto: String(meta?.commerciale_art_tech_contatto || ""),
+  };
+}
+
+function getRowSchedule(row: TimelineRow, value?: { data_inizio?: string | null; durata_giorni?: string | number | null } | null) {
+  return buildOperativiSchedule(value?.data_inizio ?? null, row.data_tassativa || row.data_prevista, value?.durata_giorni ?? null);
+}
+
+function inferInterventoTipologia(text?: string | null) {
+  const v = String(text || "").toLowerCase();
+  if (!v) return "INTERVENTO";
+  if (v.includes("assistenza")) return "ASSISTENZA";
+  if (v.includes("installaz")) return "INSTALLAZIONE";
+  if (v.includes("noleggio")) return "NOLEGGIO";
+  if (v.includes("manutenz")) return "MANUTENZIONE";
+  return "INTERVENTO";
+}
+
+function getRowKey(rowKind: "INSTALLAZIONE" | "DISINSTALLAZIONE" | "INTERVENTO", rowRefId: string) {
+  return `${rowKind}:${rowRefId}`;
+}
+
+function normalizePersonaleText(value?: string | null) {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function buildConflictTooltip(personale: string[], mezzi: string[]) {
+  const details: string[] = [];
+  if (personale.length) details.push(`Personale già impegnato: ${personale.join(", ")}`);
+  if (mezzi.length) details.push(`Mezzi già impegnati: ${mezzi.join(", ")}`);
+  return details.join(" | ");
+}
+
+function hasDefinedOperativi(meta?: CronoMeta | null) {
+  if (!meta) return false;
+  const operativi = extractOperativi(meta);
+  return Boolean(
+    operativi.data_inizio ||
+      operativi.durata_giorni ||
+      operativi.personale_ids.length > 0 ||
+      operativi.personale_previsto.trim() ||
+      operativi.mezzi.trim() ||
+      operativi.descrizione_attivita.trim() ||
+      operativi.indirizzo.trim() ||
+      operativi.orario.trim() ||
+      operativi.referente_cliente_nome.trim() ||
+      operativi.referente_cliente_contatto.trim() ||
+      operativi.commerciale_art_tech_nome.trim() ||
+      operativi.commerciale_art_tech_contatto.trim()
+  );
+}
+
+function downloadCronoCsv(
+  filename: string,
+  rows: TimelineRow[],
+  metaByKey: Record<string, CronoMeta>,
+  commentsByKey: Record<string, CronoComment[]>
+) {
+  const header = [
+    "tipo_evento",
+    "data_inizio",
+    "durata_giorni",
+    "data_fine",
+    "data_prevista",
+    "data_tassativa",
+    "cliente",
+    "progetto",
+    "ticket_no",
+    "fatto",
+    "nota_ultima",
+    "descrizione",
+    "personale_previsto",
+    "mezzi",
+    "descrizione_attivita",
+    "indirizzo",
+    "orario",
+    "referente_cliente_nome",
+    "referente_cliente_contatto",
+    "commerciale_art_tech_nome",
+    "commerciale_art_tech_contatto",
+    "checklist_link",
+  ];
+  const lines = [header.join(",")];
+  for (const r of rows) {
+    const key = getRowKey(r.kind, r.row_ref_id);
+    const fatto = Boolean(metaByKey[key]?.fatto ?? r.fatto);
+    const latestComment = commentsByKey[key]?.[0];
+    const op = extractOperativi(metaByKey[key] || null);
+    const schedule = getRowSchedule(r, metaByKey[key] || null);
+    const cells = [
+      r.kind,
+      schedule.data_inizio,
+      schedule.durata_giorni,
+      schedule.data_fine,
+      r.data_prevista,
+      r.data_tassativa,
+      r.cliente,
+      r.progetto,
+      r.ticket_no || "",
+      fatto ? "FATTO" : "DA_FINIRE",
+      latestComment?.commento || "",
+      r.descrizione,
+      op.personale_previsto,
+      op.mezzi,
+      op.descrizione_attivita,
+      op.indirizzo,
+      op.orario,
+      op.referente_cliente_nome,
+      op.referente_cliente_contatto,
+      op.commerciale_art_tech_nome,
+      op.commerciale_art_tech_contatto,
+      r.checklist_id ? `/checklists/${r.checklist_id}` : "",
+    ].map((x) => `"${String(x || "").replaceAll('"', '""')}"`);
+    lines.push(cells.join(","));
+  }
+  const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8;" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 export default function Page() {
   if (!isSupabaseConfigured) {
     return <ConfigMancante />;
@@ -738,6 +961,41 @@ export default function Page() {
     return sortDir === "asc" ? " ▲" : " ▼";
   }
 
+  const [cronoLoading, setCronoLoading] = useState(true);
+  const [cronoError, setCronoError] = useState<string | null>(null);
+  const [cronoRows, setCronoRows] = useState<TimelineRow[]>([]);
+  const [cronoFromDate, setCronoFromDate] = useState("");
+  const [cronoToDate, setCronoToDate] = useState("");
+  const [cronoClienteFilter, setCronoClienteFilter] = useState("TUTTI");
+  const [cronoKindFilter, setCronoKindFilter] = useState<
+    "TUTTI" | "INSTALLAZIONE" | "DISINSTALLAZIONE" | "INTERVENTO"
+  >("TUTTI");
+  const [cronoQuickRangeDays, setCronoQuickRangeDays] = useState<7 | 15 | 30 | null>(null);
+  const [cronoShowFatto, setCronoShowFatto] = useState(false);
+  const [cronoShowHidden, setCronoShowHidden] = useState(false);
+  const [cronoQ, setCronoQ] = useState("");
+  const [cronoPersonaleFilter, setCronoPersonaleFilter] = useState("");
+  const [cronoSortBy, setCronoSortBy] = useState<"data_prevista" | "data_tassativa">("data_tassativa");
+  const [cronoSortDir, setCronoSortDir] = useState<"asc" | "desc">("asc");
+  const [cronoMetaByKey, setCronoMetaByKey] = useState<Record<string, CronoMeta>>({});
+  const [cronoCommentsByKey, setCronoCommentsByKey] = useState<Record<string, CronoComment[]>>({});
+  const [cronoNoteDraftByKey, setCronoNoteDraftByKey] = useState<Record<string, string>>({});
+  const [cronoStateLoading, setCronoStateLoading] = useState(false);
+  const [cronoStateError, setCronoStateError] = useState<string | null>(null);
+  const [cronoSavingFattoKey, setCronoSavingFattoKey] = useState<string | null>(null);
+  const [cronoSavingHiddenKey, setCronoSavingHiddenKey] = useState<string | null>(null);
+  const [cronoSavingCommentKey, setCronoSavingCommentKey] = useState<string | null>(null);
+  const [cronoSavingOperativiKey, setCronoSavingOperativiKey] = useState<string | null>(null);
+  const [cronoDeletingCommentId, setCronoDeletingCommentId] = useState<string | null>(null);
+  const [cronoNoteHistoryKey, setCronoNoteHistoryKey] = useState<string | null>(null);
+  const [cronoOperativiDraftByKey, setCronoOperativiDraftByKey] = useState<Record<string, OperativiFields>>({});
+  const cronoTopScrollRef = useRef<HTMLDivElement | null>(null);
+  const cronoMainScrollRef = useRef<HTMLDivElement | null>(null);
+  const cronoBottomScrollRef = useRef<HTMLDivElement | null>(null);
+  const cronoScrollContentRef = useRef<HTMLDivElement | null>(null);
+  const cronoSyncingScrollRef = useRef<"top" | "main" | "bottom" | null>(null);
+  const [cronoScrollContentWidth, setCronoScrollContentWidth] = useState(4320);
+
   function toNum(v: any) {
     const n = Number(String(v ?? "").replace(",", "."));
     return Number.isFinite(n) ? n : null;
@@ -762,6 +1020,205 @@ export default function Page() {
     if (ta != null && tb != null) return ta - tb;
 
     return String(a).localeCompare(String(b), "it", { sensitivity: "base" });
+  }
+
+  async function loadHomeCronoRowState(timelineRows: TimelineRow[]) {
+    if (!timelineRows.length) {
+      setCronoMetaByKey({});
+      setCronoCommentsByKey({});
+      return;
+    }
+    setCronoStateLoading(true);
+    setCronoStateError(null);
+    try {
+      const res = await fetch("/api/cronoprogramma", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "load",
+          rows: timelineRows.map((r) => ({ row_kind: r.kind, row_ref_id: r.row_ref_id })),
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const msg = String(data?.error || "");
+        if (
+          msg.toLowerCase().includes("cronoprogramma_meta") ||
+          msg.toLowerCase().includes("cronoprogramma_comments")
+        ) {
+          setCronoStateError(
+            "Funzioni note/fatto non attive: esegui script scripts/20260227_add_cronoprogramma_meta_comments.sql"
+          );
+        } else {
+          setCronoStateError(msg || "Errore caricamento stato cronoprogramma");
+        }
+        setCronoMetaByKey({});
+        setCronoCommentsByKey({});
+        return;
+      }
+      const nextMeta = (data?.meta as Record<string, CronoMeta>) || {};
+      setCronoMetaByKey(nextMeta);
+      setCronoOperativiDraftByKey((prev) => {
+        const next = { ...prev };
+        for (const r of timelineRows) {
+          const key = getRowKey(r.kind, r.row_ref_id);
+          if (!next[key]) next[key] = extractOperativi(nextMeta[key]);
+        }
+        return next;
+      });
+      setCronoCommentsByKey((data?.comments as Record<string, CronoComment[]>) || {});
+    } finally {
+      setCronoStateLoading(false);
+    }
+  }
+
+  async function setHomeCronoFatto(row: TimelineRow, fatto: boolean) {
+    const key = getRowKey(row.kind, row.row_ref_id);
+    setCronoSavingFattoKey(key);
+    setCronoStateError(null);
+    try {
+      const res = await fetch("/api/cronoprogramma", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "set_fatto", row_kind: row.kind, row_ref_id: row.row_ref_id, fatto }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setCronoStateError(data?.error || "Errore salvataggio stato fatto");
+        return;
+      }
+      setCronoMetaByKey((prev) => ({ ...prev, [key]: data?.meta }));
+      setCronoRows((prev) =>
+        prev.map((r) => (r.kind === row.kind && r.row_ref_id === row.row_ref_id ? { ...r, fatto } : r))
+      );
+    } finally {
+      setCronoSavingFattoKey(null);
+    }
+  }
+
+  async function setHomeCronoHidden(row: TimelineRow, hidden: boolean) {
+    const key = getRowKey(row.kind, row.row_ref_id);
+    setCronoSavingHiddenKey(key);
+    setCronoStateError(null);
+    try {
+      const res = await fetch("/api/cronoprogramma", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "set_hidden", row_kind: row.kind, row_ref_id: row.row_ref_id, hidden }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setCronoStateError(data?.error || "Errore salvataggio stato nascosta");
+        return;
+      }
+      setCronoMetaByKey((prev) => ({ ...prev, [key]: data?.meta }));
+    } finally {
+      setCronoSavingHiddenKey(null);
+    }
+  }
+
+  async function addHomeCronoComment(row: TimelineRow) {
+    const key = getRowKey(row.kind, row.row_ref_id);
+    const commento = String(cronoNoteDraftByKey[key] || "").trim();
+    if (!commento) return;
+    setCronoSavingCommentKey(key);
+    setCronoStateError(null);
+    try {
+      const res = await fetch("/api/cronoprogramma", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "add_comment", row_kind: row.kind, row_ref_id: row.row_ref_id, commento }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setCronoStateError(data?.error || "Errore salvataggio commento");
+        return;
+      }
+      setCronoNoteDraftByKey((prev) => ({ ...prev, [key]: "" }));
+      setCronoCommentsByKey((prev) => ({ ...prev, [key]: [data?.comment, ...(prev[key] || [])].filter(Boolean) }));
+    } finally {
+      setCronoSavingCommentKey(null);
+    }
+  }
+
+  async function saveHomeCronoOperativi(row: TimelineRow) {
+    const key = getRowKey(row.kind, row.row_ref_id);
+    const draft = cronoOperativiDraftByKey[key] || EMPTY_OPERATIVI;
+    setCronoSavingOperativiKey(key);
+    setCronoStateError(null);
+    try {
+      const res = await fetch("/api/cronoprogramma", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "set_operativi", row_kind: row.kind, row_ref_id: row.row_ref_id, ...draft }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setCronoStateError(data?.error || "Errore salvataggio dati operativi");
+        return;
+      }
+      setCronoMetaByKey((prev) => ({ ...prev, [key]: data?.meta }));
+      setCronoOperativiDraftByKey((prev) => ({ ...prev, [key]: extractOperativi(data?.meta || null) }));
+    } finally {
+      setCronoSavingOperativiKey(null);
+    }
+  }
+
+  async function deleteHomeCronoComment(row: TimelineRow, commentId: string) {
+    const safeId = String(commentId || "").trim();
+    if (!safeId) return;
+    setCronoDeletingCommentId(safeId);
+    setCronoStateError(null);
+    try {
+      const res = await fetch("/api/cronoprogramma", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "delete_comment", comment_id: safeId }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setCronoStateError(data?.error || "Errore eliminazione commento");
+        return;
+      }
+      const key = getRowKey(row.kind, row.row_ref_id);
+      setCronoCommentsByKey((prev) => ({ ...prev, [key]: (prev[key] || []).filter((c) => c.id !== safeId) }));
+    } finally {
+      setCronoDeletingCommentId(null);
+    }
+  }
+
+  function applyHomeCronoQuickRange(days: 7 | 15 | 30) {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const to = new Date(today.getTime());
+    to.setDate(to.getDate() + days);
+    setCronoFromDate(dateToOperativiIsoDay(today));
+    setCronoToDate(dateToOperativiIsoDay(to));
+    setCronoQuickRangeDays(days);
+  }
+
+  function onHomeCronoTopScroll(e: UIEvent<HTMLDivElement>) {
+    if (cronoSyncingScrollRef.current === "main" || cronoSyncingScrollRef.current === "bottom") return;
+    cronoSyncingScrollRef.current = "top";
+    if (cronoMainScrollRef.current) cronoMainScrollRef.current.scrollLeft = e.currentTarget.scrollLeft;
+    if (cronoBottomScrollRef.current) cronoBottomScrollRef.current.scrollLeft = e.currentTarget.scrollLeft;
+    cronoSyncingScrollRef.current = null;
+  }
+
+  function onHomeCronoMainScroll(e: UIEvent<HTMLDivElement>) {
+    if (cronoSyncingScrollRef.current === "top" || cronoSyncingScrollRef.current === "bottom") return;
+    cronoSyncingScrollRef.current = "main";
+    if (cronoTopScrollRef.current) cronoTopScrollRef.current.scrollLeft = e.currentTarget.scrollLeft;
+    if (cronoBottomScrollRef.current) cronoBottomScrollRef.current.scrollLeft = e.currentTarget.scrollLeft;
+    cronoSyncingScrollRef.current = null;
+  }
+
+  function onHomeCronoBottomScroll(e: UIEvent<HTMLDivElement>) {
+    if (cronoSyncingScrollRef.current === "top" || cronoSyncingScrollRef.current === "main") return;
+    cronoSyncingScrollRef.current = "bottom";
+    if (cronoTopScrollRef.current) cronoTopScrollRef.current.scrollLeft = e.currentTarget.scrollLeft;
+    if (cronoMainScrollRef.current) cronoMainScrollRef.current.scrollLeft = e.currentTarget.scrollLeft;
+    cronoSyncingScrollRef.current = null;
   }
 
   function getSortRaw(row: Checklist, key: typeof sortKey) {
@@ -878,6 +1335,149 @@ export default function Page() {
 
     return sorted;
   }, [allProjects, q, saasServiceFilter, projectStatusFilter, sortKey, sortDir, serialsByChecklistId]);
+
+  useEffect(() => {
+    const now = new Date();
+    const from = new Date(now.getTime());
+    from.setDate(from.getDate() - 7);
+    const to = new Date(now.getTime());
+    to.setDate(to.getDate() + 60);
+    setCronoFromDate(dateToOperativiIsoDay(from));
+    setCronoToDate(dateToOperativiIsoDay(to));
+  }, []);
+
+  useEffect(() => {
+    (async () => {
+      setCronoLoading(true);
+      setCronoError(null);
+      try {
+        const res = await fetch("/api/cronoprogramma", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "load_events" }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          setCronoError(String(data?.error || "Errore caricamento cronoprogramma"));
+          setCronoRows([]);
+          return;
+        }
+        const timeline = ((data?.events as TimelineRow[]) || []).map((r) => ({
+          ...r,
+          tipologia: String(r.tipologia || inferInterventoTipologia(r.descrizione)).toUpperCase(),
+        }));
+        setCronoRows(timeline);
+        await loadHomeCronoRowState(timeline);
+      } finally {
+        setCronoLoading(false);
+      }
+    })();
+  }, []);
+
+  const homeCronoClienti = useMemo(() => {
+    return Array.from(new Set(cronoRows.map((r) => r.cliente).filter(Boolean))).sort((a, b) =>
+      a.localeCompare(b, "it", { sensitivity: "base" })
+    );
+  }, [cronoRows]);
+
+  const homeCronoFiltered = useMemo(() => {
+    const needle = cronoQ.trim().toLowerCase();
+    const personaleNeedle = normalizePersonaleText(cronoPersonaleFilter);
+    return cronoRows.filter((r) => {
+      const key = getRowKey(r.kind, r.row_ref_id);
+      const fatto = Boolean(cronoMetaByKey[key]?.fatto ?? r.fatto);
+      const hidden = Boolean(cronoMetaByKey[key]?.hidden);
+      const operativi = extractOperativi(cronoMetaByKey[key] || null);
+      const personalePrevisto = operativi.personale_previsto;
+      const schedule = getRowSchedule(r, cronoMetaByKey[key] || null);
+      if (hidden && !cronoShowHidden) return false;
+      if (fatto && !cronoShowFatto) return false;
+      if (cronoClienteFilter !== "TUTTI" && r.cliente !== cronoClienteFilter) return false;
+      if (cronoKindFilter !== "TUTTI" && r.kind !== cronoKindFilter) return false;
+      if (personaleNeedle && !normalizePersonaleText(personalePrevisto).includes(personaleNeedle)) return false;
+      if (needle) {
+        const matchesSearch = `${r.cliente} ${r.progetto} ${r.ticket_no || ""} ${r.descrizione} ${r.stato}`
+          .toLowerCase()
+          .includes(needle);
+        if (!matchesSearch) return false;
+      }
+      if (fatto && cronoShowFatto) return true;
+      if (cronoFromDate && schedule.data_fine < cronoFromDate) return false;
+      if (cronoToDate && schedule.data_inizio > cronoToDate) return false;
+      return true;
+    });
+  }, [
+    cronoRows,
+    cronoFromDate,
+    cronoToDate,
+    cronoClienteFilter,
+    cronoKindFilter,
+    cronoQ,
+    cronoPersonaleFilter,
+    cronoMetaByKey,
+    cronoShowFatto,
+    cronoShowHidden,
+  ]);
+
+  const homeCronoFilteredSorted = useMemo(() => {
+    const sorted = [...homeCronoFiltered];
+    const field = cronoSortBy;
+    sorted.sort((a, b) => {
+      const avSchedule = getRowSchedule(a, cronoMetaByKey[getRowKey(a.kind, a.row_ref_id)] || null);
+      const bvSchedule = getRowSchedule(b, cronoMetaByKey[getRowKey(b.kind, b.row_ref_id)] || null);
+      const av = field === "data_prevista" ? avSchedule.data_inizio : avSchedule.data_fine;
+      const bv = field === "data_prevista" ? bvSchedule.data_inizio : bvSchedule.data_fine;
+      const comparison = String(av || "").localeCompare(String(bv || ""));
+      return cronoSortDir === "asc" ? comparison : -comparison;
+    });
+    return sorted;
+  }, [homeCronoFiltered, cronoSortBy, cronoSortDir, cronoMetaByKey]);
+
+  const homeCronoConflictByKey = useMemo(() => {
+    return checkOperativiConflicts(
+      cronoRows.map((row) => {
+        const key = getRowKey(row.kind, row.row_ref_id);
+        const operativi = cronoOperativiDraftByKey[key] || extractOperativi(cronoMetaByKey[key] || null);
+        const schedule = getRowSchedule(row, operativi);
+        return {
+          key,
+          start: schedule.data_inizio,
+          end: schedule.data_fine,
+          personale: operativi.personale_previsto,
+          mezzi: operativi.mezzi,
+        };
+      })
+    );
+  }, [cronoRows, cronoMetaByKey, cronoOperativiDraftByKey]);
+
+  useEffect(() => {
+    const updateScrollWidth = () => {
+      const width = cronoScrollContentRef.current?.scrollWidth || 4320;
+      setCronoScrollContentWidth(width);
+    };
+    updateScrollWidth();
+    if (typeof window !== "undefined") {
+      window.addEventListener("resize", updateScrollWidth);
+      return () => window.removeEventListener("resize", updateScrollWidth);
+    }
+  }, [homeCronoFilteredSorted.length, cronoLoading]);
+
+  function toggleHomeCronoSort(field: "data_prevista" | "data_tassativa") {
+    if (cronoSortBy === field) {
+      setCronoSortDir((prev) => (prev === "asc" ? "desc" : "asc"));
+      return;
+    }
+    setCronoSortBy(field);
+    setCronoSortDir("asc");
+  }
+
+  const homeCronoRowByKey = useMemo(() => {
+    const map: Record<string, TimelineRow> = {};
+    for (const r of cronoRows) {
+      map[getRowKey(r.kind, r.row_ref_id)] = r;
+    }
+    return map;
+  }, [cronoRows]);
 
   const clientiOptions = useMemo(() => {
     const set = new Set<string>();
@@ -1946,1244 +2546,113 @@ export default function Page() {
                   noleggiAttiviCount
                 )}
               </div>
-            </div>
           </div>
-          {loading ? (
-            <div>Caricamento…</div>
-          ) : items.length === 0 ? (
-            <div>Nessun PROGETTO presente</div>
-          ) : (
-            <div style={{ display: "grid", gap: 12 }}>
+          </div>
+          <div style={{ marginTop: 16 }}>
+            {cronoError && (
               <div
                 style={{
-                  display: "flex",
-                  gap: 10,
-                  alignItems: "center",
-                  flexWrap: "wrap",
-                  marginTop: 24,
+                  padding: "10px 12px",
+                  borderRadius: 8,
+                  background: "#fee2e2",
+                  color: "#991b1b",
+                  marginBottom: 10,
                 }}
               >
-                <input
-                  value={q}
-                  onChange={(e) => setQ(e.target.value)}
-                  placeholder="Cerca (cliente, nome, proforma, SAAS, scadenze…)"
-                  style={{
-                    padding: 10,
-                    borderRadius: 10,
-                    border: "1px solid #ddd",
-                    minWidth: 280,
-                  }}
-                />
-
-                <div
-                  style={{
-                    display: "flex",
-                    gap: 10,
-                    alignItems: "center",
-                    flexWrap: "wrap",
-                    fontSize: 13,
-                    padding: "8px 10px",
-                    border: "1px solid #ddd",
-                    borderRadius: 10,
-                    background: "white",
-                  }}
-                >
-                  <span style={{ fontWeight: 700, opacity: 0.85 }}>SaaS</span>
-                  <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                    <input
-                      type="checkbox"
-                      checked={Object.values(saasServiceFilter).every(Boolean)}
-                      onChange={(e) => {
-                        const checked = e.target.checked;
-                        setSaasServiceFilter({
-                          EVENTS: checked,
-                          ULTRA: checked,
-                          PREMIUM: checked,
-                          PLUS: checked,
-                        });
-                      }}
-                    />
-                    Tutti
-                  </label>
-                  <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                    <input
-                      type="checkbox"
-                      checked={saasServiceFilter.EVENTS}
-                      onChange={(e) =>
-                        setSaasServiceFilter((prev) => ({ ...prev, EVENTS: e.target.checked }))
-                      }
-                    />
-                    Art Tech Events
-                  </label>
-                  <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                    <input
-                      type="checkbox"
-                      checked={saasServiceFilter.ULTRA}
-                      onChange={(e) =>
-                        setSaasServiceFilter((prev) => ({ ...prev, ULTRA: e.target.checked }))
-                      }
-                    />
-                    ULTRA
-                  </label>
-                  <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                    <input
-                      type="checkbox"
-                      checked={saasServiceFilter.PREMIUM}
-                      onChange={(e) =>
-                        setSaasServiceFilter((prev) => ({ ...prev, PREMIUM: e.target.checked }))
-                      }
-                    />
-                    PREMIUM
-                  </label>
-                  <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                    <input
-                      type="checkbox"
-                      checked={saasServiceFilter.PLUS}
-                      onChange={(e) =>
-                        setSaasServiceFilter((prev) => ({ ...prev, PLUS: e.target.checked }))
-                      }
-                    />
-                    PLUS
-                  </label>
-                </div>
-
-                <div
-                  style={{
-                    display: "flex",
-                    gap: 10,
-                    alignItems: "center",
-                    flexWrap: "wrap",
-                    fontSize: 13,
-                    padding: "8px 10px",
-                    border: "1px solid #ddd",
-                    borderRadius: 10,
-                    background: "white",
-                  }}
-                >
-                  <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                    <input
-                      type="checkbox"
-                      checked={Object.values(projectStatusFilter).every(Boolean)}
-                      onChange={(e) => {
-                        const checked = e.target.checked;
-                        setProjectStatusFilter({
-                          IN_CORSO: checked,
-                          CONSEGNATO: checked,
-                          NOLEGGIO_ATTIVO: checked,
-                          RIENTRATO: checked,
-                          SOSPESO: checked,
-                          OPERATIVO: checked,
-                          CHIUSO: checked,
-                        });
-                      }}
-                    />
-                    Tutti stati
-                  </label>
-                  <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                    <input
-                      type="checkbox"
-                      checked={projectStatusFilter.IN_CORSO}
-                      onChange={(e) =>
-                        setProjectStatusFilter((prev) => ({ ...prev, IN_CORSO: e.target.checked }))
-                      }
-                    />
-                    In lavorazione
-                  </label>
-                  <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                    <input
-                      type="checkbox"
-                      checked={projectStatusFilter.CONSEGNATO}
-                      onChange={(e) =>
-                        setProjectStatusFilter((prev) => ({
-                          ...prev,
-                          CONSEGNATO: e.target.checked,
-                        }))
-                      }
-                    />
-                    Consegnato
-                  </label>
-                  <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                    <input
-                      type="checkbox"
-                      checked={projectStatusFilter.NOLEGGIO_ATTIVO}
-                      onChange={(e) =>
-                        setProjectStatusFilter((prev) => ({
-                          ...prev,
-                          NOLEGGIO_ATTIVO: e.target.checked,
-                        }))
-                      }
-                    />
-                    Noleggio attivo
-                  </label>
-                  <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                    <input
-                      type="checkbox"
-                      checked={projectStatusFilter.RIENTRATO}
-                      onChange={(e) =>
-                        setProjectStatusFilter((prev) => ({
-                          ...prev,
-                          RIENTRATO: e.target.checked,
-                        }))
-                      }
-                    />
-                    Rientrato
-                  </label>
-                  <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                    <input
-                      type="checkbox"
-                      checked={projectStatusFilter.SOSPESO}
-                      onChange={(e) =>
-                        setProjectStatusFilter((prev) => ({ ...prev, SOSPESO: e.target.checked }))
-                      }
-                    />
-                    Sospeso
-                  </label>
-                  <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                    <input
-                      type="checkbox"
-                      checked={projectStatusFilter.OPERATIVO}
-                      onChange={(e) =>
-                        setProjectStatusFilter((prev) => ({ ...prev, OPERATIVO: e.target.checked }))
-                      }
-                    />
-                    Operativo
-                  </label>
-                  <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                    <input
-                      type="checkbox"
-                      checked={projectStatusFilter.CHIUSO}
-                      onChange={(e) =>
-                        setProjectStatusFilter((prev) => ({ ...prev, CHIUSO: e.target.checked }))
-                      }
-                    />
-                    Chiuso
-                  </label>
-                </div>
-
-                <div style={{ fontSize: 12, opacity: 0.7 }}>
-                  Risultati: {displayRows.length}
-                </div>
+                {cronoError}
               </div>
-
+            )}
+            {cronoStateError && (
               <div
                 style={{
-                  border: "1px solid #eee",
-                  borderRadius: 14,
-                  background: "white",
-                  width: "100%",
-                  maxWidth: "100%",
-                  minWidth: 0,
+                  padding: "10px 12px",
+                  borderRadius: 8,
+                  background: "#fff7ed",
+                  color: "#9a3412",
+                  marginBottom: 10,
                 }}
               >
-                <DashboardTable>
-                  <table
-                    style={{
-                      width: "max-content",
-                      minWidth: 1600,
-                      tableLayout: "fixed",
-                      borderCollapse: "collapse",
-                      fontSize: 13,
-                    }}
-                  >
-                <colgroup>
-                  <col style={{ width: 170 }} />  {/* PROGETTO */}
-                  <col style={{ width: 140 }} />  {/* Cliente */}
-                  <col style={{ width: 140 }} />  {/* Proforma */}
-                  <col style={{ width: 120 }} />  {/* PO */}
-                  <col style={{ width: 110 }} />  {/* Data prevista */}
-                  <col style={{ width: 110 }} />  {/* Data tassativa */}
-                  <col style={{ width: 110 }} />  {/* Dimensioni */}
-                  <col style={{ width: 70 }} />   {/* Passo */}
-                  <col style={{ width: 70 }} />   {/* m2 */}
-                  <col style={{ width: 110 }} />  {/* Tipo impianto */}
-                  <col style={{ width: 180 }} />  {/* Indirizzo impianto */}
-                  <col style={{ width: 120 }} />  {/* Install. reale */}
-                  <col style={{ width: 110 }} />  {/* Codice */}
-                  <col style={{ width: 130 }} />  {/* Magazzino */}
-                  <col style={{ width: 200 }} />  {/* Descrizione */}
-                  <col style={{ width: 150 }} />  {/* SAAS */}
-                  <col style={{ width: 120 }} />  {/* SAAS scadenza */}
-                  <col style={{ width: 200 }} />  {/* SAAS note */}
-                  <col style={{ width: 140 }} />  {/* SAAS stato */}
-                  <col style={{ width: 150 }} />  {/* Garanzia */}
-                  <col style={{ width: 120 }} />  {/* Licenze # attive */}
-                  <col style={{ width: 180 }} />  {/* Licenze prossima scadenza */}
-                  <col style={{ width: 220 }} />  {/* Licenze dettaglio */}
-                  <col style={{ width: 130 }} />  {/* Stato progetto */}
-                  <col style={{ width: 120 }} />  {/* Documenti */}
-                  <col style={{ width: 120 }} />  {/* Sezione 1 */}
-                  <col style={{ width: 120 }} />  {/* Sezione 2 */}
-                  <col style={{ width: 120 }} />  {/* Sezione 3 */}
-                  <col style={{ width: 120 }} />  {/* Stato complessivo */}
-                  <col style={{ width: 110 }} />  {/* % Stato */}
-                  <col style={{ width: 120 }} />  {/* Creato */}
-                  <col style={{ width: 120 }} />  {/* Modificato */}
-                  <col style={{ width: 130 }} />  {/* Creato da */}
-                  <col style={{ width: 130 }} />  {/* Modificato da */}
-                  <col style={{ width: 160 }} />  {/* Azioni */}
-                </colgroup>
-                <thead>
-                  <tr>
-                    <th
-                      onClick={() => toggleSort("nome_checklist")}
-                      title="Ordina per Nome PROGETTO"
-                      style={{
-                        textAlign: "left",
-                        padding: "10px 12px",
-                        cursor: "pointer",
-                        position: "sticky",
-                        top: 0,
-                        background: "white",
-                        zIndex: 2,
-                        boxShadow: "0 2px 6px rgba(0, 0, 0, 0.06)",
-                      }}
-                    >
-                      PROGETTO
-                      {sortIcon("nome_checklist")}
-                    </th>
-                    <th
-                      onClick={() => toggleSort("cliente")}
-                      title="Ordina per Cliente"
-                      style={{
-                        textAlign: "left",
-                        padding: "10px 12px",
-                        cursor: "pointer",
-                        position: "sticky",
-                        top: 0,
-                        background: "white",
-                        zIndex: 2,
-                        boxShadow: "0 2px 6px rgba(0, 0, 0, 0.06)",
-                      }}
-                    >
-                      Cliente
-                      {sortIcon("cliente")}
-                    </th>
-                    <th
-                      onClick={() => toggleSort("proforma_doc")}
-                      title="Ordina per Proforma"
-                      style={{
-                        textAlign: "left",
-                        padding: "10px 12px",
-                        cursor: "pointer",
-                        position: "sticky",
-                        top: 0,
-                        background: "white",
-                        zIndex: 2,
-                        boxShadow: "0 2px 6px rgba(0, 0, 0, 0.06)",
-                      }}
-                    >
-                      Proforma
-                      {sortIcon("proforma_doc")}
-                    </th>
-                    <th
-                      onClick={() => toggleSort("po")}
-                      title="Ordina per PO"
-                      style={{
-                        textAlign: "left",
-                        padding: "10px 12px",
-                        cursor: "pointer",
-                        position: "sticky",
-                        top: 0,
-                        background: "white",
-                        zIndex: 2,
-                        boxShadow: "0 2px 6px rgba(0, 0, 0, 0.06)",
-                      }}
-                    >
-                      PO
-                      {sortIcon("po")}
-                    </th>
-                    <th
-                      onClick={() => toggleSort("data_prevista")}
-                      title="Ordina per Data installazione prevista"
-                      style={{
-                        textAlign: "left",
-                        padding: "10px 12px",
-                        cursor: "pointer",
-                        position: "sticky",
-                        top: 0,
-                        background: "white",
-                        zIndex: 2,
-                        boxShadow: "0 2px 6px rgba(0, 0, 0, 0.06)",
-                      }}
-                    >
-                      Data prevista
-                      {sortIcon("data_prevista")}
-                    </th>
-                    <th
-                      onClick={() => toggleSort("data_tassativa")}
-                      title="Ordina per Data tassativa"
-                      style={{
-                        textAlign: "left",
-                        padding: "10px 12px",
-                        cursor: "pointer",
-                        position: "sticky",
-                        top: 0,
-                        background: "white",
-                        zIndex: 2,
-                        boxShadow: "0 2px 6px rgba(0, 0, 0, 0.06)",
-                      }}
-                    >
-                      Data tassativa
-                      {sortIcon("data_tassativa")}
-                    </th>
-                    <th
-                      onClick={() => toggleSort("dimensioni")}
-                      title="Ordina per Dimensioni"
-                      style={{
-                        textAlign: "left",
-                        padding: "10px 12px",
-                        cursor: "pointer",
-                        position: "sticky",
-                        top: 0,
-                        background: "white",
-                        zIndex: 2,
-                        boxShadow: "0 2px 6px rgba(0, 0, 0, 0.06)",
-                      }}
-                    >
-                      Dimensioni
-                      {sortIcon("dimensioni")}
-                    </th>
-                    <th
-                      onClick={() => toggleSort("passo")}
-                      title="Ordina per Passo"
-                      style={{
-                        textAlign: "left",
-                        padding: "10px 12px",
-                        cursor: "pointer",
-                        position: "sticky",
-                        top: 0,
-                        background: "white",
-                        zIndex: 2,
-                        boxShadow: "0 2px 6px rgba(0, 0, 0, 0.06)",
-                      }}
-                    >
-                      Passo
-                      {sortIcon("passo")}
-                    </th>
-                    <th
-                      onClick={() => toggleSort("m2_calcolati")}
-                      title="Ordina per m2"
-                      style={{
-                        textAlign: "right",
-                        padding: "10px 12px",
-                        cursor: "pointer",
-                        position: "sticky",
-                        top: 0,
-                        background: "white",
-                        zIndex: 2,
-                        boxShadow: "0 2px 6px rgba(0, 0, 0, 0.06)",
-                      }}
-                    >
-                      m2
-                      {sortIcon("m2_calcolati")}
-                    </th>
-                    <th
-                      onClick={() => toggleSort("tipo_impianto")}
-                      title="Ordina per Tipo impianto"
-                      style={{
-                        textAlign: "left",
-                        padding: "10px 12px",
-                        cursor: "pointer",
-                        position: "sticky",
-                        top: 0,
-                        background: "white",
-                        zIndex: 2,
-                        boxShadow: "0 2px 6px rgba(0, 0, 0, 0.06)",
-                      }}
-                    >
-                      Tipo impianto
-                      {sortIcon("tipo_impianto")}
-                    </th>
-                    <th
-                      onClick={() => toggleSort("impianto_indirizzo")}
-                      title="Ordina per Indirizzo impianto"
-                      style={{
-                        textAlign: "left",
-                        padding: "10px 12px",
-                        cursor: "pointer",
-                        position: "sticky",
-                        top: 0,
-                        background: "white",
-                        zIndex: 2,
-                        boxShadow: "0 2px 6px rgba(0, 0, 0, 0.06)",
-                      }}
-                    >
-                      Indirizzo impianto
-                      {sortIcon("impianto_indirizzo")}
-                    </th>
-                    <th
-                      onClick={() => toggleSort("data_installazione_reale")}
-                      title="Ordina per Installazione reale"
-                      style={{
-                        textAlign: "left",
-                        padding: "10px 12px",
-                        cursor: "pointer",
-                        position: "sticky",
-                        top: 0,
-                        background: "white",
-                        zIndex: 2,
-                        boxShadow: "0 2px 6px rgba(0, 0, 0, 0.06)",
-                      }}
-                    >
-                      Install. reale
-                      {sortIcon("data_installazione_reale")}
-                    </th>
-                    <th
-                      onClick={() => toggleSort("codice")}
-                      title="Ordina per Codice"
-                      style={{
-                        textAlign: "left",
-                        padding: "10px 12px",
-                        cursor: "pointer",
-                        position: "sticky",
-                        top: 0,
-                        background: "white",
-                        zIndex: 2,
-                        boxShadow: "0 2px 6px rgba(0, 0, 0, 0.06)",
-                      }}
-                    >
-                      Codice
-                      {sortIcon("codice")}
-                    </th>
-                    <th
-                      onClick={() => toggleSort("magazzino_importazione")}
-                      title="Ordina per Magazzino importazione"
-                      style={{
-                        textAlign: "left",
-                        padding: "10px 12px",
-                        cursor: "pointer",
-                        position: "sticky",
-                        top: 0,
-                        background: "white",
-                        zIndex: 2,
-                        boxShadow: "0 2px 6px rgba(0, 0, 0, 0.06)",
-                      }}
-                    >
-                      Magazzino
-                      {sortIcon("magazzino_importazione")}
-                    </th>
-                    <th
-                      onClick={() => toggleSort("descrizione")}
-                      title="Ordina per Descrizione"
-                      style={{
-                        textAlign: "left",
-                        padding: "10px 12px",
-                        cursor: "pointer",
-                        position: "sticky",
-                        top: 0,
-                        background: "white",
-                        zIndex: 2,
-                        boxShadow: "0 2px 6px rgba(0, 0, 0, 0.06)",
-                      }}
-                    >
-                      Descrizione
-                      {sortIcon("descrizione")}
-                    </th>
-                    <th
-                      onClick={() => toggleSort("saas_piano")}
-                      title="Ordina per SAAS"
-                      style={{
-                        textAlign: "left",
-                        padding: "10px 12px",
-                        cursor: "pointer",
-                        position: "sticky",
-                        top: 0,
-                        background: "white",
-                        zIndex: 2,
-                        boxShadow: "0 2px 6px rgba(0, 0, 0, 0.06)",
-                      }}
-                    >
-                      SAAS
-                      {sortIcon("saas_piano")}
-                    </th>
-                    <th
-                      onClick={() => toggleSort("saas_scadenza")}
-                      title="Ordina per SAAS scadenza"
-                      style={{
-                        textAlign: "left",
-                        padding: "10px 12px",
-                        cursor: "pointer",
-                        position: "sticky",
-                        top: 0,
-                        background: "white",
-                        zIndex: 2,
-                        boxShadow: "0 2px 6px rgba(0, 0, 0, 0.06)",
-                      }}
-                    >
-                      SAAS scadenza
-                      {sortIcon("saas_scadenza")}
-                    </th>
-                    <th
-                      onClick={() => toggleSort("saas_note")}
-                      title="Ordina per SAAS note"
-                      style={{
-                        textAlign: "left",
-                        padding: "10px 12px",
-                        cursor: "pointer",
-                        position: "sticky",
-                        top: 0,
-                        background: "white",
-                        zIndex: 2,
-                        boxShadow: "0 2px 6px rgba(0, 0, 0, 0.06)",
-                      }}
-                    >
-                      SAAS note
-                      {sortIcon("saas_note")}
-                    </th>
-                    <th
-                      onClick={() => toggleSort("saas_stato")}
-                      title="Ordina per SAAS stato"
-                      style={{
-                        textAlign: "center",
-                        padding: "10px 12px",
-                        cursor: "pointer",
-                        position: "sticky",
-                        top: 0,
-                        background: "white",
-                        zIndex: 2,
-                        boxShadow: "0 2px 6px rgba(0, 0, 0, 0.06)",
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      SAAS stato
-                      {sortIcon("saas_stato")}
-                    </th>
-                    <th
-                      onClick={() => toggleSort("garanzia_scadenza")}
-                      title="Ordina per Garanzia scadenza"
-                      style={{
-                        textAlign: "left",
-                        padding: "10px 12px",
-                        cursor: "pointer",
-                        position: "sticky",
-                        top: 0,
-                        background: "white",
-                        zIndex: 2,
-                        boxShadow: "0 2px 6px rgba(0, 0, 0, 0.06)",
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      Garanzia
-                      {sortIcon("garanzia_scadenza")}
-                    </th>
-                    <th
-                      onClick={() => toggleSort("licenze_attive")}
-                      title="Ordina per Licenze attive"
-                      style={{
-                        textAlign: "left",
-                        padding: "10px 12px",
-                        cursor: "pointer",
-                        position: "sticky",
-                        top: 0,
-                        background: "white",
-                        zIndex: 2,
-                        boxShadow: "0 2px 6px rgba(0, 0, 0, 0.06)",
-                      }}
-                    >
-                      Licenze # attive
-                      {sortIcon("licenze_attive")}
-                    </th>
-                    <th
-                      onClick={() => toggleSort("licenze_prossima_scadenza")}
-                      title="Ordina per Licenze prossima scadenza"
-                      style={{
-                        textAlign: "left",
-                        padding: "10px 12px",
-                        cursor: "pointer",
-                        position: "sticky",
-                        top: 0,
-                        background: "white",
-                        zIndex: 2,
-                        boxShadow: "0 2px 6px rgba(0, 0, 0, 0.06)",
-                      }}
-                    >
-                      Licenze prossima scadenza
-                      {sortIcon("licenze_prossima_scadenza")}
-                    </th>
-                    <th
-                      style={{
-                        textAlign: "left",
-                        padding: "10px 12px",
-                        position: "sticky",
-                        top: 0,
-                        background: "white",
-                        zIndex: 2,
-                        boxShadow: "0 2px 6px rgba(0, 0, 0, 0.06)",
-                      }}
-                    >
-                      Licenze dettaglio
-                    </th>
-                    <th
-                      onClick={() => toggleSort("stato_progetto")}
-                      title="Ordina per Stato progetto"
-                      style={{
-                        textAlign: "left",
-                        padding: "10px 12px",
-                        cursor: "pointer",
-                        position: "sticky",
-                        top: 0,
-                        background: "white",
-                        zIndex: 2,
-                        boxShadow: "0 2px 6px rgba(0, 0, 0, 0.06)",
-                      }}
-                    >
-                      Stato progetto
-                      {sortIcon("stato_progetto")}
-                    </th>
-                    <th
-                      style={{
-                        textAlign: "left",
-                        padding: "10px 12px",
-                        position: "sticky",
-                        top: 0,
-                        background: "white",
-                        zIndex: 2,
-                        boxShadow: "0 2px 6px rgba(0, 0, 0, 0.06)",
-                      }}
-                    >
-                      Documenti
-                    </th>
-                    <th
-                      style={{
-                        textAlign: "left",
-                        padding: "10px 12px",
-                        position: "sticky",
-                        top: 0,
-                        background: "white",
-                        zIndex: 2,
-                        boxShadow: "0 2px 6px rgba(0, 0, 0, 0.06)",
-                      }}
-                    >
-                      Sezione 1
-                    </th>
-                    <th
-                      style={{
-                        textAlign: "left",
-                        padding: "10px 12px",
-                        position: "sticky",
-                        top: 0,
-                        background: "white",
-                        zIndex: 2,
-                        boxShadow: "0 2px 6px rgba(0, 0, 0, 0.06)",
-                      }}
-                    >
-                      Sezione 2
-                    </th>
-                    <th
-                      style={{
-                        textAlign: "left",
-                        padding: "10px 12px",
-                        position: "sticky",
-                        top: 0,
-                        background: "white",
-                        zIndex: 2,
-                        boxShadow: "0 2px 6px rgba(0, 0, 0, 0.06)",
-                      }}
-                    >
-                      Sezione 3
-                    </th>
-                    <th
-                      style={{
-                        textAlign: "left",
-                        padding: "10px 12px",
-                        position: "sticky",
-                        top: 0,
-                        background: "white",
-                        zIndex: 2,
-                        boxShadow: "0 2px 6px rgba(0, 0, 0, 0.06)",
-                      }}
-                    >
-                      Stato complessivo
-                    </th>
-                    <th
-                      onClick={() => toggleSort("pct_complessivo")}
-                      title="Ordina per % Stato complessivo"
-                      style={{
-                        textAlign: "left",
-                        padding: "10px 12px",
-                        cursor: "pointer",
-                        position: "sticky",
-                        top: 0,
-                        background: "white",
-                        zIndex: 2,
-                        boxShadow: "0 2px 6px rgba(0, 0, 0, 0.06)",
-                      }}
-                    >
-                      % Stato
-                      {sortIcon("pct_complessivo")}
-                    </th>
-                    <th
-                      onClick={() => toggleSort("created_at")}
-                      title="Ordina per Data creazione"
-                      style={{
-                        textAlign: "left",
-                        padding: "10px 12px",
-                        cursor: "pointer",
-                        position: "sticky",
-                        top: 0,
-                        background: "white",
-                        zIndex: 2,
-                        boxShadow: "0 2px 6px rgba(0, 0, 0, 0.06)",
-                      }}
-                    >
-                      Creato
-                      {sortIcon("created_at")}
-                    </th>
-                    <th
-                      onClick={() => toggleSort("updated_at")}
-                      title="Ordina per Data modifica"
-                      style={{
-                        textAlign: "left",
-                        padding: "10px 12px",
-                        cursor: "pointer",
-                        position: "sticky",
-                        top: 0,
-                        background: "white",
-                        zIndex: 2,
-                        boxShadow: "0 2px 6px rgba(0, 0, 0, 0.06)",
-                      }}
-                    >
-                      Modificato
-                      {sortIcon("updated_at")}
-                    </th>
-                    <th
-                      style={{
-                        textAlign: "left",
-                        padding: "10px 12px",
-                        position: "sticky",
-                        top: 0,
-                        background: "white",
-                        zIndex: 2,
-                        boxShadow: "0 2px 6px rgba(0, 0, 0, 0.06)",
-                      }}
-                    >
-                      Creato da
-                    </th>
-                    <th
-                      style={{
-                        textAlign: "left",
-                        padding: "10px 12px",
-                        position: "sticky",
-                        top: 0,
-                        background: "white",
-                        zIndex: 2,
-                        boxShadow: "0 2px 6px rgba(0, 0, 0, 0.06)",
-                      }}
-                    >
-                      Modificato da
-                    </th>
-                    <th
-                      style={{
-                        textAlign: "left",
-                        padding: "10px 12px",
-                        position: "sticky",
-                        top: 0,
-                        background: "white",
-                        zIndex: 2,
-                        boxShadow: "0 2px 6px rgba(0, 0, 0, 0.06)",
-                      }}
-                    >
-                      Azioni
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {displayRows.map((c) => {
-                    return (
-                      <tr
-                        key={c.id}
-                        data-testid="project-row"
-                        data-project-id={c.id}
-                        role="button"
-                        tabIndex={0}
-                        onClick={() => router.push(`/checklists/${c.id}`)}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter" || e.key === " ") {
-                            e.preventDefault();
-                            router.push(`/checklists/${c.id}`);
-                          }
-                        }}
-                        style={{
-                          borderBottom: "1px solid #f7f7f7",
-                          cursor: "pointer",
-                        }}
-                      >
-                        <td style={{ padding: "10px 12px", fontWeight: 700 }}>
-                          <div style={{ display: "grid", gap: 6 }}>
-                            <div>{c.nome_checklist}</div>
-                            <div
-                              style={{
-                                border: "1px solid #eef2f7",
-                                borderRadius: 10,
-                                padding: "8px 10px",
-                                background: "#f9fafb",
-                                display: "grid",
-                                gap: 8,
-                              }}
-                            >
-                              <div
-                                style={{
-                                  display: "flex",
-                                  alignItems: "center",
-                                  justifyContent: "space-between",
-                                  gap: 8,
-                                }}
-                              >
-                                <div style={{ fontSize: 12, fontWeight: 800, opacity: 0.85 }}>
-                                  Note operative
-                                </div>
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setExpandedDashboardNoteId((prev) => (prev === c.id ? null : c.id));
-                                  }}
-                                  style={{
-                                    padding: "4px 8px",
-                                    borderRadius: 8,
-                                    border: "1px solid #d1d5db",
-                                    background: "white",
-                                    cursor: "pointer",
-                                    fontSize: 12,
-                                    fontWeight: 700,
-                                  }}
-                                >
-                                  {expandedDashboardNoteId === c.id ? "Chiudi" : "Apri"}
-                                </button>
-                              </div>
-                              {expandedDashboardNoteId === c.id ? (
-                                <OperativeNotesPanel
-                                  compact
-                                  items={[
-                                    {
-                                      rowKind: "INSTALLAZIONE",
-                                      rowRefId: c.id,
-                                      label: "Installazione",
-                                    },
-                                    ...(String(c.noleggio_vendita || "").trim().toUpperCase() === "NOLEGGIO"
-                                      ? [
-                                          {
-                                            rowKind: "DISINSTALLAZIONE" as const,
-                                            rowRefId: c.id,
-                                            label: "Disinstallazione",
-                                          },
-                                        ]
-                                      : []),
-                                  ]}
-                                />
-                              ) : (
-                                <div
-                                  style={{
-                                    fontSize: 12,
-                                    opacity: 0.7,
-                                    whiteSpace: "nowrap",
-                                    overflow: "hidden",
-                                    textOverflow: "ellipsis",
-                                  }}
-                                >
-                                  —
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        </td>
-                        <td style={{ padding: "10px 12px", opacity: 0.85 }}>
-                          {c.cliente ? (
-                            <Link
-                              href={`/clienti/${encodeURIComponent(c.cliente)}`}
-                              style={{
-                                textDecoration: "underline",
-                                fontWeight: 700,
-                                color: "#2563eb",
-                              }}
-                              title="Apri scheda cliente"
-                              onClick={(e) => e.stopPropagation()}
-                              onKeyDown={(e) => e.stopPropagation()}
-                            >
-                              {c.cliente}
-                            </Link>
-                          ) : (
-                            "—"
-                          )}
-                        </td>
-                        <td style={{ padding: "10px 12px", opacity: 0.85 }}>
-                          {(() => {
-                            const docs = (c.checklist_documents ?? []) as any[];
-                            const proformaDocs = docs.filter((d) =>
-                              String(d.tipo ?? "")
-                                .toUpperCase()
-                                .includes("PROFORMA")
-                            );
-                            const hasProforma = proformaDocs.length > 0;
-                            const latest = proformaDocs[0];
-                            const titleParts = [];
-                            if (c.proforma) {
-                              titleParts.push(`Proforma: ${c.proforma}`);
-                            } else if (hasProforma) {
-                              titleParts.push("Documento PROFORMA presente");
-                            }
-                            if (latest?.filename) {
-                              titleParts.push(`File: ${latest.filename}`);
-                            }
-                            const title = titleParts.join(" | ");
-                            return (
-                              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                                <span>{c.proforma ?? "—"}</span>
-                                {hasProforma && (
-                                  <span title={title} style={{ cursor: "help" }}>
-                                    ✅
-                                  </span>
-                                )}
-                              </div>
-                            );
-                          })()}
-                        </td>
-                        <td style={{ padding: "10px 12px", opacity: 0.85 }}>
-                          {c.po ?? "—"}
-                        </td>
-                        <td style={{ padding: "10px 12px", opacity: 0.85 }}>
-                          {c.data_prevista
-                            ? new Date(c.data_prevista).toLocaleDateString()
-                            : "—"}
-                        </td>
-                        <td style={{ padding: "10px 12px", opacity: 0.85 }}>
-                          {c.data_tassativa
-                            ? new Date(c.data_tassativa).toLocaleDateString()
-                            : "—"}
-                        </td>
-                        <td style={{ padding: "10px 12px", opacity: 0.85 }}>
-                          {c.dimensioni ?? "—"}
-                        </td>
-                        <td style={{ padding: "10px 12px", opacity: 0.85 }}>{c.passo ?? "—"}</td>
-                        <td style={{ padding: "10px 12px", opacity: 0.85, textAlign: "right" }}>
-                          {getChecklistM2(c) != null
-                            ? getChecklistM2(c)!.toFixed(2)
-                            : "—"}
-                        </td>
-                        <td style={{ padding: "10px 12px", opacity: 0.85 }}>
-                          {c.tipo_impianto ?? "—"}
-                        </td>
-                        <td
-                          style={{
-                            padding: "10px 12px",
-                            opacity: 0.85,
-                            width: 180,
-                            maxWidth: 180,
-                            overflow: "hidden",
-                            whiteSpace: "nowrap",
-                            textOverflow: "ellipsis",
-                          }}
-                        >
-                          {renderDashboardAddressCell(c.impianto_indirizzo)}
-                        </td>
-                        <td style={{ padding: "10px 12px", opacity: 0.85 }}>
-                          {c.data_installazione_reale
-                            ? new Date(c.data_installazione_reale).toLocaleDateString()
-                            : "—"}
-                        </td>
-                        <td style={{ padding: "10px 12px", opacity: 0.85 }}>{c.codice ?? "—"}</td>
-                        <td style={{ padding: "10px 12px", opacity: 0.85 }}>
-                          {c.magazzino_importazione ?? "—"}
-                        </td>
-                        <td style={{ padding: "10px 12px", opacity: 0.85 }}>{c.descrizione ?? "—"}</td>
-                        <td style={{ padding: "10px 12px", opacity: 0.85 }}>
-                          {c.saas_piano
-                            ? `${c.saas_piano} — ${saasLabelFromCode(c.saas_piano)}`
-                            : "—"}
-                        </td>
-                        <td style={{ padding: "10px 12px", opacity: 0.85 }}>
-                          {c.saas_scadenza
-                            ? new Date(c.saas_scadenza).toLocaleDateString()
-                            : "—"}
-                        </td>
-                        <td
-                          style={{
-                            padding: "10px 12px",
-                            opacity: 0.85,
-                            cursor: c.saas_note ? "pointer" : "default",
-                          }}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            if (!c.saas_note) return;
-                            setExpandedSaasNoteId((prev) => (prev === c.id ? null : c.id));
-                          }}
-                        >
-                          {c.saas_note ? (
-                            <div style={{ display: "grid", gap: 4 }}>
-                              <div
-                                style={
-                                  expandedSaasNoteId === c.id
-                                    ? { whiteSpace: "pre-wrap" }
-                                    : {
-                                        display: "-webkit-box",
-                                        WebkitLineClamp: 2,
-                                        WebkitBoxOrient: "vertical",
-                                        overflow: "hidden",
-                                      }
-                                }
-                              >
-                                {c.saas_note}
-                              </div>
-                              <span
-                                style={{
-                                  fontSize: 11,
-                                  opacity: 0.6,
-                                  userSelect: "none",
-                                }}
-                              >
-                                {expandedSaasNoteId === c.id
-                                  ? "clicca per chiudere"
-                                  : "clicca per espandere"}
-                              </span>
-                            </div>
-                          ) : (
-                            "—"
-                          )}
-                        </td>
-                        <td style={{ padding: "10px 12px", textAlign: "center", whiteSpace: "nowrap" }}>
-                          {renderBadge(getExpiryStatus(c.saas_scadenza))}
-                        </td>
-                        <td style={{ padding: "10px 12px", whiteSpace: "nowrap" }}>
-                          <div
-                            style={{
-                              display: "flex",
-                              flexDirection: "column",
-                              gap: 6,
-                              alignItems: "flex-start",
-                            }}
-                          >
-                            <span>
-                              {c.garanzia_scadenza
-                                ? new Date(c.garanzia_scadenza).toLocaleDateString()
-                                : "—"}
-                            </span>
-                            <span>{renderBadge(getExpiryStatus(c.garanzia_scadenza))}</span>
-                          </div>
-                        </td>
-                        <td style={{ padding: "10px 12px", opacity: 0.85 }}>
-                          {c.licenze_attive != null ? c.licenze_attive : 0}
-                        </td>
-                        <td style={{ padding: "10px 12px", opacity: 0.85 }}>
-                          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                            <span>
-                              {c.licenze_prossima_scadenza
-                                ? new Date(c.licenze_prossima_scadenza).toLocaleDateString()
-                                : "—"}
-                            </span>
-                            {renderBadge(getExpiryStatus(c.licenze_prossima_scadenza))}
-                          </div>
-                        </td>
-                        <td style={{ padding: "10px 12px", opacity: 0.85 }}>
-                          {c.licenze_dettaglio ?? "—"}
-                        </td>
-                        <td style={{ padding: "10px 12px", opacity: 0.85 }}>
-                          <div style={{ display: "flex", flexDirection: "column", gap: 6, alignItems: "flex-start" }}>
-                            <span>{getProjectStatusLabel(c)}</span>
-                            {getProjectNoleggioState(c).isNoleggioAttivo ? (
-                              <span
-                                style={{
-                                  display: "inline-block",
-                                  padding: "2px 8px",
-                                  borderRadius: 999,
-                                  fontSize: 12,
-                                  fontWeight: 700,
-                                  background: "#dbeafe",
-                                  color: "#1d4ed8",
-                                }}
-                              >
-                                NOLEGGIO ATTIVO
-                              </span>
-                            ) : null}
-                            {getProjectNoleggioState(c).disinstallazioneImminente ? (
-                              <span
-                                style={{
-                                  display: "inline-block",
-                                  padding: "2px 8px",
-                                  borderRadius: 999,
-                                  fontSize: 12,
-                                  fontWeight: 700,
-                                  background: "#ffedd5",
-                                  color: "#c2410c",
-                                }}
-                              >
-                                ⚠ Disinstallazione imminente
-                              </span>
-                            ) : null}
-                          </div>
-                        </td>
-                        <td style={{ padding: "10px 12px" }}>{renderStatusBadge(c.documenti)}</td>
-                        <td style={{ padding: "10px 12px" }}>{renderStatusBadge(c.sezione_1)}</td>
-                        <td style={{ padding: "10px 12px" }}>{renderStatusBadge(c.sezione_2)}</td>
-                        <td style={{ padding: "10px 12px" }}>{renderStatusBadge(c.sezione_3)}</td>
-                        <td style={{ padding: "10px 12px" }}>
-                          {renderStatusBadge(c.stato_complessivo)}
-                        </td>
-                        <td style={{ padding: "10px 12px", opacity: 0.85 }}>
-                          {c.pct_complessivo != null
-                            ? `${Math.round(c.pct_complessivo)}%`
-                            : "—"}
-                        </td>
-                        <td style={{ padding: "10px 12px", opacity: 0.75 }}>
-                          {new Date(c.created_at).toLocaleString()}
-                        </td>
-                        <td style={{ padding: "10px 12px", opacity: 0.75 }}>
-                          {c.updated_at ? new Date(c.updated_at).toLocaleString() : "—"}
-                        </td>
-                        <td style={{ padding: "10px 12px", opacity: 0.85 }}>
-                          {formatOperatoreRef(c.created_by_operatore)}
-                        </td>
-                        <td style={{ padding: "10px 12px", opacity: 0.85 }}>
-                          {formatOperatoreRef(c.updated_by_operatore)}
-                        </td>
-                        <td style={{ padding: "10px 12px", display: "flex", gap: 8 }}>
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              router.push(`/checklists/${c.id}`);
-                            }}
-                            style={{
-                              padding: "6px 10px",
-                              borderRadius: 8,
-                              border: "1px solid #2563eb",
-                              background: "white",
-                              color: "#2563eb",
-                              cursor: "pointer",
-                            }}
-                          >
-                            Apri
-                          </button>
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              backupAndDeleteChecklist(c.id);
-                            }}
-                            style={{
-                              padding: "6px 10px",
-                              borderRadius: 8,
-                              border: "1px solid #dc2626",
-                              background: "white",
-                              color: "#dc2626",
-                              cursor: "pointer",
-                            }}
-                          >
-                            Elimina
-                          </button>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-                  </table>
-                </DashboardTable>
-
-          {displayRows.length === 0 && (
-            <div style={{ padding: 14, opacity: 0.7 }}>Nessun risultato</div>
-          )}
-        </div>
-      </div>
-    )}
+                {cronoStateError}
+              </div>
+            )}
+            <CronoprogrammaPanel
+              fromDate={cronoFromDate}
+              setFromDate={(value) => {
+                const next = typeof value === "function" ? value(cronoFromDate) : value;
+                setCronoFromDate(next);
+                setCronoQuickRangeDays(null);
+              }}
+              toDate={cronoToDate}
+              setToDate={(value) => {
+                const next = typeof value === "function" ? value(cronoToDate) : value;
+                setCronoToDate(next);
+                setCronoQuickRangeDays(null);
+              }}
+              clienteFilter={cronoClienteFilter}
+              setClienteFilter={setCronoClienteFilter}
+              kindFilter={cronoKindFilter}
+              setKindFilter={setCronoKindFilter}
+              q={cronoQ}
+              setQ={setCronoQ}
+              personaleFilter={cronoPersonaleFilter}
+              setPersonaleFilter={setCronoPersonaleFilter}
+              clienti={homeCronoClienti}
+              quickRangeDays={cronoQuickRangeDays}
+              applyQuickRange={applyHomeCronoQuickRange}
+              showFatto={cronoShowFatto}
+              setShowFatto={setCronoShowFatto}
+              showHidden={cronoShowHidden}
+              setShowHidden={setCronoShowHidden}
+              filteredSorted={homeCronoFilteredSorted}
+              onExportCsv={() =>
+                downloadCronoCsv(
+                  `cronoprogramma_${new Date().toISOString().slice(0, 10)}.csv`,
+                  homeCronoFilteredSorted,
+                  cronoMetaByKey,
+                  cronoCommentsByKey
+                )
+              }
+              topScrollRef={cronoTopScrollRef}
+              mainScrollRef={cronoMainScrollRef}
+              bottomScrollRef={cronoBottomScrollRef}
+              scrollContentRef={cronoScrollContentRef}
+              onTopScroll={onHomeCronoTopScroll}
+              onMainScroll={onHomeCronoMainScroll}
+              onBottomScroll={onHomeCronoBottomScroll}
+              scrollContentWidth={cronoScrollContentWidth}
+              loading={cronoLoading}
+              sortBy={cronoSortBy}
+              sortDir={cronoSortDir}
+              toggleSort={toggleHomeCronoSort}
+              metaByKey={cronoMetaByKey}
+              commentsByKey={cronoCommentsByKey}
+              noteDraftByKey={cronoNoteDraftByKey}
+              setNoteDraftByKey={setCronoNoteDraftByKey}
+              stateLoading={cronoStateLoading}
+              savingFattoKey={cronoSavingFattoKey}
+              savingHiddenKey={cronoSavingHiddenKey}
+              savingCommentKey={cronoSavingCommentKey}
+              savingOperativiKey={cronoSavingOperativiKey}
+              deletingCommentId={cronoDeletingCommentId}
+              noteHistoryKey={cronoNoteHistoryKey}
+              setNoteHistoryKey={setCronoNoteHistoryKey}
+              operativiDraftByKey={cronoOperativiDraftByKey}
+              setOperativiDraftByKey={setCronoOperativiDraftByKey}
+              conflictByKey={homeCronoConflictByKey}
+              rowByKey={homeCronoRowByKey}
+              setFatto={setHomeCronoFatto}
+              setHidden={setHomeCronoHidden}
+              addComment={addHomeCronoComment}
+              saveOperativi={saveHomeCronoOperativi}
+              deleteComment={deleteHomeCronoComment}
+              getRowKey={getRowKey}
+              getRowSchedule={getRowSchedule}
+              extractOperativi={extractOperativi}
+              buildConflictTooltip={buildConflictTooltip}
+              hasDefinedOperativi={hasDefinedOperativi}
+              emptyOperativi={EMPTY_OPERATIVI}
+            />
+          </div>
   </div>
 )}
       {addInterventoOpen && (

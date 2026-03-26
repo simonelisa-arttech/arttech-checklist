@@ -169,10 +169,51 @@
 - Flusso dashboard allineato al contesto operativo:
   - da `app/page.tsx` il modal `Aggiungi intervento` porta ora a `/checklists/[id]?focus=interventi&addIntervento=1`
   - non usare piu' la scheda cliente come passaggio intermedio per questo entrypoint
-- `app/checklists/[id]/page.tsx`
+  - `app/checklists/[id]/page.tsx`
   - consuma `focus=interventi` / `addIntervento=1`
   - scrolla a `#add-intervento`
   - puo' precompilare la `descrizione` iniziale dalla query
+
+## Snapshot 2026-03-26 - Cronoprogramma estraibile come pannello riusabile
+- nuovo componente:
+  - `components/cronoprogramma/CronoprogrammaPanel.tsx`
+- regola da mantenere:
+  - il contenuto principale del cronoprogramma deve vivere in un pannello riusabile
+  - la pagina `app/cronoprogramma/page.tsx` deve restare principalmente container/wrapper
+- contenuto del pannello:
+  - filtri
+  - ricerca
+  - quick range
+  - export CSV
+  - tabella/timeline
+  - note/storico
+  - operativi / personale / conflitti
+- obiettivo operativo:
+  - permettere il riuso futuro nella Home senza duplicare UI o logica di rendering
+
+## Snapshot 2026-03-26 - Home corrente = cockpit + cronoprogramma
+- `app/page.tsx`
+  - la Home principale deve mostrare:
+    - header / top actions
+    - cockpit KPI
+    - `CronoprogrammaPanel`
+- `app/dashboard/page.tsx`
+  - resta la pagina separata per la dashboard progetti
+- regola da mantenere:
+  - non reinserire in Home il blocco progetti/tabella dashboard
+  - la Home e' vista operativa
+  - la dashboard progetti resta una superficie dedicata separata
+
+## Snapshot 2026-03-26 - Navigazione primaria globale nel layout
+- `app/layout.tsx`
+  - il logo deve sempre riportare alla Home `/`
+  - la top bar globale deve esporre almeno:
+    - `Home`
+    - `Dashboard`
+    - `Cronoprogramma`
+- regola operativa:
+  - la navigazione primaria vive nel layout
+  - le pagine possono mantenere link locali contestuali finche' non vengono ripuliti in una fase separata
 
 ## Snapshot 2026-03-25 - Personale operativo su ID, non piu' su testo libero
 - Nuova source of truth:
@@ -869,3 +910,30 @@ group by checklist_id;
 - Scelta conservativa:
   - nessun refactor ampio
   - nessuna modifica ai filtri SQL raw dei file piu' delicati non ancora riallineati
+
+## Snapshot 2026-03-26 - Primo step sicuro refactor Home/Dashboard
+- Estratto da `app/page.tsx` il blocco `filtri + tabella progetti` in:
+  - `components/dashboard/DashboardProjectsSection.tsx`
+- Regola da mantenere per i prossimi step:
+  - in questa fase i container continuano a possedere stato, fetch e callback
+  - le estrazioni iniziali devono essere meccaniche/presentazionali
+  - non toccare ancora cronoprogramma o layout globale finche' non esiste il nuovo blocco `/dashboard`
+
+## Snapshot 2026-03-26 - `/dashboard` riusa il blocco progetti della home
+- Nuova pagina:
+  - `app/dashboard/page.tsx`
+- Pattern da mantenere in questa fase:
+  - `DashboardProjectsSection` resta presentazionale/riusabile
+  - i container (`/` e `/dashboard`) possono duplicare temporaneamente la logica minima di fetch/stato pur di evitare refactor ampi prematuri
+  - cronoprogramma e layout globale restano fuori da questo step
+
+## Snapshot 2026-03-26 - Home intermedia senza blocco progetti
+- `app/page.tsx`
+  - mantiene solo:
+    - header / top actions
+    - cockpit KPI
+    - form creazione progetto
+  - non monta piu' il blocco progetti
+  - espone invece un accesso chiaro a `/dashboard`
+- Regola del prossimo step:
+  - il cronoprogramma andra' inserito in Home solo dopo la separazione completa Home/Dashboard

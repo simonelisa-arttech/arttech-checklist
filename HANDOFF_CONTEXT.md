@@ -230,6 +230,54 @@
   - precompila la descrizione dell'intervento se presente in query
 - Nessuna modifica alla logica interventi o alla navigazione cliente standard fuori da questo flusso dashboard.
 
+## Update 2026-03-26 - Primo step riuso cronoprogramma per futura nuova Home
+
+- creato `components/cronoprogramma/CronoprogrammaPanel.tsx`
+  - contiene il contenuto principale della pagina cronoprogramma:
+    - filtri data/cliente/tipo/ricerca/personale
+    - quick range `7/15/30`
+    - toggle `Fatto` / `Nascosta`
+    - export CSV
+    - tabella/timeline con note, operativi, conflitti e storico note
+- `app/cronoprogramma/page.tsx`
+  - resta il container pagina
+  - mantiene wrapper, titolo `AT SYSTEM / CRONOPROGRAMMA`, link `← Dashboard`, stato errore e tutta la logica fetch/state
+  - ora monta `CronoprogrammaPanel` come blocco principale
+- obiettivo del refactor:
+  - preparare un riuso meccanico del contenuto cronoprogramma nella futura Home
+  - senza toccare ancora `app/page.tsx` o `app/layout.tsx`
+
+## Update 2026-03-26 - Home operativa riallineata a cockpit + cronoprogramma
+
+- `app/page.tsx`
+  - rimosso il placeholder temporaneo verso `/dashboard`
+  - la Home ora monta direttamente `components/cronoprogramma/CronoprogrammaPanel.tsx` sotto il cockpit KPI
+  - mantenuti invariati:
+    - header / top actions
+    - cockpit
+    - form creazione progetto quando attivo
+- per questo step il container cronoprogramma della Home riusa la stessa logica API gia' presente nella pagina dedicata:
+  - `load_events`
+  - `load`
+  - `set_fatto`
+  - `set_hidden`
+  - `add_comment`
+  - `set_operativi`
+  - `delete_comment`
+- `/dashboard` resta la superficie separata per il blocco progetti, senza cambiamenti in questo step
+
+## Update 2026-03-26 - Navigazione globale minima nel layout
+
+- `app/layout.tsx`
+  - logo ora cliccabile verso `/`
+  - aggiunta mini navigazione globale nella top bar con link:
+    - `Home` -> `/`
+    - `Dashboard` -> `/dashboard`
+    - `Cronoprogramma` -> `/cronoprogramma`
+- scelta conservativa:
+  - nessuna rimozione dei link locali gia' presenti nelle singole pagine
+  - nessun refactor della shell oltre il necessario
+
 ## Update 2026-03-25 - Personale operativo su `personale_ids` con fallback legacy
 
 - Source of truth nuova per personale operativo:
@@ -1193,3 +1241,47 @@ Dopo il push, Vercel farà auto-deploy e i fix saranno in produzione.
   - `app/api/cron/noleggi-disinstallazione-alert/route.ts`
   - `app/api/fatture/da-emettere/route.ts`
   - `app/api/notifications/recover-tecnico-sw/route.ts`
+
+## Update 2026-03-26 - Estratto blocco progetti dashboard in componente riusabile
+
+- creato:
+  - `components/dashboard/DashboardProjectsSection.tsx`
+- aggiornato:
+  - `app/page.tsx`
+- scopo:
+  - estrazione meccanica del blocco `filtri + tabella progetti` dalla home/dashboard
+  - nessuna modifica funzionale a fetch, filtri, sorting, note operative inline o rendering tabella
+- vincoli rispettati:
+  - nessun tocco a cronoprogramma
+  - nessun tocco a `app/layout.tsx`
+  - nessuna nuova route `/dashboard` ancora introdotta
+
+## Update 2026-03-26 - Nuova pagina `/dashboard` che riusa il blocco progetti
+
+- creato:
+  - `app/dashboard/page.tsx`
+- la nuova pagina riusa `components/dashboard/DashboardProjectsSection.tsx`
+- per questa fase il container di `/dashboard` duplica in modo conservativo la logica minima della home necessaria a:
+  - fetch `/api/dashboard`
+  - filtri e sorting client-side
+  - note operative inline
+  - azioni riga `Apri` / `Elimina`
+  - lookup operatori per `Creato da` / `Modificato da`
+- vincoli rispettati:
+  - Home `/` invariata in questo step
+  - nessun tocco a cronoprogramma
+  - nessun tocco a `app/layout.tsx`
+
+## Update 2026-03-26 - Home separata dalla dashboard progetti
+
+- aggiornato:
+  - `app/page.tsx`
+- in Home restano:
+  - header / top actions
+  - cockpit KPI
+  - form creazione progetto quando attivato
+- rimosso dalla Home il blocco `filtri + tabella progetti`
+- al suo posto inserito un placeholder intermedio con link chiaro a `/dashboard`
+- nessun tocco a:
+  - cronoprogramma
+  - `app/layout.tsx`
