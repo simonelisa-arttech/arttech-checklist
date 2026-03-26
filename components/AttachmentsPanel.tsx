@@ -23,8 +23,8 @@ type Props = {
   storagePrefix?: string;
 };
 
-const MAX_UPLOAD_BYTES = 20 * 1024 * 1024;
-const MAX_UPLOAD_LABEL = "20 MB";
+const MAX_UPLOAD_BYTES = 4 * 1024 * 1024;
+const MAX_UPLOAD_LABEL = "4 MB";
 
 function detectProvider(url: string) {
   return url.toLowerCase().includes("drive.google.com") ? "GOOGLE_DRIVE" : "GENERIC";
@@ -94,7 +94,7 @@ export default function AttachmentsPanel({
       for (const file of files) {
         if (file.size > MAX_UPLOAD_BYTES) {
           throw new Error(
-            `File troppo grande: questo flusso supporta solo file fino a ${MAX_UPLOAD_LABEL}. I video .mp4 troppo grandi non sono supportati qui.`
+            `File troppo grande: questo flusso supporta solo file fino a ${MAX_UPLOAD_LABEL}. I video .mp4 più pesanti non sono supportati in questo upload.`
           );
         }
         const safeName = file.name.replace(/\s+/g, "_");
