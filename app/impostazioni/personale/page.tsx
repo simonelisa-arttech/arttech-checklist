@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import ConfigMancante from "@/components/ConfigMancante";
 import SafetyExpectedDocumentsPanel from "@/components/SafetyExpectedDocumentsPanel";
+import { storageSignedUrl, storageUpload } from "@/lib/clientStorageApi";
 import { PERSONALE_STANDARD_DOCUMENTS } from "@/lib/safetyCompliance";
 import { isSupabaseConfigured } from "@/lib/supabaseClient";
 import { dbFrom } from "@/lib/clientDbBroker";
@@ -44,6 +45,8 @@ type DocumentTypeRow = {
 };
 
 const PERSONALE_TIPO_OPTIONS = ["INTERNO", "ESTERNO"] as const;
+const PERSONALE_DOCUMENTI_STORAGE_PREFIX = "personale-documenti";
+const PERSONALE_DOCUMENTI_STORAGE_SCHEME = "storage://checklist-documents/";
 
 function createTempId(prefix: string) {
   return `${prefix}-${Math.random().toString(36).slice(2, 10)}`;
@@ -87,6 +90,20 @@ function buildPersonaleDocumentTypeOptions(documentTypes: DocumentTypeRow[]) {
   ).sort((a, b) => a.localeCompare(b, "it"));
 }
 
+function isHttpUrl(value?: string | null) {
+  return /^https?:\/\//i.test(String(value || "").trim());
+}
+
+function isStorageDocumentUrl(value?: string | null) {
+  return String(value || "").startsWith(PERSONALE_DOCUMENTI_STORAGE_SCHEME);
+}
+
+function getStoragePathFromDocumentUrl(value?: string | null) {
+  const raw = String(value || "");
+  if (!raw.startsWith(PERSONALE_DOCUMENTI_STORAGE_SCHEME)) return "";
+  return raw.slice(PERSONALE_DOCUMENTI_STORAGE_SCHEME.length);
+}
+
 export default function PersonalePage() {
   if (!isSupabaseConfigured) {
     return <ConfigMancante />;
@@ -102,6 +119,9 @@ export default function PersonalePage() {
   const [documentTypes, setDocumentTypes] = useState<DocumentTypeRow[]>([]);
   const [search, setSearch] = useState("");
   const [expandedPersonId, setExpandedPersonId] = useState<string | null>(null);
+  const [editingDocumentoId, setEditingDocumentoId] = useState<string | null>(null);
+  const [documentFileById, setDocumentFileById] = useState<Record<string, File | null>>({});
+  const [documentRowErrorById, setDocumentRowErrorById] = useState<Record<string, string | null>>({});
   const [newDocumentTypeOpen, setNewDocumentTypeOpen] = useState(false);
   const [newDocumentTypeName, setNewDocumentTypeName] = useState("");
 
@@ -285,13 +305,14 @@ export default function PersonalePage() {
   }
 
   function addDocumento(personaleId: string) {
+    const tempId = createTempId("personale-doc");
     if (!documentTypeOptions.length) {
       setError("Aggiungi prima almeno un tipo documento standard.");
       return;
     }
     setDocumenti((prev) => [
       {
-        id: createTempId("personale-doc"),
+        id: tempId,
         personale_id: personaleId,
         tipo_documento: "",
         data_rilascio: "",
@@ -302,6 +323,7 @@ export default function PersonalePage() {
       },
       ...prev,
     ]);
+    setEditingDocumentoId(tempId);
   }
 
   function updateDocumento(targetId: string | undefined, patch: Partial<PersonaleDocumentoRow>) {
@@ -347,12 +369,95 @@ export default function PersonalePage() {
 
     await loadData();
     setNotice(`Documento ${tipoDocumento} salvato.`);
+    setEditingDocumentoId(null);
     setSavingKey(null);
+  }
+
+  async function uploadDocumentoFile(row: PersonaleDocumentoRow) {
+    const rowId = String(row.id || "");
+    const file = documentFileById[rowId];
+    if (!file) {
+      setDocumentRowErrorById((prev) => ({ ...prev, [rowId]: "Seleziona prima un file." }));
+      return;
+    }
+    if (row.isNew || !rowId) {
+      setDocumentRowErrorById((prev) => ({
+        ...prev,
+        [rowId]: "Salva prima il documento, poi carica il file associato.",
+      }));
+      return;
+    }
+
+    setSavingKey(`personale-doc-upload:${rowId}`);
+    setDocumentRowErrorById((prev) => ({ ...prev, [rowId]: null }));
+    setError(null);
+    setNotice(null);
+
+    const safeName = file.name.replace(/\s+/g, "_");
+    const storagePath = `${PERSONALE_DOCUMENTI_STORAGE_PREFIX}/${row.personale_id}/${rowId}/${Date.now()}_${safeName}`;
+    const { error: uploadError } = await storageUpload(storagePath, file);
+    if (uploadError) {
+      setDocumentRowErrorById((prev) => ({
+        ...prev,
+        [rowId]: `Errore upload file: ${uploadError.message}`,
+      }));
+      setSavingKey(null);
+      return;
+    }
+
+    setDocumenti((prev) =>
+      prev.map((current) =>
+        current.id === rowId
+          ? { ...current, file_url: `${PERSONALE_DOCUMENTI_STORAGE_SCHEME}${storagePath}` }
+          : current
+      )
+    );
+    setDocumentFileById((prev) => ({ ...prev, [rowId]: null }));
+    setNotice(`File caricato per ${row.tipo_documento || "documento"}. Salva il documento per confermare il link.`);
+    setSavingKey(null);
+  }
+
+  async function openDocumentoFile(row: PersonaleDocumentoRow) {
+    const rowId = String(row.id || "");
+    const rawUrl = String(row.file_url || "").trim();
+    if (!rawUrl) {
+      setDocumentRowErrorById((prev) => ({ ...prev, [rowId]: "Nessun file o link associato." }));
+      return;
+    }
+    if (isHttpUrl(rawUrl)) {
+      window.open(rawUrl, "_blank", "noopener,noreferrer");
+      return;
+    }
+    const storagePath = getStoragePathFromDocumentUrl(rawUrl);
+    if (!storagePath) {
+      setDocumentRowErrorById((prev) => ({ ...prev, [rowId]: "URL file non valido." }));
+      return;
+    }
+    const { data, error: signedUrlError } = await storageSignedUrl(storagePath);
+    if (signedUrlError || !data?.signedUrl) {
+      setDocumentRowErrorById((prev) => ({
+        ...prev,
+        [rowId]: `Errore apertura file: ${signedUrlError?.message || "URL non disponibile"}`,
+      }));
+      return;
+    }
+    window.open(data.signedUrl, "_blank", "noopener,noreferrer");
   }
 
   async function deleteDocumento(row: PersonaleDocumentoRow) {
     if (row.isNew) {
       setDocumenti((prev) => prev.filter((current) => current.id !== row.id));
+      if (editingDocumentoId === row.id) setEditingDocumentoId(null);
+      setDocumentFileById((prev) => {
+        const next = { ...prev };
+        delete next[String(row.id || "")];
+        return next;
+      });
+      setDocumentRowErrorById((prev) => {
+        const next = { ...prev };
+        delete next[String(row.id || "")];
+        return next;
+      });
       return;
     }
     const ok = window.confirm(`Eliminare il documento ${row.tipo_documento || "selezionato"}?`);
@@ -367,6 +472,7 @@ export default function PersonalePage() {
     }
     await loadData();
     setNotice("Documento personale eliminato.");
+    if (editingDocumentoId === row.id) setEditingDocumentoId(null);
     setSavingKey(null);
   }
 
@@ -866,6 +972,12 @@ export default function PersonalePage() {
                               doc.tipo_documento && !documentTypeOptions.includes(doc.tipo_documento)
                                 ? [doc.tipo_documento, ...documentTypeOptions]
                                 : documentTypeOptions;
+                            const isEditing = doc.isNew || editingDocumentoId === doc.id;
+                            const rowId = String(doc.id || "");
+                            const hasFileUrl =
+                              isHttpUrl(doc.file_url.trim()) || isStorageDocumentUrl(doc.file_url.trim());
+                            const rowError = documentRowErrorById[rowId];
+                            const selectedFile = documentFileById[rowId];
                             return (
                               <div
                                 key={doc.id}
@@ -878,98 +990,234 @@ export default function PersonalePage() {
                                   background: "#fcfcfd",
                                 }}
                               >
-                                <div
-                                  style={{
-                                    display: "grid",
-                                    gap: 10,
-                                    gridTemplateColumns:
-                                      "minmax(180px, 1.1fr) minmax(140px, 0.8fr) minmax(140px, 0.8fr) minmax(220px, 1.2fr)",
-                                  }}
-                                >
-                                  <label style={{ display: "block", fontSize: 12 }}>
-                                    Tipo documento
-                                    <select
-                                      value={doc.tipo_documento}
-                                      onChange={(e) => updateDocumento(doc.id, { tipo_documento: e.target.value })}
-                                      style={{ width: "100%", padding: 8, marginTop: 6 }}
+                                {rowError ? (
+                                  <div style={{ fontSize: 12, color: "#b91c1c" }}>{rowError}</div>
+                                ) : null}
+                                {isEditing ? (
+                                  <>
+                                    <div
+                                      style={{
+                                        display: "grid",
+                                        gap: 10,
+                                        gridTemplateColumns:
+                                          "minmax(180px, 1.1fr) minmax(140px, 0.8fr) minmax(140px, 0.8fr) minmax(220px, 1.2fr)",
+                                      }}
                                     >
-                                      <option value="">— Seleziona —</option>
-                                      {docTypeChoices.map((option) => (
-                                        <option key={option} value={option}>
-                                          {option}
-                                        </option>
-                                      ))}
-                                    </select>
-                                  </label>
-                                  <label style={{ display: "block", fontSize: 12 }}>
-                                    Data rilascio
-                                    <input
-                                      type="date"
-                                      value={doc.data_rilascio}
-                                      onChange={(e) => updateDocumento(doc.id, { data_rilascio: e.target.value })}
-                                      style={{ width: "100%", padding: 8, marginTop: 6 }}
-                                    />
-                                  </label>
-                                  <label style={{ display: "block", fontSize: 12 }}>
-                                    Data scadenza
-                                    <input
-                                      type="date"
-                                      value={doc.data_scadenza}
-                                      onChange={(e) => updateDocumento(doc.id, { data_scadenza: e.target.value })}
-                                      style={{ width: "100%", padding: 8, marginTop: 6 }}
-                                    />
-                                  </label>
-                                  <label style={{ display: "block", fontSize: 12 }}>
-                                    File URL
-                                    <input
-                                      value={doc.file_url}
-                                      onChange={(e) => updateDocumento(doc.id, { file_url: e.target.value })}
-                                      style={{ width: "100%", padding: 8, marginTop: 6 }}
-                                    />
-                                  </label>
-                                </div>
+                                      <label style={{ display: "block", fontSize: 12 }}>
+                                        Tipo documento
+                                        <select
+                                          value={doc.tipo_documento}
+                                          onChange={(e) => updateDocumento(doc.id, { tipo_documento: e.target.value })}
+                                          style={{ width: "100%", padding: 8, marginTop: 6 }}
+                                        >
+                                          <option value="">— Seleziona —</option>
+                                          {docTypeChoices.map((option) => (
+                                            <option key={option} value={option}>
+                                              {option}
+                                            </option>
+                                          ))}
+                                        </select>
+                                      </label>
+                                      <label style={{ display: "block", fontSize: 12 }}>
+                                        Data rilascio
+                                        <input
+                                          type="date"
+                                          value={doc.data_rilascio}
+                                          onChange={(e) => updateDocumento(doc.id, { data_rilascio: e.target.value })}
+                                          style={{ width: "100%", padding: 8, marginTop: 6 }}
+                                        />
+                                      </label>
+                                      <label style={{ display: "block", fontSize: 12 }}>
+                                        Data scadenza
+                                        <input
+                                          type="date"
+                                          value={doc.data_scadenza}
+                                          onChange={(e) => updateDocumento(doc.id, { data_scadenza: e.target.value })}
+                                          style={{ width: "100%", padding: 8, marginTop: 6 }}
+                                        />
+                                      </label>
+                                      <label style={{ display: "block", fontSize: 12 }}>
+                                        File URL
+                                        <input
+                                          value={doc.file_url}
+                                          onChange={(e) => updateDocumento(doc.id, { file_url: e.target.value })}
+                                          style={{ width: "100%", padding: 8, marginTop: 6 }}
+                                        />
+                                      </label>
+                                    </div>
 
-                                <label style={{ display: "block", fontSize: 12 }}>
-                                  Note
-                                  <textarea
-                                    value={doc.note}
-                                    onChange={(e) => updateDocumento(doc.id, { note: e.target.value })}
-                                    rows={2}
-                                    style={{ width: "100%", padding: 8, marginTop: 6 }}
-                                  />
-                                </label>
+                                    <label style={{ display: "block", fontSize: 12 }}>
+                                      Note
+                                      <textarea
+                                        value={doc.note}
+                                        onChange={(e) => updateDocumento(doc.id, { note: e.target.value })}
+                                        rows={2}
+                                        style={{ width: "100%", padding: 8, marginTop: 6 }}
+                                      />
+                                    </label>
 
-                                <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", flexWrap: "wrap" }}>
-                                  <button
-                                    type="button"
-                                    onClick={() => saveDocumento(doc)}
-                                    disabled={savingKey === `personale-doc:${doc.id || "new"}`}
-                                    style={{
-                                      padding: "8px 12px",
-                                      borderRadius: 10,
-                                      border: "1px solid #111",
-                                      background: "#111",
-                                      color: "white",
-                                      cursor: "pointer",
-                                      opacity: savingKey === `personale-doc:${doc.id || "new"}` ? 0.7 : 1,
-                                    }}
-                                  >
-                                    {savingKey === `personale-doc:${doc.id || "new"}` ? "Salvataggio..." : "Salva documento"}
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => deleteDocumento(doc)}
-                                    style={{
-                                      padding: "8px 12px",
-                                      borderRadius: 10,
-                                      border: "1px solid #ddd",
-                                      background: "white",
-                                      cursor: "pointer",
-                                    }}
-                                  >
-                                    Elimina
-                                  </button>
-                                </div>
+                                    <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", flexWrap: "wrap" }}>
+                                      <input
+                                        type="file"
+                                        onChange={(e) =>
+                                          setDocumentFileById((prev) => ({
+                                            ...prev,
+                                            [rowId]: e.target.files?.[0] || null,
+                                          }))
+                                        }
+                                        style={{ maxWidth: 260 }}
+                                      />
+                                      <button
+                                        type="button"
+                                        onClick={() => uploadDocumentoFile(doc)}
+                                        disabled={savingKey === `personale-doc-upload:${rowId}`}
+                                        style={{
+                                          padding: "8px 12px",
+                                          borderRadius: 10,
+                                          border: "1px solid #d1d5db",
+                                          background: "white",
+                                          cursor: "pointer",
+                                          opacity: savingKey === `personale-doc-upload:${rowId}` ? 0.7 : 1,
+                                        }}
+                                      >
+                                        {savingKey === `personale-doc-upload:${rowId}` ? "Caricamento..." : "Carica file"}
+                                      </button>
+                                      <div style={{ fontSize: 12, color: "#6b7280", alignSelf: "center", marginRight: "auto" }}>
+                                        {selectedFile?.name || (hasFileUrl ? "File già associato" : "Nessun file selezionato")}
+                                      </div>
+                                      {!doc.isNew ? (
+                                        <button
+                                          type="button"
+                                          onClick={() => setEditingDocumentoId(null)}
+                                          style={{
+                                            padding: "8px 12px",
+                                            borderRadius: 10,
+                                            border: "1px solid #d1d5db",
+                                            background: "white",
+                                            cursor: "pointer",
+                                          }}
+                                        >
+                                          Annulla
+                                        </button>
+                                      ) : null}
+                                      <button
+                                        type="button"
+                                        onClick={() => saveDocumento(doc)}
+                                        disabled={savingKey === `personale-doc:${doc.id || "new"}`}
+                                        style={{
+                                          padding: "8px 12px",
+                                          borderRadius: 10,
+                                          border: "1px solid #111",
+                                          background: "#111",
+                                          color: "white",
+                                          cursor: "pointer",
+                                          opacity: savingKey === `personale-doc:${doc.id || "new"}` ? 0.7 : 1,
+                                        }}
+                                      >
+                                        {savingKey === `personale-doc:${doc.id || "new"}` ? "Salvataggio..." : "Salva documento"}
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => deleteDocumento(doc)}
+                                        style={{
+                                          padding: "8px 12px",
+                                          borderRadius: 10,
+                                          border: "1px solid #ddd",
+                                          background: "white",
+                                          cursor: "pointer",
+                                        }}
+                                      >
+                                        Elimina
+                                      </button>
+                                    </div>
+                                  </>
+                                ) : (
+                                  <>
+                                    <div
+                                      style={{
+                                        display: "grid",
+                                        gap: 10,
+                                        gridTemplateColumns:
+                                          "minmax(180px, 1.1fr) minmax(140px, 0.8fr) minmax(140px, 0.8fr) minmax(220px, 1.2fr)",
+                                      }}
+                                    >
+                                      <div style={{ display: "grid", gap: 6 }}>
+                                        <div style={{ fontSize: 12, color: "#6b7280" }}>Tipo documento</div>
+                                        <div style={{ fontWeight: 600 }}>{doc.tipo_documento || "—"}</div>
+                                      </div>
+                                      <div style={{ display: "grid", gap: 6 }}>
+                                        <div style={{ fontSize: 12, color: "#6b7280" }}>Data rilascio</div>
+                                        <div>{doc.data_rilascio || "—"}</div>
+                                      </div>
+                                      <div style={{ display: "grid", gap: 6 }}>
+                                        <div style={{ fontSize: 12, color: "#6b7280" }}>Data scadenza</div>
+                                        <div>{doc.data_scadenza || "—"}</div>
+                                      </div>
+                                      <div style={{ display: "grid", gap: 6 }}>
+                                        <div style={{ fontSize: 12, color: "#6b7280" }}>File / link</div>
+                                        <div
+                                          style={{
+                                            whiteSpace: "nowrap",
+                                            overflow: "hidden",
+                                            textOverflow: "ellipsis",
+                                          }}
+                                          title={doc.file_url || undefined}
+                                        >
+                                          {doc.file_url || "—"}
+                                        </div>
+                                      </div>
+                                    </div>
+
+                                    <div style={{ display: "grid", gap: 6 }}>
+                                      <div style={{ fontSize: 12, color: "#6b7280" }}>Note</div>
+                                      <div style={{ whiteSpace: "pre-wrap" }}>{doc.note || "—"}</div>
+                                    </div>
+
+                                    <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", flexWrap: "wrap" }}>
+                                      <button
+                                        type="button"
+                                        onClick={() => setEditingDocumentoId(doc.id || null)}
+                                        style={{
+                                          padding: "8px 12px",
+                                          borderRadius: 10,
+                                          border: "1px solid #d1d5db",
+                                          background: "white",
+                                          cursor: "pointer",
+                                        }}
+                                      >
+                                        Modifica
+                                      </button>
+                                      {hasFileUrl ? (
+                                        <button
+                                          type="button"
+                                          onClick={() => void openDocumentoFile(doc)}
+                                          style={{
+                                            padding: "8px 12px",
+                                            borderRadius: 10,
+                                            border: "1px solid #d1d5db",
+                                            background: "white",
+                                            cursor: "pointer",
+                                          }}
+                                        >
+                                          Apri
+                                        </button>
+                                      ) : null}
+                                      <button
+                                        type="button"
+                                        onClick={() => deleteDocumento(doc)}
+                                        style={{
+                                          padding: "8px 12px",
+                                          borderRadius: 10,
+                                          border: "1px solid #ddd",
+                                          background: "white",
+                                          cursor: "pointer",
+                                        }}
+                                      >
+                                        Elimina
+                                      </button>
+                                    </div>
+                                  </>
+                                )}
                               </div>
                             );
                           })
