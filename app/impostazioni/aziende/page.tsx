@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import ConfigMancante from "@/components/ConfigMancante";
 import SafetyExpectedDocumentsPanel from "@/components/SafetyExpectedDocumentsPanel";
-import { AZIENDA_STANDARD_DOCUMENTS } from "@/lib/safetyCompliance";
+import { AZIENDA_STANDARD_DOCUMENTS, type SafetyExpectedDocumentItem } from "@/lib/safetyCompliance";
 import { isSupabaseConfigured } from "@/lib/supabaseClient";
 import { dbFrom } from "@/lib/clientDbBroker";
 
@@ -78,7 +79,7 @@ function buildAziendaDocumentTypeOptions(documentTypes: DocumentTypeRow[]) {
   ).sort((a, b) => a.localeCompare(b, "it"));
 }
 
-export default function AziendePage() {
+function AziendePageContent() {
   if (!isSupabaseConfigured) {
     return <ConfigMancante />;
   }
@@ -94,6 +95,8 @@ export default function AziendePage() {
   const [expandedAziendaId, setExpandedAziendaId] = useState<string | null>(null);
   const [newDocumentTypeOpen, setNewDocumentTypeOpen] = useState(false);
   const [newDocumentTypeName, setNewDocumentTypeName] = useState("");
+  const searchParams = useSearchParams();
+  const handledManageIntentRef = useRef<string | null>(null);
 
   async function loadData() {
     setLoading(true);
@@ -165,6 +168,47 @@ export default function AziendePage() {
     if (!query) return aziende;
     return aziende.filter((azienda) => normalizeText(azienda.ragione_sociale).includes(query));
   }, [aziende, search]);
+
+  useEffect(() => {
+    if (loading) return;
+    const aziendaId = String(searchParams.get("azienda_id") || "").trim();
+    const documentoId = String(searchParams.get("documento_id") || "").trim();
+    const tipoDocumento = String(searchParams.get("tipo_documento") || "").trim();
+    const action = String(searchParams.get("doc_action") || "").trim().toLowerCase();
+    if (!aziendaId || action !== "manage") return;
+
+    const intentKey = `${aziendaId}::${documentoId}::${tipoDocumento}::${documenti.length}`;
+    if (handledManageIntentRef.current === intentKey) return;
+    handledManageIntentRef.current = intentKey;
+
+    setExpandedAziendaId(aziendaId);
+
+    if (documentoId) {
+      const existingById = documenti.find((row) => row.id === documentoId);
+      if (existingById) return;
+    }
+
+    if (tipoDocumento) {
+      const normalizedTipo = normalizeText(tipoDocumento);
+      const existingByTipo = documenti.find(
+        (row) => row.azienda_id === aziendaId && normalizeText(row.tipo_documento) === normalizedTipo
+      );
+      if (existingByTipo) return;
+
+      setDocumenti((prev) => [
+        {
+          id: createTempId("azienda-doc"),
+          azienda_id: aziendaId,
+          tipo_documento: tipoDocumento,
+          data_scadenza: "",
+          note: "",
+          file_url: "",
+          isNew: true,
+        },
+        ...prev,
+      ]);
+    }
+  }, [documenti, loading, searchParams]);
 
   function addAzienda() {
     setAziende((prev) => [
@@ -617,6 +661,7 @@ export default function AziendePage() {
               return (
                 <div
                   key={azienda.id}
+                  id={aziendaId ? `azienda-${aziendaId}` : undefined}
                   style={{
                     border: "1px solid #e5e7eb",
                     borderRadius: 14,
@@ -754,6 +799,18 @@ export default function AziendePage() {
                           tipo_documento: doc.tipo_documento,
                           data_scadenza: doc.data_scadenza || null,
                         }))}
+                        getManageHref={(item: SafetyExpectedDocumentItem) => {
+                          const matchingDoc = docRows.find(
+                            (doc) => normalizeText(doc.tipo_documento) === normalizeText(item.label)
+                          );
+                          const params = new URLSearchParams({
+                            azienda_id: aziendaId,
+                            doc_action: "manage",
+                            tipo_documento: item.label,
+                          });
+                          if (matchingDoc?.id) params.set("documento_id", String(matchingDoc.id));
+                          return `/impostazioni/aziende?${params.toString()}#azienda-${encodeURIComponent(aziendaId)}`;
+                        }}
                       />
 
                       <div style={{ display: "grid", gap: 10 }}>
@@ -884,5 +941,13 @@ export default function AziendePage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function AziendePage() {
+  return (
+    <Suspense fallback={<div style={{ margin: "24px auto", maxWidth: 1180, padding: 16 }}>Caricamento...</div>}>
+      <AziendePageContent />
+    </Suspense>
   );
 }

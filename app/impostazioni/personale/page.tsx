@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import ConfigMancante from "@/components/ConfigMancante";
@@ -137,7 +137,7 @@ function getDocumentoBadgeState(doc: PersonaleDocumentoRow) {
   return null;
 }
 
-export default function PersonalePage() {
+function PersonalePageContent() {
   if (!isSupabaseConfigured) {
     return <ConfigMancante />;
   }
@@ -1447,5 +1447,13 @@ export default function PersonalePage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function PersonalePage() {
+  return (
+    <Suspense fallback={<div style={{ margin: "24px auto", maxWidth: 1180, padding: 16 }}>Caricamento...</div>}>
+      <PersonalePageContent />
+    </Suspense>
   );
 }
