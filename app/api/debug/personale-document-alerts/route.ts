@@ -1,6 +1,9 @@
 import { NextResponse } from "next/server";
 import { requireOperatore } from "@/lib/adminAuth";
-import { collectPersonaleDocumentAlertDigest } from "@/lib/personaleDocumentAlerts";
+import {
+  buildPersonaleDocumentAlertMessage,
+  collectPersonaleDocumentAlertDigest,
+} from "@/lib/personaleDocumentAlerts";
 
 export const runtime = "nodejs";
 
@@ -10,7 +13,8 @@ export async function GET(request: Request) {
 
   try {
     const digest = await collectPersonaleDocumentAlertDigest();
-    return NextResponse.json({ ok: true, digest });
+    const message = buildPersonaleDocumentAlertMessage(digest);
+    return NextResponse.json({ ok: true, digest, message });
   } catch (error: any) {
     return NextResponse.json(
       { ok: false, error: error?.message || "Errore generazione digest documenti personale" },

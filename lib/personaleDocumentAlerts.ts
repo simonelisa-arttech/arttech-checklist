@@ -32,6 +32,11 @@ export type PersonaleDocumentAlertDigest = {
   }>;
 };
 
+export type PersonaleDocumentAlertMessage = {
+  subject: string;
+  text: string;
+};
+
 type PersonaleDocumentoDbRow = {
   id: string | null;
   personale_id: string | null;
@@ -129,6 +134,45 @@ function compareAlertItems(a: PersonaleDocumentAlertItem, b: PersonaleDocumentAl
   const byDelta = a.giorni_delta - b.giorni_delta;
   if (byDelta !== 0) return byDelta;
   return a.tipo_documento.localeCompare(b.tipo_documento, "it");
+}
+
+function formatAlertDelta(item: PersonaleDocumentAlertItem) {
+  if (item.stato_scadenza === "SCADUTO") {
+    const days = Math.abs(item.giorni_delta);
+    return `scaduto da ${days} ${days === 1 ? "giorno" : "giorni"}`;
+  }
+  return `scade tra ${item.giorni_delta} ${item.giorni_delta === 1 ? "giorno" : "giorni"}`;
+}
+
+function buildSectionLines(
+  title: string,
+  grouped: PersonaleDocumentAlertDigest["grouped"],
+  pickItems: (person: PersonaleDocumentAlertDigest["grouped"][number]["persone"][number]) => PersonaleDocumentAlertItem[]
+) {
+  const lines: string[] = [];
+  for (const azienda of grouped) {
+    const personLines = azienda.persone
+      .map((person) => ({
+        person,
+        items: pickItems(person),
+      }))
+      .filter((entry) => entry.items.length > 0);
+
+    if (personLines.length === 0) continue;
+
+    lines.push(title);
+    lines.push(`Azienda: ${azienda.azienda_nome}`);
+    for (const entry of personLines) {
+      lines.push(`- ${entry.person.persona_nome}`);
+      for (const item of entry.items) {
+        lines.push(
+          `  • ${item.tipo_documento} · scadenza ${item.data_scadenza} · ${formatAlertDelta(item)}`
+        );
+      }
+    }
+    lines.push("");
+  }
+  return lines;
 }
 
 export async function collectPersonaleDocumentAlertDigest(input?: {
@@ -278,5 +322,38 @@ export async function collectPersonaleDocumentAlertDigest(input?: {
     scaduti,
     in_scadenza: inScadenza,
     grouped,
+  };
+}
+
+export function buildPersonaleDocumentAlertMessage(
+  digest: PersonaleDocumentAlertDigest
+): PersonaleDocumentAlertMessage {
+  const total = digest.scaduti.length + digest.in_scadenza.length;
+  const subject = `[AT SYSTEM] Alert documenti personale (${total})`;
+  const lines: string[] = [
+    "Alert documenti personale",
+    `Generato il: ${digest.generated_at}`,
+    "",
+  ];
+
+  if (digest.scaduti.length > 0) {
+    lines.push(
+      ...buildSectionLines("SCADUTI", digest.grouped, (person) => person.scaduti)
+    );
+  }
+
+  if (digest.in_scadenza.length > 0) {
+    lines.push(
+      ...buildSectionLines("IN SCADENZA", digest.grouped, (person) => person.in_scadenza)
+    );
+  }
+
+  if (digest.scaduti.length === 0 && digest.in_scadenza.length === 0) {
+    lines.push("Nessun documento personale in alert.");
+  }
+
+  return {
+    subject,
+    text: lines.join("\n").trim(),
   };
 }
