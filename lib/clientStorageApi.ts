@@ -1,7 +1,34 @@
 "use client";
 
-async function parseJsonSafe(res: Response) {
-  return res.json().catch(() => ({} as any));
+async function parseResponseSafe(res: Response) {
+  const contentType = res.headers.get("content-type") || "";
+  const text = await res.text().catch(() => "");
+  let json: any = null;
+  if (text && contentType.toLowerCase().includes("application/json")) {
+    try {
+      json = JSON.parse(text);
+    } catch {
+      json = null;
+    }
+  }
+  return { json, text, contentType };
+}
+
+function buildReadableError(
+  fallback: string,
+  response: { status: number; statusText: string },
+  parsed: { json: any; text: string; contentType: string }
+) {
+  const jsonError = String(parsed.json?.error || "").trim();
+  if (jsonError) return jsonError;
+
+  const textError = String(parsed.text || "").trim();
+  if (textError) {
+    const compact = textError.replace(/\s+/g, " ").trim();
+    return `${fallback} (${response.status} ${response.statusText}): ${compact.slice(0, 240)}`;
+  }
+
+  return `${fallback} (${response.status} ${response.statusText})`;
 }
 
 export async function storageUpload(path: string, file: File) {
@@ -13,9 +40,14 @@ export async function storageUpload(path: string, file: File) {
     body: form,
     credentials: "include",
   });
-  const json = await parseJsonSafe(res);
+  const parsed = await parseResponseSafe(res);
+  const json = parsed.json || {};
   if (!res.ok || json?.ok === false) {
-    return { error: { message: String(json?.error || "Upload error") } };
+    return {
+      error: {
+        message: buildReadableError("Upload error", { status: res.status, statusText: res.statusText }, parsed),
+      },
+    };
   }
   return { error: null };
 }
@@ -29,9 +61,19 @@ export async function storageSignedUrl(path: string) {
       credentials: "include",
     }
   );
-  const json = await parseJsonSafe(res);
+  const parsed = await parseResponseSafe(res);
+  const json = parsed.json || {};
   if (!res.ok || json?.ok === false) {
-    return { data: null, error: { message: String(json?.error || "Signed URL error") } };
+    return {
+      data: null,
+      error: {
+        message: buildReadableError(
+          "Signed URL error",
+          { status: res.status, statusText: res.statusText },
+          parsed
+        ),
+      },
+    };
   }
   return { data: json?.data || null, error: null };
 }
@@ -43,9 +85,14 @@ export async function storageRemove(path: string) {
     credentials: "include",
     body: JSON.stringify({ path }),
   });
-  const json = await parseJsonSafe(res);
+  const parsed = await parseResponseSafe(res);
+  const json = parsed.json || {};
   if (!res.ok || json?.ok === false) {
-    return { error: { message: String(json?.error || "Remove error") } };
+    return {
+      error: {
+        message: buildReadableError("Remove error", { status: res.status, statusText: res.statusText }, parsed),
+      },
+    };
   }
   return { error: null };
 }
