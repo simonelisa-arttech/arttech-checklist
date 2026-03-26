@@ -33,6 +33,7 @@ type PersonaleDocumentoRow = {
   tipo_documento: string;
   data_rilascio: string;
   data_scadenza: string;
+  giorni_preavviso: string;
   note: string;
   file_url: string;
   isNew?: boolean;
@@ -104,6 +105,35 @@ function getStoragePathFromDocumentUrl(value?: string | null) {
   return raw.slice(PERSONALE_DOCUMENTI_STORAGE_SCHEME.length);
 }
 
+function parseDateOnly(value?: string | null) {
+  const raw = String(value || "").trim();
+  if (!raw) return null;
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(raw);
+  if (!match) return null;
+  const date = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+  if (!Number.isFinite(date.getTime())) return null;
+  date.setHours(0, 0, 0, 0);
+  return date;
+}
+
+function getDocumentoBadgeState(doc: PersonaleDocumentoRow) {
+  const expiry = parseDateOnly(doc.data_scadenza);
+  if (!expiry) return null;
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  if (expiry < today) return "SCADUTO" as const;
+
+  const diffMs = expiry.getTime() - today.getTime();
+  const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+  const preavvisoRaw = String(doc.giorni_preavviso || "").trim();
+  const preavviso = preavvisoRaw ? Number(preavvisoRaw) : 30;
+  if (Number.isFinite(preavviso) && diffDays <= preavviso) return "IN_SCADENZA" as const;
+
+  return null;
+}
+
 export default function PersonalePage() {
   if (!isSupabaseConfigured) {
     return <ConfigMancante />;
@@ -171,6 +201,10 @@ export default function PersonalePage() {
         tipo_documento: String(row.tipo_documento || ""),
         data_rilascio: String(row.data_rilascio || ""),
         data_scadenza: String(row.data_scadenza || ""),
+        giorni_preavviso:
+          row.giorni_preavviso == null || row.giorni_preavviso === ""
+            ? ""
+            : String(row.giorni_preavviso),
         note: String(row.note || ""),
         file_url: String(row.file_url || ""),
         isNew: false,
@@ -317,6 +351,7 @@ export default function PersonalePage() {
         tipo_documento: "",
         data_rilascio: "",
         data_scadenza: "",
+        giorni_preavviso: "",
         note: "",
         file_url: "",
         isNew: true,
@@ -353,6 +388,7 @@ export default function PersonalePage() {
       tipo_documento: tipoDocumento,
       data_rilascio: row.data_rilascio || null,
       data_scadenza: row.data_scadenza || null,
+      giorni_preavviso: row.giorni_preavviso.trim() ? Number(row.giorni_preavviso) : null,
       note: row.note.trim() || null,
       file_url: row.file_url.trim() || null,
     };
@@ -978,16 +1014,41 @@ export default function PersonalePage() {
                               isHttpUrl(doc.file_url.trim()) || isStorageDocumentUrl(doc.file_url.trim());
                             const rowError = documentRowErrorById[rowId];
                             const selectedFile = documentFileById[rowId];
+                            const badgeState = getDocumentoBadgeState(doc);
+                            const badgeStyle =
+                              badgeState === "SCADUTO"
+                                ? {
+                                    background: "#fee2e2",
+                                    color: "#991b1b",
+                                    border: "1px solid #fecaca",
+                                  }
+                                : badgeState === "IN_SCADENZA"
+                                  ? {
+                                      background: "#ffedd5",
+                                      color: "#c2410c",
+                                      border: "1px solid #fdba74",
+                                    }
+                                  : null;
                             return (
                               <div
                                 key={doc.id}
                                 style={{
                                   display: "grid",
                                   gap: 10,
-                                  border: "1px solid #f1f5f9",
+                                  border:
+                                    badgeState === "SCADUTO"
+                                      ? "1px solid #fecaca"
+                                      : badgeState === "IN_SCADENZA"
+                                        ? "1px solid #fdba74"
+                                        : "1px solid #f1f5f9",
                                   borderRadius: 12,
                                   padding: 12,
-                                  background: "#fcfcfd",
+                                  background:
+                                    badgeState === "SCADUTO"
+                                      ? "#fff7f7"
+                                      : badgeState === "IN_SCADENZA"
+                                        ? "#fffaf5"
+                                        : "#fcfcfd",
                                 }}
                               >
                                 {rowError ? (
@@ -1000,7 +1061,7 @@ export default function PersonalePage() {
                                         display: "grid",
                                         gap: 10,
                                         gridTemplateColumns:
-                                          "minmax(180px, 1.1fr) minmax(140px, 0.8fr) minmax(140px, 0.8fr) minmax(220px, 1.2fr)",
+                                          "minmax(180px, 1.1fr) minmax(140px, 0.8fr) minmax(140px, 0.8fr) minmax(120px, 0.7fr) minmax(220px, 1.2fr)",
                                       }}
                                     >
                                       <label style={{ display: "block", fontSize: 12 }}>
@@ -1033,6 +1094,20 @@ export default function PersonalePage() {
                                           type="date"
                                           value={doc.data_scadenza}
                                           onChange={(e) => updateDocumento(doc.id, { data_scadenza: e.target.value })}
+                                          style={{ width: "100%", padding: 8, marginTop: 6 }}
+                                        />
+                                      </label>
+                                      <label style={{ display: "block", fontSize: 12 }}>
+                                        Preavviso
+                                        <input
+                                          type="number"
+                                          min={0}
+                                          step={1}
+                                          value={doc.giorni_preavviso}
+                                          onChange={(e) =>
+                                            updateDocumento(doc.id, { giorni_preavviso: e.target.value })
+                                          }
+                                          placeholder="giorni"
                                           style={{ width: "100%", padding: 8, marginTop: 6 }}
                                         />
                                       </label>
@@ -1138,12 +1213,29 @@ export default function PersonalePage() {
                                         display: "grid",
                                         gap: 10,
                                         gridTemplateColumns:
-                                          "minmax(180px, 1.1fr) minmax(140px, 0.8fr) minmax(140px, 0.8fr) minmax(220px, 1.2fr)",
+                                          "minmax(180px, 1.1fr) minmax(140px, 0.8fr) minmax(140px, 0.8fr) minmax(120px, 0.7fr) minmax(220px, 1.2fr)",
                                       }}
                                     >
                                       <div style={{ display: "grid", gap: 6 }}>
                                         <div style={{ fontSize: 12, color: "#6b7280" }}>Tipo documento</div>
-                                        <div style={{ fontWeight: 600 }}>{doc.tipo_documento || "—"}</div>
+                                        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                                          <span style={{ fontWeight: 600 }}>{doc.tipo_documento || "—"}</span>
+                                          {badgeState && badgeStyle ? (
+                                            <span
+                                              style={{
+                                                display: "inline-flex",
+                                                alignItems: "center",
+                                                padding: "2px 8px",
+                                                borderRadius: 999,
+                                                fontSize: 11,
+                                                fontWeight: 700,
+                                                ...badgeStyle,
+                                              }}
+                                            >
+                                              {badgeState === "SCADUTO" ? "SCADUTO" : "IN SCADENZA"}
+                                            </span>
+                                          ) : null}
+                                        </div>
                                       </div>
                                       <div style={{ display: "grid", gap: 6 }}>
                                         <div style={{ fontSize: 12, color: "#6b7280" }}>Data rilascio</div>
@@ -1152,6 +1244,12 @@ export default function PersonalePage() {
                                       <div style={{ display: "grid", gap: 6 }}>
                                         <div style={{ fontSize: 12, color: "#6b7280" }}>Data scadenza</div>
                                         <div>{doc.data_scadenza || "—"}</div>
+                                      </div>
+                                      <div style={{ display: "grid", gap: 6 }}>
+                                        <div style={{ fontSize: 12, color: "#6b7280" }}>Preavviso</div>
+                                        <div>
+                                          {doc.giorni_preavviso ? `Preavviso: ${doc.giorni_preavviso} giorni` : "—"}
+                                        </div>
                                       </div>
                                       <div style={{ display: "grid", gap: 6 }}>
                                         <div style={{ fontSize: 12, color: "#6b7280" }}>File / link</div>
