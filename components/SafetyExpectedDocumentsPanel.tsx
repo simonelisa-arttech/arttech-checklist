@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import {
   evaluateAziendaExpectedDocuments,
   evaluatePersonaleExpectedDocuments,
@@ -10,6 +11,7 @@ type Props = {
   kind: "PERSONALE" | "AZIENDA";
   docs: Array<{ tipo_documento: string; data_scadenza: string | null }>;
   extraDocumentLabels?: string[];
+  getManageHref?: (item: SafetyExpectedDocumentItem) => string | null;
 };
 
 function normalizeText(value?: string | null) {
@@ -76,6 +78,7 @@ export default function SafetyExpectedDocumentsPanel({
   kind,
   docs,
   extraDocumentLabels = [],
+  getManageHref,
 }: Props) {
   const items =
     kind === "PERSONALE"
@@ -113,6 +116,7 @@ export default function SafetyExpectedDocumentsPanel({
       <div style={{ display: "grid", gap: 8 }}>
         {allItems.map((item) => {
           const style = getStateStyle(item.state);
+          const manageHref = getManageHref?.(item) || null;
           return (
             <div
               key={item.key}
@@ -153,6 +157,26 @@ export default function SafetyExpectedDocumentsPanel({
                   {style.label}
                 </span>
                 <span style={{ fontSize: 12, color: "#4b5563" }}>{item.detail}</span>
+                {manageHref ? (
+                  <Link
+                    href={manageHref}
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      padding: "4px 10px",
+                      borderRadius: 999,
+                      border: "1px solid #d1d5db",
+                      background: "white",
+                      color: "#111827",
+                      textDecoration: "none",
+                      fontSize: 12,
+                      fontWeight: 700,
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    Gestisci
+                  </Link>
+                ) : null}
               </div>
             </div>
           );

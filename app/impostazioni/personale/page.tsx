@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import ConfigMancante from "@/components/ConfigMancante";
 import SafetyExpectedDocumentsPanel from "@/components/SafetyExpectedDocumentsPanel";
 import { storageSignedUrl, storageUpload } from "@/lib/clientStorageApi";
-import { PERSONALE_STANDARD_DOCUMENTS } from "@/lib/safetyCompliance";
+import { PERSONALE_STANDARD_DOCUMENTS, type SafetyExpectedDocumentItem } from "@/lib/safetyCompliance";
 import { isSupabaseConfigured } from "@/lib/supabaseClient";
 import { dbFrom } from "@/lib/clientDbBroker";
 
@@ -156,6 +157,8 @@ export default function PersonalePage() {
   const [documentRowErrorById, setDocumentRowErrorById] = useState<Record<string, string | null>>({});
   const [newDocumentTypeOpen, setNewDocumentTypeOpen] = useState(false);
   const [newDocumentTypeName, setNewDocumentTypeName] = useState("");
+  const searchParams = useSearchParams();
+  const handledManageIntentRef = useRef<string | null>(null);
 
   async function loadData() {
     setLoading(true);
@@ -255,6 +258,61 @@ export default function PersonalePage() {
       normalizeText(`${persona.nome} ${persona.cognome}`).includes(query)
     );
   }, [persone, search]);
+
+  useEffect(() => {
+    if (loading) return;
+    const personId = String(searchParams.get("personale_id") || "").trim();
+    const docId = String(searchParams.get("documento_id") || "").trim();
+    const tipoDocumento = String(searchParams.get("tipo_documento") || "").trim();
+    const action = String(searchParams.get("doc_action") || "").trim().toLowerCase();
+    if (!personId || action !== "manage") return;
+
+    const intentKey = `${personId}::${docId}::${tipoDocumento}::${documenti.length}`;
+    if (handledManageIntentRef.current === intentKey) return;
+    handledManageIntentRef.current = intentKey;
+
+    setExpandedPersonId(personId);
+
+    if (docId) {
+      const existingById = documenti.find((row) => row.id === docId);
+      if (existingById) {
+        setEditingDocumentoId(existingById.id || null);
+        return;
+      }
+    }
+
+    if (tipoDocumento) {
+      const normalizedTipo = normalizeText(tipoDocumento);
+      const existingByTipo = documenti.find(
+        (row) =>
+          row.personale_id === personId &&
+          normalizeText(row.tipo_documento) === normalizedTipo
+      );
+      if (existingByTipo) {
+        setEditingDocumentoId(existingByTipo.id || null);
+        return;
+      }
+
+      const tempId = createTempId("personale-doc");
+      setDocumenti((prev) => [
+        {
+          id: tempId,
+          personale_id: personId,
+          tipo_documento: tipoDocumento,
+          data_rilascio: "",
+          data_scadenza: "",
+          giorni_preavviso: "",
+          alert_frequenza: "",
+          alert_stato: "",
+          note: "",
+          file_url: "",
+          isNew: true,
+        },
+        ...prev,
+      ]);
+      setEditingDocumentoId(tempId);
+    }
+  }, [documenti, loading, searchParams]);
 
   function addPersona() {
     setPersone((prev) => [
@@ -814,6 +872,7 @@ export default function PersonalePage() {
               return (
                 <div
                   key={persona.id}
+                  id={personId ? `personale-${personId}` : undefined}
                   style={{
                     border: "1px solid #e5e7eb",
                     borderRadius: 14,
@@ -995,6 +1054,18 @@ export default function PersonalePage() {
                           tipo_documento: doc.tipo_documento,
                           data_scadenza: doc.data_scadenza || null,
                         }))}
+                        getManageHref={(item: SafetyExpectedDocumentItem) => {
+                          const matchingDoc = docRows.find(
+                            (doc) => normalizeText(doc.tipo_documento) === normalizeText(item.label)
+                          );
+                          const params = new URLSearchParams({
+                            personale_id: personId,
+                            doc_action: "manage",
+                            tipo_documento: item.label,
+                          });
+                          if (matchingDoc?.id) params.set("documento_id", String(matchingDoc.id));
+                          return `/impostazioni/personale?${params.toString()}#personale-${encodeURIComponent(personId)}`;
+                        }}
                       />
 
                       <div style={{ display: "grid", gap: 10 }}>
