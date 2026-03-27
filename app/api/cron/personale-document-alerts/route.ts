@@ -37,17 +37,6 @@ function isVercelCronRequest(request: Request) {
   return Boolean(request.headers.get("x-vercel-cron"));
 }
 
-function escapeHtml(value: string) {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
-}
-
-function buildHtmlFromText(text: string) {
-  return `<div style="font-family:Arial,sans-serif;white-space:pre-wrap">${escapeHtml(text)}</div>`;
-}
-
 export async function GET(request: Request) {
   let supabase: ReturnType<typeof getCronSupabaseClient>;
   if (isVercelCronRequest(request) || isAuthorizedCron(request)) {
@@ -87,7 +76,7 @@ export async function GET(request: Request) {
       to,
       subject: message.subject,
       text: message.text,
-      html: buildHtmlFromText(message.text),
+      html: message.html,
     });
 
     const documentoIds = Array.from(

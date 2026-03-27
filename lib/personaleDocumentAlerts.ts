@@ -35,6 +35,7 @@ export type PersonaleDocumentAlertDigest = {
 export type PersonaleDocumentAlertMessage = {
   subject: string;
   text: string;
+  html: string;
 };
 
 type PersonaleDocumentoDbRow = {
@@ -173,6 +174,80 @@ function buildSectionLines(
     lines.push("");
   }
   return lines;
+}
+
+function escapeHtml(value: string) {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function buildSectionHtml(
+  title: string,
+  color: string,
+  grouped: PersonaleDocumentAlertDigest["grouped"],
+  pickItems: (person: PersonaleDocumentAlertDigest["grouped"][number]["persone"][number]) => PersonaleDocumentAlertItem[]
+) {
+  const sections: string[] = [];
+
+  for (const azienda of grouped) {
+    const people = azienda.persone
+      .map((person) => ({
+        person,
+        items: pickItems(person),
+      }))
+      .filter((entry) => entry.items.length > 0);
+
+    if (people.length === 0) continue;
+
+    const peopleHtml = people
+      .map(
+        (entry) => `
+          <div style="margin-top:12px">
+            <div style="font-weight:700;margin-bottom:6px">${escapeHtml(entry.person.persona_nome)}</div>
+            <table style="width:100%;border-collapse:collapse;font-size:13px">
+              <tbody>
+                ${entry.items
+                  .map(
+                    (item) => `
+                      <tr>
+                        <td style="padding:6px 8px;border:1px solid #e5e7eb">${escapeHtml(item.tipo_documento)}</td>
+                        <td style="padding:6px 8px;border:1px solid #e5e7eb;white-space:nowrap">${escapeHtml(
+                          item.data_scadenza
+                        )}</td>
+                        <td style="padding:6px 8px;border:1px solid #e5e7eb;color:${color};font-weight:700">${escapeHtml(
+                          formatAlertDelta(item)
+                        )}</td>
+                      </tr>
+                    `
+                  )
+                  .join("")}
+              </tbody>
+            </table>
+          </div>
+        `
+      )
+      .join("");
+
+    sections.push(`
+      <div style="margin-top:18px">
+        <div style="font-size:16px;font-weight:700;margin-bottom:8px">${escapeHtml(azienda.azienda_nome)}</div>
+        ${peopleHtml}
+      </div>
+    `);
+  }
+
+  if (sections.length === 0) return "";
+
+  return `
+    <div style="margin-top:24px">
+      <h3 style="margin:0 0 12px 0;color:${color};font-size:18px">${escapeHtml(title)}</h3>
+      ${sections.join("")}
+    </div>
+  `;
 }
 
 export async function collectPersonaleDocumentAlertDigest(input?: {
@@ -352,8 +427,33 @@ export function buildPersonaleDocumentAlertMessage(
     lines.push("Nessun documento personale in alert.");
   }
 
+  const sectionsHtml: string[] = [];
+  if (digest.scaduti.length > 0) {
+    sectionsHtml.push(
+      buildSectionHtml("SCADUTI", "#b91c1c", digest.grouped, (person) => person.scaduti)
+    );
+  }
+  if (digest.in_scadenza.length > 0) {
+    sectionsHtml.push(
+      buildSectionHtml("IN SCADENZA", "#ea580c", digest.grouped, (person) => person.in_scadenza)
+    );
+  }
+
+  if (sectionsHtml.length === 0) {
+    sectionsHtml.push(
+      `<p style="margin-top:16px;font-size:14px;color:#374151">Nessun documento personale in alert.</p>`
+    );
+  }
+
   return {
     subject,
     text: lines.join("\n").trim(),
+    html: `
+      <div style="font-family:Arial,sans-serif;color:#111827">
+        <h2 style="margin:0 0 8px 0">Alert documenti personale</h2>
+        <div style="font-size:13px;color:#6b7280">Generato il: ${escapeHtml(digest.generated_at)}</div>
+        ${sectionsHtml.join("")}
+      </div>
+    `.trim(),
   };
 }
