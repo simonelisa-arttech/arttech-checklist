@@ -13,6 +13,9 @@ type SimCardRow = {
   operatore: string;
   tariffa: number | null;
   data_scadenza: string;
+  giorni_preavviso: number | null;
+  alert_frequenza: string;
+  stato_alert: string;
   billing_status: string;
   attiva: boolean;
   in_abbonamento: boolean;
@@ -51,6 +54,63 @@ function formatCurrency(value: number | null) {
     currency: "EUR",
     minimumFractionDigits: 2,
   }).format(value);
+}
+
+function parseLocalDay(value?: string | null) {
+  const raw = String(value || "").trim();
+  if (!raw) return null;
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(raw);
+  if (match) {
+    const date = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+    date.setHours(0, 0, 0, 0);
+    return Number.isFinite(date.getTime()) ? date : null;
+  }
+  const date = new Date(raw);
+  if (!Number.isFinite(date.getTime())) return null;
+  date.setHours(0, 0, 0, 0);
+  return date;
+}
+
+function getScadenzaBadgeState(row: Pick<SimCardRow, "data_scadenza" | "giorni_preavviso">) {
+  const scadenza = parseLocalDay(row.data_scadenza);
+  if (!scadenza) return null;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const msPerDay = 24 * 60 * 60 * 1000;
+  const giorniDelta = Math.round((scadenza.getTime() - today.getTime()) / msPerDay);
+
+  if (giorniDelta < 0) return { stato: "SCADUTO" as const, giorniDelta };
+
+  const giorniPreavvisoEffettivi =
+    typeof row.giorni_preavviso === "number" && Number.isFinite(row.giorni_preavviso)
+      ? row.giorni_preavviso
+      : 30;
+  if (giorniDelta <= giorniPreavvisoEffettivi) {
+    return { stato: "IN_SCADENZA" as const, giorniDelta };
+  }
+  return null;
+}
+
+function renderScadenzaBadge(state: ReturnType<typeof getScadenzaBadgeState>) {
+  if (!state) return null;
+  const isScaduto = state.stato === "SCADUTO";
+  return (
+    <span
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        padding: "4px 10px",
+        borderRadius: 999,
+        fontSize: 12,
+        fontWeight: 800,
+        background: isScaduto ? "#fee2e2" : "#ffedd5",
+        color: isScaduto ? "#b91c1c" : "#ea580c",
+        whiteSpace: "nowrap",
+      }}
+    >
+      {isScaduto ? "SCADUTO" : "IN SCADENZA"}
+    </span>
+  );
 }
 
 function renderBillingBadge(value?: string | null) {
@@ -120,7 +180,7 @@ export default function SimPage() {
       setNotice(null);
       const { data, error: loadError } = await dbFrom("sim_cards")
         .select(
-          "id, numero_telefono, intestatario, piano_attivo, operatore, tariffa, data_scadenza, billing_status, attiva, in_abbonamento, note"
+          "id, numero_telefono, intestatario, piano_attivo, operatore, tariffa, data_scadenza, giorni_preavviso, alert_frequenza, stato_alert, billing_status, attiva, in_abbonamento, note"
         )
         .order("numero_telefono", { ascending: true });
 
@@ -146,6 +206,14 @@ export default function SimPage() {
                 ? null
                 : Number(row.tariffa),
           data_scadenza: String(row.data_scadenza || ""),
+          giorni_preavviso:
+            typeof row.giorni_preavviso === "number"
+              ? row.giorni_preavviso
+              : row.giorni_preavviso == null || row.giorni_preavviso === ""
+                ? null
+                : Number(row.giorni_preavviso),
+          alert_frequenza: String(row.alert_frequenza || ""),
+          stato_alert: String(row.stato_alert || ""),
           billing_status: String(row.billing_status || ""),
           attiva: row.attiva !== false,
           in_abbonamento: row.in_abbonamento === true,
@@ -282,6 +350,9 @@ export default function SimPage() {
         operatore: "",
         tariffa: null,
         data_scadenza: "",
+        giorni_preavviso: null,
+        alert_frequenza: "",
+        stato_alert: "",
         billing_status: "",
         attiva: true,
         in_abbonamento: false,
@@ -321,6 +392,12 @@ export default function SimPage() {
       operatore: row.operatore.trim() || null,
       tariffa: row.tariffa == null || !Number.isFinite(row.tariffa) ? null : row.tariffa,
       data_scadenza: row.data_scadenza.trim() || null,
+      giorni_preavviso:
+        row.giorni_preavviso == null || !Number.isFinite(row.giorni_preavviso)
+          ? null
+          : row.giorni_preavviso,
+      alert_frequenza: row.alert_frequenza.trim() || null,
+      stato_alert: row.stato_alert.trim() || null,
       billing_status: row.billing_status.trim() || null,
       attiva: row.attiva !== false,
       in_abbonamento: row.in_abbonamento === true,
@@ -352,6 +429,14 @@ export default function SimPage() {
             ? payload.tariffa
             : Number(saved.tariffa),
       data_scadenza: String(saved?.data_scadenza || ""),
+      giorni_preavviso:
+        typeof saved?.giorni_preavviso === "number"
+          ? saved.giorni_preavviso
+          : saved?.giorni_preavviso == null || saved?.giorni_preavviso === ""
+            ? payload.giorni_preavviso
+            : Number(saved.giorni_preavviso),
+      alert_frequenza: String(saved?.alert_frequenza || payload.alert_frequenza || ""),
+      stato_alert: String(saved?.stato_alert || payload.stato_alert || ""),
       billing_status: String(saved?.billing_status || ""),
       attiva: saved?.attiva !== false,
       in_abbonamento: saved?.in_abbonamento === true,
@@ -625,6 +710,7 @@ export default function SimPage() {
           filteredRows.map((row) => {
             const rowId = String(row.id || "");
             const isEditing = editingSimId === rowId;
+            const scadenzaBadge = getScadenzaBadgeState(row);
             const rechargeRows = rechargesBySimId[rowId] || [];
             const rechargeDraft = newRechargeBySimId[rowId] || {
               data_ricarica: "",
@@ -638,7 +724,19 @@ export default function SimPage() {
                   padding: "14px 16px",
                   borderBottom: "1px solid #f3f4f6",
                   fontSize: 14,
-                  background: isEditing ? "#fffdf4" : "#fff",
+                  background: isEditing
+                    ? "#fffdf4"
+                    : scadenzaBadge?.stato === "SCADUTO"
+                      ? "#fff7f7"
+                      : scadenzaBadge?.stato === "IN_SCADENZA"
+                        ? "#fffaf5"
+                        : "#fff",
+                  borderLeft:
+                    scadenzaBadge?.stato === "SCADUTO"
+                      ? "4px solid #ef4444"
+                      : scadenzaBadge?.stato === "IN_SCADENZA"
+                        ? "4px solid #f97316"
+                        : "4px solid transparent",
                 }}
               >
                 {isEditing ? (
@@ -704,6 +802,48 @@ export default function SimPage() {
                           onChange={(e) => updateRow(rowId, { data_scadenza: e.target.value })}
                           style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: "1px solid #d1d5db" }}
                         />
+                      </label>
+                      <label style={{ display: "grid", gap: 6, fontSize: 13, fontWeight: 600 }}>
+                        Preavviso (giorni)
+                        <input
+                          type="number"
+                          min={0}
+                          step={1}
+                          value={row.giorni_preavviso == null ? "" : String(row.giorni_preavviso)}
+                          onChange={(e) =>
+                            updateRow(rowId, {
+                              giorni_preavviso: e.target.value.trim() ? Number(e.target.value) : null,
+                            })
+                          }
+                          placeholder="giorni"
+                          style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: "1px solid #d1d5db" }}
+                        />
+                      </label>
+                      <label style={{ display: "grid", gap: 6, fontSize: 13, fontWeight: 600 }}>
+                        Frequenza alert
+                        <select
+                          value={row.alert_frequenza}
+                          onChange={(e) => updateRow(rowId, { alert_frequenza: e.target.value })}
+                          style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: "1px solid #d1d5db" }}
+                        >
+                          <option value="">—</option>
+                          <option value="ONCE">ONCE</option>
+                          <option value="DAILY">DAILY</option>
+                          <option value="WEEKLY">WEEKLY</option>
+                        </select>
+                      </label>
+                      <label style={{ display: "grid", gap: 6, fontSize: 13, fontWeight: 600 }}>
+                        Stato alert
+                        <select
+                          value={row.stato_alert}
+                          onChange={(e) => updateRow(rowId, { stato_alert: e.target.value })}
+                          style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: "1px solid #d1d5db" }}
+                        >
+                          <option value="">—</option>
+                          <option value="ATTIVO">ATTIVO</option>
+                          <option value="SOSPESO">SOSPESO</option>
+                          <option value="COMPLETATO">COMPLETATO</option>
+                        </select>
                       </label>
                       <label style={{ display: "grid", gap: 6, fontSize: 13, fontWeight: 600 }}>
                         Billing status
@@ -916,12 +1056,27 @@ export default function SimPage() {
                         alignItems: "center",
                       }}
                     >
-                      <div style={{ fontWeight: 700 }}>{row.numero_telefono || "—"}</div>
+                      <div style={{ display: "grid", gap: 6 }}>
+                        <div style={{ fontWeight: 700 }}>{row.numero_telefono || "—"}</div>
+                        {renderScadenzaBadge(scadenzaBadge)}
+                      </div>
                       <div>{row.intestatario || "—"}</div>
                       <div>{row.piano_attivo || "—"}</div>
                       <div>{row.operatore || "—"}</div>
                       <div>{formatCurrency(row.tariffa)}</div>
-                      <div>{formatDate(row.data_scadenza)}</div>
+                      <div style={{ display: "grid", gap: 4 }}>
+                        <span>{formatDate(row.data_scadenza)}</span>
+                        <span style={{ fontSize: 12, color: "#6b7280" }}>
+                          Preavviso:{" "}
+                          {row.giorni_preavviso == null ? "—" : `${row.giorni_preavviso} giorni`}
+                        </span>
+                        <span style={{ fontSize: 12, color: "#6b7280" }}>
+                          Frequenza: {row.alert_frequenza || "—"}
+                        </span>
+                        <span style={{ fontSize: 12, color: "#6b7280" }}>
+                          Stato alert: {row.stato_alert || "—"}
+                        </span>
+                      </div>
                       <div>{renderBillingBadge(row.billing_status)}</div>
                       <div>
                         <span
