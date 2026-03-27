@@ -35,11 +35,29 @@ type DashboardMetricSummary = {
   overdue: number;
 };
 
+type DocumentiAlertSummary = {
+  scaduti_totale: number;
+  in_scadenza_totale: number;
+  personale_scaduti: number;
+  personale_in_scadenza: number;
+  aziende_scaduti: number;
+  aziende_in_scadenza: number;
+};
+
 const EMPTY_SCADENZE_BREAKDOWN: DashboardScadenzeBreakdown = {
   garanzie: 0,
   licenze: 0,
   tagliandi: 0,
   saasAltro: 0,
+};
+
+const EMPTY_DOCUMENTI_ALERT_SUMMARY: DocumentiAlertSummary = {
+  scaduti_totale: 0,
+  in_scadenza_totale: 0,
+  personale_scaduti: 0,
+  personale_in_scadenza: 0,
+  aziende_scaduti: 0,
+  aziende_in_scadenza: 0,
 };
 
 function buildScadenzeLink(days: number) {
@@ -510,6 +528,9 @@ export default function Page() {
     count: 0,
     overdue: 0,
   });
+  const [documentiAlertSummary, setDocumentiAlertSummary] = useState<DocumentiAlertSummary>(
+    EMPTY_DOCUMENTI_ALERT_SUMMARY
+  );
   const [clientiMissingEmailCount, setClientiMissingEmailCount] = useState(0);
   const [showMissingEmailInfo, setShowMissingEmailInfo] = useState(false);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
@@ -1078,6 +1099,28 @@ export default function Page() {
     );
   }
 
+  function renderDocumentiAlertCockpitCard() {
+    const personeTotale =
+      documentiAlertSummary.personale_scaduti + documentiAlertSummary.personale_in_scadenza;
+    const aziendeTotale =
+      documentiAlertSummary.aziende_scaduti + documentiAlertSummary.aziende_in_scadenza;
+
+    return (
+      <Link href="/impostazioni/personale" style={shortcutCardStyle}>
+        <div style={shortcutCardTitleStyle}>DOCUMENTI / CORSI</div>
+        <div style={shortcutCardNumberWrapStyle}>
+          <div style={shortcutCardNumberStyle}>{documentiAlertSummary.scaduti_totale}</div>
+        </div>
+        <div style={{ ...shortcutCardBadgeStyle, minHeight: 30, flexDirection: "column" as const, gap: 2 }}>
+          <span>In scadenza: {documentiAlertSummary.in_scadenza_totale}</span>
+          <span style={{ fontSize: 10, color: "#a16207" }}>
+            Persone: {personeTotale} · Aziende: {aziendeTotale}
+          </span>
+        </div>
+      </Link>
+    );
+  }
+
   async function load() {
     const requestSeq = ++loadRequestSeqRef.current;
     if (loadAbortRef.current) loadAbortRef.current.abort();
@@ -1345,6 +1388,31 @@ export default function Page() {
         setSmontaggiEntro7Summary({ count: 0, overdue: 0 });
       }
 
+      try {
+        const res = await fetch("/api/cockpit/documenti-alert-summary", {
+          signal: controller.signal,
+          credentials: "include",
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!isLatest()) return;
+        if (res.ok) {
+          setDocumentiAlertSummary({
+            scaduti_totale: Number(data?.scaduti_totale || 0),
+            in_scadenza_totale: Number(data?.in_scadenza_totale || 0),
+            personale_scaduti: Number(data?.personale_scaduti || 0),
+            personale_in_scadenza: Number(data?.personale_in_scadenza || 0),
+            aziende_scaduti: Number(data?.aziende_scaduti || 0),
+            aziende_in_scadenza: Number(data?.aziende_in_scadenza || 0),
+          });
+        } else {
+          setDocumentiAlertSummary(EMPTY_DOCUMENTI_ALERT_SUMMARY);
+        }
+      } catch (e: any) {
+        if (e?.name === "AbortError" || controller.signal.aborted) return;
+        if (!isLatest()) return;
+        setDocumentiAlertSummary(EMPTY_DOCUMENTI_ALERT_SUMMARY);
+      }
+
       let opRes: Response;
       try {
         opRes = await fetch("/api/operatori", { signal: controller.signal });
@@ -1409,6 +1477,7 @@ export default function Page() {
       setNoleggiAttiviCount(0);
       setConsegneEntro7Summary({ count: 0, overdue: 0 });
       setSmontaggiEntro7Summary({ count: 0, overdue: 0 });
+      setDocumentiAlertSummary(EMPTY_DOCUMENTI_ALERT_SUMMARY);
       setClientiMissingEmailCount(0);
     } finally {
       if (!isLatest()) return;
@@ -1707,7 +1776,7 @@ export default function Page() {
       <div style={{ display: "flex", alignItems: "flex-start", gap: 16, flexWrap: "wrap" }}>
         <div style={{ flexShrink: 0, minWidth: 190 }}>
           <h1 style={{ margin: 0, fontSize: 34, whiteSpace: "nowrap" }}>AT SYSTEM</h1>
-          <div style={{ marginTop: 2, fontSize: 12, opacity: 0.7 }}>DASH BOARD</div>
+          <div style={{ marginTop: 2, fontSize: 12, opacity: 0.7 }}>HOME</div>
         </div>
 
         {showDebugAuth && (
@@ -1923,7 +1992,7 @@ export default function Page() {
                 className="dashboard-cockpit-kpi-grid"
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "repeat(5, minmax(0, 1fr))",
+                  gridTemplateColumns: "repeat(6, minmax(0, 1fr))",
                   gap: 12,
                   alignItems: "stretch",
                 }}
@@ -1961,10 +2030,37 @@ export default function Page() {
                   "NOLEGGI ATTIVI",
                   noleggiAttiviCount
                 )}
+                {renderDocumentiAlertCockpitCard()}
               </div>
           </div>
           </div>
-          <div style={{ marginTop: 16 }}>
+          <div style={{ marginTop: 24 }}>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 12,
+                marginBottom: 14,
+              }}
+            >
+              <h2
+                style={{
+                  margin: 0,
+                  fontSize: 22,
+                  fontWeight: 800,
+                  color: "#0f172a",
+                }}
+              >
+                Cronoprogramma operativo
+              </h2>
+              <div
+                style={{
+                  flex: 1,
+                  height: 1,
+                  background: "#e5e7eb",
+                }}
+              />
+            </div>
             {cronoError && (
               <div
                 style={{
