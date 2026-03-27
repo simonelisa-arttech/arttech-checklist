@@ -159,6 +159,7 @@ function PersonalePageContent() {
   const [newDocumentTypeName, setNewDocumentTypeName] = useState("");
   const searchParams = useSearchParams();
   const handledManageIntentRef = useRef<string | null>(null);
+  const isScadenzeFilterActive = String(searchParams.get("filter") || "").trim().toLowerCase() === "scadenze";
 
   async function loadData() {
     setLoading(true);
@@ -253,11 +254,16 @@ function PersonalePageContent() {
 
   const filteredPersone = useMemo(() => {
     const query = normalizeText(search);
-    if (!query) return persone;
-    return persone.filter((persona) =>
-      normalizeText(`${persona.nome} ${persona.cognome}`).includes(query)
-    );
-  }, [persone, search]);
+    return persone.filter((persona) => {
+      const matchesSearch =
+        !query || normalizeText(`${persona.nome} ${persona.cognome}`).includes(query);
+      if (!matchesSearch) return false;
+      if (!isScadenzeFilterActive) return true;
+      const personId = String(persona.id || "");
+      const docRows = docsByPersonale.get(personId) || [];
+      return docRows.some((doc) => getDocumentoBadgeState(doc) !== null);
+    });
+  }, [persone, search, isScadenzeFilterActive, docsByPersonale]);
 
   useEffect(() => {
     if (loading) return;
@@ -758,6 +764,23 @@ function PersonalePageContent() {
         />
       </div>
 
+      {isScadenzeFilterActive ? (
+        <div
+          style={{
+            marginTop: 12,
+            padding: "8px 10px",
+            borderRadius: 10,
+            border: "1px solid #fdba74",
+            background: "#fffaf5",
+            color: "#9a3412",
+            fontSize: 12,
+            fontWeight: 700,
+          }}
+        >
+          Filtro attivo: Scadenze
+        </div>
+      ) : null}
+
       {newDocumentTypeOpen ? (
         <div
           style={{
@@ -867,7 +890,10 @@ function PersonalePageContent() {
           ) : (
             filteredPersone.map((persona) => {
               const personId = String(persona.id || "");
-              const docRows = docsByPersonale.get(personId) || [];
+              const allDocRows = docsByPersonale.get(personId) || [];
+              const docRows = isScadenzeFilterActive
+                ? allDocRows.filter((doc) => getDocumentoBadgeState(doc) !== null)
+                : allDocRows;
               const isExpanded = expandedPersonId === personId;
               return (
                 <div

@@ -1106,7 +1106,7 @@ export default function Page() {
       documentiAlertSummary.aziende_scaduti + documentiAlertSummary.aziende_in_scadenza;
 
     return (
-      <Link href="/impostazioni/personale" style={shortcutCardStyle}>
+      <Link href="/impostazioni/personale?filter=scadenze" style={shortcutCardStyle}>
         <div style={shortcutCardTitleStyle}>DOCUMENTI / CORSI</div>
         <div style={shortcutCardNumberWrapStyle}>
           <div style={shortcutCardNumberStyle}>{documentiAlertSummary.scaduti_totale}</div>
