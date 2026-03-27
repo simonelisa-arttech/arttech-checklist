@@ -24,6 +24,9 @@ function tryDecodeCookieValue(value: string) {
 }
 
 function parseJsonToken(value: unknown): string {
+  if (Array.isArray(value) && typeof value[0] === "string" && value[0].trim()) {
+    return value[0].trim();
+  }
   if (!value || typeof value !== "object") return "";
   const row = value as Record<string, unknown>;
   const direct = row["access_token"];
@@ -34,8 +37,17 @@ function parseJsonToken(value: unknown): string {
 function decodeBase64(value: string) {
   if (!value) return "";
 
+  const normalized = value.replace(/-/g, "+").replace(/_/g, "/");
+  const padded = normalized + "=".repeat((4 - (normalized.length % 4)) % 4);
+
+  if (typeof Buffer !== "undefined") {
+    return Buffer.from(padded, "base64").toString("utf8");
+  }
+
   if (typeof atob === "function") {
-    return atob(value);
+    const binary = atob(padded);
+    const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
+    return new TextDecoder().decode(bytes);
   }
 
   return "";
@@ -44,6 +56,10 @@ function decodeBase64(value: string) {
 function extractAccessTokenFromAuthCookieValue(rawValue: string) {
   const decoded = tryDecodeCookieValue(rawValue);
   if (!decoded) return "";
+
+  if (/^[A-Za-z0-9-_]+\.[A-Za-z0-9-_]+\.[A-Za-z0-9-_]+$/.test(decoded)) {
+    return decoded;
+  }
 
   try {
     const parsed = JSON.parse(decoded);
