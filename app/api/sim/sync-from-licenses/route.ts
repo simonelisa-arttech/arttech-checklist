@@ -42,7 +42,7 @@ function firstChecklistJoin(
   return Array.isArray(value) ? value[0] || null : value;
 }
 
-export async function POST(request: Request) {
+async function handleSync(request: Request) {
   const auth = await requireOperatore(request);
   if (!auth.ok) return auth.response;
 
@@ -169,4 +169,12 @@ export async function POST(request: Request) {
       { status: 500 }
     );
   }
+}
+
+export async function GET(request: Request) {
+  return handleSync(request);
+}
+
+export async function POST(request: Request) {
+  return handleSync(request);
 }
