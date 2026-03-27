@@ -107,6 +107,22 @@ const TABLE_RULES: Record<
     orderCols: ["data_scadenza", "tipo_documento"],
     allowNoFilterSelect: true,
   },
+  sim_cards: {
+    ops: ["select", "insert", "update", "delete"],
+    filterCols: [
+      "id",
+      "checklist_id",
+      "license_id",
+      "cliente_id",
+      "numero_telefono",
+      "operatore",
+      "billing_status",
+      "attiva",
+      "data_scadenza",
+    ],
+    orderCols: ["created_at", "updated_at", "numero_telefono", "data_scadenza"],
+    allowNoFilterSelect: true,
+  },
   document_types: {
     ops: ["select", "insert", "update", "delete"],
     filterCols: ["id", "codice", "nome"],
