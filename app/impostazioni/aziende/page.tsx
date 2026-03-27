@@ -149,6 +149,7 @@ function AziendePageContent() {
   const [newDocumentTypeName, setNewDocumentTypeName] = useState("");
   const searchParams = useSearchParams();
   const handledManageIntentRef = useRef<string | null>(null);
+  const isScadenzeFilterActive = String(searchParams.get("filter") || "").trim().toLowerCase() === "scadenze";
 
   async function loadData() {
     setLoading(true);
@@ -223,9 +224,15 @@ function AziendePageContent() {
 
   const filteredAziende = useMemo(() => {
     const query = normalizeText(search);
-    if (!query) return aziende;
-    return aziende.filter((azienda) => normalizeText(azienda.ragione_sociale).includes(query));
-  }, [aziende, search]);
+    return aziende.filter((azienda) => {
+      const matchesSearch = !query || normalizeText(azienda.ragione_sociale).includes(query);
+      if (!matchesSearch) return false;
+      if (!isScadenzeFilterActive) return true;
+      const aziendaId = String(azienda.id || "");
+      const docRows = docsByAzienda.get(aziendaId) || [];
+      return docRows.some((doc) => getDocumentoBadgeState(doc) !== null);
+    });
+  }, [aziende, search, isScadenzeFilterActive, docsByAzienda]);
 
   useEffect(() => {
     if (loading) return;
@@ -704,6 +711,23 @@ function AziendePageContent() {
         />
       </div>
 
+      {isScadenzeFilterActive ? (
+        <div
+          style={{
+            marginTop: 12,
+            padding: "8px 10px",
+            borderRadius: 10,
+            border: "1px solid #fdba74",
+            background: "#fffaf5",
+            color: "#9a3412",
+            fontSize: 12,
+            fontWeight: 700,
+          }}
+        >
+          Filtro attivo: Scadenze
+        </div>
+      ) : null}
+
       {newDocumentTypeOpen ? (
         <div
           style={{
@@ -813,7 +837,10 @@ function AziendePageContent() {
           ) : (
             filteredAziende.map((azienda) => {
               const aziendaId = String(azienda.id || "");
-              const docRows = docsByAzienda.get(aziendaId) || [];
+              const allDocRows = docsByAzienda.get(aziendaId) || [];
+              const docRows = isScadenzeFilterActive
+                ? allDocRows.filter((doc) => getDocumentoBadgeState(doc) !== null)
+                : allDocRows;
               const isExpanded = expandedAziendaId === aziendaId;
               return (
                 <div
