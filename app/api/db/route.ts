@@ -123,6 +123,12 @@ const TABLE_RULES: Record<
     orderCols: ["created_at", "updated_at", "numero_telefono", "data_scadenza"],
     allowNoFilterSelect: true,
   },
+  sim_recharges: {
+    ops: ["select", "insert", "update", "delete"],
+    filterCols: ["id", "sim_id", "data_ricarica"],
+    orderCols: ["created_at", "data_ricarica"],
+    requiredEqAnyOf: ["id", "sim_id"],
+  },
   document_types: {
     ops: ["select", "insert", "update", "delete"],
     filterCols: ["id", "codice", "nome"],
