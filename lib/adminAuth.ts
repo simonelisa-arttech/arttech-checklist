@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { createClient, type SupabaseClient, type User } from "@supabase/supabase-js";
 import { isAdminRole } from "@/lib/adminRoles";
+import { getAccessTokenFromRequest } from "@/lib/serverAuthToken";
 
 type OperatoreAuthRow = {
   id: string;
@@ -50,17 +51,7 @@ async function resolveOperatoreAuth(request: Request): Promise<RequireOperatoreO
     return unauthorized("Missing Supabase envs", 500);
   }
 
-  const authHeader = request.headers.get("authorization") || "";
-  const bearerToken = authHeader.startsWith("Bearer ") ? authHeader.slice(7).trim() : "";
-  const cookieToken = request.headers
-    .get("cookie")
-    ?.split(";")
-    .map((s) => s.trim())
-    .find((s) => s.startsWith("sb-access-token="))
-    ?.split("=")
-    .slice(1)
-    .join("=");
-  const accessToken = bearerToken || cookieToken || "";
+  const accessToken = getAccessTokenFromRequest(request);
 
   if (!accessToken) {
     return unauthorized();

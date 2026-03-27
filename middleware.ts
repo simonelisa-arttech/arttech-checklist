@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { getAccessTokenFromRequest } from "@/lib/serverAuthToken";
 
 const PUBLIC_PATHS = [
   "/login",
@@ -37,7 +38,7 @@ export async function middleware(req: NextRequest) {
     return NextResponse.next();
   }
 
-  const accessToken = req.cookies.get("sb-access-token")?.value;
+  const accessToken = getAccessTokenFromRequest(req);
   const refreshToken = req.cookies.get("sb-refresh-token")?.value;
 
   if (!accessToken) {
