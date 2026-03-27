@@ -13,9 +13,27 @@ const API_PREFIX = "/api/";
 const ASSET_PREFIXES = ["/_next", "/images"];
 const ASSET_FILE_RE =
   /\.(?:png|jpg|jpeg|gif|svg|webp|ico|css|js|map|txt|xml|woff|woff2|ttf|eot)$/i;
+const SIM_SYNC_PATH = "/api/sim/sync-from-licenses";
 
-function unauthorizedApiResponse() {
-  return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+type SimSyncAuthDebugReason =
+  | "access-token-missing"
+  | "access-token-invalid"
+  | "refresh-token-missing"
+  | "refresh-failed"
+  | "refresh-user-invalid";
+
+function unauthorizedApiResponse(pathname: string, reason?: SimSyncAuthDebugReason) {
+  const response = NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+
+  if (pathname === SIM_SYNC_PATH && reason) {
+    response.headers.set("x-auth-debug", reason);
+    console.warn("[middleware][sim-sync] unauthorized", {
+      pathname,
+      reason,
+    });
+  }
+
+  return response;
 }
 
 export async function middleware(req: NextRequest) {
@@ -43,7 +61,10 @@ export async function middleware(req: NextRequest) {
 
   if (!accessToken) {
     if (isApiRequest) {
-      return unauthorizedApiResponse();
+      return unauthorizedApiResponse(
+        pathname,
+        refreshToken ? "access-token-missing" : "refresh-token-missing"
+      );
     }
     const url = req.nextUrl.clone();
     url.pathname = "/login";
@@ -65,6 +86,7 @@ export async function middleware(req: NextRequest) {
   let currentUserId: string | null = null;
   const {
     data: { user },
+    error: userError,
   } = await supabase.auth.getUser(accessToken);
   currentUserId = user?.id ?? null;
 
@@ -96,10 +118,19 @@ export async function middleware(req: NextRequest) {
       });
       return res;
     }
+
+    if (isApiRequest && pathname === SIM_SYNC_PATH) {
+      const reason: SimSyncAuthDebugReason =
+        !error && data?.session ? "refresh-user-invalid" : "refresh-failed";
+      return unauthorizedApiResponse(pathname, reason);
+    }
   }
 
   if (isApiRequest) {
-    return unauthorizedApiResponse();
+    return unauthorizedApiResponse(
+      pathname,
+      refreshToken ? "access-token-invalid" : userError ? "access-token-invalid" : "refresh-token-missing"
+    );
   }
 
   const url = req.nextUrl.clone();
