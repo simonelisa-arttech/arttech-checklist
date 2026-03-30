@@ -552,6 +552,7 @@ function formatRinnovoStatus(label?: string | null) {
 function formatRinnovoTipo(label?: string | null) {
   const upper = String(label || "").toUpperCase();
   if (upper === "LICENZA") return "Licenza";
+  if (upper === "SIM") return "SIM";
   if (upper === "SAAS_SCHERMO") return "SaaS schermo";
   if (upper === "SAAS_ULTRA") return "SaaS Ultra";
   return upper || "";
@@ -739,6 +740,7 @@ type RinnovoServizioRow = {
   cliente?: string | null;
   item_tipo?: string | null;
   subtipo?: string | null;
+  sim_id?: string | null;
   riferimento?: string | null;
   descrizione?: string | null;
   checklist_id?: string | null;
@@ -772,9 +774,10 @@ type TagliandoRow = {
 
 type ScadenzaItem = {
   id: string;
-  source: "rinnovi" | "tagliandi" | "licenze" | "saas" | "garanzie" | "saas_contratto";
+  source: "rinnovi" | "tagliandi" | "licenze" | "saas" | "garanzie" | "saas_contratto" | "sim";
   tagliando_id?: string | null;
   contratto_id?: string | null;
+  sim_id?: string | null;
   item_tipo?: string | null;
   riferimento?: string | null;
   descrizione?: string | null;
@@ -788,7 +791,7 @@ type ScadenzaItem = {
 };
 
 type EditScadenzaForm = {
-  tipo: "LICENZA" | "TAGLIANDO" | "SAAS" | "GARANZIA" | "RINNOVO" | "SAAS_ULTRA";
+  tipo: "LICENZA" | "TAGLIANDO" | "SAAS" | "GARANZIA" | "RINNOVO" | "SAAS_ULTRA" | "SIM";
   scadenza: string;
   stato: string;
   modalita: string;
@@ -872,6 +875,7 @@ type ClienteSimRow = {
   id: string;
   checklist_id: string | null;
   numero_telefono: string | null;
+  intestatario: string | null;
   operatore: string | null;
   piano_attivo: string | null;
   device_installato: string | null;
@@ -1886,7 +1890,7 @@ export default function ClientePage({
       } else {
         const { data: simData, error: simErr } = await dbFrom("sim_cards")
           .select(
-            "id, checklist_id, numero_telefono, operatore, piano_attivo, device_installato, data_attivazione, data_scadenza, giorni_preavviso, attiva"
+            "id, checklist_id, numero_telefono, intestatario, operatore, piano_attivo, device_installato, data_attivazione, data_scadenza, giorni_preavviso, attiva"
           )
           .in("checklist_id", checklistIds)
           .order("numero_telefono", { ascending: true });
@@ -1900,6 +1904,7 @@ export default function ClientePage({
             id: String(row.id || ""),
             checklist_id: row.checklist_id ? String(row.checklist_id) : null,
             numero_telefono: row.numero_telefono ? String(row.numero_telefono) : null,
+            intestatario: row.intestatario ? String(row.intestatario) : null,
             operatore: row.operatore ? String(row.operatore) : null,
             piano_attivo: row.piano_attivo ? String(row.piano_attivo) : null,
             device_installato: row.device_installato ? String(row.device_installato) : null,
@@ -2641,6 +2646,7 @@ export default function ClientePage({
   }, [checklists]);
 
   const rinnoviAll = useMemo<ScadenzaItem[]>(() => {
+    const checklistMap = new Map(checklists.map((c) => [c.id, c] as const));
     const rinnoviMapped = rinnovi
       // LICENZA is managed from `licenses` table in this page.
       // Keeping both sources causes "ghost/original row comes back" effects.
@@ -2694,6 +2700,28 @@ export default function ClientePage({
       stato: l.status ?? l.stato ?? (l.scadenza ? "DA_AVVISARE" : null),
       modalita: null,
     }));
+    const simMapped = clienteSims.map((sim) => {
+      const latestRecharge = getLatestClienteSimRechargeRow(clienteSimRechargesById[sim.id] || []);
+      const scadenza = getClienteSimEffectiveScadenza(sim, latestRecharge);
+      const simState = getClienteSimOperationalState(sim, latestRecharge);
+      const project = checklistMap.get(String(sim.checklist_id || ""));
+      return {
+        id: `sim_cards:${sim.id}`,
+        source: "sim" as const,
+        sim_id: sim.id,
+        item_tipo: "SIM",
+        riferimento: sim.numero_telefono || sim.intestatario || "SIM",
+        descrizione:
+          [sim.operatore, sim.piano_attivo, sim.device_installato].filter(Boolean).join(" · ") ||
+          null,
+        checklist_id: sim.checklist_id ?? null,
+        scadenza: scadenza ?? null,
+        stato: simState === "OFF" ? "OFF" : simState === "SCADUTO" ? "SCADUTA" : "ATTIVA",
+        proforma: project?.proforma ?? null,
+        cod_magazzino: project?.magazzino_importazione ?? null,
+        modalita: null,
+      };
+    });
     const saasMapped = saasPerImpiantoRows.map((c) => ({
       id: `saas:${c.id}`,
       source: "saas" as const,
@@ -2740,13 +2768,24 @@ export default function ClientePage({
       ...rinnoviMapped,
       ...tagliandiMapped,
       ...licenzeMapped,
+      ...simMapped,
       ...saasMapped,
       ...contrattiMapped,
       ...garanzieMapped,
     ].sort(
       (a, b) => String(a.scadenza || "").localeCompare(String(b.scadenza || ""))
     );
-  }, [rinnovi, tagliandi, licenze, saasPerImpiantoRows, contrattiRows, garanzieRows]);
+  }, [
+    rinnovi,
+    tagliandi,
+    licenze,
+    checklists,
+    clienteSims,
+    clienteSimRechargesById,
+    saasPerImpiantoRows,
+    contrattiRows,
+    garanzieRows,
+  ]);
 
   const filteredRinnovi = useMemo(() => {
     let rows = rinnoviAll;
@@ -4135,6 +4174,7 @@ export default function ClientePage({
     return {
       id: r.id,
       source: "rinnovi",
+      sim_id: r.sim_id ?? null,
       item_tipo: r.item_tipo,
       riferimento: getRinnovoReference(r),
       descrizione: r.descrizione ?? null,
@@ -5333,6 +5373,7 @@ export default function ClientePage({
     { avviso: boolean; conferma: boolean; non_rinnovato: boolean; fattura: boolean }
   > = {
     LICENZA: { avviso: true, conferma: true, non_rinnovato: true, fattura: true },
+    SIM: { avviso: true, conferma: true, non_rinnovato: true, fattura: true },
     TAGLIANDO: { avviso: true, conferma: true, non_rinnovato: true, fattura: true },
     SAAS: { avviso: true, conferma: true, non_rinnovato: true, fattura: true },
     GARANZIA: { avviso: true, conferma: true, non_rinnovato: true, fattura: true },
@@ -5343,6 +5384,7 @@ export default function ClientePage({
   // Mappa configurabile: mesi di rinnovo di default per tipo
   const RENEWAL_DEFAULTS_MONTHS: Record<string, number> = {
     LICENZA: 12,
+    SIM: 12,
     TAGLIANDO: 12,
     SAAS: 12,
     GARANZIA: 24,
@@ -5375,6 +5417,7 @@ export default function ClientePage({
 
   function mapRinnovoTipo(tipo: string) {
     const upper = String(tipo || "").toUpperCase();
+    if (upper === "SIM") return { item_tipo: "SIM", subtipo: null };
     if (upper === "SAAS_ULTRA") return { item_tipo: "SAAS", subtipo: "ULTRA" };
     if (upper === "GARANZIA") return { item_tipo: "GARANZIA", subtipo: null };
     if (upper === "SAAS") return { item_tipo: "SAAS", subtipo: null };
@@ -5386,6 +5429,17 @@ export default function ClientePage({
       return rinnovi.find((x) => x.id === r.id) || null;
     }
     const tipo = String(r.item_tipo || "").toUpperCase();
+    if (tipo === "SIM") {
+      const simId = String(r.sim_id || "").trim();
+      if (!simId) return null;
+      return (
+        rinnovi.find(
+          (x) =>
+            String(x.item_tipo || "").toUpperCase() === "SIM" &&
+            String(x.sim_id || "").trim() === simId
+        ) || null
+      );
+    }
     if (tipo === "SAAS_ULTRA") {
       return (
         rinnovi.find(
@@ -5441,6 +5495,10 @@ export default function ClientePage({
       const match = getRinnovoMatch(r);
       return String(match?.stato || "DA_AVVISARE").toUpperCase();
     }
+    if (tipo === "SIM") {
+      const match = getRinnovoMatch(r);
+      return String(match?.stato || "DA_AVVISARE").toUpperCase();
+    }
     if (tipo === "LICENZA") {
       if (raw === "ATTIVA") return "DA_AVVISARE";
       if (raw === "OK") return "CONFERMATO";
@@ -5462,6 +5520,9 @@ export default function ClientePage({
       scadenza: r.scadenza ?? null,
       stato: "DA_AVVISARE",
     };
+    if (tipo === "SIM") {
+      payload.sim_id = r.sim_id ?? null;
+    }
     if (mapped.subtipo) payload.subtipo = mapped.subtipo;
     if (tipo === "SAAS_ULTRA") {
       payload.checklist_id = null;

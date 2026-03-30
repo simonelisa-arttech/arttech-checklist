@@ -1,17 +1,25 @@
-export type ScadenzaAgendaTipo = "GARANZIA" | "TAGLIANDO" | "LICENZA" | "SAAS" | "RINNOVO";
+export type ScadenzaAgendaTipo =
+  | "GARANZIA"
+  | "TAGLIANDO"
+  | "LICENZA"
+  | "SAAS"
+  | "RINNOVO"
+  | "SIM";
 export type ScadenzaAgendaOrigine =
   | "rinnovi_servizi"
   | "tagliandi"
   | "licenses"
   | "checklists"
-  | "saas_contratti";
+  | "saas_contratti"
+  | "sim_cards";
 export type ScadenzaAgendaSource =
   | "rinnovi"
   | "tagliandi"
   | "licenze"
   | "saas"
   | "garanzie"
-  | "saas_contratto";
+  | "saas_contratto"
+  | "sim";
 export type ScadenzaAgendaWorkflowStato =
   | "DA_AVVISARE"
   | "AVVISATO"
@@ -27,6 +35,7 @@ export type ScadenzaAgendaRow = {
   cliente: string | null;
   cliente_id: string | null;
   checklist_id: string | null;
+  sim_id?: string | null;
   progetto: string | null;
   tipo: ScadenzaAgendaTipo;
   sottotipo: string | null;
@@ -96,6 +105,7 @@ type RinnovoServizioRow = {
   cliente?: string | null;
   item_tipo?: string | null;
   subtipo?: string | null;
+  sim_id?: string | null;
   riferimento?: string | null;
   descrizione?: string | null;
   checklist_id?: string | null;
@@ -115,6 +125,25 @@ type ContrattoRow = {
   illimitati: boolean | null;
 };
 
+type SimCardRow = {
+  id: string;
+  checklist_id: string | null;
+  numero_telefono: string | null;
+  intestatario: string | null;
+  operatore: string | null;
+  piano_attivo: string | null;
+  device_installato: string | null;
+  data_attivazione: string | null;
+  data_scadenza: string | null;
+  attiva: boolean | null;
+};
+
+type SimRechargeRow = {
+  id: string;
+  sim_id: string;
+  data_ricarica: string | null;
+};
+
 function parseLocalDay(value?: string | null): Date | null {
   if (!value) return null;
   const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(value);
@@ -127,6 +156,54 @@ function parseLocalDay(value?: string | null): Date | null {
   if (!Number.isFinite(dt.getTime())) return null;
   dt.setHours(0, 0, 0, 0);
   return dt;
+}
+
+function formatDateOnlyValue(date?: Date | null) {
+  if (!date || !Number.isFinite(date.getTime())) return "";
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function addOneYearToDate(value?: string | null) {
+  const source = parseLocalDay(value);
+  if (!source) return "";
+  const next = new Date(source.getTime());
+  next.setFullYear(next.getFullYear() + 1);
+  if (next.getMonth() !== source.getMonth()) {
+    next.setDate(0);
+  }
+  return formatDateOnlyValue(next);
+}
+
+function getLatestSimRechargeRow(rows: SimRechargeRow[]) {
+  if (!rows.length) return null;
+  return [...rows].sort((a, b) => {
+    const aTime = parseLocalDay(a.data_ricarica)?.getTime() || 0;
+    const bTime = parseLocalDay(b.data_ricarica)?.getTime() || 0;
+    return bTime - aTime;
+  })[0] || null;
+}
+
+function getEffectiveSimScadenza(
+  row: Pick<SimCardRow, "data_attivazione" | "data_scadenza">,
+  latestRecharge?: Pick<SimRechargeRow, "data_ricarica"> | null
+) {
+  const activation = parseLocalDay(row.data_attivazione);
+  const lastRecharge = parseLocalDay(latestRecharge?.data_ricarica);
+  const baseDate =
+    activation && lastRecharge
+      ? activation.getTime() >= lastRecharge.getTime()
+        ? row.data_attivazione
+        : latestRecharge?.data_ricarica || ""
+      : activation
+        ? row.data_attivazione
+        : lastRecharge
+          ? latestRecharge?.data_ricarica || ""
+          : "";
+  if (baseDate) return addOneYearToDate(baseDate);
+  return normalizeString(row.data_scadenza) || null;
 }
 
 function startOfToday() {
@@ -163,6 +240,7 @@ function normalizeTipo(
 ): { tipo: ScadenzaAgendaTipo; sottotipo: string | null } {
   const tipo = normalizeUpper(itemTipo);
   const sub = normalizeUpper(subtipo) || null;
+  if (tipo === "SIM") return { tipo: "SIM", sottotipo: null };
   if (tipo === "GARANZIA") return { tipo: "GARANZIA", sottotipo: null };
   if (tipo === "TAGLIANDO") return { tipo: "TAGLIANDO", sottotipo: null };
   if (tipo === "LICENZA") return { tipo: "LICENZA", sottotipo: null };
@@ -184,7 +262,7 @@ function buildRinnovoReference(r: RinnovoServizioRow) {
 async function fetchRinnoviRows(supabase: any) {
   return supabase
     .from("rinnovi_servizi")
-    .select("id, cliente, item_tipo, subtipo, descrizione, checklist_id, scadenza, stato");
+    .select("id, cliente, item_tipo, subtipo, sim_id, descrizione, checklist_id, scadenza, stato");
 }
 
 function buildLicenseReference(l: LicenseRow) {
@@ -239,6 +317,7 @@ function getRinnovoMatch(
   item: {
     source: ScadenzaAgendaSource;
     item_tipo?: string | null;
+    sim_id?: string | null;
     checklist_id?: string | null;
     scadenza?: string | null;
     cliente?: string | null;
@@ -251,6 +330,11 @@ function getRinnovoMatch(
     );
   }
   const tipo = normalizeUpper(item.item_tipo);
+  if (tipo === "SIM") {
+    const simId = normalizeString(item.sim_id);
+    if (!simId) return null;
+    return rinnovi.find((x) => normalizeUpper(x.item_tipo) === "SIM" && normalizeString(x.sim_id) === simId) || null;
+  }
   if (tipo === "SAAS_ULTRA") {
     return (
       rinnovi.find(
@@ -296,6 +380,7 @@ function getWorkflowStato(
   item: {
     source: ScadenzaAgendaSource;
     item_tipo?: string | null;
+    sim_id?: string | null;
     stato?: string | null;
     checklist_id?: string | null;
     scadenza?: string | null;
@@ -311,6 +396,10 @@ function getWorkflowStato(
     if (stato) return stato as ScadenzaAgendaWorkflowStato;
     if (raw === "ATTIVA") return "DA_AVVISARE";
     if (raw === "OK") return "CONFERMATO";
+  }
+  if (tipo === "SIM") {
+    const match = getRinnovoMatch(item, rinnovi);
+    return normalizeUpper(match?.stato) as ScadenzaAgendaWorkflowStato | null;
   }
   if (tipo === "SAAS" || tipo === "GARANZIA" || tipo === "SAAS_ULTRA") {
     const match = getRinnovoMatch(item, rinnovi);
@@ -345,6 +434,8 @@ export async function buildScadenzeAgenda(
     { data: rinnovi, error: rinnoviErr },
     { data: tagliandi, error: tagliandiErr },
     { data: licenses, error: licensesErr },
+    { data: simCards, error: simCardsErr },
+    { data: simRecharges, error: simRechargesErr },
     { data: contratti, error: contrattiErr },
   ] = await Promise.all([
     supabase
@@ -360,17 +451,32 @@ export async function buildScadenzeAgenda(
         "id, checklist_id, tipo, scadenza, stato, status, note, ref_univoco, telefono, intestatario, intestata_a, gestore, fornitore"
       ),
     supabase
+      .from("sim_cards")
+      .select(
+        "id, checklist_id, numero_telefono, intestatario, operatore, piano_attivo, device_installato, data_attivazione, data_scadenza, attiva"
+      ),
+    supabase.from("sim_recharges").select("id, sim_id, data_ricarica"),
+    supabase
       .from("saas_contratti")
       .select("id, cliente, piano_codice, scadenza, interventi_annui, illimitati"),
   ]);
 
-  const firstErr = checklistsErr || rinnoviErr || tagliandiErr || licensesErr || contrattiErr;
+  const firstErr =
+    checklistsErr ||
+    rinnoviErr ||
+    tagliandiErr ||
+    licensesErr ||
+    simCardsErr ||
+    simRechargesErr ||
+    contrattiErr;
   if (firstErr) throw firstErr;
 
   const checklistRows = (checklists || []) as ChecklistBaseRow[];
   const rinnoviRows = (rinnovi || []) as RinnovoServizioRow[];
   const tagliandiRows = (tagliandi || []) as TagliandoRow[];
   const licenseRows = (licenses || []) as LicenseRow[];
+  const simCardRows = (simCards || []) as SimCardRow[];
+  const simRechargeRows = (simRecharges || []) as SimRechargeRow[];
   const contrattiRows = (contratti || []) as ContrattoRow[];
   const noleggioChecklistIds = new Set(
     checklistRows
@@ -570,6 +676,64 @@ export async function buildScadenzeAgenda(
       };
     });
 
+  const simRechargesBySimId = new Map<string, SimRechargeRow[]>();
+  for (const recharge of simRechargeRows) {
+    const simId = normalizeString(recharge.sim_id);
+    if (!simId) continue;
+    const bucket = simRechargesBySimId.get(simId) || [];
+    bucket.push(recharge);
+    simRechargesBySimId.set(simId, bucket);
+  }
+
+  const simMapped: ScadenzaAgendaRow[] = simCardRows.map((sim) => {
+    const latestRecharge = getLatestSimRechargeRow(
+      simRechargesBySimId.get(normalizeString(sim.id)) || []
+    );
+    const scadenza = getEffectiveSimScadenza(sim, latestRecharge);
+    const ctx = getChecklistContext(maps, sim.checklist_id, null);
+    const riferimento =
+      normalizeString(sim.numero_telefono) ||
+      normalizeString(sim.intestatario) ||
+      normalizeString(sim.id) ||
+      "SIM";
+    const descrizione = [sim.operatore, sim.piano_attivo, sim.device_installato]
+      .map((value) => normalizeString(value))
+      .filter(Boolean)
+      .join(" · ");
+    const stato = sim.attiva === false ? "OFF" : getExpiryStatus(scadenza);
+    return {
+      id: `sim_cards:${sim.id}`,
+      origine: "sim_cards",
+      source: "sim",
+      cliente: ctx?.cliente || null,
+      cliente_id: ctx?.cliente_id || null,
+      checklist_id: sim.checklist_id || null,
+      sim_id: sim.id,
+      progetto: ctx?.nome_checklist || null,
+      tipo: "SIM",
+      sottotipo: null,
+      riferimento,
+      descrizione: descrizione || null,
+      scadenza,
+      stato,
+      workflow_stato: getWorkflowStato(
+        {
+          source: "sim",
+          item_tipo: "SIM",
+          sim_id: sim.id,
+          stato,
+          checklist_id: sim.checklist_id,
+          scadenza,
+          cliente: ctx?.cliente,
+        },
+        rinnoviRows
+      ),
+      fatturazione: null,
+      note: null,
+      raw_id: sim.id,
+    };
+  });
+
   const contrattiMapped: ScadenzaAgendaRow[] = contrattiRows.map((c) => {
     const normalizedTipo = normalizeTipo("SAAS_ULTRA", "ULTRA");
     return {
@@ -626,6 +790,7 @@ export async function buildScadenzeAgenda(
     ...rinnoviMapped,
     ...tagliandiMapped,
     ...licenzeMapped,
+    ...simMapped,
     ...saasMapped,
     ...contrattiMapped,
     ...garanzieMapped,
