@@ -25,7 +25,9 @@ type AziendaDocumentoRow = {
   azienda_id: string;
   document_catalog_id: string;
   tipo_documento: string;
+  data_emissione: string;
   data_scadenza: string;
+  scadenza_override_manuale: boolean;
   giorni_preavviso: string;
   alert_frequenza: string;
   alert_stato: string;
@@ -46,6 +48,7 @@ type DocumentCatalogRow = {
   target: string | null;
   categoria: string | null;
   has_scadenza: boolean;
+  validita_mesi: number | null;
   required_default: boolean;
   attivo: boolean;
   sort_order: number | null;
@@ -132,6 +135,44 @@ function parseDateOnly(value?: string | null) {
   return date;
 }
 
+function formatDateOnly(value?: Date | null) {
+  if (!value) return "";
+  const year = value.getFullYear();
+  const month = String(value.getMonth() + 1).padStart(2, "0");
+  const day = String(value.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function addMonthsToDateOnly(date: Date, months: number) {
+  const next = new Date(date);
+  next.setMonth(next.getMonth() + months);
+  next.setHours(0, 0, 0, 0);
+  return next;
+}
+
+function getDerivedDocumentoScadenzaValue(
+  doc?: Pick<AziendaDocumentoRow, "data_emissione"> | null,
+  documentCatalogEntry?: Pick<DocumentCatalogRow, "has_scadenza" | "validita_mesi"> | null
+) {
+  if (!doc || documentCatalogEntry?.has_scadenza === false) return "";
+  const validitaMesi = Number(documentCatalogEntry?.validita_mesi);
+  if (!Number.isFinite(validitaMesi) || validitaMesi <= 0) return "";
+  const emissione = parseDateOnly(doc.data_emissione);
+  if (!emissione) return "";
+  return formatDateOnly(addMonthsToDateOnly(emissione, validitaMesi));
+}
+
+function getEffectiveDocumentoScadenzaValue(
+  doc?: Pick<AziendaDocumentoRow, "data_emissione" | "data_scadenza" | "scadenza_override_manuale"> | null,
+  documentCatalogEntry?: Pick<DocumentCatalogRow, "has_scadenza" | "validita_mesi"> | null
+) {
+  if (!doc) return "";
+  if (documentCatalogEntry?.has_scadenza === false) return "";
+  const derived = getDerivedDocumentoScadenzaValue(doc, documentCatalogEntry);
+  if (!doc.scadenza_override_manuale && derived) return derived;
+  return String(doc.data_scadenza || "").trim();
+}
+
 function getDocumentoBadgeState(doc: AziendaDocumentoRow) {
   const expiry = parseDateOnly(doc.data_scadenza);
   if (!expiry) return null;
@@ -159,9 +200,9 @@ type DocumentoListBadgeState =
 
 function getDocumentoBadgeStateWithCatalog(
   doc: AziendaDocumentoRow,
-  documentCatalogEntry?: Pick<DocumentCatalogRow, "has_scadenza"> | null
+  documentCatalogEntry?: Pick<DocumentCatalogRow, "has_scadenza" | "validita_mesi"> | null
 ) {
-  const expiry = parseDateOnly(doc.data_scadenza);
+  const expiry = parseDateOnly(getEffectiveDocumentoScadenzaValue(doc, documentCatalogEntry));
   if (!expiry) {
     if (documentCatalogEntry?.has_scadenza === false) return null;
     return null;
@@ -183,10 +224,10 @@ function getDocumentoBadgeStateWithCatalog(
 
 function getDocumentoListBadgeStateWithCatalog(
   doc?: AziendaDocumentoRow | null,
-  documentCatalogEntry?: Pick<DocumentCatalogRow, "has_scadenza"> | null
+  documentCatalogEntry?: Pick<DocumentCatalogRow, "has_scadenza" | "validita_mesi"> | null
 ): DocumentoListBadgeState {
   if (!doc) return "MANCANTE";
-  if (!parseDateOnly(doc.data_scadenza)) {
+  if (!parseDateOnly(getEffectiveDocumentoScadenzaValue(doc, documentCatalogEntry))) {
     if (documentCatalogEntry?.has_scadenza === false) return "VALIDO";
     return "SCADENZA MANCANTE";
   }
@@ -267,7 +308,7 @@ function AziendePageContent() {
         .order("tipo_documento", { ascending: true }),
       dbFrom("document_types").select("*").order("codice", { ascending: true }),
       dbFrom("document_catalog")
-        .select("id,nome,target,categoria,has_scadenza,required_default,attivo,sort_order")
+        .select("id,nome,target,categoria,has_scadenza,validita_mesi,required_default,attivo,sort_order")
         .in("target", ["AZIENDA", "ENTRAMBI"])
         .eq("attivo", true)
         .order("sort_order", { ascending: true })
@@ -297,7 +338,9 @@ function AziendePageContent() {
         azienda_id: String(row.azienda_id || ""),
         document_catalog_id: String(row.document_catalog_id || ""),
         tipo_documento: String(row.tipo_documento || ""),
+        data_emissione: String(row.data_emissione || ""),
         data_scadenza: String(row.data_scadenza || ""),
+        scadenza_override_manuale: row.scadenza_override_manuale === true,
         giorni_preavviso:
           row.giorni_preavviso == null || row.giorni_preavviso === ""
             ? ""
@@ -317,6 +360,12 @@ function AziendePageContent() {
         target: row.target == null ? null : String(row.target),
         categoria: row.categoria == null ? null : String(row.categoria),
         has_scadenza: row.has_scadenza !== false,
+        validita_mesi:
+          typeof row.validita_mesi === "number"
+            ? row.validita_mesi
+            : row.validita_mesi == null || row.validita_mesi === ""
+              ? null
+              : Number(row.validita_mesi),
         required_default: row.required_default === true,
         attivo: row.attivo !== false,
         sort_order:
@@ -393,6 +442,20 @@ function AziendePageContent() {
     return documentCatalogByNormalizedNome.get(fallbackKey) || null;
   }
 
+  function getDerivedDocumentoScadenza(
+    doc?: AziendaDocumentoRow | null,
+    documentCatalogEntry?: Pick<DocumentCatalogRow, "has_scadenza" | "validita_mesi"> | null
+  ) {
+    return getDerivedDocumentoScadenzaValue(doc, documentCatalogEntry);
+  }
+
+  function getEffectiveDocumentoScadenza(
+    doc?: AziendaDocumentoRow | null,
+    documentCatalogEntry?: Pick<DocumentCatalogRow, "has_scadenza" | "validita_mesi"> | null
+  ) {
+    return getEffectiveDocumentoScadenzaValue(doc, documentCatalogEntry);
+  }
+
   function getDocumentoBadgeState(doc: AziendaDocumentoRow) {
     return getDocumentoBadgeStateWithCatalog(doc, getDocumentCatalogEntryForDocumento(doc));
   }
@@ -466,15 +529,17 @@ function AziendePageContent() {
           id: tempId,
           azienda_id: aziendaId,
           document_catalog_id: "",
-        tipo_documento: tipoDocumento,
-        data_scadenza: "",
-        giorni_preavviso: "",
-        alert_frequenza: "",
-        alert_stato: "",
-        note: "",
-        file_url: "",
-        isNew: true,
-      },
+          tipo_documento: tipoDocumento,
+          data_emissione: "",
+          data_scadenza: "",
+          scadenza_override_manuale: false,
+          giorni_preavviso: "",
+          alert_frequenza: "",
+          alert_stato: "",
+          note: "",
+          file_url: "",
+          isNew: true,
+        },
         ...prev,
       ]);
       setEditingDocumentoId(tempId);
@@ -566,7 +631,9 @@ function AziendePageContent() {
         azienda_id: aziendaId,
         document_catalog_id: "",
         tipo_documento: "",
+        data_emissione: "",
         data_scadenza: "",
+        scadenza_override_manuale: false,
         giorni_preavviso: "",
         alert_frequenza: "",
         alert_stato: "",
@@ -601,10 +668,17 @@ function AziendePageContent() {
     setError(null);
     setNotice(null);
 
+    const documentCatalogEntry = getDocumentCatalogEntryForDocumento(row);
+    const effectiveScadenza = getEffectiveDocumentoScadenza(row, documentCatalogEntry);
+
     const payload = {
       azienda_id: row.azienda_id,
+      document_catalog_id: row.document_catalog_id || null,
       tipo_documento: tipoDocumento,
-      data_scadenza: row.data_scadenza || null,
+      data_emissione: row.data_emissione || null,
+      data_scadenza:
+        documentCatalogEntry?.has_scadenza === false ? null : effectiveScadenza || null,
+      scadenza_override_manuale: row.scadenza_override_manuale === true,
       giorni_preavviso: row.giorni_preavviso.trim() ? Number(row.giorni_preavviso) : null,
       alert_frequenza: row.alert_frequenza.trim() || null,
       alert_stato: row.alert_stato.trim() || null,
@@ -1222,6 +1296,14 @@ function AziendePageContent() {
                             const badgeState = getDocumentoBadgeState(doc);
                             const badgeListState = getDocumentoListBadgeState(doc);
                             const badgeStyle = getDocumentoListBadgeStyle(badgeListState);
+                            const documentCatalogEntry = getDocumentCatalogEntryForDocumento(doc);
+                            const derivedScadenza = getDerivedDocumentoScadenza(doc, documentCatalogEntry);
+                            const effectiveScadenza = getEffectiveDocumentoScadenza(doc, documentCatalogEntry);
+                            const hasDerivedScadenza =
+                              documentCatalogEntry?.has_scadenza !== false && Boolean(derivedScadenza);
+                            const isManualScadenza =
+                              documentCatalogEntry?.has_scadenza !== false &&
+                              doc.scadenza_override_manuale === true;
                             return (
                               <div
                                 key={doc.id}
@@ -1261,7 +1343,20 @@ function AziendePageContent() {
                                         Tipo documento
                                         <select
                                           value={doc.tipo_documento}
-                                          onChange={(e) => updateDocumento(doc.id, { tipo_documento: e.target.value })}
+                                          onChange={(e) => {
+                                            const selectedLabel = e.target.value;
+                                            const selectedCatalog = documentCatalog.find(
+                                              (row) => String(row.nome || "").trim() === selectedLabel
+                                            );
+                                            updateDocumento(doc.id, {
+                                              tipo_documento: selectedLabel,
+                                              document_catalog_id: selectedCatalog?.id || "",
+                                              scadenza_override_manuale:
+                                                selectedCatalog?.has_scadenza === false
+                                                  ? false
+                                                  : doc.scadenza_override_manuale,
+                                            });
+                                          }}
                                           style={{ width: "100%", padding: 8, marginTop: 6 }}
                                         >
                                           <option value="">— Seleziona —</option>
@@ -1273,13 +1368,33 @@ function AziendePageContent() {
                                         </select>
                                       </label>
                                       <label style={{ display: "block", fontSize: 12 }}>
+                                        Data emissione
+                                        <input
+                                          type="date"
+                                          value={doc.data_emissione}
+                                          onChange={(e) => updateDocumento(doc.id, { data_emissione: e.target.value })}
+                                          style={{ width: "100%", padding: 8, marginTop: 6 }}
+                                        />
+                                      </label>
+                                      <label style={{ display: "block", fontSize: 12 }}>
                                         Data scadenza
                                         <input
                                           type="date"
-                                          value={doc.data_scadenza}
+                                          value={isManualScadenza ? doc.data_scadenza : effectiveScadenza}
                                           onChange={(e) => updateDocumento(doc.id, { data_scadenza: e.target.value })}
+                                          disabled={!isManualScadenza}
                                           style={{ width: "100%", padding: 8, marginTop: 6 }}
                                         />
+                                        {!isManualScadenza && documentCatalogEntry?.has_scadenza === false ? (
+                                          <div style={{ marginTop: 6, fontSize: 11, color: "#6b7280" }}>
+                                            Nessuna scadenza prevista dal catalogo.
+                                          </div>
+                                        ) : null}
+                                        {!isManualScadenza && hasDerivedScadenza ? (
+                                          <div style={{ marginTop: 6, fontSize: 11, color: "#6b7280" }}>
+                                            Scadenza derivata automaticamente dal catalogo.
+                                          </div>
+                                        ) : null}
                                       </label>
                                       <label style={{ display: "block", fontSize: 12 }}>
                                         Preavviso
@@ -1334,6 +1449,29 @@ function AziendePageContent() {
                                         />
                                       </label>
                                     </div>
+
+                                    <label
+                                      style={{
+                                        display: "inline-flex",
+                                        gap: 8,
+                                        alignItems: "center",
+                                        fontSize: 12,
+                                      }}
+                                    >
+                                      <input
+                                        type="checkbox"
+                                        checked={doc.scadenza_override_manuale}
+                                        disabled={documentCatalogEntry?.has_scadenza === false}
+                                        onChange={(e) =>
+                                          updateDocumento(doc.id, {
+                                            scadenza_override_manuale: e.target.checked,
+                                            data_scadenza:
+                                              e.target.checked ? effectiveScadenza : doc.data_scadenza,
+                                          })
+                                        }
+                                      />
+                                      Scadenza manuale
+                                    </label>
 
                                     <label style={{ display: "block", fontSize: 12 }}>
                                       Note
@@ -1452,8 +1590,16 @@ function AziendePageContent() {
                                         </div>
                                       </div>
                                       <div style={{ display: "grid", gap: 6 }}>
+                                        <div style={{ fontSize: 12, color: "#6b7280" }}>Data emissione</div>
+                                        <div>{doc.data_emissione || "—"}</div>
+                                      </div>
+                                      <div style={{ display: "grid", gap: 6 }}>
                                         <div style={{ fontSize: 12, color: "#6b7280" }}>Data scadenza</div>
-                                        <div>{doc.data_scadenza || "—"}</div>
+                                        <div>
+                                          {effectiveScadenza || "—"}
+                                          {!doc.scadenza_override_manuale && hasDerivedScadenza ? " · derivata" : ""}
+                                          {documentCatalogEntry?.has_scadenza === false ? " · nessuna prevista" : ""}
+                                        </div>
                                       </div>
                                       <div style={{ display: "grid", gap: 6 }}>
                                         <div style={{ fontSize: 12, color: "#6b7280" }}>Preavviso</div>
