@@ -35,6 +35,7 @@ type PersonaleDocumentoRow = {
   tipo_documento: string;
   data_rilascio: string;
   data_scadenza: string;
+  scadenza_override_manuale: boolean;
   giorni_preavviso: string;
   alert_frequenza: string;
   alert_stato: string;
@@ -55,6 +56,7 @@ type DocumentCatalogEntryRow = {
   target: string | null;
   categoria: string | null;
   has_scadenza: boolean;
+  validita_mesi: number | null;
   required_default: boolean;
   attivo: boolean;
   sort_order: number | null;
@@ -141,6 +143,30 @@ function parseDateOnly(value?: string | null) {
   return date;
 }
 
+function formatDateOnlyValue(value?: Date | null) {
+  if (!value || !Number.isFinite(value.getTime())) return "";
+  const year = value.getFullYear();
+  const month = String(value.getMonth() + 1).padStart(2, "0");
+  const day = String(value.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function addMonthsToDateOnly(value?: string | null, months?: number | null) {
+  const source = parseDateOnly(value);
+  if (!source || !Number.isFinite(Number(months))) return "";
+
+  const safeMonths = Number(months);
+  const year = source.getFullYear();
+  const monthIndex = source.getMonth();
+  const day = source.getDate();
+  const targetMonthIndex = monthIndex + safeMonths;
+  const targetYear = year + Math.floor(targetMonthIndex / 12);
+  const normalizedMonth = ((targetMonthIndex % 12) + 12) % 12;
+  const lastDayOfTargetMonth = new Date(targetYear, normalizedMonth + 1, 0).getDate();
+  const targetDay = Math.min(day, lastDayOfTargetMonth);
+  return formatDateOnlyValue(new Date(targetYear, normalizedMonth, targetDay));
+}
+
 function comparePersonaleDocumentiByScadenza(a: PersonaleDocumentoRow, b: PersonaleDocumentoRow) {
   const aExpiry = parseDateOnly(a.data_scadenza);
   const bExpiry = parseDateOnly(b.data_scadenza);
@@ -159,9 +185,10 @@ function comparePersonaleDocumentiByScadenza(a: PersonaleDocumentoRow, b: Person
 
 function getDocumentoBadgeStateWithCatalog(
   doc: PersonaleDocumentoRow,
-  documentCatalogEntry?: Pick<DocumentCatalogEntryRow, "has_scadenza"> | null
+  documentCatalogEntry?: Pick<DocumentCatalogEntryRow, "has_scadenza"> | null,
+  effectiveDataScadenza?: string | null
 ) {
-  const expiry = parseDateOnly(doc.data_scadenza);
+  const expiry = parseDateOnly(effectiveDataScadenza ?? doc.data_scadenza);
   if (!expiry) {
     if (documentCatalogEntry?.has_scadenza === false) return null;
     return null;
@@ -190,14 +217,15 @@ type DocumentoListBadgeState =
 
 function getDocumentoListBadgeStateWithCatalog(
   doc?: PersonaleDocumentoRow | null,
-  documentCatalogEntry?: Pick<DocumentCatalogEntryRow, "has_scadenza"> | null
+  documentCatalogEntry?: Pick<DocumentCatalogEntryRow, "has_scadenza"> | null,
+  effectiveDataScadenza?: string | null
 ): DocumentoListBadgeState {
   if (!doc) return "MANCANTE";
-  if (!parseDateOnly(doc.data_scadenza)) {
+  if (!parseDateOnly(effectiveDataScadenza ?? doc.data_scadenza)) {
     if (documentCatalogEntry?.has_scadenza === false) return "VALIDO";
     return "SCADENZA MANCANTE";
   }
-  const state = getDocumentoBadgeStateWithCatalog(doc, documentCatalogEntry);
+  const state = getDocumentoBadgeStateWithCatalog(doc, documentCatalogEntry, effectiveDataScadenza);
   if (state === "SCADUTO") return "SCADUTO";
   if (state === "IN_SCADENZA") return "IN SCADENZA";
   return "VALIDO";
@@ -282,7 +310,7 @@ function PersonalePageContent() {
         .order("tipo_documento", { ascending: true }),
       dbFrom("document_types").select("*").order("codice", { ascending: true }),
       dbFrom("document_catalog")
-        .select("id,nome,target,categoria,has_scadenza,required_default,attivo,sort_order")
+        .select("id,nome,target,categoria,has_scadenza,validita_mesi,required_default,attivo,sort_order")
         .in("target", ["PERSONALE", "ENTRAMBI"])
         .eq("attivo", true)
         .order("sort_order", { ascending: true })
@@ -325,6 +353,7 @@ function PersonalePageContent() {
         tipo_documento: String(row.tipo_documento || ""),
         data_rilascio: String(row.data_rilascio || ""),
         data_scadenza: String(row.data_scadenza || ""),
+        scadenza_override_manuale: row.scadenza_override_manuale === true,
         giorni_preavviso:
           row.giorni_preavviso == null || row.giorni_preavviso === ""
             ? ""
@@ -344,6 +373,12 @@ function PersonalePageContent() {
         target: row.target == null ? null : String(row.target),
         categoria: row.categoria == null ? null : String(row.categoria),
         has_scadenza: row.has_scadenza !== false,
+        validita_mesi:
+          typeof row.validita_mesi === "number"
+            ? row.validita_mesi
+            : row.validita_mesi == null || row.validita_mesi === ""
+              ? null
+              : Number(row.validita_mesi),
         required_default: row.required_default === true,
         attivo: row.attivo !== false,
         sort_order:
@@ -401,14 +436,37 @@ function PersonalePageContent() {
     return documentCatalogByNormalizedNome.get(fallbackKey) || null;
   }
 
+  function getDerivedDocumentoScadenza(doc?: PersonaleDocumentoRow | null) {
+    if (!doc) return "";
+    const documentCatalogEntry = getDocumentCatalogEntryForDocumento(doc);
+    if (!documentCatalogEntry || documentCatalogEntry.has_scadenza === false) return "";
+    if (documentCatalogEntry.validita_mesi == null) return "";
+    return addMonthsToDateOnly(doc.data_rilascio, documentCatalogEntry.validita_mesi);
+  }
+
+  function getEffectiveDocumentoScadenza(doc?: PersonaleDocumentoRow | null) {
+    if (!doc) return "";
+    const documentCatalogEntry = getDocumentCatalogEntryForDocumento(doc);
+    if (documentCatalogEntry?.has_scadenza === false) return "";
+    if (doc.scadenza_override_manuale) return doc.data_scadenza;
+    return getDerivedDocumentoScadenza(doc) || doc.data_scadenza;
+  }
+
   function getDocumentoBadgeState(doc: PersonaleDocumentoRow) {
-    return getDocumentoBadgeStateWithCatalog(doc, getDocumentCatalogEntryForDocumento(doc));
+    const documentCatalogEntry = getDocumentCatalogEntryForDocumento(doc);
+    return getDocumentoBadgeStateWithCatalog(
+      doc,
+      documentCatalogEntry,
+      getEffectiveDocumentoScadenza(doc)
+    );
   }
 
   function getDocumentoListBadgeState(doc?: PersonaleDocumentoRow | null): DocumentoListBadgeState {
+    const documentCatalogEntry = doc ? getDocumentCatalogEntryForDocumento(doc) : null;
     return getDocumentoListBadgeStateWithCatalog(
       doc,
-      doc ? getDocumentCatalogEntryForDocumento(doc) : null
+      documentCatalogEntry,
+      doc ? getEffectiveDocumentoScadenza(doc) : ""
     );
   }
 
@@ -514,6 +572,7 @@ function PersonalePageContent() {
           tipo_documento: tipoDocumento,
           data_rilascio: "",
           data_scadenza: "",
+          scadenza_override_manuale: false,
           giorni_preavviso: "",
           alert_frequenza: "",
           alert_stato: "",
@@ -634,6 +693,7 @@ function PersonalePageContent() {
         tipo_documento: initialTipoDocumento,
         data_rilascio: "",
         data_scadenza: "",
+        scadenza_override_manuale: false,
         giorni_preavviso: "",
         alert_frequenza: "",
         alert_stato: "",
@@ -668,11 +728,21 @@ function PersonalePageContent() {
     setError(null);
     setNotice(null);
 
+    const documentCatalogEntry = getDocumentCatalogEntryForDocumento(row);
+    const derivedDataScadenza = getDerivedDocumentoScadenza(row);
+    const effectiveDataScadenza =
+      documentCatalogEntry?.has_scadenza === false
+        ? null
+        : row.scadenza_override_manuale
+          ? row.data_scadenza || null
+          : derivedDataScadenza || row.data_scadenza || null;
+
     const payload = {
       personale_id: row.personale_id,
       tipo_documento: tipoDocumento,
       data_rilascio: row.data_rilascio || null,
-      data_scadenza: row.data_scadenza || null,
+      data_scadenza: effectiveDataScadenza,
+      scadenza_override_manuale: row.scadenza_override_manuale === true,
       giorni_preavviso: row.giorni_preavviso.trim() ? Number(row.giorni_preavviso) : null,
       alert_frequenza: row.alert_frequenza.trim() || null,
       alert_stato: row.alert_stato.trim() || null,
@@ -1390,6 +1460,13 @@ function PersonalePageContent() {
                               : false;
                             const rowError = documentRowErrorById[rowId];
                             const selectedFile = documentFileById[rowId];
+                            const documentCatalogEntry = getDocumentCatalogEntryForDocumento(doc);
+                            const derivedScadenza = doc ? getDerivedDocumentoScadenza(doc) : "";
+                            const effectiveScadenza = doc ? getEffectiveDocumentoScadenza(doc) : "";
+                            const hasDerivedScadenza =
+                              Boolean(doc) &&
+                              documentCatalogEntry?.has_scadenza !== false &&
+                              Boolean(derivedScadenza);
                             const badgeState = getDocumentoListBadgeState(doc);
                             const badgeStyle = getDocumentoListBadgeStyle(badgeState);
 
@@ -1545,12 +1622,69 @@ function PersonalePageContent() {
                                     </label>
                                     <label style={{ display: "grid", gap: 6, fontSize: 12 }}>
                                       <span style={{ color: "#6b7280" }}>Data scadenza</span>
+                                      {documentCatalogEntry?.has_scadenza === false ? (
+                                        <div
+                                          style={{
+                                            minHeight: 38,
+                                            display: "flex",
+                                            alignItems: "center",
+                                            padding: "0 8px",
+                                            borderRadius: 8,
+                                            border: "1px solid #e5e7eb",
+                                            background: "#f9fafb",
+                                            color: "#6b7280",
+                                          }}
+                                        >
+                                          Nessuna scadenza prevista
+                                        </div>
+                                      ) : (
+                                        <>
+                                          <input
+                                            type="date"
+                                            value={doc.scadenza_override_manuale ? doc.data_scadenza : effectiveScadenza}
+                                            onChange={(e) =>
+                                              updateDocumento(doc.id, { data_scadenza: e.target.value })
+                                            }
+                                            readOnly={!doc.scadenza_override_manuale && hasDerivedScadenza}
+                                            disabled={!doc.scadenza_override_manuale && hasDerivedScadenza}
+                                            style={{
+                                              width: "100%",
+                                              padding: 8,
+                                              background:
+                                                !doc.scadenza_override_manuale && hasDerivedScadenza
+                                                  ? "#f9fafb"
+                                                  : "white",
+                                            }}
+                                          />
+                                          {!doc.scadenza_override_manuale && hasDerivedScadenza ? (
+                                            <span style={{ color: "#6b7280" }}>
+                                              Derivata dal catalogo e dalla data rilascio
+                                            </span>
+                                          ) : null}
+                                        </>
+                                      )}
+                                    </label>
+                                    <label
+                                      style={{
+                                        display: "inline-flex",
+                                        gap: 8,
+                                        alignItems: "center",
+                                        alignSelf: "center",
+                                        fontSize: 12,
+                                        marginTop: 24,
+                                      }}
+                                    >
                                       <input
-                                        type="date"
-                                        value={doc.data_scadenza}
-                                        onChange={(e) => updateDocumento(doc.id, { data_scadenza: e.target.value })}
-                                        style={{ width: "100%", padding: 8 }}
+                                        type="checkbox"
+                                        checked={doc.scadenza_override_manuale}
+                                        disabled={documentCatalogEntry?.has_scadenza === false}
+                                        onChange={(e) =>
+                                          updateDocumento(doc.id, {
+                                            scadenza_override_manuale: e.target.checked,
+                                          })
+                                        }
                                       />
+                                      Scadenza manuale
                                     </label>
                                     <label style={{ display: "grid", gap: 6, fontSize: 12 }}>
                                       <span style={{ color: "#6b7280" }}>Preavviso</span>
@@ -1703,7 +1837,7 @@ function PersonalePageContent() {
                                     </div>
                                     <div style={{ display: "grid", gap: 6 }}>
                                       <div style={{ fontSize: 12, color: "#6b7280" }}>Scadenza</div>
-                                      <div>{formatDocumentoDate(doc.data_scadenza)}</div>
+                                      <div>{formatDocumentoDate(effectiveScadenza)}</div>
                                     </div>
                                     <div style={{ display: "grid", gap: 6 }}>
                                       <div style={{ fontSize: 12, color: "#6b7280" }}>Stato</div>
