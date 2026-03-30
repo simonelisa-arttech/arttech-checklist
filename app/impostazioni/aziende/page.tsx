@@ -23,6 +23,7 @@ type AziendaRow = {
 type AziendaDocumentoRow = {
   id?: string;
   azienda_id: string;
+  document_catalog_id: string;
   tipo_documento: string;
   data_scadenza: string;
   giorni_preavviso: string;
@@ -148,6 +149,88 @@ function getDocumentoBadgeState(doc: AziendaDocumentoRow) {
   return null;
 }
 
+type DocumentoListBadgeState =
+  | "SCADUTO"
+  | "IN SCADENZA"
+  | "VALIDO"
+  | "MANCANTE"
+  | "SCADENZA MANCANTE";
+
+function getDocumentoBadgeStateWithCatalog(
+  doc: AziendaDocumentoRow,
+  documentCatalogEntry?: Pick<DocumentCatalogRow, "has_scadenza"> | null
+) {
+  const expiry = parseDateOnly(doc.data_scadenza);
+  if (!expiry) {
+    if (documentCatalogEntry?.has_scadenza === false) return null;
+    return null;
+  }
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  if (expiry < today) return "SCADUTO" as const;
+
+  const diffMs = expiry.getTime() - today.getTime();
+  const diffDays = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+  const preavvisoRaw = String(doc.giorni_preavviso || "").trim();
+  const preavviso = preavvisoRaw ? Number(preavvisoRaw) : 30;
+  if (Number.isFinite(preavviso) && diffDays <= preavviso) return "IN_SCADENZA" as const;
+
+  return null;
+}
+
+function getDocumentoListBadgeStateWithCatalog(
+  doc?: AziendaDocumentoRow | null,
+  documentCatalogEntry?: Pick<DocumentCatalogRow, "has_scadenza"> | null
+): DocumentoListBadgeState {
+  if (!doc) return "MANCANTE";
+  if (!parseDateOnly(doc.data_scadenza)) {
+    if (documentCatalogEntry?.has_scadenza === false) return "VALIDO";
+    return "SCADENZA MANCANTE";
+  }
+  const state = getDocumentoBadgeStateWithCatalog(doc, documentCatalogEntry);
+  if (state === "SCADUTO") return "SCADUTO";
+  if (state === "IN_SCADENZA") return "IN SCADENZA";
+  return "VALIDO";
+}
+
+function getDocumentoListBadgeStyle(state: DocumentoListBadgeState) {
+  if (state === "SCADUTO") {
+    return {
+      background: "#fee2e2",
+      color: "#991b1b",
+      border: "1px solid #fca5a5",
+    };
+  }
+  if (state === "IN SCADENZA") {
+    return {
+      background: "#ffedd5",
+      color: "#9a3412",
+      border: "1px solid #fdba74",
+    };
+  }
+  if (state === "VALIDO") {
+    return {
+      background: "#dcfce7",
+      color: "#166534",
+      border: "1px solid #86efac",
+    };
+  }
+  if (state === "SCADENZA MANCANTE") {
+    return {
+      background: "#fef3c7",
+      color: "#92400e",
+      border: "1px solid #fcd34d",
+    };
+  }
+  return {
+    background: "#f3f4f6",
+    color: "#4b5563",
+    border: "1px solid #d1d5db",
+  };
+}
+
 function AziendePageContent() {
   if (!isSupabaseConfigured) {
     return <ConfigMancante />;
@@ -211,6 +294,7 @@ function AziendePageContent() {
       (((documentiRes.data as any[]) || []) as Array<Record<string, any>>).map((row) => ({
         id: String(row.id || ""),
         azienda_id: String(row.azienda_id || ""),
+        document_catalog_id: String(row.document_catalog_id || ""),
         tipo_documento: String(row.tipo_documento || ""),
         data_scadenza: String(row.data_scadenza || ""),
         giorni_preavviso:
@@ -253,6 +337,48 @@ function AziendePageContent() {
     () => buildDocumentCatalogOptions(documentCatalog),
     [documentCatalog]
   );
+
+  const documentCatalogById = useMemo(() => {
+    const map = new Map<string, DocumentCatalogRow>();
+    for (const row of documentCatalog) {
+      const key = String(row.id || "").trim();
+      if (!key) continue;
+      map.set(key, row);
+    }
+    return map;
+  }, [documentCatalog]);
+
+  const documentCatalogByNormalizedNome = useMemo(() => {
+    const map = new Map<string, DocumentCatalogRow>();
+    for (const row of documentCatalog) {
+      const key = normalizeText(row.nome);
+      if (!key || map.has(key)) continue;
+      map.set(key, row);
+    }
+    return map;
+  }, [documentCatalog]);
+
+  function getDocumentCatalogEntryForDocumento(doc?: AziendaDocumentoRow | null) {
+    if (!doc) return null;
+
+    const byId = documentCatalogById.get(String(doc.document_catalog_id || "").trim());
+    if (byId) return byId;
+
+    const fallbackKey = normalizeText(doc.tipo_documento);
+    if (!fallbackKey) return null;
+    return documentCatalogByNormalizedNome.get(fallbackKey) || null;
+  }
+
+  function getDocumentoBadgeState(doc: AziendaDocumentoRow) {
+    return getDocumentoBadgeStateWithCatalog(doc, getDocumentCatalogEntryForDocumento(doc));
+  }
+
+  function getDocumentoListBadgeState(doc?: AziendaDocumentoRow | null): DocumentoListBadgeState {
+    return getDocumentoListBadgeStateWithCatalog(
+      doc,
+      doc ? getDocumentCatalogEntryForDocumento(doc) : null
+    );
+  }
 
   const docsByAzienda = useMemo(() => {
     const map = new Map<string, AziendaDocumentoRow[]>();
@@ -315,6 +441,7 @@ function AziendePageContent() {
         {
           id: tempId,
           azienda_id: aziendaId,
+          document_catalog_id: "",
         tipo_documento: tipoDocumento,
         data_scadenza: "",
         giorni_preavviso: "",
@@ -413,6 +540,7 @@ function AziendePageContent() {
       {
         id: tempId,
         azienda_id: aziendaId,
+        document_catalog_id: "",
         tipo_documento: "",
         data_scadenza: "",
         giorni_preavviso: "",
@@ -1067,12 +1195,8 @@ function AziendePageContent() {
                             const rowError = documentRowErrorById[rowId];
                             const selectedFile = documentFileById[rowId];
                             const badgeState = getDocumentoBadgeState(doc);
-                            const badgeStyle =
-                              badgeState === "SCADUTO"
-                                ? { background: "#fee2e2", color: "#991b1b", border: "1px solid #fca5a5" }
-                                : badgeState === "IN_SCADENZA"
-                                  ? { background: "#ffedd5", color: "#9a3412", border: "1px solid #fdba74" }
-                                  : null;
+                            const badgeListState = getDocumentoListBadgeState(doc);
+                            const badgeStyle = getDocumentoListBadgeStyle(badgeListState);
                             return (
                               <div
                                 key={doc.id}
@@ -1285,7 +1409,7 @@ function AziendePageContent() {
                                         <div style={{ fontSize: 12, color: "#6b7280" }}>Tipo documento</div>
                                         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                                           <span style={{ fontWeight: 600 }}>{doc.tipo_documento || "—"}</span>
-                                          {badgeState && badgeStyle ? (
+                                          {badgeListState !== "MANCANTE" ? (
                                             <span
                                               style={{
                                                 display: "inline-flex",
@@ -1297,7 +1421,7 @@ function AziendePageContent() {
                                                 ...badgeStyle,
                                               }}
                                             >
-                                              {badgeState === "SCADUTO" ? "SCADUTO" : "IN SCADENZA"}
+                                              {badgeListState}
                                             </span>
                                           ) : null}
                                         </div>
