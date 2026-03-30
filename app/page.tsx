@@ -35,6 +35,8 @@ type DashboardMetricSummary = {
   overdue: number;
 };
 
+type DashboardSimSummaryByPeriod = Record<7 | 15 | 30, DashboardMetricSummary>;
+
 type DocumentiAlertSummary = {
   scaduti_totale: number;
   in_scadenza_totale: number;
@@ -531,6 +533,11 @@ export default function Page() {
   const [documentiAlertSummary, setDocumentiAlertSummary] = useState<DocumentiAlertSummary>(
     EMPTY_DOCUMENTI_ALERT_SUMMARY
   );
+  const [simScadenzeByPeriod, setSimScadenzeByPeriod] = useState<DashboardSimSummaryByPeriod>({
+    7: { count: 0, overdue: 0 },
+    15: { count: 0, overdue: 0 },
+    30: { count: 0, overdue: 0 },
+  });
   const [clientiMissingEmailCount, setClientiMissingEmailCount] = useState(0);
   const [showMissingEmailInfo, setShowMissingEmailInfo] = useState(false);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
@@ -1018,6 +1025,7 @@ export default function Page() {
   }, [items, addInterventoCliente]);
 
   const selectedScadenzeSummary = scadenzeByPeriod[scadenzePeriodDays];
+  const selectedSimScadenzeSummary = simScadenzeByPeriod[scadenzePeriodDays];
   const cockpitCardHeight = 128;
   const shortcutCardStyle = {
     display: "flex",
@@ -1119,6 +1127,45 @@ export default function Page() {
         </div>
       </Link>
     );
+  }
+
+  function parseSimDateOnly(value?: string | null) {
+    const raw = String(value || "").trim();
+    if (!raw) return null;
+    const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(raw);
+    if (!match) return null;
+    const date = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]));
+    if (!Number.isFinite(date.getTime())) return null;
+    date.setHours(0, 0, 0, 0);
+    return date;
+  }
+
+  function buildSimScadenzeSummary(rows: Array<{ data_scadenza: string | null; attiva: boolean }>) {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const next: DashboardSimSummaryByPeriod = {
+      7: { count: 0, overdue: 0 },
+      15: { count: 0, overdue: 0 },
+      30: { count: 0, overdue: 0 },
+    };
+
+    for (const row of rows) {
+      if (row.attiva === false) continue;
+      const expiry = parseSimDateOnly(row.data_scadenza);
+      if (!expiry) continue;
+      const diffDays = Math.ceil((expiry.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+      if (diffDays < 0) {
+        next[7].overdue += 1;
+        next[15].overdue += 1;
+        next[30].overdue += 1;
+        continue;
+      }
+      if (diffDays <= 7) next[7].count += 1;
+      if (diffDays <= 15) next[15].count += 1;
+      if (diffDays <= 30) next[30].count += 1;
+    }
+
+    return next;
   }
 
   async function load() {
@@ -1413,6 +1460,34 @@ export default function Page() {
         setDocumentiAlertSummary(EMPTY_DOCUMENTI_ALERT_SUMMARY);
       }
 
+      try {
+        const simRes = await dbFrom("sim_cards")
+          .select("data_scadenza,attiva")
+          .eq("attiva", true);
+        if (!isLatest()) return;
+        if (simRes.error) {
+          setSimScadenzeByPeriod({
+            7: { count: 0, overdue: 0 },
+            15: { count: 0, overdue: 0 },
+            30: { count: 0, overdue: 0 },
+          });
+        } else {
+          const simRows = (((simRes.data as any[]) || []) as Array<Record<string, any>>).map((row) => ({
+            data_scadenza: row.data_scadenza == null ? null : String(row.data_scadenza),
+            attiva: row.attiva !== false,
+          }));
+          setSimScadenzeByPeriod(buildSimScadenzeSummary(simRows));
+        }
+      } catch (e: any) {
+        if (e?.name === "AbortError" || controller.signal.aborted) return;
+        if (!isLatest()) return;
+        setSimScadenzeByPeriod({
+          7: { count: 0, overdue: 0 },
+          15: { count: 0, overdue: 0 },
+          30: { count: 0, overdue: 0 },
+        });
+      }
+
       let opRes: Response;
       try {
         opRes = await fetch("/api/operatori", { signal: controller.signal });
@@ -1478,6 +1553,11 @@ export default function Page() {
       setConsegneEntro7Summary({ count: 0, overdue: 0 });
       setSmontaggiEntro7Summary({ count: 0, overdue: 0 });
       setDocumentiAlertSummary(EMPTY_DOCUMENTI_ALERT_SUMMARY);
+      setSimScadenzeByPeriod({
+        7: { count: 0, overdue: 0 },
+        15: { count: 0, overdue: 0 },
+        30: { count: 0, overdue: 0 },
+      });
       setClientiMissingEmailCount(0);
     } finally {
       if (!isLatest()) return;
@@ -1863,7 +1943,7 @@ export default function Page() {
                 className="dashboard-cockpit-primary-grid"
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
+                  gridTemplateColumns: "minmax(420px, 2.4fr) repeat(3, minmax(150px, 1fr))",
                   gap: 12,
                   alignItems: "stretch",
                 }}
@@ -1966,6 +2046,13 @@ export default function Page() {
                   "/admin/fatture-da-emettere",
                   "FATTURE DA EMETTERE",
                   fattureDaEmettereCount
+                )}
+                {renderCockpitMetricCard(
+                  `/scadenze`,
+                  "SIM IN SCADENZA",
+                  selectedSimScadenzeSummary.count,
+                  "Scadute",
+                  selectedSimScadenzeSummary.overdue
                 )}
                 {renderDocumentiAlertCockpitCard()}
               </div>
