@@ -48,6 +48,16 @@ type DocumentTypeRow = {
   nome: string | null;
 };
 
+type DocumentCatalogRow = {
+  id: string;
+  nome: string | null;
+  target: string | null;
+  categoria: string | null;
+  has_scadenza: boolean;
+  attivo: boolean;
+  sort_order: number | null;
+};
+
 const PERSONALE_TIPO_OPTIONS = ["INTERNO", "ESTERNO"] as const;
 const PERSONALE_DOCUMENTI_STORAGE_PREFIX = "personale-documenti";
 const PERSONALE_DOCUMENTI_STORAGE_SCHEME = "storage://checklist-documents/";
@@ -92,6 +102,16 @@ function buildPersonaleDocumentTypeOptions(documentTypes: DocumentTypeRow[]) {
       ...documentTypes.map((row) => getDocumentTypeLabel(row)),
     ].filter(Boolean))
   ).sort((a, b) => a.localeCompare(b, "it"));
+}
+
+function buildDocumentCatalogOptions(rows: DocumentCatalogRow[]) {
+  return Array.from(
+    new Set(
+      rows
+        .map((row) => String(row.nome || "").trim())
+        .filter(Boolean)
+    )
+  );
 }
 
 function isHttpUrl(value?: string | null) {
@@ -224,6 +244,7 @@ function PersonalePageContent() {
   const [persone, setPersone] = useState<PersonaleRow[]>([]);
   const [documenti, setDocumenti] = useState<PersonaleDocumentoRow[]>([]);
   const [documentTypes, setDocumentTypes] = useState<DocumentTypeRow[]>([]);
+  const [documentCatalog, setDocumentCatalog] = useState<DocumentCatalogRow[]>([]);
   const [search, setSearch] = useState("");
   const [expandedPersonId, setExpandedPersonId] = useState<string | null>(null);
   const [editingDocumentoId, setEditingDocumentoId] = useState<string | null>(null);
@@ -238,7 +259,7 @@ function PersonalePageContent() {
   async function loadData() {
     setLoading(true);
     setError(null);
-    const [aziendeRes, personeRes, documentiRes, typesRes] = await Promise.all([
+    const [aziendeRes, personeRes, documentiRes, typesRes, catalogRes] = await Promise.all([
       dbFrom("aziende").select("id,ragione_sociale").eq("attiva", true).order("ragione_sociale", { ascending: true }),
       dbFrom("personale").select("*").order("cognome", { ascending: true }).order("nome", { ascending: true }),
       dbFrom("personale_documenti")
@@ -246,6 +267,12 @@ function PersonalePageContent() {
         .order("data_scadenza", { ascending: true })
         .order("tipo_documento", { ascending: true }),
       dbFrom("document_types").select("*").order("codice", { ascending: true }),
+      dbFrom("document_catalog")
+        .select("id,nome,target,categoria,has_scadenza,attivo,sort_order")
+        .in("target", ["PERSONALE", "ENTRAMBI"])
+        .eq("attivo", true)
+        .order("sort_order", { ascending: true })
+        .order("nome", { ascending: true }),
     ]);
 
     const errors: string[] = [];
@@ -253,6 +280,7 @@ function PersonalePageContent() {
     if (personeRes.error) errors.push(`Errore caricamento personale: ${personeRes.error.message}`);
     if (documentiRes.error) errors.push(`Errore caricamento documenti personale: ${documentiRes.error.message}`);
     if (typesRes.error) errors.push(`Errore caricamento tipi documento: ${typesRes.error.message}`);
+    if (catalogRes.error) errors.push(`Errore caricamento catalogo documenti: ${catalogRes.error.message}`);
 
     setAziende(
       (((aziendeRes.data as any[]) || []) as Array<Record<string, any>>).map((row) => ({
@@ -294,6 +322,22 @@ function PersonalePageContent() {
       }))
     );
     setDocumentTypes(((typesRes.data as any[]) || []) as DocumentTypeRow[]);
+    setDocumentCatalog(
+      (((catalogRes.data as any[]) || []) as Array<Record<string, any>>).map((row) => ({
+        id: String(row.id || ""),
+        nome: row.nome == null ? null : String(row.nome),
+        target: row.target == null ? null : String(row.target),
+        categoria: row.categoria == null ? null : String(row.categoria),
+        has_scadenza: row.has_scadenza !== false,
+        attivo: row.attivo !== false,
+        sort_order:
+          typeof row.sort_order === "number"
+            ? row.sort_order
+            : row.sort_order == null || row.sort_order === ""
+              ? null
+              : Number(row.sort_order),
+      }))
+    );
     setError(errors.length > 0 ? errors.join(" • ") : null);
     setLoading(false);
   }
@@ -326,8 +370,8 @@ function PersonalePageContent() {
   }, [documenti]);
 
   const documentTypeOptions = useMemo(
-    () => buildPersonaleDocumentTypeOptions(documentTypes),
-    [documentTypes]
+    () => buildDocumentCatalogOptions(documentCatalog),
+    [documentCatalog]
   );
 
   const filteredPersone = useMemo(() => {

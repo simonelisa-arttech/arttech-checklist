@@ -135,6 +135,12 @@ const TABLE_RULES: Record<
     orderCols: ["codice", "nome"],
     allowNoFilterSelect: true,
   },
+  document_catalog: {
+    ops: ["select"],
+    filterCols: ["id", "nome", "target", "categoria", "has_scadenza", "attivo", "sort_order"],
+    orderCols: ["sort_order", "nome", "created_at", "updated_at"],
+    allowNoFilterSelect: true,
+  },
   attachments: {
     ops: ["select", "insert", "update", "delete"],
     filterCols: ["id", "entity_id", "entity_type", "created_by"],
