@@ -31,6 +31,7 @@ type PersonaleRow = {
 type PersonaleDocumentoRow = {
   id?: string;
   personale_id: string;
+  document_catalog_id: string;
   tipo_documento: string;
   data_rilascio: string;
   data_scadenza: string;
@@ -48,7 +49,7 @@ type DocumentTypeRow = {
   nome: string | null;
 };
 
-type DocumentCatalogRow = {
+type DocumentCatalogEntryRow = {
   id: string;
   nome: string | null;
   target: string | null;
@@ -104,7 +105,7 @@ function buildPersonaleDocumentTypeOptions(documentTypes: DocumentTypeRow[]) {
   ).sort((a, b) => a.localeCompare(b, "it"));
 }
 
-function buildDocumentCatalogOptions(rows: DocumentCatalogRow[]) {
+function buildDocumentCatalogOptions(rows: DocumentCatalogEntryRow[]) {
   return Array.from(
     new Set(
       rows
@@ -155,9 +156,15 @@ function comparePersonaleDocumentiByScadenza(a: PersonaleDocumentoRow, b: Person
   return String(a.tipo_documento || "").localeCompare(String(b.tipo_documento || ""), "it");
 }
 
-function getDocumentoBadgeState(doc: PersonaleDocumentoRow) {
+function getDocumentoBadgeStateWithCatalog(
+  doc: PersonaleDocumentoRow,
+  documentCatalogEntry?: Pick<DocumentCatalogEntryRow, "has_scadenza"> | null
+) {
   const expiry = parseDateOnly(doc.data_scadenza);
-  if (!expiry) return null;
+  if (!expiry) {
+    if (documentCatalogEntry?.has_scadenza === false) return null;
+    return null;
+  }
 
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -180,10 +187,16 @@ type DocumentoListBadgeState =
   | "MANCANTE"
   | "SCADENZA MANCANTE";
 
-function getDocumentoListBadgeState(doc?: PersonaleDocumentoRow | null): DocumentoListBadgeState {
+function getDocumentoListBadgeStateWithCatalog(
+  doc?: PersonaleDocumentoRow | null,
+  documentCatalogEntry?: Pick<DocumentCatalogEntryRow, "has_scadenza"> | null
+): DocumentoListBadgeState {
   if (!doc) return "MANCANTE";
-  if (!parseDateOnly(doc.data_scadenza)) return "SCADENZA MANCANTE";
-  const state = getDocumentoBadgeState(doc);
+  if (!parseDateOnly(doc.data_scadenza)) {
+    if (documentCatalogEntry?.has_scadenza === false) return "VALIDO";
+    return "SCADENZA MANCANTE";
+  }
+  const state = getDocumentoBadgeStateWithCatalog(doc, documentCatalogEntry);
   if (state === "SCADUTO") return "SCADUTO";
   if (state === "IN_SCADENZA") return "IN SCADENZA";
   return "VALIDO";
@@ -244,7 +257,7 @@ function PersonalePageContent() {
   const [persone, setPersone] = useState<PersonaleRow[]>([]);
   const [documenti, setDocumenti] = useState<PersonaleDocumentoRow[]>([]);
   const [documentTypes, setDocumentTypes] = useState<DocumentTypeRow[]>([]);
-  const [documentCatalog, setDocumentCatalog] = useState<DocumentCatalogRow[]>([]);
+  const [documentCatalogRows, setDocumentCatalogRows] = useState<DocumentCatalogEntryRow[]>([]);
   const [search, setSearch] = useState("");
   const [expandedPersonId, setExpandedPersonId] = useState<string | null>(null);
   const [editingDocumentoId, setEditingDocumentoId] = useState<string | null>(null);
@@ -307,6 +320,7 @@ function PersonalePageContent() {
       (((documentiRes.data as any[]) || []) as Array<Record<string, any>>).map((row) => ({
         id: String(row.id || ""),
         personale_id: String(row.personale_id || ""),
+        document_catalog_id: String(row.document_catalog_id || ""),
         tipo_documento: String(row.tipo_documento || ""),
         data_rilascio: String(row.data_rilascio || ""),
         data_scadenza: String(row.data_scadenza || ""),
@@ -322,7 +336,7 @@ function PersonalePageContent() {
       }))
     );
     setDocumentTypes(((typesRes.data as any[]) || []) as DocumentTypeRow[]);
-    setDocumentCatalog(
+    setDocumentCatalogRows(
       (((catalogRes.data as any[]) || []) as Array<Record<string, any>>).map((row) => ({
         id: String(row.id || ""),
         nome: row.nome == null ? null : String(row.nome),
@@ -354,6 +368,48 @@ function PersonalePageContent() {
     return map;
   }, [aziende]);
 
+  const documentCatalogById = useMemo(() => {
+    const map = new Map<string, DocumentCatalogEntryRow>();
+    for (const row of documentCatalogRows) {
+      const key = String(row.id || "").trim();
+      if (!key) continue;
+      map.set(key, row);
+    }
+    return map;
+  }, [documentCatalogRows]);
+
+  const documentCatalogByNormalizedNome = useMemo(() => {
+    const map = new Map<string, DocumentCatalogEntryRow>();
+    for (const row of documentCatalogRows) {
+      const key = normalizeText(row.nome);
+      if (!key || map.has(key)) continue;
+      map.set(key, row);
+    }
+    return map;
+  }, [documentCatalogRows]);
+
+  function getDocumentCatalogEntryForDocumento(doc?: PersonaleDocumentoRow | null) {
+    if (!doc) return null;
+
+    const byId = documentCatalogById.get(String(doc.document_catalog_id || "").trim());
+    if (byId) return byId;
+
+    const fallbackKey = normalizeText(doc.tipo_documento);
+    if (!fallbackKey) return null;
+    return documentCatalogByNormalizedNome.get(fallbackKey) || null;
+  }
+
+  function getDocumentoBadgeState(doc: PersonaleDocumentoRow) {
+    return getDocumentoBadgeStateWithCatalog(doc, getDocumentCatalogEntryForDocumento(doc));
+  }
+
+  function getDocumentoListBadgeState(doc?: PersonaleDocumentoRow | null): DocumentoListBadgeState {
+    return getDocumentoListBadgeStateWithCatalog(
+      doc,
+      doc ? getDocumentCatalogEntryForDocumento(doc) : null
+    );
+  }
+
   const docsByPersonale = useMemo(() => {
     const map = new Map<string, PersonaleDocumentoRow[]>();
     for (const doc of documenti) {
@@ -370,8 +426,8 @@ function PersonalePageContent() {
   }, [documenti]);
 
   const documentTypeOptions = useMemo(
-    () => buildDocumentCatalogOptions(documentCatalog),
-    [documentCatalog]
+    () => buildDocumentCatalogOptions(documentCatalogRows),
+    [documentCatalogRows]
   );
 
   const filteredPersone = useMemo(() => {
@@ -426,6 +482,7 @@ function PersonalePageContent() {
         {
           id: tempId,
           personale_id: personId,
+          document_catalog_id: "",
           tipo_documento: tipoDocumento,
           data_rilascio: "",
           data_scadenza: "",
@@ -545,6 +602,7 @@ function PersonalePageContent() {
       {
         id: tempId,
         personale_id: personaleId,
+        document_catalog_id: "",
         tipo_documento: initialTipoDocumento,
         data_rilascio: "",
         data_scadenza: "",
