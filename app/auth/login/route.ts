@@ -1,6 +1,8 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
+const REFRESH_TOKEN_MAX_AGE = 60 * 60 * 24 * 90;
+
 export async function POST(request: NextRequest) {
   const body = await request.json().catch(() => ({}));
   const email = String(body?.email || "").trim();
@@ -127,7 +129,7 @@ export async function POST(request: NextRequest) {
     secure,
     sameSite: "lax",
     path: "/",
-    maxAge: 60 * 60 * 24 * 30,
+    maxAge: REFRESH_TOKEN_MAX_AGE,
   });
 
   return response;
