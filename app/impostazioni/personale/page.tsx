@@ -153,10 +153,16 @@ function getDocumentoBadgeState(doc: PersonaleDocumentoRow) {
   return null;
 }
 
-type DocumentoListBadgeState = "SCADUTO" | "IN SCADENZA" | "VALIDO" | "MANCANTE";
+type DocumentoListBadgeState =
+  | "SCADUTO"
+  | "IN SCADENZA"
+  | "VALIDO"
+  | "MANCANTE"
+  | "SCADENZA MANCANTE";
 
 function getDocumentoListBadgeState(doc?: PersonaleDocumentoRow | null): DocumentoListBadgeState {
   if (!doc) return "MANCANTE";
+  if (!parseDateOnly(doc.data_scadenza)) return "SCADENZA MANCANTE";
   const state = getDocumentoBadgeState(doc);
   if (state === "SCADUTO") return "SCADUTO";
   if (state === "IN_SCADENZA") return "IN SCADENZA";
@@ -183,6 +189,13 @@ function getDocumentoListBadgeStyle(state: DocumentoListBadgeState) {
       background: "#dcfce7",
       color: "#166534",
       border: "1px solid #86efac",
+    };
+  }
+  if (state === "SCADENZA MANCANTE") {
+    return {
+      background: "#fef3c7",
+      color: "#92400e",
+      border: "1px solid #fcd34d",
     };
   }
   return {
@@ -966,6 +979,13 @@ function PersonalePageContent() {
               const docRows = isScadenzeFilterActive
                 ? allDocRows.filter((doc) => getDocumentoBadgeState(doc) !== null)
                 : allDocRows;
+              let scadutiCount = 0;
+              let inScadenzaCount = 0;
+              for (const doc of allDocRows) {
+                const badgeState = getDocumentoBadgeState(doc);
+                if (badgeState === "SCADUTO") scadutiCount += 1;
+                if (badgeState === "IN_SCADENZA") inScadenzaCount += 1;
+              }
               const isExpanded = expandedPersonId === personId;
               return (
                 <div
@@ -1083,10 +1103,48 @@ function PersonalePageContent() {
                   </div>
 
                   <div style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "space-between" }}>
-                    <div style={{ fontSize: 13, color: "#4b5563" }}>
-                      {persona.isNew
-                        ? "Salva la persona per abilitare i documenti."
-                        : `${companyById.get(persona.azienda_id) || "Nessuna azienda"} · ${docRows.length} documenti`}
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                      <div style={{ fontSize: 13, color: "#4b5563" }}>
+                        {persona.isNew
+                          ? "Salva la persona per abilitare i documenti."
+                          : `${companyById.get(persona.azienda_id) || "Nessuna azienda"} · ${docRows.length} documenti`}
+                      </div>
+                      {!persona.isNew && scadutiCount > 0 ? (
+                        <span
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            padding: "4px 10px",
+                            borderRadius: 999,
+                            fontSize: 12,
+                            fontWeight: 800,
+                            background: "#fee2e2",
+                            color: "#991b1b",
+                            border: "1px solid #fecaca",
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          SCADUTI: {scadutiCount}
+                        </span>
+                      ) : null}
+                      {!persona.isNew && inScadenzaCount > 0 ? (
+                        <span
+                          style={{
+                            display: "inline-flex",
+                            alignItems: "center",
+                            padding: "4px 10px",
+                            borderRadius: 999,
+                            fontSize: 12,
+                            fontWeight: 800,
+                            background: "#ffedd5",
+                            color: "#c2410c",
+                            border: "1px solid #fdba74",
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          IN SCADENZA: {inScadenzaCount}
+                        </span>
+                      ) : null}
                     </div>
                     <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                       <button
