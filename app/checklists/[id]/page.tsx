@@ -1221,6 +1221,9 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
   const [projectSimRechargesById, setProjectSimRechargesById] = useState<
     Record<string, ProjectSimRechargeRow[]>
   >({});
+  const [freeProjectSims, setFreeProjectSims] = useState<ProjectSimRow[]>([]);
+  const [selectedFreeSimId, setSelectedFreeSimId] = useState("");
+  const [projectSimSavingKey, setProjectSimSavingKey] = useState<string | null>(null);
   const [projectSimsError, setProjectSimsError] = useState<string | null>(null);
   const checklistIsClosed = useMemo(() => isChecklistOperativaCompletedFromTasks(tasks), [tasks]);
   const [serialControlInput, setSerialControlInput] = useState("");
@@ -1792,6 +1795,96 @@ function buildFormData(c: Checklist): FormData {
     return ((res.data || []) as InterventoRow[]).filter(
       (row) => String(row?.checklist_id || "") === String(checklistId)
     );
+  }
+
+  async function loadProjectSimsSection(checklistId: string) {
+    let linkedRows: ProjectSimRow[] = [];
+    let rechargesById: Record<string, ProjectSimRechargeRow[]> = {};
+    let freeRows: ProjectSimRow[] = [];
+    let loadError: string | null = null;
+
+    const mapSimRow = (row: Record<string, any>): ProjectSimRow => ({
+      id: String(row.id || ""),
+      checklist_id: row.checklist_id ? String(row.checklist_id) : null,
+      numero_telefono: row.numero_telefono ? String(row.numero_telefono) : null,
+      intestatario: row.intestatario ? String(row.intestatario) : null,
+      operatore: row.operatore ? String(row.operatore) : null,
+      piano_attivo: row.piano_attivo ? String(row.piano_attivo) : null,
+      device_installato: row.device_installato ? String(row.device_installato) : null,
+      data_attivazione: row.data_attivazione ? String(row.data_attivazione) : null,
+      data_scadenza: row.data_scadenza ? String(row.data_scadenza) : null,
+      giorni_preavviso:
+        typeof row.giorni_preavviso === "number"
+          ? row.giorni_preavviso
+          : row.giorni_preavviso == null || row.giorni_preavviso === ""
+            ? null
+            : Number(row.giorni_preavviso),
+      attiva: row.attiva !== false,
+    });
+
+    try {
+      const { data: simData, error: simError } = await dbFrom("sim_cards")
+        .select(
+          "id, checklist_id, numero_telefono, intestatario, operatore, piano_attivo, device_installato, data_attivazione, data_scadenza, giorni_preavviso, attiva"
+        )
+        .eq("checklist_id", checklistId)
+        .order("numero_telefono", { ascending: true });
+
+      if (simError) {
+        loadError = simError.message || "Errore caricamento SIM progetto";
+      } else {
+        linkedRows = (((simData as any[]) || []) as Array<Record<string, any>>).map(mapSimRow);
+      }
+
+      const { data: freeSimData, error: freeSimError } = await dbFrom("sim_cards")
+        .select("id, checklist_id, numero_telefono, intestatario, operatore, piano_attivo, attiva")
+        .is("checklist_id", null)
+        .order("numero_telefono", { ascending: true });
+
+      if (freeSimError && !loadError) {
+        loadError = freeSimError.message || "Errore caricamento SIM libere";
+      } else if (!freeSimError) {
+        freeRows = (((freeSimData as any[]) || []) as Array<Record<string, any>>).map(mapSimRow);
+      }
+
+      const simIds = linkedRows.map((row) => row.id).filter(Boolean);
+      if (simIds.length > 0) {
+        const { data: simRechargeData, error: simRechargeError } = await dbFrom("sim_recharges")
+          .select("id, sim_id, data_ricarica, importo, billing_status")
+          .in("sim_id", simIds)
+          .order("data_ricarica", { ascending: false });
+
+        if (simRechargeError && !loadError) {
+          loadError = simRechargeError.message || "Errore caricamento ricariche SIM progetto";
+        } else if (!simRechargeError) {
+          for (const row of (((simRechargeData as any[]) || []) as Array<Record<string, any>>)) {
+            const simId = String(row.sim_id || "").trim();
+            if (!simId) continue;
+            const bucket = rechargesById[simId] || [];
+            bucket.push({
+              id: String(row.id || ""),
+              sim_id: simId,
+              data_ricarica: row.data_ricarica ? String(row.data_ricarica) : null,
+              importo:
+                typeof row.importo === "number"
+                  ? row.importo
+                  : row.importo == null || row.importo === ""
+                    ? null
+                    : Number(row.importo),
+              billing_status: row.billing_status ? String(row.billing_status) : null,
+            });
+            rechargesById[simId] = bucket;
+          }
+        }
+      }
+    } catch (simError) {
+      loadError = simError instanceof Error ? simError.message : "Errore caricamento SIM progetto";
+    }
+
+    setProjectSims(linkedRows);
+    setProjectSimRechargesById(rechargesById);
+    setFreeProjectSims(freeRows);
+    setProjectSimsError(loadError);
   }
 
   async function loadInterventoRowAttachmentCounts(rows: InterventoRow[]) {
@@ -3558,82 +3651,10 @@ function buildFormData(c: Checklist): FormData {
       return;
     }
 
-    let projectSimRows: ProjectSimRow[] = [];
-    let projectSimRechargesMap: Record<string, ProjectSimRechargeRow[]> = {};
-    let projectSimLoadError: string | null = null;
-    try {
-      const { data: simData, error: simError } = await dbFrom("sim_cards")
-        .select(
-          "id, checklist_id, numero_telefono, intestatario, operatore, piano_attivo, device_installato, data_attivazione, data_scadenza, giorni_preavviso, attiva"
-        )
-        .eq("checklist_id", id)
-        .order("numero_telefono", { ascending: true });
-
-      if (simError) {
-        projectSimLoadError = simError.message || "Errore caricamento SIM progetto";
-      } else {
-        projectSimRows = (((simData as any[]) || []) as Array<Record<string, any>>).map((row) => ({
-          id: String(row.id || ""),
-          checklist_id: row.checklist_id ? String(row.checklist_id) : null,
-          numero_telefono: row.numero_telefono ? String(row.numero_telefono) : null,
-          intestatario: row.intestatario ? String(row.intestatario) : null,
-          operatore: row.operatore ? String(row.operatore) : null,
-          piano_attivo: row.piano_attivo ? String(row.piano_attivo) : null,
-          device_installato: row.device_installato ? String(row.device_installato) : null,
-          data_attivazione: row.data_attivazione ? String(row.data_attivazione) : null,
-          data_scadenza: row.data_scadenza ? String(row.data_scadenza) : null,
-          giorni_preavviso:
-            typeof row.giorni_preavviso === "number"
-              ? row.giorni_preavviso
-              : row.giorni_preavviso == null || row.giorni_preavviso === ""
-                ? null
-                : Number(row.giorni_preavviso),
-          attiva: row.attiva !== false,
-        }));
-
-        const simIds = projectSimRows.map((row) => row.id).filter(Boolean);
-        if (simIds.length > 0) {
-          const { data: simRechargeData, error: simRechargeError } = await dbFrom("sim_recharges")
-            .select("id, sim_id, data_ricarica, importo, billing_status")
-            .in("sim_id", simIds)
-            .order("data_ricarica", { ascending: false });
-
-          if (simRechargeError) {
-            projectSimLoadError =
-              simRechargeError.message || "Errore caricamento ricariche SIM progetto";
-          } else {
-            for (const row of (((simRechargeData as any[]) || []) as Array<Record<string, any>>)) {
-              const simId = String(row.sim_id || "").trim();
-              if (!simId) continue;
-              const bucket = projectSimRechargesMap[simId] || [];
-              bucket.push({
-                id: String(row.id || ""),
-                sim_id: simId,
-                data_ricarica: row.data_ricarica ? String(row.data_ricarica) : null,
-                importo:
-                  typeof row.importo === "number"
-                    ? row.importo
-                    : row.importo == null || row.importo === ""
-                      ? null
-                      : Number(row.importo),
-                billing_status: row.billing_status ? String(row.billing_status) : null,
-              });
-              projectSimRechargesMap[simId] = bucket;
-            }
-          }
-        }
-      }
-    } catch (simError) {
-      projectSimLoadError =
-        simError instanceof Error ? simError.message : "Errore caricamento SIM progetto";
-    }
-
     setContrattoUltra(activeContratto);
     setContrattoUltraNome(ultraNome);
     setProjectInterventi(interventiData);
-    setProjectSims(projectSimRows);
-    setProjectSimRechargesById(projectSimRechargesMap);
-    setProjectSimsError(projectSimLoadError);
+    await loadProjectSimsSection(id);
     await loadInterventoRowAttachmentCounts(interventiData);
     await fetchInterventoRowBulkLastAlert();
     setProjectInterventiError(null);
@@ -3706,6 +3727,43 @@ function buildFormData(c: Checklist): FormData {
       console.timeEnd(loadLabel);
     }
     setLoading(false);
+  }
+
+  async function associateFreeSimToProject() {
+    if (!id || !selectedFreeSimId) return;
+    setProjectSimSavingKey(`associate:${selectedFreeSimId}`);
+    setProjectSimsError(null);
+    try {
+      const { error } = await dbFrom("sim_cards")
+        .update({ checklist_id: id })
+        .eq("id", selectedFreeSimId);
+      if (error) throw new Error(error.message || "Errore associazione SIM al progetto");
+      setSelectedFreeSimId("");
+      await loadProjectSimsSection(id);
+    } catch (err) {
+      setProjectSimsError(
+        err instanceof Error ? err.message : "Errore associazione SIM al progetto"
+      );
+    } finally {
+      setProjectSimSavingKey(null);
+    }
+  }
+
+  async function removeSimFromProject(simId: string) {
+    if (!id || !simId) return;
+    setProjectSimSavingKey(`remove:${simId}`);
+    setProjectSimsError(null);
+    try {
+      const { error } = await dbFrom("sim_cards").update({ checklist_id: null }).eq("id", simId);
+      if (error) throw new Error(error.message || "Errore rimozione SIM dal progetto");
+      await loadProjectSimsSection(id);
+    } catch (err) {
+      setProjectSimsError(
+        err instanceof Error ? err.message : "Errore rimozione SIM dal progetto"
+      );
+    } finally {
+      setProjectSimSavingKey(null);
+    }
   }
 
   useEffect(() => {
@@ -3935,6 +3993,14 @@ function buildFormData(c: Checklist): FormData {
     null;
   const nextProjectSimScadenza =
     nextProjectSimRow?.effectiveScadenza || null;
+  const freeProjectSimOptions = freeProjectSims
+    .slice()
+    .sort((a, b) =>
+      String(a.numero_telefono || a.intestatario || "").localeCompare(
+        String(b.numero_telefono || b.intestatario || ""),
+        "it"
+      )
+    );
 
   const strutturaOptions = catalogItems.filter((item) => {
     const code = (item.codice ?? "").toUpperCase();
@@ -8175,7 +8241,63 @@ function buildFormData(c: Checklist): FormData {
           <div id="section-sim" style={{ marginTop: 12, scrollMarginTop: 96 }}>
             <h2 style={mainSectionTitleStyle}>SIM</h2>
             <div style={{ marginBottom: 10, fontSize: 12, opacity: 0.7 }}>
-              SIM collegate al progetto via <code>checklist_id</code>. Vista sola lettura.
+              SIM collegate al progetto via <code>checklist_id</code>.
+            </div>
+
+            <div
+              style={{
+                marginBottom: 12,
+                padding: 12,
+                border: "1px solid #eee",
+                borderRadius: 12,
+                background: "white",
+              }}
+            >
+              <div style={{ fontWeight: 700, marginBottom: 8 }}>Associa SIM libera</div>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "1fr 180px",
+                  gap: 10,
+                  alignItems: "end",
+                }}
+              >
+                <label>
+                  SIM disponibile
+                  <br />
+                  <select
+                    value={selectedFreeSimId}
+                    onChange={(e) => setSelectedFreeSimId(e.target.value)}
+                    style={{ width: "100%", padding: 10 }}
+                    disabled={projectSimSavingKey != null}
+                  >
+                    <option value="">— seleziona SIM libera —</option>
+                    {freeProjectSimOptions.map((row) => (
+                      <option key={row.id} value={row.id}>
+                        {[row.numero_telefono || "—", row.operatore || "—", row.piano_attivo || "—"]
+                          .filter(Boolean)
+                          .join(" · ")}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <button
+                  type="button"
+                  onClick={associateFreeSimToProject}
+                  disabled={!selectedFreeSimId || projectSimSavingKey != null}
+                  style={{
+                    padding: "10px 12px",
+                    borderRadius: 10,
+                    border: "1px solid #ddd",
+                    background:
+                      !selectedFreeSimId || projectSimSavingKey != null ? "#f3f4f6" : "white",
+                    cursor:
+                      !selectedFreeSimId || projectSimSavingKey != null ? "not-allowed" : "pointer",
+                  }}
+                >
+                  Associa al progetto
+                </button>
+              </div>
             </div>
 
             {projectSimsError && (
@@ -8198,7 +8320,7 @@ function buildFormData(c: Checklist): FormData {
                   <div
                     style={{
                       display: "grid",
-                      gridTemplateColumns: "160px 120px 180px 160px 140px 140px 120px",
+                      gridTemplateColumns: "160px 120px 180px 160px 140px 140px 120px 180px",
                       gap: 10,
                       padding: "10px 12px",
                       fontWeight: 700,
@@ -8213,6 +8335,7 @@ function buildFormData(c: Checklist): FormData {
                     <div>Scadenza effettiva</div>
                     <div>Ultima ricarica</div>
                     <div>Stato SIM</div>
+                    <div>Azioni</div>
                   </div>
 
                   {projectSimRows.map((row) => {
@@ -8227,7 +8350,7 @@ function buildFormData(c: Checklist): FormData {
                         key={row.id}
                         style={{
                           display: "grid",
-                          gridTemplateColumns: "160px 120px 180px 160px 140px 140px 120px",
+                          gridTemplateColumns: "160px 120px 180px 160px 140px 140px 120px 180px",
                           gap: 10,
                           padding: "10px 12px",
                           borderBottom: "1px solid #f5f5f5",
@@ -8242,6 +8365,23 @@ function buildFormData(c: Checklist): FormData {
                         <div>{formatLocalDateLabel(effectiveScadenza)}</div>
                         <div>{formatLocalDateLabel(latestRecharge?.data_ricarica)}</div>
                         <div>{renderProjectSimStateBadge(simState)}</div>
+                        <div>
+                          <button
+                            type="button"
+                            onClick={() => removeSimFromProject(row.id)}
+                            disabled={projectSimSavingKey != null}
+                            style={{
+                              padding: "6px 10px",
+                              borderRadius: 8,
+                              border: "1px solid #dc2626",
+                              background: "white",
+                              color: "#dc2626",
+                              cursor: projectSimSavingKey != null ? "not-allowed" : "pointer",
+                            }}
+                          >
+                            Rimuovi dal progetto
+                          </button>
+                        </div>
                       </div>
                     );
                   })}
