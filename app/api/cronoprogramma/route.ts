@@ -1,8 +1,7 @@
 export const runtime = "nodejs";
 
 import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
-import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import { requireOperatore } from "@/lib/adminAuth";
 import { getEffectiveProjectStatus } from "@/lib/projectStatus";
 import {
   normalizeOperativiDate,
@@ -26,16 +25,6 @@ type OperativiInput = {
   commerciale_art_tech_contatto?: string | null;
 };
 const CUTOFF = "2026-01-01";
-
-function getAccessTokenFromCookieHeader(cookieHeader: string | null) {
-  if (!cookieHeader) return "";
-  const raw = cookieHeader
-    .split(";")
-    .map((s) => s.trim())
-    .find((s) => s.startsWith("sb-access-token="));
-  if (!raw) return "";
-  return raw.split("=").slice(1).join("=");
-}
 
 function rowKey(rowKind: string, rowRefId: string) {
   return `${rowKind}:${rowRefId}`;
@@ -131,80 +120,12 @@ function mapMetaRow(row: any) {
   };
 }
 
-async function getAuthContext(request: Request) {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  if (!supabaseUrl || !anonKey) {
-    return { error: NextResponse.json({ error: "Missing Supabase envs" }, { status: 500 }) };
-  }
-
-  const accessToken = getAccessTokenFromCookieHeader(request.headers.get("cookie"));
-  if (!accessToken) {
-    return { error: NextResponse.json({ error: "No auth cookie" }, { status: 401 }) };
-  }
-
-  const supabaseAnon = createClient(supabaseUrl, anonKey, {
-    auth: { persistSession: false, autoRefreshToken: false },
-  });
-  const {
-    data: { user },
-    error: userErr,
-  } = await supabaseAnon.auth.getUser(accessToken);
-  if (userErr || !user) {
-    return { error: NextResponse.json({ error: "Unauthorized" }, { status: 401 }) };
-  }
-
-  let supabaseAdmin: ReturnType<typeof getSupabaseAdmin>;
-  try {
-    supabaseAdmin = getSupabaseAdmin();
-  } catch (e: any) {
-    return { error: NextResponse.json({ error: e?.message || "Missing SUPABASE_SERVICE_ROLE_KEY" }, { status: 500 }) };
-  }
-
-  const { data: operatoreByUser, error: opUserErr } = await supabaseAdmin
-    .from("operatori")
-    .select("id, nome, user_id, email")
-    .eq("user_id", user.id)
-    .maybeSingle();
-  if (opUserErr) {
-    return { error: NextResponse.json({ error: opUserErr.message }, { status: 500 }) };
-  }
-
-  let operatore = operatoreByUser as any;
-  if (!operatore?.id) {
-    const userEmail = String(user.email || "").trim().toLowerCase();
-    if (userEmail) {
-      const { data: opByEmail, error: opEmailErr } = await supabaseAdmin
-        .from("operatori")
-        .select("id, nome, user_id, email")
-        .ilike("email", userEmail)
-        .limit(1)
-        .maybeSingle();
-      if (opEmailErr) {
-        return { error: NextResponse.json({ error: opEmailErr.message }, { status: 500 }) };
-      }
-      if (opByEmail?.id) {
-        operatore = opByEmail;
-        if (!opByEmail.user_id || opByEmail.user_id !== user.id) {
-          await supabaseAdmin.from("operatori").update({ user_id: user.id }).eq("id", opByEmail.id);
-        }
-      }
-    }
-  }
-
-  if (!operatore?.id) {
-    return { error: NextResponse.json({ error: "Operatore non associato" }, { status: 403 }) };
-  }
-
-  return { supabaseAdmin, operatore };
-}
-
 export async function POST(request: Request) {
   const debug = new URL(request.url).searchParams.get("debug") === "1";
-  const auth = await getAuthContext(request);
-  if ("error" in auth) return auth.error;
+  const auth = await requireOperatore(request);
+  if (!auth.ok) return auth.response;
 
-  const { supabaseAdmin, operatore } = auth;
+  const { adminClient: supabaseAdmin, operatore } = auth;
 
   let body: any;
   try {
