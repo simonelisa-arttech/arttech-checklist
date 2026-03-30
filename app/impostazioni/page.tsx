@@ -127,6 +127,19 @@ export default function ImpostazioniPage() {
           Personale
         </Link>
         <Link
+          href="/impostazioni/documenti"
+          style={{
+            padding: "12px 16px",
+            borderRadius: 12,
+            border: "1px solid #ddd",
+            background: "white",
+            textDecoration: "none",
+            color: "inherit",
+          }}
+        >
+          Documenti
+        </Link>
+        <Link
           href="/catalogo"
           style={{
             padding: "12px 16px",
