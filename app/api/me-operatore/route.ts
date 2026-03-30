@@ -2,16 +2,7 @@ export const runtime = "nodejs";
 
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-
-function getAccessTokenFromCookieHeader(cookieHeader: string | null) {
-  if (!cookieHeader) return "";
-  const raw = cookieHeader
-    .split(";")
-    .map((s) => s.trim())
-    .find((s) => s.startsWith("sb-access-token="));
-  if (!raw) return "";
-  return raw.split("=").slice(1).join("=");
-}
+import { getAccessTokenFromRequest } from "@/lib/serverAuthToken";
 
 export async function GET(request: Request) {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -21,7 +12,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Missing Supabase envs" }, { status: 500 });
   }
 
-  const accessToken = getAccessTokenFromCookieHeader(request.headers.get("cookie"));
+  const accessToken = getAccessTokenFromRequest(request);
   if (!accessToken) {
     return NextResponse.json({ error: "No auth cookie" }, { status: 401 });
   }
@@ -42,7 +33,7 @@ export async function GET(request: Request) {
   });
   const { data: operatore, error: opErr } = await supabaseAdmin
     .from("operatori")
-    .select("id, user_id, nome, ruolo, attivo")
+    .select("id, user_id, nome, ruolo, attivo, can_access_impostazioni")
     .eq("user_id", user.id)
     .maybeSingle();
 
@@ -62,7 +53,7 @@ export async function GET(request: Request) {
 
   const { data: operatoreByEmail, error: byEmailErr } = await supabaseAdmin
     .from("operatori")
-    .select("id, user_id, nome, ruolo, attivo")
+    .select("id, user_id, nome, ruolo, attivo, can_access_impostazioni")
     .ilike("email", userEmail)
     .limit(1)
     .maybeSingle();

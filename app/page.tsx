@@ -1836,12 +1836,6 @@ export default function Page() {
               + Aggiungi intervento
             </button>
             <Link
-              href="/cronoprogramma"
-              style={navButtonStyle}
-            >
-              Cronoprogramma
-            </Link>
-            <Link
               href="/import-progetti"
               style={navButtonStyle}
             >
