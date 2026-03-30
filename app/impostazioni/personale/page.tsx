@@ -4,9 +4,8 @@ import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import ConfigMancante from "@/components/ConfigMancante";
-import SafetyExpectedDocumentsPanel from "@/components/SafetyExpectedDocumentsPanel";
 import { storageSignedUrl, storageUpload } from "@/lib/clientStorageApi";
-import { PERSONALE_STANDARD_DOCUMENTS, type SafetyExpectedDocumentItem } from "@/lib/safetyCompliance";
+import { PERSONALE_STANDARD_DOCUMENTS } from "@/lib/safetyCompliance";
 import { isSupabaseConfigured } from "@/lib/supabaseClient";
 import { dbFrom } from "@/lib/clientDbBroker";
 
@@ -152,6 +151,51 @@ function getDocumentoBadgeState(doc: PersonaleDocumentoRow) {
   if (Number.isFinite(preavviso) && diffDays <= preavviso) return "IN_SCADENZA" as const;
 
   return null;
+}
+
+type DocumentoListBadgeState = "SCADUTO" | "IN SCADENZA" | "VALIDO" | "MANCANTE";
+
+function getDocumentoListBadgeState(doc?: PersonaleDocumentoRow | null): DocumentoListBadgeState {
+  if (!doc) return "MANCANTE";
+  const state = getDocumentoBadgeState(doc);
+  if (state === "SCADUTO") return "SCADUTO";
+  if (state === "IN_SCADENZA") return "IN SCADENZA";
+  return "VALIDO";
+}
+
+function getDocumentoListBadgeStyle(state: DocumentoListBadgeState) {
+  if (state === "SCADUTO") {
+    return {
+      background: "#fee2e2",
+      color: "#991b1b",
+      border: "1px solid #fecaca",
+    };
+  }
+  if (state === "IN SCADENZA") {
+    return {
+      background: "#ffedd5",
+      color: "#c2410c",
+      border: "1px solid #fdba74",
+    };
+  }
+  if (state === "VALIDO") {
+    return {
+      background: "#dcfce7",
+      color: "#166534",
+      border: "1px solid #86efac",
+    };
+  }
+  return {
+    background: "#f3f4f6",
+    color: "#4b5563",
+    border: "1px solid #d1d5db",
+  };
+}
+
+function formatDocumentoDate(value?: string | null) {
+  const parsed = parseDateOnly(value);
+  if (!parsed) return "—";
+  return parsed.toLocaleDateString("it-IT");
 }
 
 function PersonalePageContent() {
@@ -434,7 +478,7 @@ function PersonalePageContent() {
     setSavingKey(null);
   }
 
-  function addDocumento(personaleId: string) {
+  function addDocumento(personaleId: string, initialTipoDocumento = "") {
     const tempId = createTempId("personale-doc");
     if (!documentTypeOptions.length) {
       setError("Aggiungi prima almeno un tipo documento standard.");
@@ -444,7 +488,7 @@ function PersonalePageContent() {
       {
         id: tempId,
         personale_id: personaleId,
-        tipo_documento: "",
+        tipo_documento: initialTipoDocumento,
         data_rilascio: "",
         data_scadenza: "",
         giorni_preavviso: "",
@@ -1094,27 +1138,6 @@ function PersonalePageContent() {
 
                   {isExpanded ? (
                     <>
-                      <SafetyExpectedDocumentsPanel
-                        kind="PERSONALE"
-                        extraDocumentLabels={documentTypeOptions}
-                        docs={docRows.map((doc) => ({
-                          tipo_documento: doc.tipo_documento,
-                          data_scadenza: doc.data_scadenza || null,
-                        }))}
-                        getManageHref={(item: SafetyExpectedDocumentItem) => {
-                          const matchingDoc = docRows.find(
-                            (doc) => normalizeText(doc.tipo_documento) === normalizeText(item.label)
-                          );
-                          const params = new URLSearchParams({
-                            personale_id: personId,
-                            doc_action: "manage",
-                            tipo_documento: item.label,
-                          });
-                          if (matchingDoc?.id) params.set("documento_id", String(matchingDoc.id));
-                          return `/impostazioni/personale?${params.toString()}#personale-${encodeURIComponent(personId)}`;
-                        }}
-                      />
-
                       <div style={{ display: "flex", justifyContent: "flex-end" }}>
                         <button
                           type="button"
@@ -1134,7 +1157,30 @@ function PersonalePageContent() {
                       </div>
 
                       <div style={{ display: "grid", gap: 10 }}>
-                        {docRows.length === 0 ? (
+                        {(() => {
+                          const missingStandardRows = PERSONALE_STANDARD_DOCUMENTS.filter(
+                            (item) =>
+                              !docRows.some(
+                                (doc) => normalizeText(doc.tipo_documento) === normalizeText(item.label)
+                              )
+                          ).map((item) => ({
+                            key: `missing:${item.key}`,
+                            label: item.label,
+                            doc: null as PersonaleDocumentoRow | null,
+                            required: true,
+                          }));
+
+                          const unifiedRows = [
+                            ...docRows.map((doc) => ({
+                              key: `doc:${String(doc.id || "")}`,
+                              label: doc.tipo_documento || "—",
+                              doc,
+                              required: false,
+                            })),
+                            ...missingStandardRows,
+                          ];
+
+                          return unifiedRows.length === 0 ? (
                           <div
                             style={{
                               fontSize: 13,
@@ -1147,32 +1193,97 @@ function PersonalePageContent() {
                             Nessun documento personale registrato.
                           </div>
                         ) : (
-                          docRows.map((doc) => {
+                          unifiedRows.map((entry) => {
+                            const doc = entry.doc;
+                            const rowId = String(doc?.id || entry.key);
+                            const isEditing = doc ? doc.isNew || editingDocumentoId === doc.id : false;
+                            const hasFileUrl = doc
+                              ? isHttpUrl(doc.file_url.trim()) || isStorageDocumentUrl(doc.file_url.trim())
+                              : false;
+                            const rowError = documentRowErrorById[rowId];
+                            const selectedFile = documentFileById[rowId];
+                            const badgeState = getDocumentoListBadgeState(doc);
+                            const badgeStyle = getDocumentoListBadgeStyle(badgeState);
+
+                            if (!doc) {
+                              return (
+                                <div
+                                  key={entry.key}
+                                  style={{
+                                    display: "grid",
+                                    gap: 10,
+                                    border: "1px solid #e5e7eb",
+                                    borderRadius: 12,
+                                    padding: 12,
+                                    background: "#fcfcfd",
+                                  }}
+                                >
+                                  <div
+                                    style={{
+                                      display: "grid",
+                                      gap: 10,
+                                      gridTemplateColumns:
+                                        "minmax(220px, 1.3fr) minmax(140px, 0.8fr) minmax(150px, 0.8fr) auto",
+                                      alignItems: "center",
+                                    }}
+                                  >
+                                    <div style={{ display: "grid", gap: 6 }}>
+                                      <div style={{ fontSize: 12, color: "#6b7280" }}>Tipo documento</div>
+                                      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                                        <span style={{ fontWeight: 600 }}>{entry.label}</span>
+                                        {entry.required ? (
+                                          <span style={{ fontSize: 11, color: "#6b7280" }}>minimo</span>
+                                        ) : null}
+                                      </div>
+                                    </div>
+                                    <div style={{ display: "grid", gap: 6 }}>
+                                      <div style={{ fontSize: 12, color: "#6b7280" }}>Scadenza</div>
+                                      <div>—</div>
+                                    </div>
+                                    <div style={{ display: "grid", gap: 6 }}>
+                                      <div style={{ fontSize: 12, color: "#6b7280" }}>Stato</div>
+                                      <div>
+                                        <span
+                                          style={{
+                                            display: "inline-flex",
+                                            alignItems: "center",
+                                            padding: "2px 8px",
+                                            borderRadius: 999,
+                                            fontSize: 11,
+                                            fontWeight: 700,
+                                            ...badgeStyle,
+                                          }}
+                                        >
+                                          {badgeState}
+                                        </span>
+                                      </div>
+                                    </div>
+                                    <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, flexWrap: "wrap" }}>
+                                      <button
+                                        type="button"
+                                        onClick={() => addDocumento(personId, entry.label)}
+                                        disabled={persona.isNew}
+                                        style={{
+                                          padding: "8px 12px",
+                                          borderRadius: 10,
+                                          border: "1px solid #d1d5db",
+                                          background: "white",
+                                          cursor: persona.isNew ? "default" : "pointer",
+                                          opacity: persona.isNew ? 0.55 : 1,
+                                        }}
+                                      >
+                                        Gestisci
+                                      </button>
+                                    </div>
+                                  </div>
+                                </div>
+                              );
+                            }
+
                             const docTypeChoices =
                               doc.tipo_documento && !documentTypeOptions.includes(doc.tipo_documento)
                                 ? [doc.tipo_documento, ...documentTypeOptions]
                                 : documentTypeOptions;
-                            const isEditing = doc.isNew || editingDocumentoId === doc.id;
-                            const rowId = String(doc.id || "");
-                            const hasFileUrl =
-                              isHttpUrl(doc.file_url.trim()) || isStorageDocumentUrl(doc.file_url.trim());
-                            const rowError = documentRowErrorById[rowId];
-                            const selectedFile = documentFileById[rowId];
-                            const badgeState = getDocumentoBadgeState(doc);
-                            const badgeStyle =
-                              badgeState === "SCADUTO"
-                                ? {
-                                    background: "#fee2e2",
-                                    color: "#991b1b",
-                                    border: "1px solid #fecaca",
-                                  }
-                                : badgeState === "IN_SCADENZA"
-                                  ? {
-                                      background: "#ffedd5",
-                                      color: "#c2410c",
-                                      border: "1px solid #fdba74",
-                                    }
-                                  : null;
                             return (
                               <div
                                 key={doc.id}
@@ -1182,7 +1293,7 @@ function PersonalePageContent() {
                                   border:
                                     badgeState === "SCADUTO"
                                       ? "1px solid #fecaca"
-                                      : badgeState === "IN_SCADENZA"
+                                      : badgeState === "IN SCADENZA"
                                         ? "1px solid #fdba74"
                                         : "1px solid #f1f5f9",
                                   borderRadius: 12,
@@ -1190,7 +1301,7 @@ function PersonalePageContent() {
                                   background:
                                     badgeState === "SCADUTO"
                                       ? "#fff7f7"
-                                      : badgeState === "IN_SCADENZA"
+                                      : badgeState === "IN SCADENZA"
                                         ? "#fffaf5"
                                         : "#fcfcfd",
                                 }}
@@ -1214,27 +1325,25 @@ function PersonalePageContent() {
                                           style={{ width: "100%", padding: 8 }}
                                         >
                                           <option value="">— Seleziona —</option>
-                                          {docTypeChoices.map((option) => (
-                                            <option key={option} value={option}>
-                                              {option}
-                                            </option>
-                                          ))}
-                                        </select>
-                                        {badgeState && badgeStyle ? (
-                                          <span
-                                            style={{
-                                              display: "inline-flex",
-                                              alignItems: "center",
-                                              padding: "2px 8px",
-                                              borderRadius: 999,
-                                              fontSize: 11,
-                                              fontWeight: 700,
-                                              ...badgeStyle,
-                                            }}
-                                          >
-                                            {badgeState === "SCADUTO" ? "SCADUTO" : "IN SCADENZA"}
-                                          </span>
-                                        ) : null}
+                                        {docTypeChoices.map((option) => (
+                                          <option key={option} value={option}>
+                                            {option}
+                                          </option>
+                                        ))}
+                                      </select>
+                                        <span
+                                          style={{
+                                            display: "inline-flex",
+                                            alignItems: "center",
+                                            padding: "2px 8px",
+                                            borderRadius: 999,
+                                            fontSize: 11,
+                                            fontWeight: 700,
+                                            ...badgeStyle,
+                                          }}
+                                        >
+                                          {badgeState}
+                                        </span>
                                       </div>
                                     </label>
                                     <label style={{ display: "grid", gap: 6, fontSize: 12 }}>
@@ -1295,9 +1404,9 @@ function PersonalePageContent() {
                                     <div style={{ display: "grid", gap: 6, fontSize: 12 }}>
                                       <div style={{ color: "#6b7280" }}>File / link</div>
                                       <input
-                                        value={doc.file_url}
-                                        onChange={(e) => updateDocumento(doc.id, { file_url: e.target.value })}
-                                        style={{ width: "100%", padding: 8 }}
+                                          value={doc.file_url}
+                                          onChange={(e) => updateDocumento(doc.id, { file_url: e.target.value })}
+                                          style={{ width: "100%", padding: 8 }}
                                         placeholder="URL file"
                                       />
                                       <input
@@ -1394,7 +1503,7 @@ function PersonalePageContent() {
                                       display: "grid",
                                       gap: 10,
                                       gridTemplateColumns:
-                                        "minmax(180px, 1fr) minmax(130px, 0.75fr) minmax(130px, 0.75fr) minmax(110px, 0.65fr) minmax(180px, 0.9fr) minmax(220px, 1fr) minmax(220px, 1.1fr) auto",
+                                        "minmax(220px, 1.2fr) minmax(140px, 0.8fr) minmax(150px, 0.8fr) minmax(180px, 0.9fr) minmax(220px, 1fr) minmax(220px, 1.1fr) auto",
                                       alignItems: "start",
                                     }}
                                   >
@@ -1402,34 +1511,29 @@ function PersonalePageContent() {
                                       <div style={{ fontSize: 12, color: "#6b7280" }}>Tipo documento</div>
                                       <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                                         <span style={{ fontWeight: 600 }}>{doc.tipo_documento || "—"}</span>
-                                        {badgeState && badgeStyle ? (
-                                          <span
-                                            style={{
-                                              display: "inline-flex",
-                                              alignItems: "center",
-                                              padding: "2px 8px",
-                                              borderRadius: 999,
-                                              fontSize: 11,
-                                              fontWeight: 700,
-                                              ...badgeStyle,
-                                            }}
-                                          >
-                                            {badgeState === "SCADUTO" ? "SCADUTO" : "IN SCADENZA"}
-                                          </span>
-                                        ) : null}
                                       </div>
                                     </div>
                                     <div style={{ display: "grid", gap: 6 }}>
-                                      <div style={{ fontSize: 12, color: "#6b7280" }}>Data rilascio</div>
-                                      <div>{doc.data_rilascio || "—"}</div>
+                                      <div style={{ fontSize: 12, color: "#6b7280" }}>Scadenza</div>
+                                      <div>{formatDocumentoDate(doc.data_scadenza)}</div>
                                     </div>
                                     <div style={{ display: "grid", gap: 6 }}>
-                                      <div style={{ fontSize: 12, color: "#6b7280" }}>Data scadenza</div>
-                                      <div>{doc.data_scadenza || "—"}</div>
-                                    </div>
-                                    <div style={{ display: "grid", gap: 6 }}>
-                                      <div style={{ fontSize: 12, color: "#6b7280" }}>Preavviso</div>
-                                      <div>{doc.giorni_preavviso ? `${doc.giorni_preavviso} giorni` : "—"}</div>
+                                      <div style={{ fontSize: 12, color: "#6b7280" }}>Stato</div>
+                                      <div>
+                                        <span
+                                          style={{
+                                            display: "inline-flex",
+                                            alignItems: "center",
+                                            padding: "2px 8px",
+                                            borderRadius: 999,
+                                            fontSize: 11,
+                                            fontWeight: 700,
+                                            ...badgeStyle,
+                                          }}
+                                        >
+                                          {badgeState}
+                                        </span>
+                                      </div>
                                     </div>
                                     <div style={{ display: "grid", gap: 6 }}>
                                       <div style={{ fontSize: 12, color: "#6b7280" }}>Alert</div>
@@ -1473,7 +1577,7 @@ function PersonalePageContent() {
                                             cursor: "pointer",
                                           }}
                                         >
-                                          Modifica
+                                          Gestisci
                                         </button>
                                         {hasFileUrl ? (
                                           <button
@@ -1511,7 +1615,8 @@ function PersonalePageContent() {
                               </div>
                             );
                           })
-                        )}
+                        );
+                        })()}
                       </div>
                     </>
                   ) : null}
