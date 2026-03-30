@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import type { Dispatch, MutableRefObject, SetStateAction, UIEvent } from "react";
 import PersonaleMultiSelect from "@/components/PersonaleMultiSelect";
@@ -142,6 +143,8 @@ export default function CronoprogrammaPanel({
   hasDefinedOperativi,
   emptyOperativi,
 }: CronoprogrammaPanelProps) {
+  const [openConflictKey, setOpenConflictKey] = useState<string | null>(null);
+
   return (
     <>
       <div
@@ -465,25 +468,46 @@ export default function CronoprogrammaPanel({
                       }
                     />
                     {conflict?.hasConflict ? (
-                      <div
-                        title={conflictTitle}
-                        style={{
-                          marginTop: 6,
-                          display: "inline-flex",
-                          alignItems: "center",
-                          gap: 6,
-                          borderRadius: 999,
-                          border: "1px solid #fca5a5",
-                          background: "#fff1f2",
-                          color: "#b91c1c",
-                          padding: "3px 8px",
-                          fontSize: 12,
-                          fontWeight: 700,
-                          whiteSpace: "nowrap",
-                        }}
-                      >
-                        ⚠ Conflitto
-                      </div>
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => setOpenConflictKey((prev) => (prev === key ? null : key))}
+                          style={{
+                            marginTop: 6,
+                            display: "inline-flex",
+                            alignItems: "center",
+                            gap: 6,
+                            borderRadius: 999,
+                            border: "1px solid #fca5a5",
+                            background: "#fff1f2",
+                            color: "#b91c1c",
+                            padding: "3px 8px",
+                            fontSize: 12,
+                            fontWeight: 700,
+                            whiteSpace: "nowrap",
+                            cursor: "pointer",
+                            appearance: "none",
+                          }}
+                        >
+                          ⚠ Conflitto
+                        </button>
+                        {openConflictKey === key ? (
+                          <div
+                            style={{
+                              marginTop: 6,
+                              border: "1px solid #fca5a5",
+                              background: "white",
+                              color: "#374151",
+                              borderRadius: 10,
+                              padding: "8px 10px",
+                              fontSize: 12,
+                              lineHeight: 1.45,
+                            }}
+                          >
+                            {conflictTitle}
+                          </div>
+                        ) : null}
+                      </>
                     ) : null}
                     <div style={{ marginTop: 6 }}>
                       <SafetyComplianceBadge
@@ -492,6 +516,7 @@ export default function CronoprogrammaPanel({
                           operativiDraftByKey[key]?.personale_previsto ?? extractOperativi(meta).personale_previsto
                         }
                         showSummary={false}
+                        detailsOnClick
                       />
                     </div>
                   </div>

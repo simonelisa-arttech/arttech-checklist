@@ -1835,12 +1835,6 @@ export default function Page() {
             >
               + Aggiungi intervento
             </button>
-            <Link
-              href="/import-progetti"
-              style={navButtonStyle}
-            >
-              Importa progetti
-            </Link>
           </div>
         </div>
       </div>
@@ -1968,13 +1962,6 @@ export default function Page() {
                     </div>
                   </div>
                 </div>
-                <div className="dashboard-cockpit-card dashboard-fatture-card">
-                  {renderCockpitMetricCard(
-                    "/admin/fatture-da-emettere",
-                    "FATTURE DA EMETTERE",
-                    fattureDaEmettereCount
-                  )}
-                </div>
               </div>
               <div
                 className="dashboard-cockpit-kpi-grid"
@@ -1985,6 +1972,11 @@ export default function Page() {
                   alignItems: "stretch",
                 }}
               >
+                {renderCockpitMetricCard(
+                  "/admin/fatture-da-emettere",
+                  "FATTURE DA EMETTERE",
+                  fattureDaEmettereCount
+                )}
                 {renderCockpitMetricCard(
                   "/admin/interventi-da-chiudere",
                   "INTERVENTI DA CHIUDERE",
@@ -2319,16 +2311,6 @@ export default function Page() {
           width: 100%;
           max-width: none;
         }
-        .dashboard-fatture-card {
-          grid-column: 5 / span 1;
-          width: 100%;
-          max-width: none;
-          justify-self: stretch;
-          min-width: 0;
-        }
-        .dashboard-fatture-card :global(a) {
-          height: 100%;
-        }
         .dashboard-scadenze-shell {
           width: 100%;
           max-width: 440px;
@@ -2350,8 +2332,7 @@ export default function Page() {
           .dashboard-cockpit-kpi-grid {
             grid-template-columns: repeat(2, minmax(0, 1fr));
           }
-          .dashboard-scadenze-card,
-          .dashboard-fatture-card {
+          .dashboard-scadenze-card {
             max-width: none;
             justify-self: stretch;
           }

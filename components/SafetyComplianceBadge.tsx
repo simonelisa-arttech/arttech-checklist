@@ -15,6 +15,7 @@ type Props = {
   personaleText?: string | null;
   personaleIds?: string[] | null;
   showSummary?: boolean;
+  detailsOnClick?: boolean;
 };
 
 let safetyDatasetCache: SafetyDataset | null = null;
@@ -89,9 +90,11 @@ export default function SafetyComplianceBadge({
   personaleText,
   personaleIds,
   showSummary = true,
+  detailsOnClick = false,
 }: Props) {
   const [dataset, setDataset] = useState<SafetyDataset | null>(safetyDatasetCache);
   const [error, setError] = useState<string | null>(null);
+  const [detailsOpen, setDetailsOpen] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -156,8 +159,10 @@ export default function SafetyComplianceBadge({
 
   return (
     <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
-      <span
-        title={compliance.tooltip}
+      <button
+        type="button"
+        onClick={detailsOnClick ? () => setDetailsOpen((prev) => !prev) : undefined}
+        title={!detailsOnClick ? compliance.tooltip : undefined}
         style={{
           display: "inline-flex",
           alignItems: "center",
@@ -170,19 +175,44 @@ export default function SafetyComplianceBadge({
           fontSize: 12,
           fontWeight: 700,
           whiteSpace: "nowrap",
+          cursor: detailsOnClick ? "pointer" : "default",
+          appearance: "none",
+          outline: "none",
+          boxShadow: "none",
         }}
       >
         {compliance.label}
-      </span>
-      {showSummary ? (
+      </button>
+      {showSummary && !detailsOnClick ? (
         <span title={compliance.tooltip} style={{ fontSize: 12, color: "#4b5563" }}>
           {compliance.summary}
         </span>
       ) : null}
-      {compliance.status !== "CONFORME" && compliance.highlights.length > 0 ? (
+      {!detailsOnClick && compliance.status !== "CONFORME" && compliance.highlights.length > 0 ? (
         <span title={compliance.tooltip} style={{ fontSize: 12, color: style.color, fontWeight: 600 }}>
           {compliance.highlights.join(" · ")}
         </span>
+      ) : null}
+      {detailsOnClick && detailsOpen ? (
+        <div
+          style={{
+            flexBasis: "100%",
+            border: `1px solid ${style.border}`,
+            background: "white",
+            color: "#374151",
+            borderRadius: 10,
+            padding: "8px 10px",
+            fontSize: 12,
+            lineHeight: 1.45,
+          }}
+        >
+          <div>{compliance.summary}</div>
+          {compliance.highlights.length > 0 ? (
+            <div style={{ marginTop: 4, color: style.color, fontWeight: 600 }}>
+              {compliance.highlights.join(" · ")}
+            </div>
+          ) : null}
+        </div>
       ) : null}
     </div>
   );
