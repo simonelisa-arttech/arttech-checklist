@@ -1863,7 +1863,7 @@ export default function Page() {
                 className="dashboard-cockpit-primary-grid"
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "repeat(5, minmax(0, 1fr))",
+                  gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
                   gap: 12,
                   alignItems: "stretch",
                 }}
@@ -1962,21 +1962,22 @@ export default function Page() {
                     </div>
                   </div>
                 </div>
-              </div>
-              <div
-                className="dashboard-cockpit-kpi-grid"
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "repeat(6, minmax(0, 1fr))",
-                  gap: 12,
-                  alignItems: "stretch",
-                }}
-              >
                 {renderCockpitMetricCard(
                   "/admin/fatture-da-emettere",
                   "FATTURE DA EMETTERE",
                   fattureDaEmettereCount
                 )}
+                {renderDocumentiAlertCockpitCard()}
+              </div>
+              <div
+                className="dashboard-cockpit-kpi-grid"
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(5, minmax(0, 1fr))",
+                  gap: 12,
+                  alignItems: "stretch",
+                }}
+              >
                 {renderCockpitMetricCard(
                   "/admin/interventi-da-chiudere",
                   "INTERVENTI DA CHIUDERE",
@@ -2010,7 +2011,6 @@ export default function Page() {
                   "NOLEGGI ATTIVI",
                   noleggiAttiviCount
                 )}
-                {renderDocumentiAlertCockpitCard()}
               </div>
           </div>
           </div>
@@ -2304,7 +2304,7 @@ export default function Page() {
           width: 100%;
         }
         .dashboard-cockpit-primary-grid {
-          grid-template-columns: repeat(5, minmax(0, 1fr));
+          grid-template-columns: repeat(4, minmax(0, 1fr));
         }
         .dashboard-scadenze-card {
           grid-column: span 2 / span 2;
