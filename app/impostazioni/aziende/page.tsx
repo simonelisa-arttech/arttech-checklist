@@ -39,6 +39,16 @@ type DocumentTypeRow = {
   nome: string | null;
 };
 
+type DocumentCatalogRow = {
+  id: string;
+  nome: string | null;
+  target: string | null;
+  categoria: string | null;
+  has_scadenza: boolean;
+  attivo: boolean;
+  sort_order: number | null;
+};
+
 const AZIENDA_TIPO_OPTIONS = ["INTERNA", "ESTERNA"] as const;
 const AZIENDA_DOCUMENTI_STORAGE_PREFIX = "azienda-documenti";
 const AZIENDA_DOCUMENTI_STORAGE_SCHEME = "storage://checklist-documents/";
@@ -83,6 +93,16 @@ function buildAziendaDocumentTypeOptions(documentTypes: DocumentTypeRow[]) {
       ...documentTypes.map((row) => getDocumentTypeLabel(row)),
     ].filter(Boolean))
   ).sort((a, b) => a.localeCompare(b, "it"));
+}
+
+function buildDocumentCatalogOptions(rows: DocumentCatalogRow[]) {
+  return Array.from(
+    new Set(
+      rows
+        .map((row) => String(row.nome || "").trim())
+        .filter(Boolean)
+    )
+  );
 }
 
 function isHttpUrl(value?: string | null) {
@@ -140,6 +160,7 @@ function AziendePageContent() {
   const [aziende, setAziende] = useState<AziendaRow[]>([]);
   const [documenti, setDocumenti] = useState<AziendaDocumentoRow[]>([]);
   const [documentTypes, setDocumentTypes] = useState<DocumentTypeRow[]>([]);
+  const [documentCatalog, setDocumentCatalog] = useState<DocumentCatalogRow[]>([]);
   const [search, setSearch] = useState("");
   const [expandedAziendaId, setExpandedAziendaId] = useState<string | null>(null);
   const [editingDocumentoId, setEditingDocumentoId] = useState<string | null>(null);
@@ -154,19 +175,26 @@ function AziendePageContent() {
   async function loadData() {
     setLoading(true);
     setError(null);
-    const [aziendeRes, documentiRes, typesRes] = await Promise.all([
+    const [aziendeRes, documentiRes, typesRes, catalogRes] = await Promise.all([
       dbFrom("aziende").select("*").order("ragione_sociale", { ascending: true }),
       dbFrom("aziende_documenti")
         .select("*")
         .order("data_scadenza", { ascending: true })
         .order("tipo_documento", { ascending: true }),
       dbFrom("document_types").select("*").order("codice", { ascending: true }),
+      dbFrom("document_catalog")
+        .select("id,nome,target,categoria,has_scadenza,attivo,sort_order")
+        .in("target", ["AZIENDA", "ENTRAMBI"])
+        .eq("attivo", true)
+        .order("sort_order", { ascending: true })
+        .order("nome", { ascending: true }),
     ]);
 
     const errors: string[] = [];
     if (aziendeRes.error) errors.push(`Errore caricamento aziende: ${aziendeRes.error.message}`);
     if (documentiRes.error) errors.push(`Errore caricamento documenti aziende: ${documentiRes.error.message}`);
     if (typesRes.error) errors.push(`Errore caricamento tipi documento: ${typesRes.error.message}`);
+    if (catalogRes.error) errors.push(`Errore caricamento catalogo documenti: ${catalogRes.error.message}`);
 
     setAziende(
       (((aziendeRes.data as any[]) || []) as Array<Record<string, any>>).map((row) => ({
@@ -197,6 +225,22 @@ function AziendePageContent() {
       }))
     );
     setDocumentTypes(((typesRes.data as any[]) || []) as DocumentTypeRow[]);
+    setDocumentCatalog(
+      (((catalogRes.data as any[]) || []) as Array<Record<string, any>>).map((row) => ({
+        id: String(row.id || ""),
+        nome: row.nome == null ? null : String(row.nome),
+        target: row.target == null ? null : String(row.target),
+        categoria: row.categoria == null ? null : String(row.categoria),
+        has_scadenza: row.has_scadenza !== false,
+        attivo: row.attivo !== false,
+        sort_order:
+          typeof row.sort_order === "number"
+            ? row.sort_order
+            : row.sort_order == null || row.sort_order === ""
+              ? null
+              : Number(row.sort_order),
+      }))
+    );
     setError(errors.length > 0 ? errors.join(" • ") : null);
     setLoading(false);
   }
@@ -206,8 +250,8 @@ function AziendePageContent() {
   }, []);
 
   const documentTypeOptions = useMemo(
-    () => buildAziendaDocumentTypeOptions(documentTypes),
-    [documentTypes]
+    () => buildDocumentCatalogOptions(documentCatalog),
+    [documentCatalog]
   );
 
   const docsByAzienda = useMemo(() => {
