@@ -290,23 +290,9 @@ export default function AlertFatturePage() {
           Invia email
         </label>
         <Link
-          href="/"
-          style={{
-            marginLeft: "auto",
-            padding: "6px 10px",
-            borderRadius: 10,
-            border: "1px solid #ddd",
-            background: "white",
-            textDecoration: "none",
-            color: "#111",
-            fontSize: 12,
-          }}
-        >
-          Dashboard
-        </Link>
-        <Link
           href="/impostazioni"
           style={{
+            marginLeft: "auto",
             padding: "6px 10px",
             borderRadius: 10,
             border: "1px solid #ddd",

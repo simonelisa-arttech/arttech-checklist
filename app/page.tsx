@@ -1842,12 +1842,6 @@ export default function Page() {
               Cronoprogramma
             </Link>
             <Link
-              href="/scadenze"
-              style={navButtonStyle}
-            >
-              Scadenze
-            </Link>
-            <Link
               href="/import-progetti"
               style={navButtonStyle}
             >

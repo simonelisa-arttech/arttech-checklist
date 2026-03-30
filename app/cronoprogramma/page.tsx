@@ -675,20 +675,6 @@ export default function CronoprogrammaPage() {
           <h1 style={{ margin: 0, fontSize: 34 }}>AT SYSTEM</h1>
           <div style={{ marginTop: 2, fontSize: 12, opacity: 0.7 }}>CRONOPROGRAMMA</div>
         </div>
-        <Link
-          href="/"
-          style={{
-            marginLeft: "auto",
-            padding: "8px 12px",
-            borderRadius: 10,
-            border: "1px solid #ddd",
-            textDecoration: "none",
-            color: "inherit",
-            background: "white",
-          }}
-        >
-          ← Home
-        </Link>
       </div>
 
       {error && (

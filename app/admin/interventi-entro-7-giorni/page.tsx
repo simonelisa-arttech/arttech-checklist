@@ -61,21 +61,6 @@ export default function InterventiEntro7GiorniPage() {
             Attività pianificate tra oggi e i prossimi 7 giorni ancora aperte/rilevanti.
           </div>
         </div>
-        <Link
-          href="/"
-          style={{
-            marginLeft: "auto",
-            padding: "8px 12px",
-            borderRadius: 10,
-            border: "1px solid #ddd",
-            background: "white",
-            textDecoration: "none",
-            color: "inherit",
-            fontWeight: 600,
-          }}
-        >
-          Torna alla Dashboard
-        </Link>
       </div>
 
       {error ? <div style={{ marginBottom: 12, fontSize: 13, color: "#b91c1c" }}>{error}</div> : null}

@@ -77,23 +77,9 @@ export default function InterventiDaChiuderePage() {
           </div>
         </div>
         <Link
-          href="/"
-          style={{
-            marginLeft: "auto",
-            padding: "8px 12px",
-            borderRadius: 10,
-            border: "1px solid #ddd",
-            background: "white",
-            textDecoration: "none",
-            color: "inherit",
-            fontWeight: 600,
-          }}
-        >
-          Dashboard
-        </Link>
-        <Link
           href="/admin"
           style={{
+            marginLeft: "auto",
             padding: "8px 12px",
             borderRadius: 10,
             border: "1px solid #ddd",

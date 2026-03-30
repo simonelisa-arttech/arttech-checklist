@@ -5877,20 +5877,6 @@ function buildFormData(c: Checklist): FormData {
           <h1 style={{ margin: 0, fontSize: 34 }}>AT SYSTEM</h1>
           <div style={{ marginTop: 2, fontSize: 12, opacity: 0.7 }}>PROGETTO</div>
         </div>
-        <a
-          href="/"
-          style={{
-            padding: "6px 10px",
-            borderRadius: 10,
-            border: "1px solid #ddd",
-            textDecoration: "none",
-            color: "inherit",
-            background: "white",
-            marginLeft: "auto",
-          }}
-        >
-          ← Dashboard
-        </a>
       </div>
 
       <div style={{ display: "flex", gap: 10, marginTop: 12, marginBottom: 10 }}>

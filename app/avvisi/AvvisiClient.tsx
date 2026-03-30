@@ -385,20 +385,6 @@ export default function AvvisiClient() {
             Log invii email da checklist_alert_log
           </div>
         </div>
-        <Link
-          href="/"
-          style={{
-            padding: "6px 10px",
-            borderRadius: 10,
-            border: "1px solid #ddd",
-            textDecoration: "none",
-            color: "inherit",
-            background: "white",
-            marginLeft: "auto",
-          }}
-        >
-          ← Dashboard
-        </Link>
       </div>
 
       <div

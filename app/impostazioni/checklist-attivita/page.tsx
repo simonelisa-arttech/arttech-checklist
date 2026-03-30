@@ -308,20 +308,6 @@ export default function ChecklistAttivitaPage() {
             IMPOSTAZIONI ATTIVITA CHECKLIST
           </div>
         </div>
-        <Link
-          href="/"
-          style={{
-            padding: "6px 10px",
-            borderRadius: 10,
-            border: "1px solid #ddd",
-            textDecoration: "none",
-            color: "inherit",
-            background: "white",
-            marginLeft: "auto",
-          }}
-        >
-          ← Dashboard
-        </Link>
       </div>
 
       {error && (

@@ -84,20 +84,6 @@ export default function ImportProgettiPage() {
             </code>
           </div>
         </div>
-        <Link
-          href="/"
-          style={{
-            marginLeft: "auto",
-            padding: "8px 12px",
-            borderRadius: 10,
-            border: "1px solid #ddd",
-            background: "white",
-            textDecoration: "none",
-            color: "inherit",
-          }}
-        >
-          ← Dashboard
-        </Link>
       </div>
 
       <div

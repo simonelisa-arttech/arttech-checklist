@@ -80,20 +80,6 @@ export default function ClientiPage() {
           <h1 style={{ margin: 0, fontSize: 34 }}>AT SYSTEM</h1>
           <div style={{ marginTop: 2, fontSize: 12, opacity: 0.7 }}>CLIENTI</div>
         </div>
-        <Link
-          href="/"
-          style={{
-            marginLeft: "auto",
-            padding: "8px 12px",
-            borderRadius: 10,
-            border: "1px solid #ddd",
-            background: "white",
-            textDecoration: "none",
-            color: "inherit",
-          }}
-        >
-          ← Dashboard
-        </Link>
       </div>
 
       <div style={{ marginTop: 16, display: "flex", gap: 12, alignItems: "center" }}>

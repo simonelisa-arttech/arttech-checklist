@@ -55,19 +55,6 @@ export default function RootLayout({
               style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}
             >
               <Link
-                href="/"
-                style={{
-                  padding: "8px 12px",
-                  borderRadius: 10,
-                  border: "1px solid #ddd",
-                  textDecoration: "none",
-                  color: "inherit",
-                  background: "white",
-                }}
-              >
-                Home
-              </Link>
-              <Link
                 href="/dashboard"
                 style={{
                   padding: "8px 12px",
@@ -79,6 +66,19 @@ export default function RootLayout({
                 }}
               >
                 Dashboard
+              </Link>
+              <Link
+                href="/sim"
+                style={{
+                  padding: "8px 12px",
+                  borderRadius: 10,
+                  border: "1px solid #ddd",
+                  textDecoration: "none",
+                  color: "inherit",
+                  background: "white",
+                }}
+              >
+                SIM
               </Link>
               <Link
                 href="/cronoprogramma"
