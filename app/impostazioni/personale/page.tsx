@@ -1195,25 +1195,23 @@ function PersonalePageContent() {
                                         : "#fcfcfd",
                                 }}
                               >
-                                {rowError ? (
-                                  <div style={{ fontSize: 12, color: "#b91c1c" }}>{rowError}</div>
-                                ) : null}
                                 {isEditing ? (
-                                  <>
-                                    <div
-                                      style={{
-                                        display: "grid",
-                                        gap: 10,
-                                        gridTemplateColumns:
-                                          "minmax(180px, 1.1fr) minmax(140px, 0.8fr) minmax(140px, 0.8fr) minmax(120px, 0.7fr) minmax(150px, 0.8fr) minmax(150px, 0.8fr) minmax(220px, 1.2fr)",
-                                      }}
-                                    >
-                                      <label style={{ display: "block", fontSize: 12 }}>
-                                        Tipo documento
+                                  <div
+                                    style={{
+                                      display: "grid",
+                                      gap: 10,
+                                      gridTemplateColumns:
+                                        "minmax(180px, 1fr) minmax(130px, 0.75fr) minmax(130px, 0.75fr) minmax(110px, 0.65fr) minmax(180px, 0.95fr) minmax(230px, 1.15fr) minmax(220px, 1.1fr) minmax(240px, 1fr)",
+                                      alignItems: "start",
+                                    }}
+                                  >
+                                    <label style={{ display: "grid", gap: 6, fontSize: 12 }}>
+                                      <span style={{ color: "#6b7280" }}>Tipo documento</span>
+                                      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                                         <select
                                           value={doc.tipo_documento}
                                           onChange={(e) => updateDocumento(doc.id, { tipo_documento: e.target.value })}
-                                          style={{ width: "100%", padding: 8, marginTop: 6 }}
+                                          style={{ width: "100%", padding: 8 }}
                                         >
                                           <option value="">— Seleziona —</option>
                                           {docTypeChoices.map((option) => (
@@ -1222,90 +1220,86 @@ function PersonalePageContent() {
                                             </option>
                                           ))}
                                         </select>
-                                      </label>
-                                      <label style={{ display: "block", fontSize: 12 }}>
-                                        Data rilascio
-                                        <input
-                                          type="date"
-                                          value={doc.data_rilascio}
-                                          onChange={(e) => updateDocumento(doc.id, { data_rilascio: e.target.value })}
-                                          style={{ width: "100%", padding: 8, marginTop: 6 }}
-                                        />
-                                      </label>
-                                      <label style={{ display: "block", fontSize: 12 }}>
-                                        Data scadenza
-                                        <input
-                                          type="date"
-                                          value={doc.data_scadenza}
-                                          onChange={(e) => updateDocumento(doc.id, { data_scadenza: e.target.value })}
-                                          style={{ width: "100%", padding: 8, marginTop: 6 }}
-                                        />
-                                      </label>
-                                      <label style={{ display: "block", fontSize: 12 }}>
-                                        Preavviso
-                                        <input
-                                          type="number"
-                                          min={0}
-                                          step={1}
-                                          value={doc.giorni_preavviso}
-                                          onChange={(e) =>
-                                            updateDocumento(doc.id, { giorni_preavviso: e.target.value })
-                                          }
-                                          placeholder="giorni"
-                                          style={{ width: "100%", padding: 8, marginTop: 6 }}
-                                        />
-                                      </label>
-                                      <label style={{ display: "block", fontSize: 12 }}>
-                                        Frequenza alert
+                                        {badgeState && badgeStyle ? (
+                                          <span
+                                            style={{
+                                              display: "inline-flex",
+                                              alignItems: "center",
+                                              padding: "2px 8px",
+                                              borderRadius: 999,
+                                              fontSize: 11,
+                                              fontWeight: 700,
+                                              ...badgeStyle,
+                                            }}
+                                          >
+                                            {badgeState === "SCADUTO" ? "SCADUTO" : "IN SCADENZA"}
+                                          </span>
+                                        ) : null}
+                                      </div>
+                                    </label>
+                                    <label style={{ display: "grid", gap: 6, fontSize: 12 }}>
+                                      <span style={{ color: "#6b7280" }}>Data rilascio</span>
+                                      <input
+                                        type="date"
+                                        value={doc.data_rilascio}
+                                        onChange={(e) => updateDocumento(doc.id, { data_rilascio: e.target.value })}
+                                        style={{ width: "100%", padding: 8 }}
+                                      />
+                                    </label>
+                                    <label style={{ display: "grid", gap: 6, fontSize: 12 }}>
+                                      <span style={{ color: "#6b7280" }}>Data scadenza</span>
+                                      <input
+                                        type="date"
+                                        value={doc.data_scadenza}
+                                        onChange={(e) => updateDocumento(doc.id, { data_scadenza: e.target.value })}
+                                        style={{ width: "100%", padding: 8 }}
+                                      />
+                                    </label>
+                                    <label style={{ display: "grid", gap: 6, fontSize: 12 }}>
+                                      <span style={{ color: "#6b7280" }}>Preavviso</span>
+                                      <input
+                                        type="number"
+                                        min={0}
+                                        step={1}
+                                        value={doc.giorni_preavviso}
+                                        onChange={(e) => updateDocumento(doc.id, { giorni_preavviso: e.target.value })}
+                                        placeholder="giorni"
+                                        style={{ width: "100%", padding: 8 }}
+                                      />
+                                    </label>
+                                    <div style={{ display: "grid", gap: 6, fontSize: 12 }}>
+                                      <div style={{ color: "#6b7280" }}>Alert</div>
+                                      <div style={{ display: "grid", gap: 6 }}>
                                         <select
                                           value={doc.alert_frequenza}
-                                          onChange={(e) =>
-                                            updateDocumento(doc.id, { alert_frequenza: e.target.value })
-                                          }
-                                          style={{ width: "100%", padding: 8, marginTop: 6 }}
+                                          onChange={(e) => updateDocumento(doc.id, { alert_frequenza: e.target.value })}
+                                          style={{ width: "100%", padding: 8 }}
                                         >
-                                          <option value="">—</option>
+                                          <option value="">Frequenza —</option>
                                           <option value="ONCE">ONCE</option>
                                           <option value="DAILY">DAILY</option>
                                           <option value="WEEKLY">WEEKLY</option>
                                         </select>
-                                      </label>
-                                      <label style={{ display: "block", fontSize: 12 }}>
-                                        Stato alert
                                         <select
                                           value={doc.alert_stato}
-                                          onChange={(e) =>
-                                            updateDocumento(doc.id, { alert_stato: e.target.value })
-                                          }
-                                          style={{ width: "100%", padding: 8, marginTop: 6 }}
+                                          onChange={(e) => updateDocumento(doc.id, { alert_stato: e.target.value })}
+                                          style={{ width: "100%", padding: 8 }}
                                         >
-                                          <option value="">—</option>
+                                          <option value="">Stato —</option>
                                           <option value="ATTIVO">ATTIVO</option>
                                           <option value="SOSPESO">SOSPESO</option>
                                           <option value="COMPLETATO">COMPLETATO</option>
                                         </select>
-                                      </label>
-                                      <label style={{ display: "block", fontSize: 12 }}>
-                                        File URL
-                                        <input
-                                          value={doc.file_url}
-                                          onChange={(e) => updateDocumento(doc.id, { file_url: e.target.value })}
-                                          style={{ width: "100%", padding: 8, marginTop: 6 }}
-                                        />
-                                      </label>
+                                      </div>
                                     </div>
-
-                                    <label style={{ display: "block", fontSize: 12 }}>
-                                      Note
-                                      <textarea
-                                        value={doc.note}
-                                        onChange={(e) => updateDocumento(doc.id, { note: e.target.value })}
-                                        rows={2}
-                                        style={{ width: "100%", padding: 8, marginTop: 6 }}
+                                    <div style={{ display: "grid", gap: 6, fontSize: 12 }}>
+                                      <div style={{ color: "#6b7280" }}>File / link</div>
+                                      <input
+                                        value={doc.file_url}
+                                        onChange={(e) => updateDocumento(doc.id, { file_url: e.target.value })}
+                                        style={{ width: "100%", padding: 8 }}
+                                        placeholder="URL file"
                                       />
-                                    </label>
-
-                                    <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", flexWrap: "wrap" }}>
                                       <input
                                         type="file"
                                         onChange={(e) =>
@@ -1314,7 +1308,7 @@ function PersonalePageContent() {
                                             [rowId]: e.target.files?.[0] || null,
                                           }))
                                         }
-                                        style={{ maxWidth: 260 }}
+                                        style={{ width: "100%" }}
                                       />
                                       <button
                                         type="button"
@@ -1331,146 +1325,146 @@ function PersonalePageContent() {
                                       >
                                         {savingKey === `personale-doc-upload:${rowId}` ? "Caricamento..." : "Carica file"}
                                       </button>
-                                      <div style={{ fontSize: 12, color: "#6b7280", alignSelf: "center", marginRight: "auto" }}>
+                                      <div style={{ fontSize: 12, color: "#6b7280" }}>
                                         {selectedFile?.name || (hasFileUrl ? "File già associato" : "Nessun file selezionato")}
                                       </div>
-                                      {!doc.isNew ? (
+                                    </div>
+                                    <label style={{ display: "grid", gap: 6, fontSize: 12 }}>
+                                      <span style={{ color: "#6b7280" }}>Note</span>
+                                      <textarea
+                                        value={doc.note}
+                                        onChange={(e) => updateDocumento(doc.id, { note: e.target.value })}
+                                        rows={4}
+                                        style={{ width: "100%", padding: 8, resize: "vertical" }}
+                                      />
+                                    </label>
+                                    <div style={{ display: "grid", gap: 8, alignContent: "start" }}>
+                                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                                        {!doc.isNew ? (
+                                          <button
+                                            type="button"
+                                            onClick={() => setEditingDocumentoId(null)}
+                                            style={{
+                                              padding: "8px 12px",
+                                              borderRadius: 10,
+                                              border: "1px solid #d1d5db",
+                                              background: "white",
+                                              cursor: "pointer",
+                                            }}
+                                          >
+                                            Annulla
+                                          </button>
+                                        ) : null}
                                         <button
                                           type="button"
-                                          onClick={() => setEditingDocumentoId(null)}
+                                          onClick={() => saveDocumento(doc)}
+                                          disabled={savingKey === `personale-doc:${doc.id || "new"}`}
                                           style={{
                                             padding: "8px 12px",
                                             borderRadius: 10,
-                                            border: "1px solid #d1d5db",
+                                            border: "1px solid #111",
+                                            background: "#111",
+                                            color: "white",
+                                            cursor: "pointer",
+                                            opacity: savingKey === `personale-doc:${doc.id || "new"}` ? 0.7 : 1,
+                                          }}
+                                        >
+                                          {savingKey === `personale-doc:${doc.id || "new"}` ? "Salvataggio..." : "Salva documento"}
+                                        </button>
+                                        <button
+                                          type="button"
+                                          onClick={() => deleteDocumento(doc)}
+                                          style={{
+                                            padding: "8px 12px",
+                                            borderRadius: 10,
+                                            border: "1px solid #ddd",
                                             background: "white",
                                             cursor: "pointer",
                                           }}
                                         >
-                                          Annulla
+                                          Elimina
                                         </button>
-                                      ) : null}
-                                      <button
-                                        type="button"
-                                        onClick={() => saveDocumento(doc)}
-                                        disabled={savingKey === `personale-doc:${doc.id || "new"}`}
-                                        style={{
-                                          padding: "8px 12px",
-                                          borderRadius: 10,
-                                          border: "1px solid #111",
-                                          background: "#111",
-                                          color: "white",
-                                          cursor: "pointer",
-                                          opacity: savingKey === `personale-doc:${doc.id || "new"}` ? 0.7 : 1,
-                                        }}
-                                      >
-                                        {savingKey === `personale-doc:${doc.id || "new"}` ? "Salvataggio..." : "Salva documento"}
-                                      </button>
-                                      <button
-                                        type="button"
-                                        onClick={() => deleteDocumento(doc)}
-                                        style={{
-                                          padding: "8px 12px",
-                                          borderRadius: 10,
-                                          border: "1px solid #ddd",
-                                          background: "white",
-                                          cursor: "pointer",
-                                        }}
-                                      >
-                                        Elimina
-                                      </button>
+                                      </div>
+                                      {rowError ? <div style={{ fontSize: 12, color: "#b91c1c" }}>{rowError}</div> : null}
                                     </div>
-                                  </>
+                                  </div>
                                 ) : (
-                                  <>
-                                    <div
-                                      style={{
-                                        display: "grid",
-                                        gap: 10,
-                                        gridTemplateColumns:
-                                          "minmax(180px, 1.1fr) minmax(140px, 0.8fr) minmax(140px, 0.8fr) minmax(120px, 0.7fr) minmax(150px, 0.8fr) minmax(150px, 0.8fr) minmax(220px, 1.2fr)",
-                                      }}
-                                    >
-                                      <div style={{ display: "grid", gap: 6 }}>
-                                        <div style={{ fontSize: 12, color: "#6b7280" }}>Tipo documento</div>
-                                        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                                          <span style={{ fontWeight: 600 }}>{doc.tipo_documento || "—"}</span>
-                                          {badgeState && badgeStyle ? (
-                                            <span
-                                              style={{
-                                                display: "inline-flex",
-                                                alignItems: "center",
-                                                padding: "2px 8px",
-                                                borderRadius: 999,
-                                                fontSize: 11,
-                                                fontWeight: 700,
-                                                ...badgeStyle,
-                                              }}
-                                            >
-                                              {badgeState === "SCADUTO" ? "SCADUTO" : "IN SCADENZA"}
-                                            </span>
-                                          ) : null}
-                                        </div>
-                                      </div>
-                                      <div style={{ display: "grid", gap: 6 }}>
-                                        <div style={{ fontSize: 12, color: "#6b7280" }}>Data rilascio</div>
-                                        <div>{doc.data_rilascio || "—"}</div>
-                                      </div>
-                                      <div style={{ display: "grid", gap: 6 }}>
-                                        <div style={{ fontSize: 12, color: "#6b7280" }}>Data scadenza</div>
-                                        <div>{doc.data_scadenza || "—"}</div>
-                                      </div>
-                                      <div style={{ display: "grid", gap: 6 }}>
-                                        <div style={{ fontSize: 12, color: "#6b7280" }}>Preavviso</div>
-                                        <div>
-                                          {doc.giorni_preavviso ? `Preavviso: ${doc.giorni_preavviso} giorni` : "—"}
-                                        </div>
-                                      </div>
-                                      <div style={{ display: "grid", gap: 6 }}>
-                                        <div style={{ fontSize: 12, color: "#6b7280" }}>Frequenza alert</div>
-                                        <div>{doc.alert_frequenza || "—"}</div>
-                                      </div>
-                                      <div style={{ display: "grid", gap: 6 }}>
-                                        <div style={{ fontSize: 12, color: "#6b7280" }}>Stato alert</div>
-                                        <div>{doc.alert_stato || "—"}</div>
-                                      </div>
-                                      <div style={{ display: "grid", gap: 6 }}>
-                                        <div style={{ fontSize: 12, color: "#6b7280" }}>File / link</div>
-                                        <div
-                                          style={{
-                                            whiteSpace: "nowrap",
-                                            overflow: "hidden",
-                                            textOverflow: "ellipsis",
-                                          }}
-                                          title={doc.file_url || undefined}
-                                        >
-                                          {doc.file_url || "—"}
-                                        </div>
+                                  <div
+                                    style={{
+                                      display: "grid",
+                                      gap: 10,
+                                      gridTemplateColumns:
+                                        "minmax(180px, 1fr) minmax(130px, 0.75fr) minmax(130px, 0.75fr) minmax(110px, 0.65fr) minmax(180px, 0.9fr) minmax(220px, 1fr) minmax(220px, 1.1fr) auto",
+                                      alignItems: "start",
+                                    }}
+                                  >
+                                    <div style={{ display: "grid", gap: 6 }}>
+                                      <div style={{ fontSize: 12, color: "#6b7280" }}>Tipo documento</div>
+                                      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                                        <span style={{ fontWeight: 600 }}>{doc.tipo_documento || "—"}</span>
+                                        {badgeState && badgeStyle ? (
+                                          <span
+                                            style={{
+                                              display: "inline-flex",
+                                              alignItems: "center",
+                                              padding: "2px 8px",
+                                              borderRadius: 999,
+                                              fontSize: 11,
+                                              fontWeight: 700,
+                                              ...badgeStyle,
+                                            }}
+                                          >
+                                            {badgeState === "SCADUTO" ? "SCADUTO" : "IN SCADENZA"}
+                                          </span>
+                                        ) : null}
                                       </div>
                                     </div>
-
+                                    <div style={{ display: "grid", gap: 6 }}>
+                                      <div style={{ fontSize: 12, color: "#6b7280" }}>Data rilascio</div>
+                                      <div>{doc.data_rilascio || "—"}</div>
+                                    </div>
+                                    <div style={{ display: "grid", gap: 6 }}>
+                                      <div style={{ fontSize: 12, color: "#6b7280" }}>Data scadenza</div>
+                                      <div>{doc.data_scadenza || "—"}</div>
+                                    </div>
+                                    <div style={{ display: "grid", gap: 6 }}>
+                                      <div style={{ fontSize: 12, color: "#6b7280" }}>Preavviso</div>
+                                      <div>{doc.giorni_preavviso ? `${doc.giorni_preavviso} giorni` : "—"}</div>
+                                    </div>
+                                    <div style={{ display: "grid", gap: 6 }}>
+                                      <div style={{ fontSize: 12, color: "#6b7280" }}>Alert</div>
+                                      <div>{[doc.alert_frequenza || "—", doc.alert_stato || "—"].join(" / ")}</div>
+                                    </div>
+                                    <div style={{ display: "grid", gap: 6 }}>
+                                      <div style={{ fontSize: 12, color: "#6b7280" }}>File / link</div>
+                                      <div
+                                        style={{
+                                          whiteSpace: "nowrap",
+                                          overflow: "hidden",
+                                          textOverflow: "ellipsis",
+                                        }}
+                                        title={doc.file_url || undefined}
+                                      >
+                                        {doc.file_url || "—"}
+                                      </div>
+                                    </div>
                                     <div style={{ display: "grid", gap: 6 }}>
                                       <div style={{ fontSize: 12, color: "#6b7280" }}>Note</div>
-                                      <div style={{ whiteSpace: "pre-wrap" }}>{doc.note || "—"}</div>
-                                    </div>
-
-                                    <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", flexWrap: "wrap" }}>
-                                      <button
-                                        type="button"
-                                        onClick={() => setEditingDocumentoId(doc.id || null)}
+                                      <div
                                         style={{
-                                          padding: "8px 12px",
-                                          borderRadius: 10,
-                                          border: "1px solid #d1d5db",
-                                          background: "white",
-                                          cursor: "pointer",
+                                          whiteSpace: "pre-wrap",
+                                          overflow: "hidden",
+                                          textOverflow: "ellipsis",
                                         }}
                                       >
-                                        Modifica
-                                      </button>
-                                      {hasFileUrl ? (
+                                        {doc.note || "—"}
+                                      </div>
+                                    </div>
+                                    <div style={{ display: "grid", gap: 8, justifyItems: "end" }}>
+                                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
                                         <button
                                           type="button"
-                                          onClick={() => void openDocumentoFile(doc)}
+                                          onClick={() => setEditingDocumentoId(doc.id || null)}
                                           style={{
                                             padding: "8px 12px",
                                             borderRadius: 10,
@@ -1479,24 +1473,40 @@ function PersonalePageContent() {
                                             cursor: "pointer",
                                           }}
                                         >
-                                          Apri
+                                          Modifica
                                         </button>
-                                      ) : null}
-                                      <button
-                                        type="button"
-                                        onClick={() => deleteDocumento(doc)}
-                                        style={{
-                                          padding: "8px 12px",
-                                          borderRadius: 10,
-                                          border: "1px solid #ddd",
-                                          background: "white",
-                                          cursor: "pointer",
-                                        }}
-                                      >
-                                        Elimina
-                                      </button>
+                                        {hasFileUrl ? (
+                                          <button
+                                            type="button"
+                                            onClick={() => void openDocumentoFile(doc)}
+                                            style={{
+                                              padding: "8px 12px",
+                                              borderRadius: 10,
+                                              border: "1px solid #d1d5db",
+                                              background: "white",
+                                              cursor: "pointer",
+                                            }}
+                                          >
+                                            Apri
+                                          </button>
+                                        ) : null}
+                                        <button
+                                          type="button"
+                                          onClick={() => deleteDocumento(doc)}
+                                          style={{
+                                            padding: "8px 12px",
+                                            borderRadius: 10,
+                                            border: "1px solid #ddd",
+                                            background: "white",
+                                            cursor: "pointer",
+                                          }}
+                                        >
+                                          Elimina
+                                        </button>
+                                      </div>
+                                      {rowError ? <div style={{ fontSize: 12, color: "#b91c1c" }}>{rowError}</div> : null}
                                     </div>
-                                  </>
+                                  </div>
                                 )}
                               </div>
                             );
