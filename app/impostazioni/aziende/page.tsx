@@ -46,6 +46,7 @@ type DocumentCatalogRow = {
   target: string | null;
   categoria: string | null;
   has_scadenza: boolean;
+  required_default: boolean;
   attivo: boolean;
   sort_order: number | null;
 };
@@ -266,7 +267,7 @@ function AziendePageContent() {
         .order("tipo_documento", { ascending: true }),
       dbFrom("document_types").select("*").order("codice", { ascending: true }),
       dbFrom("document_catalog")
-        .select("id,nome,target,categoria,has_scadenza,attivo,sort_order")
+        .select("id,nome,target,categoria,has_scadenza,required_default,attivo,sort_order")
         .in("target", ["AZIENDA", "ENTRAMBI"])
         .eq("attivo", true)
         .order("sort_order", { ascending: true })
@@ -316,6 +317,7 @@ function AziendePageContent() {
         target: row.target == null ? null : String(row.target),
         categoria: row.categoria == null ? null : String(row.categoria),
         has_scadenza: row.has_scadenza !== false,
+        required_default: row.required_default === true,
         attivo: row.attivo !== false,
         sort_order:
           typeof row.sort_order === "number"
@@ -337,6 +339,28 @@ function AziendePageContent() {
     () => buildDocumentCatalogOptions(documentCatalog),
     [documentCatalog]
   );
+
+  const expectedDocumentsFromCatalog = useMemo(() => {
+    return documentCatalog
+      .filter((row) => row.attivo !== false)
+      .filter((row) => row.target === "AZIENDA" || row.target === "ENTRAMBI")
+      .filter((row) => row.required_default === true)
+      .slice()
+      .sort((a, b) => {
+        const aSort = a.sort_order == null ? Number.POSITIVE_INFINITY : a.sort_order;
+        const bSort = b.sort_order == null ? Number.POSITIVE_INFINITY : b.sort_order;
+        if (aSort !== bSort) return aSort - bSort;
+        return String(a.nome || "").localeCompare(String(b.nome || ""), "it");
+      })
+      .map((row) => ({
+        nome: String(row.nome || "").trim(),
+        target: (row.target === "ENTRAMBI" ? "ENTRAMBI" : "AZIENDA") as "AZIENDA" | "ENTRAMBI",
+        required_default: row.required_default === true,
+        attivo: row.attivo !== false,
+        sort_order: row.sort_order,
+      }))
+      .filter((row) => Boolean(row.nome));
+  }, [documentCatalog]);
 
   const documentCatalogById = useMemo(() => {
     const map = new Map<string, DocumentCatalogRow>();
@@ -1151,6 +1175,7 @@ function AziendePageContent() {
                       <SafetyExpectedDocumentsPanel
                         kind="AZIENDA"
                         extraDocumentLabels={documentTypeOptions}
+                        expectedDocumentsFromCatalog={expectedDocumentsFromCatalog}
                         docs={docRows.map((doc) => ({
                           tipo_documento: doc.tipo_documento,
                           data_scadenza: doc.data_scadenza || null,
