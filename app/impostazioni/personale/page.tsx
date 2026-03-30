@@ -23,6 +23,7 @@ type PersonaleRow = {
   tipo: "INTERNO" | "ESTERNO";
   telefono: string;
   email: string;
+  email_secondarie: string;
   attivo: boolean;
   created_at?: string | null;
   isNew?: boolean;
@@ -119,6 +120,22 @@ function parseDateOnly(value?: string | null) {
   return date;
 }
 
+function comparePersonaleDocumentiByScadenza(a: PersonaleDocumentoRow, b: PersonaleDocumentoRow) {
+  const aExpiry = parseDateOnly(a.data_scadenza);
+  const bExpiry = parseDateOnly(b.data_scadenza);
+
+  if (aExpiry && bExpiry) {
+    const diff = aExpiry.getTime() - bExpiry.getTime();
+    if (diff !== 0) return diff;
+  } else if (aExpiry) {
+    return -1;
+  } else if (bExpiry) {
+    return 1;
+  }
+
+  return String(a.tipo_documento || "").localeCompare(String(b.tipo_documento || ""), "it");
+}
+
 function getDocumentoBadgeState(doc: PersonaleDocumentoRow) {
   const expiry = parseDateOnly(doc.data_scadenza);
   if (!expiry) return null;
@@ -195,6 +212,7 @@ function PersonalePageContent() {
         tipo: String(row.tipo || "ESTERNO").toUpperCase() === "INTERNO" ? "INTERNO" : "ESTERNO",
         telefono: String(row.telefono || ""),
         email: String(row.email || ""),
+        email_secondarie: String(row.email_secondarie || ""),
         attivo: row.attivo !== false,
         created_at: row.created_at ?? null,
         isNew: false,
@@ -243,6 +261,9 @@ function PersonalePageContent() {
       const bucket = map.get(key) || [];
       bucket.push(doc);
       map.set(key, bucket);
+    }
+    for (const [key, bucket] of map.entries()) {
+      map.set(key, [...bucket].sort(comparePersonaleDocumentiByScadenza));
     }
     return map;
   }, [documenti]);
@@ -330,6 +351,7 @@ function PersonalePageContent() {
         tipo: "ESTERNO",
         telefono: "",
         email: "",
+        email_secondarie: "",
         attivo: true,
         isNew: true,
       },
@@ -356,6 +378,11 @@ function PersonalePageContent() {
       setError("Email non valida.");
       return;
     }
+    const emailSecondarie = row.email_secondarie.trim();
+    if (emailSecondarie && !emailSecondarie.includes("@")) {
+      setError("Email avvisi aggiuntiva non valida.");
+      return;
+    }
 
     setSavingKey(`personale:${row.id || "new"}`);
     setError(null);
@@ -368,6 +395,7 @@ function PersonalePageContent() {
       tipo: row.tipo === "INTERNO" ? "INTERNO" : "ESTERNO",
       telefono: row.telefono.trim() || null,
       email: email || null,
+      email_secondarie: emailSecondarie || null,
       attivo: row.attivo,
     };
 
@@ -913,7 +941,7 @@ function PersonalePageContent() {
                       display: "grid",
                       gap: 12,
                       gridTemplateColumns:
-                        "minmax(150px, 1fr) minmax(150px, 1fr) minmax(200px, 1.4fr) 170px 160px 200px 100px",
+                        "minmax(150px, 1fr) minmax(150px, 1fr) minmax(200px, 1.4fr) 170px 160px 200px minmax(220px, 1.2fr) 100px",
                       alignItems: "end",
                     }}
                   >
@@ -979,6 +1007,14 @@ function PersonalePageContent() {
                       <input
                         value={persona.email}
                         onChange={(e) => updatePersona(persona.id, { email: e.target.value })}
+                        style={{ width: "100%", padding: 8, marginTop: 6 }}
+                      />
+                    </label>
+                    <label style={{ display: "block", fontSize: 12 }}>
+                      Email avvisi aggiuntiva
+                      <input
+                        value={persona.email_secondarie}
+                        onChange={(e) => updatePersona(persona.id, { email_secondarie: e.target.value })}
                         style={{ width: "100%", padding: 8, marginTop: 6 }}
                       />
                     </label>
@@ -1053,21 +1089,6 @@ function PersonalePageContent() {
                       >
                         Elimina
                       </button>
-                      <button
-                        type="button"
-                        onClick={() => (persona.isNew ? null : addDocumento(personId))}
-                        disabled={persona.isNew}
-                        style={{
-                          padding: "8px 12px",
-                          borderRadius: 10,
-                          border: "1px solid #d1d5db",
-                          background: "#f9fafb",
-                          cursor: persona.isNew ? "default" : "pointer",
-                          opacity: persona.isNew ? 0.55 : 1,
-                        }}
-                      >
-                        + Documento persona
-                      </button>
                     </div>
                   </div>
 
@@ -1093,6 +1114,24 @@ function PersonalePageContent() {
                           return `/impostazioni/personale?${params.toString()}#personale-${encodeURIComponent(personId)}`;
                         }}
                       />
+
+                      <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                        <button
+                          type="button"
+                          onClick={() => (persona.isNew ? null : addDocumento(personId))}
+                          disabled={persona.isNew}
+                          style={{
+                            padding: "8px 12px",
+                            borderRadius: 10,
+                            border: "1px solid #d1d5db",
+                            background: "#f9fafb",
+                            cursor: persona.isNew ? "default" : "pointer",
+                            opacity: persona.isNew ? 0.55 : 1,
+                          }}
+                        >
+                          + Documento persona
+                        </button>
+                      </div>
 
                       <div style={{ display: "grid", gap: 10 }}>
                         {docRows.length === 0 ? (
