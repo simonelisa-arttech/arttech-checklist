@@ -23,7 +23,12 @@ import RenewalsBlock from "@/components/RenewalsBlock";
 import SafetyComplianceBadge from "@/components/SafetyComplianceBadge";
 import Toast from "@/components/Toast";
 import { buildClienteEmailList } from "@/lib/clientiEmail";
-import type { InterventoRow } from "@/lib/interventi";
+import {
+  getCanonicalInterventoEsitoFatturazione,
+  getInterventoLifecycleStatus,
+  normalizeInterventoEsitoFatturazioneValue,
+  type InterventoRow,
+} from "@/lib/interventi";
 import {
   EMPTY_INTERVENTO_OPERATIVI,
   loadInterventoOperativi,
@@ -177,6 +182,28 @@ type Tagliando = {
   modalita: string | null;
   note: string | null;
   created_at: string | null;
+};
+
+type ProjectSimRow = {
+  id: string;
+  checklist_id: string | null;
+  numero_telefono: string | null;
+  intestatario: string | null;
+  operatore: string | null;
+  piano_attivo: string | null;
+  device_installato: string | null;
+  data_attivazione: string | null;
+  data_scadenza: string | null;
+  giorni_preavviso: number | null;
+  attiva: boolean;
+};
+
+type ProjectSimRechargeRow = {
+  id: string;
+  sim_id: string;
+  data_ricarica: string | null;
+  importo: number | null;
+  billing_status: string | null;
 };
 
 type NewLicenza = {
@@ -608,6 +635,117 @@ function parseLocalDay(value?: string | null): Date | null {
   return dt;
 }
 
+function formatLocalDateLabel(value?: string | null) {
+  const dt = parseLocalDay(value);
+  return dt ? dt.toLocaleDateString("it-IT") : "—";
+}
+
+function formatDateOnlyValue(date?: Date | null) {
+  if (!date || !Number.isFinite(date.getTime())) return "";
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function addOneYearToDate(value?: string | null) {
+  const source = parseLocalDay(value);
+  if (!source) return "";
+  const next = new Date(source.getTime());
+  next.setFullYear(next.getFullYear() + 1);
+  if (next.getMonth() !== source.getMonth()) {
+    next.setDate(0);
+  }
+  return formatDateOnlyValue(next);
+}
+
+function getLatestProjectSimRechargeRow(rows: ProjectSimRechargeRow[]) {
+  if (!rows.length) return null;
+  return [...rows].sort((a, b) => {
+    const aTime = parseLocalDay(a.data_ricarica)?.getTime() || 0;
+    const bTime = parseLocalDay(b.data_ricarica)?.getTime() || 0;
+    return bTime - aTime;
+  })[0] || null;
+}
+
+function getProjectSimEffectiveScadenza(
+  row: Pick<ProjectSimRow, "data_attivazione" | "data_scadenza">,
+  latestRecharge?: Pick<ProjectSimRechargeRow, "data_ricarica"> | null
+) {
+  const activation = parseLocalDay(row.data_attivazione);
+  const lastRecharge = parseLocalDay(latestRecharge?.data_ricarica);
+  const baseDate =
+    activation && lastRecharge
+      ? activation.getTime() >= lastRecharge.getTime()
+        ? row.data_attivazione
+        : latestRecharge?.data_ricarica || ""
+      : activation
+        ? row.data_attivazione
+        : lastRecharge
+          ? latestRecharge?.data_ricarica || ""
+          : "";
+
+  if (baseDate) return addOneYearToDate(baseDate);
+  return String(row.data_scadenza || "").trim();
+}
+
+function getProjectSimOperationalState(
+  row: Pick<ProjectSimRow, "attiva" | "giorni_preavviso" | "data_attivazione" | "data_scadenza">,
+  latestRecharge?: Pick<ProjectSimRechargeRow, "data_ricarica"> | null
+) {
+  if (!row.attiva) return { stato: "OFF" as const, giorniDelta: null as number | null };
+
+  const effectiveScadenza = getProjectSimEffectiveScadenza(row, latestRecharge);
+  const scadenza = parseLocalDay(effectiveScadenza);
+  if (!scadenza) return { stato: "ATTIVA" as const, giorniDelta: null as number | null };
+
+  const today = startOfToday();
+  const msPerDay = 24 * 60 * 60 * 1000;
+  const giorniDelta = Math.round((scadenza.getTime() - today.getTime()) / msPerDay);
+  if (giorniDelta < 0) return { stato: "SCADUTO" as const, giorniDelta };
+
+  const giorniPreavvisoEffettivi =
+    typeof row.giorni_preavviso === "number" && Number.isFinite(row.giorni_preavviso)
+      ? row.giorni_preavviso
+      : 30;
+  if (giorniDelta <= giorniPreavvisoEffettivi) {
+    return { stato: "IN_SCADENZA" as const, giorniDelta };
+  }
+  return { stato: "ATTIVA" as const, giorniDelta };
+}
+
+function renderProjectSimStateBadge(state: ReturnType<typeof getProjectSimOperationalState>) {
+  const label = state.stato;
+  let bg = "#e5e7eb";
+  let color = "#374151";
+  if (label === "ATTIVA") {
+    bg = "#dcfce7";
+    color = "#166534";
+  } else if (label === "IN_SCADENZA") {
+    bg = "#ffedd5";
+    color = "#ea580c";
+  } else if (label === "SCADUTO") {
+    bg = "#fee2e2";
+    color = "#991b1b";
+  }
+  return (
+    <span
+      style={{
+        display: "inline-block",
+        padding: "2px 8px",
+        borderRadius: 999,
+        fontSize: 12,
+        fontWeight: 700,
+        background: bg,
+        color,
+        whiteSpace: "nowrap",
+      }}
+    >
+      {label}
+    </span>
+  );
+}
+
 function startOfToday() {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -1018,6 +1156,7 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
     { id: "section-scadenze-rinnovi", label: "Scadenze e rinnovi" },
     { id: "section-servizi", label: "Servizi" },
     { id: "section-licenze", label: "Licenze" },
+    { id: "section-sim", label: "SIM" },
     { id: "section-interventi", label: "Interventi" },
     { id: "section-foto-video", label: "Foto / Video" },
     { id: "section-checklist-operativa", label: "Check list operativa" },
@@ -1078,6 +1217,11 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
     fornitore: string;
   } | null>(null);
   const [assetSerials, setAssetSerials] = useState<AssetSerial[]>([]);
+  const [projectSims, setProjectSims] = useState<ProjectSimRow[]>([]);
+  const [projectSimRechargesById, setProjectSimRechargesById] = useState<
+    Record<string, ProjectSimRechargeRow[]>
+  >({});
+  const [projectSimsError, setProjectSimsError] = useState<string | null>(null);
   const checklistIsClosed = useMemo(() => isChecklistOperativaCompletedFromTasks(tasks), [tasks]);
   const [serialControlInput, setSerialControlInput] = useState("");
   const [serialControlDeviceCode, setSerialControlDeviceCode] = useState("");
@@ -1567,7 +1711,7 @@ function buildFormData(c: Checklist): FormData {
       incluso: Boolean(it.incluso),
       proforma: String(it.proforma || ""),
       codice_magazzino: String(it.codice_magazzino || ""),
-      fatturazione_stato: String(it.fatturazione_stato || "DA_FATTURARE"),
+      fatturazione_stato: getCanonicalInterventoEsitoFatturazione(it) || "DA_FATTURARE",
       stato_intervento: String(it.stato_intervento || "APERTO"),
       note: String(it.note || ""),
       ...EMPTY_INTERVENTO_OPERATIVI,
@@ -1745,6 +1889,8 @@ function buildFormData(c: Checklist): FormData {
     }
     setProjectInterventiError(null);
     const newInterventoOperativi = extractProjectInterventoOperativi(newProjectIntervento);
+    const canonicalEsito =
+      normalizeInterventoEsitoFatturazioneValue(newProjectIntervento.fatturazione_stato) || "DA_FATTURARE";
     const payload = {
       cliente: checklist.cliente,
       checklist_id: id,
@@ -1756,8 +1902,9 @@ function buildFormData(c: Checklist): FormData {
       incluso: Boolean(newProjectIntervento.incluso),
       proforma: newProjectIntervento.proforma.trim() || null,
       codice_magazzino: newProjectIntervento.codice_magazzino.trim() || null,
-      fatturazione_stato: newProjectIntervento.fatturazione_stato || "DA_FATTURARE",
+      fatturazione_stato: null,
       stato_intervento: newProjectIntervento.stato_intervento || "APERTO",
+      esito_fatturazione: canonicalEsito,
       note: newProjectIntervento.note.trim() || null,
     };
     let inserted: { id: string } | null = null;
@@ -1832,6 +1979,8 @@ function buildFormData(c: Checklist): FormData {
   async function saveInterventoRow() {
     if (!projectInterventoEditId || !projectInterventoEditForm) return;
     setProjectInterventiError(null);
+    const canonicalEsito =
+      normalizeInterventoEsitoFatturazioneValue(projectInterventoEditForm.fatturazione_stato) || "DA_FATTURARE";
     const payload = {
       data: projectInterventoEditForm.data || null,
       data_tassativa: projectInterventoEditForm.data_tassativa || null,
@@ -1841,8 +1990,12 @@ function buildFormData(c: Checklist): FormData {
       incluso: Boolean(projectInterventoEditForm.incluso),
       proforma: projectInterventoEditForm.proforma.trim() || null,
       codice_magazzino: projectInterventoEditForm.codice_magazzino.trim() || null,
-      fatturazione_stato: projectInterventoEditForm.fatturazione_stato || "DA_FATTURARE",
+      fatturazione_stato:
+        (projectInterventoEditForm.stato_intervento || "APERTO") === "CHIUSO"
+          ? canonicalEsito
+          : null,
       stato_intervento: projectInterventoEditForm.stato_intervento || "APERTO",
+      esito_fatturazione: canonicalEsito,
       note: projectInterventoEditForm.note.trim() || null,
     };
     let updRes = await dbFrom("saas_interventi")
@@ -1880,22 +2033,11 @@ function buildFormData(c: Checklist): FormData {
   }
 
   function getInterventoRowStato(row: InterventoRow) {
-    const raw = String(row.stato_intervento || "").toUpperCase();
-    if (raw === "APERTO" || raw === "CHIUSO") return raw;
-    if (row.fatturazione_stato) return "CHIUSO";
-    return "APERTO";
+    return getInterventoLifecycleStatus(row);
   }
 
   function getProjectEsitoFatturazione(row: InterventoRow) {
-    const raw = String(row.esito_fatturazione || "").toUpperCase();
-    if (raw === "DA_FATTURARE" || raw === "NON_FATTURARE" || raw === "INCLUSO_DA_CONSUNTIVO") {
-      return raw;
-    }
-    const fallback = String(row.fatturazione_stato || "").toUpperCase();
-    if (fallback === "DA_FATTURARE" || fallback === "NON_FATTURARE" || fallback === "INCLUSO_DA_CONSUNTIVO") {
-      return fallback;
-    }
-    return null;
+    return getCanonicalInterventoEsitoFatturazione(row);
   }
 
   function getProjectInterventoAlertRecipients() {
@@ -2061,6 +2203,7 @@ function buildFormData(c: Checklist): FormData {
     const { error } = await dbFrom("saas_interventi")
       .update({
         stato_intervento: "CHIUSO",
+        fatturazione_stato: projectCloseEsito,
         esito_fatturazione: projectCloseEsito,
         chiuso_il: new Date().toISOString(),
         chiuso_da_operatore: currentOperatoreId || null,
@@ -2095,7 +2238,7 @@ function buildFormData(c: Checklist): FormData {
     const { error } = await dbFrom("saas_interventi")
       .update({
         stato_intervento: "APERTO",
-        esito_fatturazione: null,
+        fatturazione_stato: null,
         chiuso_il: null,
         chiuso_da_operatore: null,
       })
@@ -3415,9 +3558,82 @@ function buildFormData(c: Checklist): FormData {
       return;
     }
 
+    let projectSimRows: ProjectSimRow[] = [];
+    let projectSimRechargesMap: Record<string, ProjectSimRechargeRow[]> = {};
+    let projectSimLoadError: string | null = null;
+    try {
+      const { data: simData, error: simError } = await dbFrom("sim_cards")
+        .select(
+          "id, checklist_id, numero_telefono, intestatario, operatore, piano_attivo, device_installato, data_attivazione, data_scadenza, giorni_preavviso, attiva"
+        )
+        .eq("checklist_id", id)
+        .order("numero_telefono", { ascending: true });
+
+      if (simError) {
+        projectSimLoadError = simError.message || "Errore caricamento SIM progetto";
+      } else {
+        projectSimRows = (((simData as any[]) || []) as Array<Record<string, any>>).map((row) => ({
+          id: String(row.id || ""),
+          checklist_id: row.checklist_id ? String(row.checklist_id) : null,
+          numero_telefono: row.numero_telefono ? String(row.numero_telefono) : null,
+          intestatario: row.intestatario ? String(row.intestatario) : null,
+          operatore: row.operatore ? String(row.operatore) : null,
+          piano_attivo: row.piano_attivo ? String(row.piano_attivo) : null,
+          device_installato: row.device_installato ? String(row.device_installato) : null,
+          data_attivazione: row.data_attivazione ? String(row.data_attivazione) : null,
+          data_scadenza: row.data_scadenza ? String(row.data_scadenza) : null,
+          giorni_preavviso:
+            typeof row.giorni_preavviso === "number"
+              ? row.giorni_preavviso
+              : row.giorni_preavviso == null || row.giorni_preavviso === ""
+                ? null
+                : Number(row.giorni_preavviso),
+          attiva: row.attiva !== false,
+        }));
+
+        const simIds = projectSimRows.map((row) => row.id).filter(Boolean);
+        if (simIds.length > 0) {
+          const { data: simRechargeData, error: simRechargeError } = await dbFrom("sim_recharges")
+            .select("id, sim_id, data_ricarica, importo, billing_status")
+            .in("sim_id", simIds)
+            .order("data_ricarica", { ascending: false });
+
+          if (simRechargeError) {
+            projectSimLoadError =
+              simRechargeError.message || "Errore caricamento ricariche SIM progetto";
+          } else {
+            for (const row of (((simRechargeData as any[]) || []) as Array<Record<string, any>>)) {
+              const simId = String(row.sim_id || "").trim();
+              if (!simId) continue;
+              const bucket = projectSimRechargesMap[simId] || [];
+              bucket.push({
+                id: String(row.id || ""),
+                sim_id: simId,
+                data_ricarica: row.data_ricarica ? String(row.data_ricarica) : null,
+                importo:
+                  typeof row.importo === "number"
+                    ? row.importo
+                    : row.importo == null || row.importo === ""
+                      ? null
+                      : Number(row.importo),
+                billing_status: row.billing_status ? String(row.billing_status) : null,
+              });
+              projectSimRechargesMap[simId] = bucket;
+            }
+          }
+        }
+      }
+    } catch (simError) {
+      projectSimLoadError =
+        simError instanceof Error ? simError.message : "Errore caricamento SIM progetto";
+    }
+
     setContrattoUltra(activeContratto);
     setContrattoUltraNome(ultraNome);
     setProjectInterventi(interventiData);
+    setProjectSims(projectSimRows);
+    setProjectSimRechargesById(projectSimRechargesMap);
+    setProjectSimsError(projectSimLoadError);
     await loadInterventoRowAttachmentCounts(interventiData);
     await fetchInterventoRowBulkLastAlert();
     setProjectInterventiError(null);
@@ -3695,6 +3911,30 @@ function buildFormData(c: Checklist): FormData {
   if (loading) return <div style={{ padding: 20 }}>Caricamento…</div>;
   if (error) return <div style={{ padding: 20, color: "crimson" }}>{error}</div>;
   if (!checklist) return <div style={{ padding: 20 }}>Checklist non trovata</div>;
+
+  const projectSimRows = projectSims
+    .slice()
+    .sort((a, b) =>
+      String(a.numero_telefono || a.intestatario || "").localeCompare(
+        String(b.numero_telefono || b.intestatario || ""),
+        "it"
+      )
+    );
+  const nextProjectSimRow =
+    projectSimRows
+      .map((row) => ({
+        row,
+        latestRecharge: getLatestProjectSimRechargeRow(projectSimRechargesById[row.id] || []),
+        effectiveScadenza: getProjectSimEffectiveScadenza(
+          row,
+          getLatestProjectSimRechargeRow(projectSimRechargesById[row.id] || [])
+        ),
+      }))
+      .filter((entry) => entry.effectiveScadenza)
+      .sort((a, b) => String(a.effectiveScadenza).localeCompare(String(b.effectiveScadenza)))[0] ||
+    null;
+  const nextProjectSimScadenza =
+    nextProjectSimRow?.effectiveScadenza || null;
 
   const strutturaOptions = catalogItems.filter((item) => {
     const code = (item.codice ?? "").toUpperCase();
@@ -5503,7 +5743,8 @@ function buildFormData(c: Checklist): FormData {
         checklistId: id || "",
         proforma: newProjectIntervento.proforma,
         codiceMagazzino: newProjectIntervento.codice_magazzino,
-        fatturazioneStato: newProjectIntervento.fatturazione_stato,
+      fatturazioneStato:
+        normalizeInterventoEsitoFatturazioneValue(newProjectIntervento.fatturazione_stato) || "DA_FATTURARE",
         statoIntervento: newProjectIntervento.stato_intervento,
         esitoFatturazione: "",
         numeroFattura: "",
@@ -5566,7 +5807,9 @@ function buildFormData(c: Checklist): FormData {
         checklistId: id || "",
         proforma: projectInterventoEditForm?.proforma || "",
         codiceMagazzino: projectInterventoEditForm?.codice_magazzino || "",
-        fatturazioneStato: projectInterventoEditForm?.fatturazione_stato || "DA_FATTURARE",
+        fatturazioneStato:
+          normalizeInterventoEsitoFatturazioneValue(projectInterventoEditForm?.fatturazione_stato) ||
+          "DA_FATTURARE",
         statoIntervento: projectInterventoEditForm?.stato_intervento || "APERTO",
         esitoFatturazione: "",
         numeroFattura: "",
@@ -7451,6 +7694,27 @@ function buildFormData(c: Checklist): FormData {
                 : renderBadge(getExpiryStatus(getNextLicenzaScadenza(licenze)))
             }
           />
+
+          <ServiceRow
+            label="SIM"
+            left={
+              projectSimRows.length === 0
+                ? "—"
+                : `Collegate: ${projectSimRows.length} — Prossima scadenza: ${
+                    nextProjectSimScadenza ? formatLocalDateLabel(nextProjectSimScadenza) : "—"
+                  }`
+            }
+            right={
+              !nextProjectSimRow
+                ? "—"
+                : renderProjectSimStateBadge(
+                    getProjectSimOperationalState(
+                      nextProjectSimRow.row,
+                      nextProjectSimRow.latestRecharge
+                    )
+                  )
+            }
+          />
         </ServiziBox>
 
         <div id="section-licenze" style={{ marginTop: 12, scrollMarginTop: 96 }}>
@@ -7906,6 +8170,84 @@ function buildFormData(c: Checklist): FormData {
                 </label>
               </div>
             </div>
+          </div>
+
+          <div id="section-sim" style={{ marginTop: 12, scrollMarginTop: 96 }}>
+            <h2 style={mainSectionTitleStyle}>SIM</h2>
+            <div style={{ marginBottom: 10, fontSize: 12, opacity: 0.7 }}>
+              SIM collegate al progetto via <code>checklist_id</code>. Vista sola lettura.
+            </div>
+
+            {projectSimsError && (
+              <div style={{ color: "crimson", marginBottom: 10 }}>{projectSimsError}</div>
+            )}
+
+            {projectSimRows.length === 0 ? (
+              <div style={{ opacity: 0.7 }}>Nessuna SIM collegata al progetto</div>
+            ) : (
+              <div
+                style={{
+                  border: "1px solid #eee",
+                  borderRadius: 12,
+                  overflowX: "auto",
+                  overflowY: "hidden",
+                  background: "white",
+                }}
+              >
+                <div style={{ minWidth: 980 }}>
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "160px 120px 180px 160px 140px 140px 120px",
+                      gap: 10,
+                      padding: "10px 12px",
+                      fontWeight: 700,
+                      borderBottom: "1px solid #eee",
+                      background: "#fafafa",
+                    }}
+                  >
+                    <div>Numero telefono</div>
+                    <div>Operatore</div>
+                    <div>Piano attivo</div>
+                    <div>Device installato</div>
+                    <div>Scadenza effettiva</div>
+                    <div>Ultima ricarica</div>
+                    <div>Stato SIM</div>
+                  </div>
+
+                  {projectSimRows.map((row) => {
+                    const latestRecharge = getLatestProjectSimRechargeRow(
+                      projectSimRechargesById[row.id] || []
+                    );
+                    const effectiveScadenza = getProjectSimEffectiveScadenza(row, latestRecharge);
+                    const simState = getProjectSimOperationalState(row, latestRecharge);
+
+                    return (
+                      <div
+                        key={row.id}
+                        style={{
+                          display: "grid",
+                          gridTemplateColumns: "160px 120px 180px 160px 140px 140px 120px",
+                          gap: 10,
+                          padding: "10px 12px",
+                          borderBottom: "1px solid #f5f5f5",
+                          alignItems: "center",
+                          fontSize: 13,
+                        }}
+                      >
+                        <div style={{ fontWeight: 700 }}>{row.numero_telefono || "—"}</div>
+                        <div>{row.operatore || "—"}</div>
+                        <div>{row.piano_attivo || "—"}</div>
+                        <div>{row.device_installato || "—"}</div>
+                        <div>{formatLocalDateLabel(effectiveScadenza)}</div>
+                        <div>{formatLocalDateLabel(latestRecharge?.data_ricarica)}</div>
+                        <div>{renderProjectSimStateBadge(simState)}</div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </div>
 
           <div id="section-interventi" style={{ marginTop: 12, scrollMarginTop: 96 }}>
