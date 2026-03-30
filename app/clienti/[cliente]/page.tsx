@@ -16,7 +16,12 @@ import {
   formatClienteEmailList,
   normalizeEmailSecondarieInput,
 } from "@/lib/clientiEmail";
-import type { InterventoRow } from "@/lib/interventi";
+import {
+  getCanonicalInterventoEsitoFatturazione,
+  getInterventoLifecycleStatus,
+  normalizeInterventoEsitoFatturazioneValue,
+  type InterventoRow,
+} from "@/lib/interventi";
 import {
   loadInterventoOperativi,
   saveInterventoOperativi,
@@ -261,19 +266,17 @@ function renderInterventoBadge(label: "INCLUSO" | "EXTRA") {
 }
 
 function renderFatturazioneBadge(label: string) {
-  const upper = String(label || "").toUpperCase();
+  const upper =
+    normalizeInterventoEsitoFatturazioneValue(label) || String(label || "").toUpperCase();
   let bg = "#e5e7eb";
   let color = "#374151";
   if (upper === "DA_FATTURARE") {
     bg = "#fee2e2";
     color = "#991b1b";
-  } else if (upper === "INCLUSO_DA_CONSUNTIVO") {
+  } else if (upper === "INCLUSO") {
     bg = "#dbeafe";
     color = "#1d4ed8";
   } else if (upper === "FATTURATO") {
-    bg = "#dcfce7";
-    color = "#166534";
-  } else if (upper === "NON_FATTURARE") {
     bg = "#dcfce7";
     color = "#166534";
   }
@@ -290,7 +293,7 @@ function renderFatturazioneBadge(label: string) {
         whiteSpace: "nowrap",
       }}
     >
-      {upper === "INCLUSO_DA_CONSUNTIVO" ? "A CONSUNTIVO" : upper || "—"}
+      {upper || "—"}
     </span>
   );
 }
@@ -382,11 +385,153 @@ function fmtDate(value?: string | Date | null) {
   return d.toLocaleDateString();
 }
 
+function formatCurrency(value?: number | null) {
+  if (value == null || !Number.isFinite(value)) return "—";
+  return new Intl.NumberFormat("it-IT", {
+    style: "currency",
+    currency: "EUR",
+    minimumFractionDigits: 2,
+  }).format(value);
+}
+
+function formatDateOnlyValue(date?: Date | null) {
+  if (!date || !Number.isFinite(date.getTime())) return "";
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function addOneYearToDate(value?: string | null) {
+  const source = parseLocalDay(value);
+  if (!source) return "";
+  const next = new Date(source.getTime());
+  next.setFullYear(next.getFullYear() + 1);
+  if (next.getMonth() !== source.getMonth()) {
+    next.setDate(0);
+  }
+  return formatDateOnlyValue(next);
+}
+
+function getLatestClienteSimRechargeRow(rows: ClienteSimRechargeRow[]) {
+  if (!rows.length) return null;
+  return [...rows].sort((a, b) => {
+    const aTime = parseLocalDay(a.data_ricarica)?.getTime() || 0;
+    const bTime = parseLocalDay(b.data_ricarica)?.getTime() || 0;
+    return bTime - aTime;
+  })[0] || null;
+}
+
+function getClienteSimEffectiveScadenza(
+  row: Pick<ClienteSimRow, "data_attivazione" | "data_scadenza">,
+  latestRecharge?: Pick<ClienteSimRechargeRow, "data_ricarica"> | null
+) {
+  const activation = parseLocalDay(row.data_attivazione);
+  const lastRecharge = parseLocalDay(latestRecharge?.data_ricarica);
+  const baseDate =
+    activation && lastRecharge
+      ? activation.getTime() >= lastRecharge.getTime()
+        ? row.data_attivazione
+        : latestRecharge?.data_ricarica || ""
+      : activation
+        ? row.data_attivazione
+        : lastRecharge
+          ? latestRecharge?.data_ricarica || ""
+          : "";
+  if (baseDate) return addOneYearToDate(baseDate);
+  return String(row.data_scadenza || "").trim();
+}
+
+function getClienteSimOperationalState(
+  row: Pick<ClienteSimRow, "attiva" | "giorni_preavviso" | "data_attivazione" | "data_scadenza">,
+  latestRecharge?: Pick<ClienteSimRechargeRow, "data_ricarica"> | null
+) {
+  if (!row.attiva) return "OFF" as const;
+  const effectiveScadenza = getClienteSimEffectiveScadenza(row, latestRecharge);
+  const scadenza = parseLocalDay(effectiveScadenza);
+  if (!scadenza) return "ATTIVA" as const;
+  const today = startOfToday();
+  const giorniDelta = Math.round((scadenza.getTime() - today.getTime()) / (24 * 60 * 60 * 1000));
+  if (giorniDelta < 0) return "SCADUTO" as const;
+  const giorniPreavvisoEffettivi =
+    typeof row.giorni_preavviso === "number" && Number.isFinite(row.giorni_preavviso)
+      ? row.giorni_preavviso
+      : 30;
+  if (giorniDelta <= giorniPreavvisoEffettivi) return "IN_SCADENZA" as const;
+  return "ATTIVA" as const;
+}
+
+function renderClienteSimStateBadge(state: ReturnType<typeof getClienteSimOperationalState>) {
+  let bg = "#e5e7eb";
+  let color = "#374151";
+  if (state === "ATTIVA") {
+    bg = "#dcfce7";
+    color = "#166534";
+  } else if (state === "IN_SCADENZA") {
+    bg = "#ffedd5";
+    color = "#ea580c";
+  } else if (state === "SCADUTO") {
+    bg = "#fee2e2";
+    color = "#991b1b";
+  }
+  return (
+    <span
+      style={{
+        display: "inline-block",
+        padding: "2px 8px",
+        borderRadius: 999,
+        fontSize: 12,
+        fontWeight: 700,
+        background: bg,
+        color,
+        whiteSpace: "nowrap",
+      }}
+    >
+      {state}
+    </span>
+  );
+}
+
+function renderRechargeBillingBadge(value?: string | null) {
+  const raw = String(value || "").trim().toUpperCase();
+  let background = "#f3f4f6";
+  let color = "#374151";
+
+  if (raw === "DA_FATTURARE") {
+    background = "#fef3c7";
+    color = "#92400e";
+  } else if (raw === "FATTURATO") {
+    background = "#dcfce7";
+    color = "#166534";
+  } else if (raw === "NON_FATTURARE") {
+    background = "#e5e7eb";
+    color = "#4b5563";
+  }
+
+  return (
+    <span
+      style={{
+        display: "inline-block",
+        padding: "2px 8px",
+        borderRadius: 999,
+        fontSize: 12,
+        fontWeight: 700,
+        background,
+        color,
+        whiteSpace: "nowrap",
+      }}
+    >
+      {raw || "—"}
+    </span>
+  );
+}
+
 function formatInvoiceStatus(label?: string | null) {
-  const upper = String(label || "").toUpperCase();
+  const upper =
+    normalizeInterventoEsitoFatturazioneValue(label) || String(label || "").toUpperCase();
   if (upper === "DA_FATTURARE") return "Da fatturare";
   if (upper === "FATTURATO") return "Fatturato";
-  if (upper === "NON_FATTURARE") return "Non fatturare";
+  if (upper === "INCLUSO") return "Incluso";
   return upper || "";
 }
 
@@ -514,21 +659,11 @@ function normalizeAlertTasks(input: any) {
 }
 
 function getInterventoStato(i: InterventoRow): "APERTO" | "CHIUSO" {
-  const raw = String(i.stato_intervento || "").toUpperCase();
-  if (raw === "APERTO" || raw === "CHIUSO") return raw;
-  if (i.fatturazione_stato) return "CHIUSO";
-  return "APERTO";
+  return getInterventoLifecycleStatus(i);
 }
 
 function getEsitoFatturazione(i: InterventoRow): string | null {
-  const raw = String(i.esito_fatturazione || "").toUpperCase();
-  if (raw === "DA_FATTURARE" || raw === "NON_FATTURARE" || raw === "INCLUSO_DA_CONSUNTIVO") {
-    return raw;
-  }
-  const fallback = String(i.fatturazione_stato || "").toUpperCase();
-  if (fallback === "DA_FATTURARE" || fallback === "NON_FATTURARE") return fallback;
-  if (fallback === "INCLUSO_DA_CONSUNTIVO") return fallback;
-  return null;
+  return getCanonicalInterventoEsitoFatturazione(i);
 }
 
 function canReopenIntervento(currentRole: string | null) {
@@ -729,6 +864,27 @@ type PianoUltraRow = {
   interventi_inclusi: number | null;
 };
 
+type ClienteSimRow = {
+  id: string;
+  checklist_id: string | null;
+  numero_telefono: string | null;
+  operatore: string | null;
+  piano_attivo: string | null;
+  device_installato: string | null;
+  data_attivazione: string | null;
+  data_scadenza: string | null;
+  giorni_preavviso: number | null;
+  attiva: boolean;
+};
+
+type ClienteSimRechargeRow = {
+  id: string;
+  sim_id: string;
+  data_ricarica: string | null;
+  importo: number | null;
+  billing_status: string | null;
+};
+
 function inferUltraInterventiInclusiFromCode(codeRaw?: string | null) {
   const code = String(codeRaw || "")
     .trim()
@@ -756,6 +912,11 @@ export default function ClientePage({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [checklists, setChecklists] = useState<ChecklistRow[]>([]);
+  const [clienteSims, setClienteSims] = useState<ClienteSimRow[]>([]);
+  const [clienteSimRechargesById, setClienteSimRechargesById] = useState<
+    Record<string, ClienteSimRechargeRow[]>
+  >({});
+  const [clienteSimsError, setClienteSimsError] = useState<string | null>(null);
   const [licenze, setLicenze] = useState<LicenzaRow[]>([]);
   const [licenzeError, setLicenzeError] = useState<string | null>(null);
   const [licenzeNotice, setLicenzeNotice] = useState<string | null>(null);
@@ -1714,6 +1875,81 @@ export default function ClientePage({
       }
       setChecklists(list);
       const checklistIds = list.map((c) => c.id).filter(Boolean);
+      if (checklistIds.length === 0) {
+        setClienteSims([]);
+        setClienteSimRechargesById({});
+        setClienteSimsError(null);
+      } else {
+        const { data: simData, error: simErr } = await dbFrom("sim_cards")
+          .select(
+            "id, checklist_id, numero_telefono, operatore, piano_attivo, device_installato, data_attivazione, data_scadenza, giorni_preavviso, attiva"
+          )
+          .in("checklist_id", checklistIds)
+          .order("numero_telefono", { ascending: true });
+
+        if (simErr) {
+          setClienteSims([]);
+          setClienteSimRechargesById({});
+          setClienteSimsError("Errore caricamento SIM cliente: " + simErr.message);
+        } else {
+          const simRows = (((simData as any[]) || []) as Array<Record<string, any>>).map((row) => ({
+            id: String(row.id || ""),
+            checklist_id: row.checklist_id ? String(row.checklist_id) : null,
+            numero_telefono: row.numero_telefono ? String(row.numero_telefono) : null,
+            operatore: row.operatore ? String(row.operatore) : null,
+            piano_attivo: row.piano_attivo ? String(row.piano_attivo) : null,
+            device_installato: row.device_installato ? String(row.device_installato) : null,
+            data_attivazione: row.data_attivazione ? String(row.data_attivazione) : null,
+            data_scadenza: row.data_scadenza ? String(row.data_scadenza) : null,
+            giorni_preavviso:
+              typeof row.giorni_preavviso === "number"
+                ? row.giorni_preavviso
+                : row.giorni_preavviso == null || row.giorni_preavviso === ""
+                  ? null
+                  : Number(row.giorni_preavviso),
+            attiva: row.attiva !== false,
+          })) as ClienteSimRow[];
+
+          setClienteSims(simRows);
+          setClienteSimsError(null);
+
+          const simIds = simRows.map((row) => row.id).filter(Boolean);
+          if (simIds.length === 0) {
+            setClienteSimRechargesById({});
+          } else {
+            const { data: rechargeData, error: rechargeErr } = await dbFrom("sim_recharges")
+              .select("id, sim_id, data_ricarica, importo, billing_status")
+              .in("sim_id", simIds)
+              .order("data_ricarica", { ascending: false });
+
+            if (rechargeErr) {
+              setClienteSimRechargesById({});
+              setClienteSimsError("Errore caricamento ricariche SIM cliente: " + rechargeErr.message);
+            } else {
+              const rechargeMap: Record<string, ClienteSimRechargeRow[]> = {};
+              for (const row of (((rechargeData as any[]) || []) as Array<Record<string, any>>)) {
+                const simId = String(row.sim_id || "").trim();
+                if (!simId) continue;
+                const bucket = rechargeMap[simId] || [];
+                bucket.push({
+                  id: String(row.id || ""),
+                  sim_id: simId,
+                  data_ricarica: row.data_ricarica ? String(row.data_ricarica) : null,
+                  importo:
+                    typeof row.importo === "number"
+                      ? row.importo
+                      : row.importo == null || row.importo === ""
+                        ? null
+                        : Number(row.importo),
+                  billing_status: row.billing_status ? String(row.billing_status) : null,
+                });
+                rechargeMap[simId] = bucket;
+              }
+              setClienteSimRechargesById(rechargeMap);
+            }
+          }
+        }
+      }
       if (checklistIds.length > 0) {
         const byChecklist = new Map<string, string>();
         for (const c of list) {
@@ -2103,7 +2339,7 @@ export default function ClientePage({
       incluso: Boolean(i.incluso),
       proforma: i.proforma ?? i.checklist?.proforma ?? "",
       codiceMagazzino: i.codice_magazzino ?? i.checklist?.magazzino_importazione ?? "",
-      fatturazioneStato: i.fatturazione_stato ?? "DA_FATTURARE",
+      fatturazioneStato: getEsitoFatturazione(i) ?? "DA_FATTURARE",
       statoIntervento: getInterventoStato(i),
       esitoFatturazione: getEsitoFatturazione(i) ?? "",
       numeroFattura: i.numero_fattura ?? "",
@@ -2142,6 +2378,10 @@ export default function ClientePage({
       return;
     }
 
+    const canonicalEsito =
+      normalizeInterventoEsitoFatturazioneValue(editIntervento.fatturazioneStato) ||
+      normalizeInterventoEsitoFatturazioneValue(editIntervento.esitoFatturazione) ||
+      "DA_FATTURARE";
     const payload = {
       data: editIntervento.data?.trim() ? editIntervento.data.trim() : null,
       data_tassativa: editIntervento.dataTassativa?.trim() ? editIntervento.dataTassativa.trim() : null,
@@ -2152,17 +2392,15 @@ export default function ClientePage({
       codice_magazzino: editIntervento.codiceMagazzino.trim()
         ? editIntervento.codiceMagazzino.trim()
         : null,
-      fatturazione_stato: editIntervento.fatturazioneStato,
+      fatturazione_stato:
+        editIntervento.statoIntervento === "CHIUSO" ? canonicalEsito : null,
       stato_intervento: editIntervento.statoIntervento,
-      esito_fatturazione:
-        editIntervento.statoIntervento === "CHIUSO" && editIntervento.esitoFatturazione
-          ? editIntervento.esitoFatturazione
-          : null,
+      esito_fatturazione: canonicalEsito,
       numero_fattura: editIntervento.numeroFattura.trim()
         ? editIntervento.numeroFattura.trim()
         : null,
       fatturato_il:
-        editIntervento.fatturazioneStato === "FATTURATO"
+        canonicalEsito === "FATTURATO"
           ? editIntervento.fatturatoIl || new Date().toISOString().slice(0, 10)
           : null,
       note: editIntervento.note.trim() ? editIntervento.note.trim() : null,
@@ -3377,7 +3615,8 @@ export default function ClientePage({
 
     const dataValue =
       newIntervento.data?.trim() || new Date().toISOString().slice(0, 10);
-    const fatturazione = newIntervento.fatturazioneStato || "DA_FATTURARE";
+    const fatturazione =
+      normalizeInterventoEsitoFatturazioneValue(newIntervento.fatturazioneStato) || "DA_FATTURARE";
     const fatturatoIlValue =
       fatturazione === "FATTURATO"
         ? newIntervento.fatturatoIl?.trim() || new Date().toISOString().slice(0, 10)
@@ -3397,9 +3636,9 @@ export default function ClientePage({
       codice_magazzino: newIntervento.codiceMagazzino.trim()
         ? newIntervento.codiceMagazzino.trim()
         : null,
-      fatturazione_stato: fatturazione,
+      fatturazione_stato: null,
       stato_intervento: "APERTO",
-      esito_fatturazione: null,
+      esito_fatturazione: fatturazione,
       chiuso_il: null,
       chiuso_da_operatore: null,
       numero_fattura: newIntervento.numeroFattura.trim()
@@ -3650,6 +3889,7 @@ export default function ClientePage({
 
     const payload = {
       stato_intervento: "CHIUSO",
+      fatturazione_stato: closeEsito,
       esito_fatturazione: closeEsito,
       chiuso_il: new Date().toISOString(),
       chiuso_da_operatore: currentOperatoreId ?? null,
@@ -5651,7 +5891,7 @@ export default function ClientePage({
 
     const payload = {
       stato_intervento: "APERTO",
-      esito_fatturazione: null,
+      fatturazione_stato: null,
       chiuso_il: null,
       chiuso_da_operatore: null,
     };
@@ -5803,6 +6043,11 @@ export default function ClientePage({
 
   if (loading) return <div style={{ padding: 20 }}>Caricamento…</div>;
   if (error) return <div style={{ padding: 20, color: "crimson" }}>{error}</div>;
+  const clienteSimRows = clienteSims
+    .slice()
+    .sort((a, b) =>
+      String(a.numero_telefono || "").localeCompare(String(b.numero_telefono || ""), "it")
+    );
 
   return (
     <div style={{ maxWidth: 1100, margin: "40px auto", padding: 16 }}>
@@ -7752,6 +7997,86 @@ ${rinnovi30ggBreakdown.debugSample
                 <div>{getEffectiveProjectStatus({ stato_progetto: c.stato_progetto }) ?? "—"}</div>
               </div>
             ))}
+          </div>
+        )}
+      </div>
+
+      <div style={{ marginTop: 18 }}>
+        <h2 style={{ margin: 0 }}>SIM cliente</h2>
+        {clienteSimsError && <div style={{ color: "crimson", marginTop: 6 }}>{clienteSimsError}</div>}
+        {clienteSimRows.length === 0 ? (
+          <div style={{ opacity: 0.7, marginTop: 6 }}>Nessuna SIM associata ai progetti del cliente</div>
+        ) : (
+          <div
+            style={{
+              marginTop: 10,
+              border: "1px solid #eee",
+              borderRadius: 12,
+              overflowX: "auto",
+              overflowY: "hidden",
+              background: "white",
+            }}
+          >
+            <div style={{ minWidth: 1260 }}>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "140px 180px 110px 160px 160px 140px 140px 120px 150px 110px",
+                  padding: "10px 12px",
+                  fontWeight: 800,
+                  background: "#fafafa",
+                  borderBottom: "1px solid #eee",
+                  gap: 10,
+                }}
+              >
+                <div>Numero</div>
+                <div>Progetto associato</div>
+                <div>Operatore</div>
+                <div>Piano</div>
+                <div>Device</div>
+                <div>Scadenza</div>
+                <div>Ultima ricarica</div>
+                <div>Importo</div>
+                <div>Stato fatturazione</div>
+                <div>Stato SIM</div>
+              </div>
+
+              {clienteSimRows.map((row) => {
+                const latestRecharge = getLatestClienteSimRechargeRow(
+                  clienteSimRechargesById[row.id] || []
+                );
+                const effectiveScadenza = getClienteSimEffectiveScadenza(row, latestRecharge);
+                const simState = getClienteSimOperationalState(row, latestRecharge);
+                const project = checklistById.get(String(row.checklist_id || ""));
+
+                return (
+                  <div
+                    key={row.id}
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns:
+                        "140px 180px 110px 160px 160px 140px 140px 120px 150px 110px",
+                      padding: "10px 12px",
+                      borderBottom: "1px solid #f3f4f6",
+                      alignItems: "center",
+                      fontSize: 13,
+                      gap: 10,
+                    }}
+                  >
+                    <div style={{ fontWeight: 700 }}>{row.numero_telefono || "—"}</div>
+                    <div>{project?.nome_checklist || "—"}</div>
+                    <div>{row.operatore || "—"}</div>
+                    <div>{row.piano_attivo || "—"}</div>
+                    <div>{row.device_installato || "—"}</div>
+                    <div>{fmtDate(effectiveScadenza) || "—"}</div>
+                    <div>{fmtDate(latestRecharge?.data_ricarica) || "—"}</div>
+                    <div>{formatCurrency(latestRecharge?.importo)}</div>
+                    <div>{renderRechargeBillingBadge(latestRecharge?.billing_status)}</div>
+                    <div>{renderClienteSimStateBadge(simState)}</div>
+                  </div>
+                );
+              })}
+            </div>
           </div>
         )}
       </div>
