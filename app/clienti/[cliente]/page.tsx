@@ -231,6 +231,10 @@ function getLicenseStatus(lic: { stato?: string | null; scadenza?: string | null
   return "ATTIVA";
 }
 
+function isSimLicenseType(value?: string | null) {
+  return String(value || "").trim().toUpperCase() === "SIM";
+}
+
 function getNextLicenzaScadenza(
   licenze: Array<{ scadenza?: string | null; stato?: string | null }>
 ) {
@@ -2666,7 +2670,9 @@ export default function ClientePage({
       stato: t.stato ?? null,
       modalita: t.modalita ?? null,
     }));
-    const licenzeMapped = licenze.map((l) => ({
+    const licenzeMapped = licenze
+      .filter((l) => !isSimLicenseType(l.tipo))
+      .map((l) => ({
       id: l.id,
       source: "licenze" as const,
       item_tipo: "LICENZA",

@@ -149,6 +149,10 @@ function normalizeUpper(value?: string | null) {
   return normalizeString(value).toUpperCase();
 }
 
+function isSimLicenseType(value?: string | null) {
+  return normalizeUpper(value) === "SIM";
+}
+
 function isNoleggioChecklist(value?: string | null) {
   return normalizeUpper(value) === "NOLEGGIO";
 }
@@ -531,6 +535,7 @@ export async function buildScadenzeAgenda(
 
   const licenzeMapped: ScadenzaAgendaRow[] = licenseRows
     .filter((l) => !noleggioChecklistIds.has(normalizeString(l.checklist_id)))
+    .filter((l) => !isSimLicenseType(l.tipo))
     .map((l) => {
       const ctx = getChecklistContext(maps, l.checklist_id, null);
       const stato = l.status || l.stato || (l.scadenza ? "DA_AVVISARE" : null);
