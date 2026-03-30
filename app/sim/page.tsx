@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import ConfigMancante from "@/components/ConfigMancante";
 import { dbFrom } from "@/lib/clientDbBroker";
 import { isSupabaseConfigured } from "@/lib/supabaseClient";
@@ -160,24 +160,31 @@ export default function SimPage() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [savingKey, setSavingKey] = useState<string | null>(null);
+  const [syncing, setSyncing] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
   const [rows, setRows] = useState<SimCardRow[]>([]);
   const [search, setSearch] = useState("");
   const [attiveFilter, setAttiveFilter] = useState<"ATTIVE" | "TUTTE">("ATTIVE");
   const [operatoreFilter, setOperatoreFilter] = useState("TUTTI");
   const [billingStatusFilter, setBillingStatusFilter] = useState("TUTTI");
   const [editingSimId, setEditingSimId] = useState<string | null>(null);
+  const [expandedSimId, setExpandedSimId] = useState<string | null>(null);
   const [rechargesBySimId, setRechargesBySimId] = useState<Record<string, SimRechargeRow[]>>({});
   const [newRechargeBySimId, setNewRechargeBySimId] = useState<
     Record<string, { data_ricarica: string; importo: string; note: string }>
   >({});
   const [savingRechargeKey, setSavingRechargeKey] = useState<string | null>(null);
+  const topScrollRef = useRef<HTMLDivElement | null>(null);
+  const mainScrollRef = useRef<HTMLDivElement | null>(null);
+  const scrollContentRef = useRef<HTMLDivElement | null>(null);
+  const syncingScrollRef = useRef<"top" | "main" | null>(null);
+  const [scrollContentWidth, setScrollContentWidth] = useState(0);
 
   useEffect(() => {
     let active = true;
     (async () => {
       setLoading(true);
       setError(null);
-      setNotice(null);
       const { data, error: loadError } = await dbFrom("sim_cards")
         .select(
           "id, numero_telefono, intestatario, piano_attivo, operatore, tariffa, data_scadenza, giorni_preavviso, alert_frequenza, stato_alert, billing_status, attiva, in_abbonamento, note"
@@ -277,7 +284,7 @@ export default function SimPage() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [reloadKey]);
 
   const operatoreOptions = useMemo(() => {
     return Array.from(
@@ -313,6 +320,39 @@ export default function SimPage() {
       return haystack.includes(query);
     });
   }, [rows, search, attiveFilter, operatoreFilter, billingStatusFilter]);
+
+  useEffect(() => {
+    function syncScrollWidth() {
+      const nextWidth = scrollContentRef.current?.scrollWidth || 0;
+      setScrollContentWidth(nextWidth);
+    }
+
+    syncScrollWidth();
+    window.addEventListener("resize", syncScrollWidth);
+    return () => {
+      window.removeEventListener("resize", syncScrollWidth);
+    };
+  }, [filteredRows, loading, editingSimId, expandedSimId]);
+
+  function handleTopScroll() {
+    if (!topScrollRef.current || !mainScrollRef.current) return;
+    if (syncingScrollRef.current === "main") {
+      syncingScrollRef.current = null;
+      return;
+    }
+    syncingScrollRef.current = "top";
+    mainScrollRef.current.scrollLeft = topScrollRef.current.scrollLeft;
+  }
+
+  function handleMainScroll() {
+    if (!topScrollRef.current || !mainScrollRef.current) return;
+    if (syncingScrollRef.current === "top") {
+      syncingScrollRef.current = null;
+      return;
+    }
+    syncingScrollRef.current = "main";
+    topScrollRef.current.scrollLeft = mainScrollRef.current.scrollLeft;
+  }
 
   function createTempId(prefix: string) {
     return `${prefix}-${Math.random().toString(36).slice(2, 10)}`;
@@ -362,6 +402,7 @@ export default function SimPage() {
       ...prev,
     ]);
     setEditingSimId(tempId);
+    setExpandedSimId(tempId);
     setNotice(null);
     setError(null);
   }
@@ -371,6 +412,7 @@ export default function SimPage() {
       setRows((prev) => prev.filter((item) => String(item.id || "") !== String(row.id || "")));
     }
     setEditingSimId(null);
+    if (row.isNew) setExpandedSimId(null);
   }
 
   async function saveSim(row: SimCardRow) {
@@ -448,6 +490,7 @@ export default function SimPage() {
       prev.map((item) => (String(item.id || "") === rowId ? nextRow : item))
     );
     setEditingSimId(null);
+    setExpandedSimId(String(nextRow.id || rowId));
     setNotice("SIM salvata.");
     setRechargesBySimId((prev) => ({
       ...prev,
@@ -486,6 +529,7 @@ export default function SimPage() {
       return next;
     });
     if (editingSimId === rowId) setEditingSimId(null);
+    if (expandedSimId === rowId) setExpandedSimId(null);
     setNotice("SIM eliminata.");
   }
 
@@ -548,6 +592,34 @@ export default function SimPage() {
     setNotice("Ricarica salvata.");
   }
 
+  async function syncSimCards() {
+    setSyncing(true);
+    setError(null);
+    setNotice(null);
+
+    try {
+      const res = await fetch("/api/sim/sync-from-licenses", {
+        credentials: "include",
+      });
+      const json = await res.json().catch(() => ({} as any));
+
+      if (!res.ok || json?.ok !== true) {
+        throw new Error(String(json?.error || "Errore sincronizzazione SIM"));
+      }
+
+      setNotice(
+        `Sync completata: processed ${Number(json?.processed || 0)}, inserted ${Number(
+          json?.inserted || 0
+        )}, updated ${Number(json?.updated || 0)}, skipped ${Number(json?.skipped || 0)}`
+      );
+      setReloadKey((prev) => prev + 1);
+    } catch (err: any) {
+      setError(String(err?.message || "Errore sincronizzazione SIM"));
+    } finally {
+      setSyncing(false);
+    }
+  }
+
   return (
     <div style={{ maxWidth: 1280, margin: "24px auto", padding: "0 16px 48px" }}>
       <div style={{ marginBottom: 20, display: "flex", justifyContent: "space-between", gap: 16, alignItems: "flex-start", flexWrap: "wrap" }}>
@@ -557,6 +629,24 @@ export default function SimPage() {
             Inventario SIM centralizzato con ricerca e filtri minimi.
           </div>
         </div>
+        <button
+          type="button"
+          onClick={syncSimCards}
+          disabled={syncing}
+          style={{
+            height: 42,
+            padding: "0 16px",
+            borderRadius: 10,
+            border: "1px solid #d1d5db",
+            background: "#fff",
+            color: "#111827",
+            fontWeight: 800,
+            cursor: syncing ? "wait" : "pointer",
+            opacity: syncing ? 0.8 : 1,
+          }}
+        >
+          {syncing ? "Sincronizzazione..." : "Sincronizza SIM"}
+        </button>
         <button
           type="button"
           onClick={addNewSim}
@@ -680,36 +770,56 @@ export default function SimPage() {
         }}
       >
         <div
+          ref={topScrollRef}
+          onScroll={handleTopScroll}
           style={{
-            display: "grid",
-            gridTemplateColumns: "160px minmax(180px,1fr) minmax(180px,1fr) 140px 110px 130px 170px 90px",
-            gap: 12,
-            padding: "14px 16px",
-            fontSize: 12,
-            fontWeight: 800,
-            color: "#374151",
-            background: "#f8fafc",
+            overflowX: "auto",
+            overflowY: "hidden",
             borderBottom: "1px solid #e5e7eb",
+            background: "#f8fafc",
           }}
         >
-          <div>Numero</div>
-          <div>Intestatario</div>
-          <div>Piano attivo</div>
-          <div>Operatore</div>
-          <div>Tariffa</div>
-          <div>Scadenza</div>
-          <div>Fatturazione</div>
-          <div>Attiva</div>
+          <div style={{ width: scrollContentWidth || "100%", height: 16 }} />
         </div>
 
-        {loading ? (
-          <div style={{ padding: 18, color: "#6b7280" }}>Caricamento...</div>
-        ) : filteredRows.length === 0 ? (
-          <div style={{ padding: 18, color: "#6b7280" }}>Nessuna SIM trovata.</div>
-        ) : (
-          filteredRows.map((row) => {
+        <div
+          ref={mainScrollRef}
+          onScroll={handleMainScroll}
+          style={{ overflowX: "auto", overflowY: "hidden" }}
+        >
+          <div ref={scrollContentRef} style={{ width: "max-content", minWidth: "100%" }}>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "160px minmax(180px,1fr) minmax(180px,1fr) 140px 110px 130px 170px 90px",
+                gap: 12,
+                padding: "14px 16px",
+                fontSize: 12,
+                fontWeight: 800,
+                color: "#374151",
+                background: "#f8fafc",
+                borderBottom: "1px solid #e5e7eb",
+              }}
+            >
+              <div>Numero</div>
+              <div>Intestatario</div>
+              <div>Piano attivo</div>
+              <div>Operatore</div>
+              <div>Tariffa</div>
+              <div>Scadenza</div>
+              <div>Fatturazione</div>
+              <div>Attiva</div>
+            </div>
+
+            {loading ? (
+              <div style={{ padding: 18, color: "#6b7280" }}>Caricamento...</div>
+            ) : filteredRows.length === 0 ? (
+              <div style={{ padding: 18, color: "#6b7280" }}>Nessuna SIM trovata.</div>
+            ) : (
+              filteredRows.map((row) => {
             const rowId = String(row.id || "");
             const isEditing = editingSimId === rowId;
+            const isExpanded = expandedSimId === rowId || isEditing;
             const scadenzaBadge = getScadenzaBadgeState(row);
             const rechargeRows = rechargesBySimId[rowId] || [];
             const rechargeDraft = newRechargeBySimId[rowId] || {
@@ -1049,11 +1159,22 @@ export default function SimPage() {
                 ) : (
                   <div style={{ display: "grid", gap: 14 }}>
                     <div
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => setExpandedSimId((prev) => (prev === rowId ? null : rowId))}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          setExpandedSimId((prev) => (prev === rowId ? null : rowId));
+                        }
+                      }}
                       style={{
                         display: "grid",
-                        gridTemplateColumns: "160px minmax(180px,1fr) minmax(180px,1fr) 140px 110px 130px 170px 150px 90px 220px",
+                        gridTemplateColumns:
+                          "150px minmax(160px,1fr) 130px minmax(180px,1fr) 130px 160px 150px 90px",
                         gap: 12,
                         alignItems: "center",
+                        cursor: "pointer",
                       }}
                     >
                       <div style={{ display: "grid", gap: 6 }}>
@@ -1061,22 +1182,9 @@ export default function SimPage() {
                         {renderScadenzaBadge(scadenzaBadge)}
                       </div>
                       <div>{row.intestatario || "—"}</div>
-                      <div>{row.piano_attivo || "—"}</div>
                       <div>{row.operatore || "—"}</div>
-                      <div>{formatCurrency(row.tariffa)}</div>
-                      <div style={{ display: "grid", gap: 4 }}>
-                        <span>{formatDate(row.data_scadenza)}</span>
-                        <span style={{ fontSize: 12, color: "#6b7280" }}>
-                          Preavviso:{" "}
-                          {row.giorni_preavviso == null ? "—" : `${row.giorni_preavviso} giorni`}
-                        </span>
-                        <span style={{ fontSize: 12, color: "#6b7280" }}>
-                          Frequenza: {row.alert_frequenza || "—"}
-                        </span>
-                        <span style={{ fontSize: 12, color: "#6b7280" }}>
-                          Stato alert: {row.stato_alert || "—"}
-                        </span>
-                      </div>
+                      <div>{row.piano_attivo || "—"}</div>
+                      <div>{formatDate(row.data_scadenza)}</div>
                       <div>{renderBillingBadge(row.billing_status)}</div>
                       <div>
                         <span
@@ -1111,11 +1219,67 @@ export default function SimPage() {
                           {row.attiva ? "ATTIVA" : "OFF"}
                         </span>
                       </div>
-                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                      <div
+                        style={{
+                          justifySelf: "end",
+                          fontSize: 12,
+                          fontWeight: 700,
+                          color: "#6b7280",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {isExpanded ? "Nascondi dettagli" : "Apri dettagli"}
+                      </div>
+                    </div>
+                    {isExpanded ? (
+                      <>
+                        <div
+                          style={{
+                            display: "grid",
+                            gridTemplateColumns:
+                              "minmax(140px, 0.8fr) minmax(140px, 0.8fr) minmax(140px, 0.8fr) minmax(140px, 0.8fr) minmax(140px, 0.8fr) minmax(140px, 0.8fr)",
+                            gap: 12,
+                            alignItems: "start",
+                          }}
+                        >
+                          <div style={{ display: "grid", gap: 6 }}>
+                            <div style={{ fontSize: 12, color: "#6b7280" }}>Tariffa</div>
+                            <div>{formatCurrency(row.tariffa)}</div>
+                          </div>
+                          <div style={{ display: "grid", gap: 6 }}>
+                            <div style={{ fontSize: 12, color: "#6b7280" }}>Preavviso</div>
+                            <div>
+                              {row.giorni_preavviso == null ? "—" : `${row.giorni_preavviso} giorni`}
+                            </div>
+                          </div>
+                          <div style={{ display: "grid", gap: 6 }}>
+                            <div style={{ fontSize: 12, color: "#6b7280" }}>Frequenza alert</div>
+                            <div>{row.alert_frequenza || "—"}</div>
+                          </div>
+                          <div style={{ display: "grid", gap: 6 }}>
+                            <div style={{ fontSize: 12, color: "#6b7280" }}>Stato alert</div>
+                            <div>{row.stato_alert || "—"}</div>
+                          </div>
+                          <div style={{ display: "grid", gap: 6 }}>
+                            <div style={{ fontSize: 12, color: "#6b7280" }}>Tipologia</div>
+                            <div>{row.in_abbonamento ? "IN ABBONAMENTO" : "RICARICABILE"}</div>
+                          </div>
+                          <div style={{ display: "grid", gap: 6 }}>
+                            <div style={{ fontSize: 12, color: "#6b7280" }}>Stato SIM</div>
+                            <div>{row.attiva ? "ATTIVA" : "OFF"}</div>
+                          </div>
+                        </div>
+                        <div style={{ display: "grid", gap: 6 }}>
+                          <div style={{ fontSize: 12, color: "#6b7280" }}>Note</div>
+                          <div>{row.note || "—"}</div>
+                        </div>
+                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                         <button
                           type="button"
-                          onClick={() => {
+                          onClick={(e) => {
+                            e.stopPropagation();
                             setEditingSimId(rowId);
+                            setExpandedSimId(rowId);
                             setNotice(null);
                             setError(null);
                           }}
@@ -1134,7 +1298,10 @@ export default function SimPage() {
                         </button>
                         <button
                           type="button"
-                          onClick={() => deleteSim(row)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            void deleteSim(row);
+                          }}
                           disabled={savingKey === rowId}
                           style={{
                             height: 36,
@@ -1150,120 +1317,123 @@ export default function SimPage() {
                         >
                           Elimina
                         </button>
-                      </div>
-                    </div>
-                    {row.in_abbonamento ? (
-                      <div
-                        style={{
-                          fontSize: 12,
-                          color: "#1d4ed8",
-                          fontWeight: 700,
-                        }}
-                      >
-                        Ricariche non previste: SIM gestita in abbonamento.
-                      </div>
-                    ) : (
-                      <div
-                        style={{
-                          border: "1px solid #e5e7eb",
-                          borderRadius: 12,
-                          padding: 12,
-                          background: "#f8fafc",
-                          display: "grid",
-                          gap: 12,
-                        }}
-                      >
-                        <div style={{ fontSize: 13, fontWeight: 800 }}>Ricariche</div>
-                        {rechargeRows.length === 0 ? (
-                          <div style={{ fontSize: 13, color: "#6b7280" }}>Nessuna ricarica registrata.</div>
-                        ) : (
-                          <div style={{ display: "grid", gap: 8 }}>
-                            {rechargeRows.map((recharge) => (
-                              <div
-                                key={String(recharge.id || `${recharge.sim_id}-${recharge.data_ricarica}`)}
-                                style={{
-                                  display: "grid",
-                                  gridTemplateColumns: "140px 120px minmax(220px,1fr)",
-                                  gap: 12,
-                                  fontSize: 13,
-                                  padding: "10px 12px",
-                                  borderRadius: 10,
-                                  background: "#fff",
-                                  border: "1px solid #e5e7eb",
-                                }}
-                              >
-                                <div>{formatDate(recharge.data_ricarica)}</div>
-                                <div>{formatCurrency(recharge.importo)}</div>
-                                <div>{recharge.note || "—"}</div>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                        <div
-                          style={{
-                            display: "grid",
-                            gridTemplateColumns: "160px 140px minmax(220px,1fr) 150px",
-                            gap: 12,
-                            alignItems: "end",
-                          }}
-                        >
-                          <label style={{ display: "grid", gap: 6, fontSize: 13, fontWeight: 600 }}>
-                            Data ricarica
-                            <input
-                              type="date"
-                              value={rechargeDraft.data_ricarica}
-                              onChange={(e) =>
-                                updateRechargeDraft(rowId, { data_ricarica: e.target.value })
-                              }
-                              style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: "1px solid #d1d5db" }}
-                            />
-                          </label>
-                          <label style={{ display: "grid", gap: 6, fontSize: 13, fontWeight: 600 }}>
-                            Importo
-                            <input
-                              type="number"
-                              step="0.01"
-                              value={rechargeDraft.importo}
-                              onChange={(e) => updateRechargeDraft(rowId, { importo: e.target.value })}
-                              style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: "1px solid #d1d5db" }}
-                            />
-                          </label>
-                          <label style={{ display: "grid", gap: 6, fontSize: 13, fontWeight: 600 }}>
-                            Note
-                            <input
-                              value={rechargeDraft.note}
-                              onChange={(e) => updateRechargeDraft(rowId, { note: e.target.value })}
-                              placeholder="Note ricarica"
-                              style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: "1px solid #d1d5db" }}
-                            />
-                          </label>
-                          <button
-                            type="button"
-                            onClick={() => addRecharge(row)}
-                            disabled={savingRechargeKey === rowId}
+                        </div>
+                        {row.in_abbonamento ? (
+                          <div
                             style={{
-                              height: 40,
-                              padding: "0 14px",
-                              borderRadius: 10,
-                              border: "1px solid #0f172a",
-                              background: "#0f172a",
-                              color: "#fff",
-                              fontWeight: 800,
-                              cursor: savingRechargeKey === rowId ? "wait" : "pointer",
-                              opacity: savingRechargeKey === rowId ? 0.8 : 1,
+                              fontSize: 12,
+                              color: "#1d4ed8",
+                              fontWeight: 700,
                             }}
                           >
-                            {savingRechargeKey === rowId ? "Salvataggio..." : "Salva ricarica"}
-                          </button>
-                        </div>
-                      </div>
-                    )}
+                            Ricariche non previste: SIM gestita in abbonamento.
+                          </div>
+                        ) : (
+                          <div
+                            style={{
+                              border: "1px solid #e5e7eb",
+                              borderRadius: 12,
+                              padding: 12,
+                              background: "#f8fafc",
+                              display: "grid",
+                              gap: 12,
+                            }}
+                          >
+                            <div style={{ fontSize: 13, fontWeight: 800 }}>Ricariche</div>
+                            {rechargeRows.length === 0 ? (
+                              <div style={{ fontSize: 13, color: "#6b7280" }}>Nessuna ricarica registrata.</div>
+                            ) : (
+                              <div style={{ display: "grid", gap: 8 }}>
+                                {rechargeRows.map((recharge) => (
+                                  <div
+                                    key={String(recharge.id || `${recharge.sim_id}-${recharge.data_ricarica}`)}
+                                    style={{
+                                      display: "grid",
+                                      gridTemplateColumns: "140px 120px minmax(220px,1fr)",
+                                      gap: 12,
+                                      fontSize: 13,
+                                      padding: "10px 12px",
+                                      borderRadius: 10,
+                                      background: "#fff",
+                                      border: "1px solid #e5e7eb",
+                                    }}
+                                  >
+                                    <div>{formatDate(recharge.data_ricarica)}</div>
+                                    <div>{formatCurrency(recharge.importo)}</div>
+                                    <div>{recharge.note || "—"}</div>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                            <div
+                              style={{
+                                display: "grid",
+                                gridTemplateColumns: "160px 140px minmax(220px,1fr) 150px",
+                                gap: 12,
+                                alignItems: "end",
+                              }}
+                            >
+                              <label style={{ display: "grid", gap: 6, fontSize: 13, fontWeight: 600 }}>
+                                Data ricarica
+                                <input
+                                  type="date"
+                                  value={rechargeDraft.data_ricarica}
+                                  onChange={(e) =>
+                                    updateRechargeDraft(rowId, { data_ricarica: e.target.value })
+                                  }
+                                  style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: "1px solid #d1d5db" }}
+                                />
+                              </label>
+                              <label style={{ display: "grid", gap: 6, fontSize: 13, fontWeight: 600 }}>
+                                Importo
+                                <input
+                                  type="number"
+                                  step="0.01"
+                                  value={rechargeDraft.importo}
+                                  onChange={(e) => updateRechargeDraft(rowId, { importo: e.target.value })}
+                                  style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: "1px solid #d1d5db" }}
+                                />
+                              </label>
+                              <label style={{ display: "grid", gap: 6, fontSize: 13, fontWeight: 600 }}>
+                                Note
+                                <input
+                                  value={rechargeDraft.note}
+                                  onChange={(e) => updateRechargeDraft(rowId, { note: e.target.value })}
+                                  placeholder="Note ricarica"
+                                  style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: "1px solid #d1d5db" }}
+                                />
+                              </label>
+                              <button
+                                type="button"
+                                onClick={() => addRecharge(row)}
+                                disabled={savingRechargeKey === rowId}
+                                style={{
+                                  height: 40,
+                                  padding: "0 14px",
+                                  borderRadius: 10,
+                                  border: "1px solid #0f172a",
+                                  background: "#0f172a",
+                                  color: "#fff",
+                                  fontWeight: 800,
+                                  cursor: savingRechargeKey === rowId ? "wait" : "pointer",
+                                  opacity: savingRechargeKey === rowId ? 0.8 : 1,
+                                }}
+                              >
+                                {savingRechargeKey === rowId ? "Salvataggio..." : "Salva ricarica"}
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </>
+                    ) : null}
                   </div>
                 )}
               </div>
-            );
-          })
-        )}
+              );
+            })
+            )}
+          </div>
+        </div>
       </div>
     </div>
   );
