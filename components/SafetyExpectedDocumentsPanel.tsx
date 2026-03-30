@@ -12,6 +12,13 @@ type Props = {
   docs: Array<{ tipo_documento: string; data_scadenza: string | null }>;
   extraDocumentLabels?: string[];
   getManageHref?: (item: SafetyExpectedDocumentItem) => string | null;
+  expectedDocumentsFromCatalog?: Array<{
+    nome: string;
+    target: "PERSONALE" | "AZIENDA" | "ENTRAMBI";
+    required_default: boolean;
+    attivo: boolean;
+    sort_order: number | null;
+  }>;
 };
 
 function normalizeText(value?: string | null) {
@@ -79,11 +86,24 @@ export default function SafetyExpectedDocumentsPanel({
   docs,
   extraDocumentLabels = [],
   getManageHref,
+  expectedDocumentsFromCatalog = [],
 }: Props) {
+  const catalogExpectedItems: SafetyExpectedDocumentItem[] = expectedDocumentsFromCatalog
+    .filter((item) => item.attivo !== false)
+    .filter((item) => item.target === kind || item.target === "ENTRAMBI")
+    .map((item) => ({
+      key: `CATALOG_${normalizeText(item.nome)}`,
+      label: item.nome,
+      required: item.required_default,
+      ...computeExtraDocumentState(item.nome, docs),
+    }));
+
   const items =
-    kind === "PERSONALE"
-      ? evaluatePersonaleExpectedDocuments(docs)
-      : evaluateAziendaExpectedDocuments(docs);
+    catalogExpectedItems.length > 0
+      ? catalogExpectedItems
+      : kind === "PERSONALE"
+        ? evaluatePersonaleExpectedDocuments(docs)
+        : evaluateAziendaExpectedDocuments(docs);
 
   const builtInLabels = new Set(items.map((item) => normalizeText(item.label)));
   const extraItems: SafetyExpectedDocumentItem[] = Array.from(

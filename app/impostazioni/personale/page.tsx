@@ -55,6 +55,7 @@ type DocumentCatalogEntryRow = {
   target: string | null;
   categoria: string | null;
   has_scadenza: boolean;
+  required_default: boolean;
   attivo: boolean;
   sort_order: number | null;
 };
@@ -281,7 +282,7 @@ function PersonalePageContent() {
         .order("tipo_documento", { ascending: true }),
       dbFrom("document_types").select("*").order("codice", { ascending: true }),
       dbFrom("document_catalog")
-        .select("id,nome,target,categoria,has_scadenza,attivo,sort_order")
+        .select("id,nome,target,categoria,has_scadenza,required_default,attivo,sort_order")
         .in("target", ["PERSONALE", "ENTRAMBI"])
         .eq("attivo", true)
         .order("sort_order", { ascending: true })
@@ -343,6 +344,7 @@ function PersonalePageContent() {
         target: row.target == null ? null : String(row.target),
         categoria: row.categoria == null ? null : String(row.categoria),
         has_scadenza: row.has_scadenza !== false,
+        required_default: row.required_default === true,
         attivo: row.attivo !== false,
         sort_order:
           typeof row.sort_order === "number"
@@ -429,6 +431,32 @@ function PersonalePageContent() {
     () => buildDocumentCatalogOptions(documentCatalogRows),
     [documentCatalogRows]
   );
+
+  const requiredExpectedDocumentRows = useMemo(() => {
+    const fromDocumentCatalog = documentCatalogRows
+      .filter((row) => row.attivo !== false)
+      .filter((row) => row.target === "PERSONALE" || row.target === "ENTRAMBI")
+      .filter((row) => row.required_default === true)
+      .slice()
+      .sort((a, b) => {
+        const aSort = a.sort_order == null ? Number.POSITIVE_INFINITY : a.sort_order;
+        const bSort = b.sort_order == null ? Number.POSITIVE_INFINITY : b.sort_order;
+        if (aSort !== bSort) return aSort - bSort;
+        return String(a.nome || "").localeCompare(String(b.nome || ""), "it");
+      })
+      .map((row) => ({
+        key: `catalog-required:${row.id}`,
+        label: String(row.nome || "").trim(),
+      }))
+      .filter((row) => Boolean(row.label));
+
+    if (fromDocumentCatalog.length > 0) return fromDocumentCatalog;
+
+    return PERSONALE_STANDARD_DOCUMENTS.map((item) => ({
+      key: `static-required:${item.key}`,
+      label: item.label,
+    }));
+  }, [documentCatalogRows]);
 
   const filteredPersone = useMemo(() => {
     const query = normalizeText(search);
@@ -1318,7 +1346,7 @@ function PersonalePageContent() {
 
                       <div style={{ display: "grid", gap: 10 }}>
                         {(() => {
-                          const missingStandardRows = PERSONALE_STANDARD_DOCUMENTS.filter(
+                          const missingStandardRows = requiredExpectedDocumentRows.filter(
                             (item) =>
                               !docRows.some(
                                 (doc) => normalizeText(doc.tipo_documento) === normalizeText(item.label)
