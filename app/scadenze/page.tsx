@@ -34,9 +34,20 @@ type AziendaDocumentoRow = {
   giorni_preavviso: string;
 };
 
+type SimCardRow = {
+  id: string;
+  numero_telefono: string;
+  intestatario: string;
+  piano_attivo: string;
+  operatore: string;
+  data_scadenza: string;
+  giorni_preavviso: string;
+  attiva: boolean;
+};
+
 type UnifiedScadenzaRow = {
   id: string;
-  tipo: "PERSONALE" | "AZIENDA";
+  tipo: "PERSONALE" | "AZIENDA" | "SIM";
   nome: string;
   tipo_documento: string;
   data_scadenza: string;
@@ -126,6 +137,7 @@ export default function ScadenzePage() {
         personeRes,
         personaleDocumentiRes,
         aziendeDocumentiRes,
+        simCardsRes,
       ] = await Promise.all([
         dbFrom("aziende").select("id,ragione_sociale").order("ragione_sociale", { ascending: true }),
         dbFrom("personale")
@@ -137,6 +149,9 @@ export default function ScadenzePage() {
           .order("data_scadenza", { ascending: true }),
         dbFrom("aziende_documenti")
           .select("id,azienda_id,tipo_documento,data_scadenza,giorni_preavviso")
+          .order("data_scadenza", { ascending: true }),
+        dbFrom("sim_cards")
+          .select("id,numero_telefono,intestatario,piano_attivo,operatore,data_scadenza,giorni_preavviso,attiva")
           .order("data_scadenza", { ascending: true }),
       ]);
 
@@ -150,6 +165,9 @@ export default function ScadenzePage() {
       }
       if (aziendeDocumentiRes.error) {
         errors.push(`Errore caricamento documenti aziende: ${aziendeDocumentiRes.error.message}`);
+      }
+      if (simCardsRes.error) {
+        errors.push(`Errore caricamento SIM: ${simCardsRes.error.message}`);
       }
       if (errors.length > 0) {
         setError(errors.join(" • "));
@@ -196,6 +214,20 @@ export default function ScadenzePage() {
         })
       ) as AziendaDocumentoRow[];
 
+      const simCards = (((simCardsRes.data as any[]) || []) as Array<Record<string, any>>).map((row) => ({
+        id: String(row.id || ""),
+        numero_telefono: String(row.numero_telefono || ""),
+        intestatario: String(row.intestatario || ""),
+        piano_attivo: String(row.piano_attivo || ""),
+        operatore: String(row.operatore || ""),
+        data_scadenza: String(row.data_scadenza || ""),
+        giorni_preavviso:
+          row.giorni_preavviso == null || row.giorni_preavviso === ""
+            ? ""
+            : String(row.giorni_preavviso),
+        attiva: row.attiva !== false,
+      })) as SimCardRow[];
+
       const aziendaById = new Map(aziende.map((row) => [row.id, row.ragione_sociale]));
       const personaById = new Map(
         personale.map((row) => [
@@ -237,6 +269,22 @@ export default function ScadenzePage() {
           giorni_delta: scadenza.giorni_delta,
           stato_scadenza: scadenza.stato_scadenza,
           href: "/impostazioni/aziende?filter=scadenze",
+        });
+      }
+
+      for (const sim of simCards) {
+        if (!sim.attiva || !sim.data_scadenza) continue;
+        const scadenza = getDocumentoScadenzaState(sim);
+        if (!scadenza) continue;
+        unifiedRows.push({
+          id: sim.id,
+          tipo: "SIM",
+          nome: sim.numero_telefono || sim.intestatario || "—",
+          tipo_documento: sim.operatore || sim.piano_attivo || "—",
+          data_scadenza: sim.data_scadenza,
+          giorni_delta: scadenza.giorni_delta,
+          stato_scadenza: scadenza.stato_scadenza,
+          href: "/sim",
         });
       }
 
