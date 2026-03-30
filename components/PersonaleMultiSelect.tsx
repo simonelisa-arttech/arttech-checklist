@@ -21,6 +21,7 @@ type Props = {
   onChange: (value: ChangePayload) => void;
   placeholder?: string;
   disabled?: boolean;
+  compact?: boolean;
 };
 
 let personaleOptionsCache: PersonaleSelectionOption[] | null = null;
@@ -84,6 +85,7 @@ export default function PersonaleMultiSelect({
   onChange,
   placeholder = "Cerca e seleziona personale...",
   disabled,
+  compact = false,
 }: Props) {
   const [options, setOptions] = useState<PersonaleSelectionOption[]>(personaleOptionsCache || []);
   const [error, setError] = useState<string | null>(null);
@@ -201,24 +203,26 @@ export default function PersonaleMultiSelect({
       </button>
 
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 8 }}>
-        {selectedOptions.map((option) => (
-          <span
-            key={option.id}
-            style={{
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 6,
-              borderRadius: 999,
-              padding: "4px 10px",
-              background: "#eff6ff",
-              color: "#1d4ed8",
-              fontSize: 12,
-              fontWeight: 700,
-            }}
-          >
-            {option.display}
-          </span>
-        ))}
+        {!compact
+          ? selectedOptions.map((option) => (
+              <span
+                key={option.id}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: 6,
+                  borderRadius: 999,
+                  padding: "4px 10px",
+                  background: "#eff6ff",
+                  color: "#1d4ed8",
+                  fontSize: 12,
+                  fontWeight: 700,
+                }}
+              >
+                {option.display}
+              </span>
+            ))
+          : null}
         {resolved.unresolvedLegacyTokens.map((token) => (
           <button
             key={token}

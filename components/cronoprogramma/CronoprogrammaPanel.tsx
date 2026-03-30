@@ -441,12 +441,18 @@ export default function CronoprogrammaPanel({
                     )}
                   </div>
                   <div>{r.ticket_no || r.proforma || "—"}</div>
-                  <div>
+                  <div
+                    title={
+                      (operativiDraftByKey[key]?.personale_previsto ??
+                        extractOperativi(meta).personale_previsto) || undefined
+                    }
+                  >
                     <PersonaleMultiSelect
                       personaleIds={operativiDraftByKey[key]?.personale_ids ?? []}
                       legacyValue={
                         operativiDraftByKey[key]?.personale_previsto ?? extractOperativi(meta).personale_previsto
                       }
+                      compact
                       onChange={({ personaleIds, personaleDisplay }) =>
                         setOperativiDraftByKey((prev) => ({
                           ...prev,
@@ -458,11 +464,6 @@ export default function CronoprogrammaPanel({
                         }))
                       }
                     />
-                    <div style={{ marginTop: 6, fontSize: 11, opacity: 0.7 }}>
-                      Visualizzazione compatibile:{" "}
-                      {(operativiDraftByKey[key]?.personale_previsto ?? extractOperativi(meta).personale_previsto) ||
-                        "—"}
-                    </div>
                     {conflict?.hasConflict ? (
                       <div
                         title={conflictTitle}
