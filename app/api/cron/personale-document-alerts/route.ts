@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { sendEmail } from "@/lib/email";
 import { requireOperatore } from "@/lib/adminAuth";
+import { buildClienteEmailList } from "@/lib/clientiEmail";
 import {
   buildPersonaleDocumentAlertMessage,
   collectPersonaleDocumentAlertDigest,
@@ -59,8 +60,8 @@ export async function GET(request: Request) {
   }
 
   const internalRecipient = getDefaultOperatoreByRole(operatori || [], "SUPERVISORE");
-  const to = String(internalRecipient?.email || "").trim();
-  if (!to.includes("@")) {
+  const supervisorEmail = String(internalRecipient?.email || "").trim();
+  if (!supervisorEmail.includes("@")) {
     return NextResponse.json({ ok: false, error: "Destinatario SUPERVISORE mancante" }, { status: 500 });
   }
 
@@ -71,6 +72,30 @@ export async function GET(request: Request) {
       return NextResponse.json({ ok: true, reason: "no documents to notify", notified: 0 });
     }
 
+    const personaleIds = Array.from(
+      new Set([...digest.scaduti, ...digest.in_scadenza].map((item) => item.personale_id).filter(Boolean))
+    );
+    let recipientEmails = buildClienteEmailList(supervisorEmail, null);
+
+    if (personaleIds.length > 0) {
+      const { data: peopleData, error: peopleError } = await supabase
+        .from("personale")
+        .select("id, email_secondarie")
+        .in("id", personaleIds);
+
+      if (peopleError) {
+        console.warn("[personale-document-alerts] unable to load email_secondarie", {
+          message: peopleError.message,
+          personaleIds: personaleIds.length,
+        });
+      } else {
+        for (const row of ((peopleData || []) as Array<{ id?: string | null; email_secondarie?: string | null }>)) {
+          recipientEmails = buildClienteEmailList(recipientEmails.join(","), row?.email_secondarie || null);
+        }
+      }
+    }
+
+    const to = recipientEmails.join(",");
     const message = buildPersonaleDocumentAlertMessage(digest);
     await sendEmail({
       to,
