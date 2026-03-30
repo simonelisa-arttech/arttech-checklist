@@ -4,7 +4,7 @@ import Link from "next/link";
 import type { Dispatch, MutableRefObject, SetStateAction, UIEvent } from "react";
 import PersonaleMultiSelect from "@/components/PersonaleMultiSelect";
 import SafetyComplianceBadge from "@/components/SafetyComplianceBadge";
-import { computeOperativiEndDate, formatOperativiDateLabel } from "@/lib/operativiSchedule";
+import { formatOperativiDateLabel } from "@/lib/operativiSchedule";
 
 type TimelineRow = any;
 type CronoMeta = any;
@@ -147,42 +147,39 @@ export default function CronoprogrammaPanel({
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "repeat(5,minmax(120px,1fr))",
+          gridTemplateColumns: "repeat(5,minmax(140px,1fr))",
           gap: 10,
-          marginBottom: 12,
+          marginBottom: 8,
         }}
       >
         <label>
           Da
-          <br />
           <input
             type="date"
             value={fromDate}
             onChange={(e) => {
               setFromDate(e.target.value);
             }}
-            style={{ width: "100%", padding: 8 }}
+            style={{ width: "100%", padding: 8, marginTop: 4 }}
           />
         </label>
         <label>
           A
-          <br />
           <input
             type="date"
             value={toDate}
             onChange={(e) => {
               setToDate(e.target.value);
             }}
-            style={{ width: "100%", padding: 8 }}
+            style={{ width: "100%", padding: 8, marginTop: 4 }}
           />
         </label>
         <label>
           Cliente
-          <br />
           <select
             value={clienteFilter}
             onChange={(e) => setClienteFilter(e.target.value)}
-            style={{ width: "100%", padding: 8 }}
+            style={{ width: "100%", padding: 8, marginTop: 4 }}
           >
             <option value="TUTTI">Tutti</option>
             {clienti.map((c) => (
@@ -194,11 +191,10 @@ export default function CronoprogrammaPanel({
         </label>
         <label>
           Tipo evento
-          <br />
           <select
             value={kindFilter}
             onChange={(e) => setKindFilter(e.target.value as any)}
-            style={{ width: "100%", padding: 8 }}
+            style={{ width: "100%", padding: 8, marginTop: 4 }}
           >
             <option value="TUTTI">Tutti</option>
             <option value="INSTALLAZIONE">Installazioni</option>
@@ -208,68 +204,68 @@ export default function CronoprogrammaPanel({
         </label>
         <label>
           Cerca
-          <br />
           <input
             value={q}
             onChange={(e) => setQ(e.target.value)}
             placeholder="cliente/progetto/ticket/descrizione"
-            style={{ width: "100%", padding: 8 }}
-          />
-        </label>
-        <label>
-          Personale previsto
-          <br />
-          <input
-            value={personaleFilter}
-            onChange={(e) => setPersonaleFilter(e.target.value)}
-            placeholder="Nome o incarico"
-            style={{ width: "100%", padding: 8 }}
+            style={{ width: "100%", padding: 8, marginTop: 4 }}
           />
         </label>
       </div>
-      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
-        {[7, 15, 30].map((days) => {
-          const active = quickRangeDays === days;
-          return (
-            <button
-              key={days}
-              type="button"
-              onClick={() => applyQuickRange(days as 7 | 15 | 30)}
-              style={{
-                padding: "8px 12px",
-                borderRadius: 999,
-                border: active ? "1px solid #111" : "1px solid #ddd",
-                background: active ? "#111" : "white",
-                color: active ? "white" : "#111",
-                cursor: "pointer",
-                fontWeight: 700,
-              }}
-            >
-              {days} giorni
-            </button>
-          );
-        })}
-      </div>
-      <label style={{ display: "inline-flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
-        <input type="checkbox" checked={showFatto} onChange={(e) => setShowFatto(e.target.checked)} />
-        Mostra righe fatte (per poter togliere il flag)
-      </label>
-      <label
-        style={{ display: "inline-flex", alignItems: "center", gap: 8, marginBottom: 12, marginLeft: 16 }}
-      >
-        <input type="checkbox" checked={showHidden} onChange={(e) => setShowHidden(e.target.checked)} />
-        Mostra righe nascoste
-      </label>
-
       <div
         style={{
           display: "flex",
           justifyContent: "space-between",
-          alignItems: "center",
+          alignItems: "flex-end",
+          gap: 12,
+          flexWrap: "wrap",
           marginBottom: 8,
         }}
       >
-        <div style={{ fontSize: 13, opacity: 0.8 }}>Risultati: {filteredSorted.length}</div>
+        <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "flex-end", flex: 1 }}>
+          <label style={{ minWidth: 220, flex: "1 1 240px" }}>
+            Personale previsto
+            <input
+              value={personaleFilter}
+              onChange={(e) => setPersonaleFilter(e.target.value)}
+              placeholder="Nome o incarico"
+              style={{ width: "100%", padding: 8, marginTop: 4 }}
+            />
+          </label>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+            {[7, 15, 30].map((days) => {
+              const active = quickRangeDays === days;
+              return (
+                <button
+                  key={days}
+                  type="button"
+                  onClick={() => applyQuickRange(days as 7 | 15 | 30)}
+                  style={{
+                    padding: "8px 12px",
+                    borderRadius: 999,
+                    border: active ? "1px solid #111" : "1px solid #ddd",
+                    background: active ? "#111" : "white",
+                    color: active ? "white" : "#111",
+                    cursor: "pointer",
+                    fontWeight: 700,
+                  }}
+                >
+                  {days} giorni
+                </button>
+              );
+            })}
+          </div>
+          <label style={{ display: "inline-flex", alignItems: "center", gap: 8, minHeight: 38 }}>
+            <input type="checkbox" checked={showFatto} onChange={(e) => setShowFatto(e.target.checked)} />
+            Mostra righe fatte
+          </label>
+          <label style={{ display: "inline-flex", alignItems: "center", gap: 8, minHeight: 38 }}>
+            <input type="checkbox" checked={showHidden} onChange={(e) => setShowHidden(e.target.checked)} />
+            Mostra righe nascoste
+          </label>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, marginLeft: "auto" }}>
+          <div style={{ fontSize: 13, opacity: 0.8, whiteSpace: "nowrap" }}>Risultati: {filteredSorted.length}</div>
         <button
           type="button"
           onClick={onExportCsv}
@@ -283,6 +279,7 @@ export default function CronoprogrammaPanel({
         >
           ⬇ Export CSV
         </button>
+        </div>
       </div>
 
       <div style={{ border: "1px solid #eee", borderRadius: 12, overflow: "hidden" }}>
@@ -301,76 +298,78 @@ export default function CronoprogrammaPanel({
           <div style={{ width: scrollContentWidth, height: 1 }} />
         </div>
         <div ref={mainScrollRef} onScroll={onMainScroll} style={{ overflowX: "auto", overflowY: "hidden" }}>
-          <div
-            ref={scrollContentRef}
-            style={{
-              display: "grid",
-              gridTemplateColumns:
-                "110px 110px 90px 180px 240px 220px 260px 140px 130px 120px 260px 150px 150px 260px 260px 220px 260px 160px 140px 300px 300px 120px",
-              gap: 12,
-              padding: "10px 12px",
-              fontWeight: 700,
-              background: "#fafafa",
-              borderBottom: "1px solid #eee",
-              minWidth: 4320,
-            }}
-          >
-            <button
-              type="button"
-              onClick={() => toggleSort("data_prevista")}
+          <div style={{ position: "relative" }}>
+            <div
+              ref={scrollContentRef}
               style={{
-                border: "none",
-                background: "transparent",
-                padding: 0,
-                textAlign: "left",
-                cursor: "pointer",
+                display: "grid",
+                gridTemplateColumns:
+                  "96px 96px 72px 140px 190px 180px 120px 240px 210px 240px 240px 128px 120px 240px 240px 220px 112px 104px 104px",
+                gap: 12,
+                padding: "10px 12px",
                 fontWeight: 700,
+                background: "#fafafa",
+                borderBottom: "1px solid #eee",
+                minWidth: 3270,
+                position: "sticky",
+                top: 0,
+                zIndex: 3,
+                boxShadow: "0 1px 0 #eee",
               }}
-              title="Ordina per data prevista"
             >
-              Data inizio {sortBy === "data_prevista" ? (sortDir === "asc" ? "↑" : "↓") : ""}
-            </button>
-            <button
-              type="button"
-              onClick={() => toggleSort("data_tassativa")}
-              style={{
-                border: "none",
-                background: "transparent",
-                padding: 0,
-                textAlign: "left",
-                cursor: "pointer",
-                fontWeight: 700,
-              }}
-              title="Ordina per data tassativa"
-            >
-              Data fine {sortBy === "data_tassativa" ? (sortDir === "asc" ? "↑" : "↓") : ""}
-            </button>
-            <div>Durata</div>
-            <div style={{ paddingRight: 18, whiteSpace: "nowrap" }}>Evento</div>
-            <div style={{ paddingLeft: 6 }}>Cliente</div>
-            <div>Progetto</div>
-            <div>Dettaglio</div>
-            <div>Ticket/Pf</div>
-            <div>Fatto</div>
-            <div>Nascosta</div>
-            <div>Note</div>
-            <div>Data inizio op.</div>
-            <div>Durata / fine</div>
-            <div>Personale previsto / incarico</div>
-            <div>Mezzi</div>
-            <div>Descrizione attività</div>
-            <div>Indirizzo</div>
-            <div>Orario</div>
-            <div>Referente cliente</div>
-            <div>Commerciale Art Tech</div>
-            <div>Azioni</div>
-          </div>
-          {loading ? (
-            <div style={{ padding: 12, opacity: 0.7 }}>Caricamento...</div>
-          ) : filteredSorted.length === 0 ? (
-            <div style={{ padding: 12, opacity: 0.7 }}>Nessun risultato</div>
-          ) : (
-            filteredSorted.map((r) => {
+              <button
+                type="button"
+                onClick={() => toggleSort("data_prevista")}
+                style={{
+                  border: "none",
+                  background: "transparent",
+                  padding: 0,
+                  textAlign: "left",
+                  cursor: "pointer",
+                  fontWeight: 700,
+                }}
+                title="Ordina per data prevista"
+              >
+                Data inizio {sortBy === "data_prevista" ? (sortDir === "asc" ? "↑" : "↓") : ""}
+              </button>
+              <button
+                type="button"
+                onClick={() => toggleSort("data_tassativa")}
+                style={{
+                  border: "none",
+                  background: "transparent",
+                  padding: 0,
+                  textAlign: "left",
+                  cursor: "pointer",
+                  fontWeight: 700,
+                }}
+                title="Ordina per data tassativa"
+              >
+                Data fine {sortBy === "data_tassativa" ? (sortDir === "asc" ? "↑" : "↓") : ""}
+              </button>
+              <div>Durata</div>
+              <div style={{ paddingRight: 18, whiteSpace: "nowrap" }}>Evento</div>
+              <div style={{ paddingLeft: 6 }}>Cliente</div>
+              <div>Progetto</div>
+              <div>Ticket/Pf</div>
+              <div>Personale previsto / incarico</div>
+              <div>Mezzi</div>
+              <div>Descrizione attività</div>
+              <div>Indirizzo</div>
+              <div>Orario</div>
+              <div>Referente cliente</div>
+              <div>Commerciale Art Tech</div>
+              <div>Note</div>
+              <div>Fatto</div>
+              <div>Nascosta</div>
+              <div>Azioni</div>
+            </div>
+            {loading ? (
+              <div style={{ padding: 12, opacity: 0.7 }}>Caricamento...</div>
+            ) : filteredSorted.length === 0 ? (
+              <div style={{ padding: 12, opacity: 0.7 }}>Nessun risultato</div>
+            ) : (
+              filteredSorted.map((r) => {
               const key = getRowKey(r.kind, r.row_ref_id);
               const meta = metaByKey[key];
               const schedule = getRowSchedule(r, meta);
@@ -389,7 +388,7 @@ export default function CronoprogrammaPanel({
                   style={{
                     display: "grid",
                     gridTemplateColumns:
-                      "110px 110px 90px 180px 240px 220px 260px 140px 130px 120px 260px 150px 150px 260px 260px 220px 260px 160px 140px 300px 300px 120px",
+                      "96px 96px 72px 140px 190px 180px 120px 240px 210px 240px 240px 128px 120px 240px 240px 220px 112px 104px 104px",
                     gap: 12,
                     padding: "10px 12px",
                     borderBottom: "1px solid #f3f4f6",
@@ -398,7 +397,7 @@ export default function CronoprogrammaPanel({
                     fontStyle: hidden && showHidden ? "italic" : "normal",
                     background: operativoDefinito ? "#f0fdf4" : "white",
                     boxShadow: "none",
-                    minWidth: 4320,
+                    minWidth: 3270,
                   }}
                   title={conflict?.hasConflict ? conflictTitle : undefined}
                 >
@@ -427,6 +426,43 @@ export default function CronoprogrammaPanel({
                         Operativo definito
                       </div>
                     ) : null}
+                  </div>
+                  <div style={{ paddingLeft: 6 }}>{r.cliente}</div>
+                  <div>
+                    {r.checklist_id ? (
+                      <Link
+                        href={`/checklists/${r.checklist_id}`}
+                        style={{ color: "#2563eb", textDecoration: "underline", fontWeight: 600 }}
+                      >
+                        {r.progetto}
+                      </Link>
+                    ) : (
+                      r.progetto
+                    )}
+                  </div>
+                  <div>{r.ticket_no || r.proforma || "—"}</div>
+                  <div>
+                    <PersonaleMultiSelect
+                      personaleIds={operativiDraftByKey[key]?.personale_ids ?? []}
+                      legacyValue={
+                        operativiDraftByKey[key]?.personale_previsto ?? extractOperativi(meta).personale_previsto
+                      }
+                      onChange={({ personaleIds, personaleDisplay }) =>
+                        setOperativiDraftByKey((prev) => ({
+                          ...prev,
+                          [key]: {
+                            ...(prev[key] || emptyOperativi),
+                            personale_ids: personaleIds,
+                            personale_previsto: personaleDisplay,
+                          },
+                        }))
+                      }
+                    />
+                    <div style={{ marginTop: 6, fontSize: 11, opacity: 0.7 }}>
+                      Visualizzazione compatibile:{" "}
+                      {(operativiDraftByKey[key]?.personale_previsto ?? extractOperativi(meta).personale_previsto) ||
+                        "—"}
+                    </div>
                     {conflict?.hasConflict ? (
                       <div
                         title={conflictTitle}
@@ -456,181 +492,6 @@ export default function CronoprogrammaPanel({
                         }
                         showSummary={false}
                       />
-                    </div>
-                  </div>
-                  <div style={{ paddingLeft: 6 }}>{r.cliente}</div>
-                  <div>
-                    {r.checklist_id ? (
-                      <Link
-                        href={`/checklists/${r.checklist_id}`}
-                        style={{ color: "#2563eb", textDecoration: "underline", fontWeight: 600 }}
-                      >
-                        {r.progetto}
-                      </Link>
-                    ) : (
-                      r.progetto
-                    )}
-                  </div>
-                  <div>{r.descrizione}</div>
-                  <div>{r.ticket_no || r.proforma || "—"}</div>
-                  <div>
-                    <label style={{ display: "inline-flex", alignItems: "center", gap: 8, fontWeight: 700 }}>
-                      <input
-                        type="checkbox"
-                        checked={fatto}
-                        onChange={(e) => setFatto(r, e.target.checked)}
-                        disabled={savingFattoKey === key || stateLoading}
-                      />
-                      Fatto
-                    </label>
-                    {meta?.updated_at && (
-                      <div style={{ marginTop: 6, fontSize: 11, opacity: 0.75 }}>
-                        {meta.updated_by_nome || "Operatore"} · {new Date(meta.updated_at).toLocaleString("it-IT")}
-                      </div>
-                    )}
-                  </div>
-                  <div>
-                    <label style={{ display: "inline-flex", alignItems: "center", gap: 8, fontWeight: 700 }}>
-                      <input
-                        type="checkbox"
-                        checked={hidden}
-                        onChange={(e) => setHidden(r, e.target.checked)}
-                        disabled={savingHiddenKey === key || stateLoading}
-                      />
-                      Nascosta
-                    </label>
-                  </div>
-                  <div>
-                    <div style={{ display: "flex", gap: 6 }}>
-                      <input
-                        value={noteDraftByKey[key] || ""}
-                        onChange={(e) => setNoteDraftByKey((prev) => ({ ...prev, [key]: e.target.value }))}
-                        placeholder="Aggiungi nota..."
-                        style={{ width: "100%", padding: 6 }}
-                      />
-                      <button
-                        type="button"
-                        onClick={() => addComment(r)}
-                        disabled={savingCommentKey === key || stateLoading}
-                        style={{
-                          padding: "6px 10px",
-                          borderRadius: 8,
-                          border: "1px solid #111",
-                          background: "#111",
-                          color: "white",
-                          cursor: "pointer",
-                          whiteSpace: "nowrap",
-                          opacity: savingCommentKey === key ? 0.7 : 1,
-                        }}
-                      >
-                        Salva
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setNoteHistoryKey(key)}
-                        style={{
-                          padding: "6px 10px",
-                          borderRadius: 8,
-                          border: "1px solid #d1d5db",
-                          background: "white",
-                          cursor: "pointer",
-                          fontWeight: 700,
-                        }}
-                        title="Storico note"
-                      >
-                        +
-                      </button>
-                    </div>
-                    <div style={{ marginTop: 6, fontSize: 12, opacity: 0.9 }}>
-                      {comments[0] ? (
-                        <div
-                          style={{
-                            background: "#f9fafb",
-                            border: "1px solid #eef2f7",
-                            borderRadius: 8,
-                            padding: "6px 8px",
-                          }}
-                        >
-                          <div style={{ whiteSpace: "pre-wrap" }}>{comments[0].commento}</div>
-                          <div style={{ opacity: 0.7, marginTop: 4 }}>
-                            {(comments[0].created_by_nome || "Operatore") +
-                              " · " +
-                              (comments[0].created_at
-                                ? new Date(comments[0].created_at).toLocaleString("it-IT")
-                                : "—")}
-                          </div>
-                        </div>
-                      ) : (
-                        <span style={{ opacity: 0.7 }}>Nessuna nota</span>
-                      )}
-                    </div>
-                  </div>
-                  <div>
-                    <input
-                      type="date"
-                      value={operativiDraftByKey[key]?.data_inizio ?? ""}
-                      onChange={(e) =>
-                        setOperativiDraftByKey((prev) => ({
-                          ...prev,
-                          [key]: { ...(prev[key] || emptyOperativi), data_inizio: e.target.value },
-                        }))
-                      }
-                      style={{ width: "100%", padding: 6 }}
-                    />
-                    {!(operativiDraftByKey[key]?.data_inizio ?? "") && (r.data_tassativa || r.data_prevista) ? (
-                      <div style={{ marginTop: 4, fontSize: 11, opacity: 0.7 }}>
-                        Fallback: {formatOperativiDateLabel(r.data_tassativa || r.data_prevista)}
-                      </div>
-                    ) : null}
-                  </div>
-                  <div>
-                    <div style={{ display: "grid", gap: 6 }}>
-                      <input
-                        type="number"
-                        min={1}
-                        step={1}
-                        value={operativiDraftByKey[key]?.durata_giorni ?? ""}
-                        onChange={(e) =>
-                          setOperativiDraftByKey((prev) => ({
-                            ...prev,
-                            [key]: { ...(prev[key] || emptyOperativi), durata_giorni: e.target.value },
-                          }))
-                        }
-                        placeholder="1"
-                        style={{ width: "100%", padding: 6 }}
-                      />
-                      <div style={{ fontSize: 11, opacity: 0.7 }}>
-                        {(() => {
-                          const draftEndDate = computeOperativiEndDate(
-                            operativiDraftByKey[key]?.data_inizio || r.data_tassativa || r.data_prevista,
-                            operativiDraftByKey[key]?.durata_giorni
-                          );
-                          return `Fine: ${draftEndDate ? formatOperativiDateLabel(draftEndDate) : "—"}`;
-                        })()}
-                      </div>
-                    </div>
-                  </div>
-                  <div>
-                    <PersonaleMultiSelect
-                      personaleIds={operativiDraftByKey[key]?.personale_ids ?? []}
-                      legacyValue={
-                        operativiDraftByKey[key]?.personale_previsto ?? extractOperativi(meta).personale_previsto
-                      }
-                      onChange={({ personaleIds, personaleDisplay }) =>
-                        setOperativiDraftByKey((prev) => ({
-                          ...prev,
-                          [key]: {
-                            ...(prev[key] || emptyOperativi),
-                            personale_ids: personaleIds,
-                            personale_previsto: personaleDisplay,
-                          },
-                        }))
-                      }
-                    />
-                    <div style={{ marginTop: 6, fontSize: 11, opacity: 0.7 }}>
-                      Visualizzazione compatibile:{" "}
-                      {(operativiDraftByKey[key]?.personale_previsto ?? extractOperativi(meta).personale_previsto) ||
-                        "—"}
                     </div>
                   </div>
                   <div>
@@ -741,6 +602,98 @@ export default function CronoprogrammaPanel({
                     </div>
                   </div>
                   <div>
+                    <div style={{ display: "flex", gap: 6 }}>
+                      <input
+                        value={noteDraftByKey[key] || ""}
+                        onChange={(e) => setNoteDraftByKey((prev) => ({ ...prev, [key]: e.target.value }))}
+                        placeholder="Aggiungi nota..."
+                        style={{ width: "100%", padding: 6 }}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => addComment(r)}
+                        disabled={savingCommentKey === key || stateLoading}
+                        style={{
+                          padding: "6px 10px",
+                          borderRadius: 8,
+                          border: "1px solid #111",
+                          background: "#111",
+                          color: "white",
+                          cursor: "pointer",
+                          whiteSpace: "nowrap",
+                          opacity: savingCommentKey === key ? 0.7 : 1,
+                        }}
+                      >
+                        Salva
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setNoteHistoryKey(key)}
+                        style={{
+                          padding: "6px 10px",
+                          borderRadius: 8,
+                          border: "1px solid #d1d5db",
+                          background: "white",
+                          cursor: "pointer",
+                          fontWeight: 700,
+                        }}
+                        title="Storico note"
+                      >
+                        +
+                      </button>
+                    </div>
+                    <div style={{ marginTop: 6, fontSize: 12, opacity: 0.9 }}>
+                      {comments[0] ? (
+                        <div
+                          style={{
+                            background: "#f9fafb",
+                            border: "1px solid #eef2f7",
+                            borderRadius: 8,
+                            padding: "6px 8px",
+                          }}
+                        >
+                          <div style={{ whiteSpace: "pre-wrap" }}>{comments[0].commento}</div>
+                          <div style={{ opacity: 0.7, marginTop: 4 }}>
+                            {(comments[0].created_by_nome || "Operatore") +
+                              " · " +
+                              (comments[0].created_at
+                                ? new Date(comments[0].created_at).toLocaleString("it-IT")
+                                : "—")}
+                          </div>
+                        </div>
+                      ) : (
+                        <span style={{ opacity: 0.7 }}>Nessuna nota</span>
+                      )}
+                    </div>
+                  </div>
+                  <div>
+                    <label style={{ display: "inline-flex", alignItems: "center", gap: 8, fontWeight: 700 }}>
+                      <input
+                        type="checkbox"
+                        checked={fatto}
+                        onChange={(e) => setFatto(r, e.target.checked)}
+                        disabled={savingFattoKey === key || stateLoading}
+                      />
+                      Fatto
+                    </label>
+                    {meta?.updated_at && (
+                      <div style={{ marginTop: 6, fontSize: 11, opacity: 0.75 }}>
+                        {meta.updated_by_nome || "Operatore"} · {new Date(meta.updated_at).toLocaleString("it-IT")}
+                      </div>
+                    )}
+                  </div>
+                  <div>
+                    <label style={{ display: "inline-flex", alignItems: "center", gap: 8, fontWeight: 700 }}>
+                      <input
+                        type="checkbox"
+                        checked={hidden}
+                        onChange={(e) => setHidden(r, e.target.checked)}
+                        disabled={savingHiddenKey === key || stateLoading}
+                      />
+                      Nascosta
+                    </label>
+                  </div>
+                  <div>
                     <button
                       type="button"
                       onClick={() => saveOperativi(r)}
@@ -760,8 +713,9 @@ export default function CronoprogrammaPanel({
                   </div>
                 </div>
               );
-            })
-          )}
+              })
+            )}
+          </div>
         </div>
         <div
           ref={bottomScrollRef}
