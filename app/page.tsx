@@ -2391,17 +2391,17 @@ export default function Page() {
           width: 100%;
         }
         .dashboard-cockpit-primary-grid {
-          grid-template-columns: repeat(4, minmax(0, 1fr));
+          grid-template-columns: minmax(380px, 2.2fr) repeat(3, minmax(165px, 1fr));
         }
         .dashboard-scadenze-card {
-          grid-column: span 2 / span 2;
+          grid-column: auto;
           width: 100%;
           max-width: none;
         }
         .dashboard-scadenze-shell {
           width: 100%;
-          max-width: 440px;
-          margin: 0 auto;
+          max-width: none;
+          margin: 0;
         }
         .dashboard-scadenze-breakdown {
           justify-items: start;
