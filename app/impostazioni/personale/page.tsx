@@ -436,6 +436,27 @@ function PersonalePageContent() {
     return documentCatalogByNormalizedNome.get(fallbackKey) || null;
   }
 
+  function getDocumentoDisplayNome(doc?: PersonaleDocumentoRow | null) {
+    const documentCatalogEntry = getDocumentCatalogEntryForDocumento(doc);
+    const catalogName = String(documentCatalogEntry?.nome || "").trim();
+    if (catalogName) return catalogName;
+    return String(doc?.tipo_documento || "").trim() || "—";
+  }
+
+  function getDocumentoDisplayMeta(doc?: PersonaleDocumentoRow | null) {
+    const documentCatalogEntry = getDocumentCatalogEntryForDocumento(doc);
+    if (!documentCatalogEntry) return "";
+    const meta: string[] = [];
+    const categoria = String(documentCatalogEntry.categoria || "").trim();
+    if (categoria) meta.push(categoria);
+    if (documentCatalogEntry.has_scadenza === false) {
+      meta.push("senza scadenza");
+    } else if (documentCatalogEntry.validita_mesi != null) {
+      meta.push(`validita ${documentCatalogEntry.validita_mesi} mesi`);
+    }
+    return meta.join(" · ");
+  }
+
   function getDerivedDocumentoScadenza(doc?: PersonaleDocumentoRow | null) {
     if (!doc) return "";
     const documentCatalogEntry = getDocumentCatalogEntryForDocumento(doc);
@@ -556,7 +577,7 @@ function PersonalePageContent() {
       const existingByTipo = documenti.find(
         (row) =>
           row.personale_id === personId &&
-          normalizeText(row.tipo_documento) === normalizedTipo
+          normalizeText(getDocumentoDisplayNome(row)) === normalizedTipo
       );
       if (existingByTipo) {
         setEditingDocumentoId(existingByTipo.id || null);
@@ -1419,7 +1440,7 @@ function PersonalePageContent() {
                           const missingStandardRows = requiredExpectedDocumentRows.filter(
                             (item) =>
                               !docRows.some(
-                                (doc) => normalizeText(doc.tipo_documento) === normalizeText(item.label)
+                                (doc) => normalizeText(getDocumentoDisplayNome(doc)) === normalizeText(item.label)
                               )
                           ).map((item) => ({
                             key: `missing:${item.key}`,
@@ -1431,7 +1452,7 @@ function PersonalePageContent() {
                           const unifiedRows = [
                             ...docRows.map((doc) => ({
                               key: `doc:${String(doc.id || "")}`,
-                              label: doc.tipo_documento || "—",
+                              label: getDocumentoDisplayNome(doc),
                               doc,
                               required: false,
                             })),
@@ -1461,6 +1482,8 @@ function PersonalePageContent() {
                             const rowError = documentRowErrorById[rowId];
                             const selectedFile = documentFileById[rowId];
                             const documentCatalogEntry = getDocumentCatalogEntryForDocumento(doc);
+                            const displayNome = getDocumentoDisplayNome(doc);
+                            const displayMeta = getDocumentoDisplayMeta(doc);
                             const derivedScadenza = doc ? getDerivedDocumentoScadenza(doc) : "";
                             const effectiveScadenza = doc ? getEffectiveDocumentoScadenza(doc) : "";
                             const hasDerivedScadenza =
@@ -1546,8 +1569,8 @@ function PersonalePageContent() {
                             }
 
                             const docTypeChoices =
-                              doc.tipo_documento && !documentTypeOptions.includes(doc.tipo_documento)
-                                ? [doc.tipo_documento, ...documentTypeOptions]
+                              displayNome !== "—" && !documentTypeOptions.includes(displayNome)
+                                ? [displayNome, ...documentTypeOptions]
                                 : documentTypeOptions;
                             return (
                               <div
@@ -1585,8 +1608,17 @@ function PersonalePageContent() {
                                       <span style={{ color: "#6b7280" }}>Tipo documento</span>
                                       <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                                         <select
-                                          value={doc.tipo_documento}
-                                          onChange={(e) => updateDocumento(doc.id, { tipo_documento: e.target.value })}
+                                          value={displayNome === "—" ? "" : displayNome}
+                                          onChange={(e) => {
+                                            const selectedLabel = e.target.value;
+                                            const selectedCatalog = documentCatalogRows.find(
+                                              (row) => String(row.nome || "").trim() === selectedLabel
+                                            );
+                                            updateDocumento(doc.id, {
+                                              tipo_documento: selectedLabel,
+                                              document_catalog_id: selectedCatalog?.id || "",
+                                            });
+                                          }}
                                           style={{ width: "100%", padding: 8 }}
                                         >
                                           <option value="">— Seleziona —</option>
@@ -1609,6 +1641,9 @@ function PersonalePageContent() {
                                         >
                                           {badgeState}
                                         </span>
+                                        {displayMeta ? (
+                                          <span style={{ fontSize: 11, color: "#6b7280" }}>{displayMeta}</span>
+                                        ) : null}
                                       </div>
                                     </label>
                                     <label style={{ display: "grid", gap: 6, fontSize: 12 }}>
@@ -1832,7 +1867,10 @@ function PersonalePageContent() {
                                     <div style={{ display: "grid", gap: 6 }}>
                                       <div style={{ fontSize: 12, color: "#6b7280" }}>Tipo documento</div>
                                       <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                                        <span style={{ fontWeight: 600 }}>{doc.tipo_documento || "—"}</span>
+                                        <span style={{ fontWeight: 600 }}>{displayNome}</span>
+                                        {displayMeta ? (
+                                          <span style={{ fontSize: 11, color: "#6b7280" }}>{displayMeta}</span>
+                                        ) : null}
                                       </div>
                                     </div>
                                     <div style={{ display: "grid", gap: 6 }}>

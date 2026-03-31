@@ -442,6 +442,27 @@ function AziendePageContent() {
     return documentCatalogByNormalizedNome.get(fallbackKey) || null;
   }
 
+  function getDocumentoDisplayNome(doc?: AziendaDocumentoRow | null) {
+    const documentCatalogEntry = getDocumentCatalogEntryForDocumento(doc);
+    const catalogName = String(documentCatalogEntry?.nome || "").trim();
+    if (catalogName) return catalogName;
+    return String(doc?.tipo_documento || "").trim() || "—";
+  }
+
+  function getDocumentoDisplayMeta(doc?: AziendaDocumentoRow | null) {
+    const documentCatalogEntry = getDocumentCatalogEntryForDocumento(doc);
+    if (!documentCatalogEntry) return "";
+    const meta: string[] = [];
+    const categoria = String(documentCatalogEntry.categoria || "").trim();
+    if (categoria) meta.push(categoria);
+    if (documentCatalogEntry.has_scadenza === false) {
+      meta.push("senza scadenza");
+    } else if (documentCatalogEntry.validita_mesi != null) {
+      meta.push(`validita ${documentCatalogEntry.validita_mesi} mesi`);
+    }
+    return meta.join(" · ");
+  }
+
   function getDerivedDocumentoScadenza(
     doc?: AziendaDocumentoRow | null,
     documentCatalogEntry?: Pick<DocumentCatalogRow, "has_scadenza" | "validita_mesi"> | null
@@ -516,7 +537,7 @@ function AziendePageContent() {
     if (tipoDocumento) {
       const normalizedTipo = normalizeText(tipoDocumento);
       const existingByTipo = documenti.find(
-        (row) => row.azienda_id === aziendaId && normalizeText(row.tipo_documento) === normalizedTipo
+        (row) => row.azienda_id === aziendaId && normalizeText(getDocumentoDisplayNome(row)) === normalizedTipo
       );
       if (existingByTipo) {
         setEditingDocumentoId(existingByTipo.id || null);
@@ -1251,12 +1272,12 @@ function AziendePageContent() {
                         extraDocumentLabels={documentTypeOptions}
                         expectedDocumentsFromCatalog={expectedDocumentsFromCatalog}
                         docs={docRows.map((doc) => ({
-                          tipo_documento: doc.tipo_documento,
+                          tipo_documento: getDocumentoDisplayNome(doc),
                           data_scadenza: doc.data_scadenza || null,
                         }))}
                         getManageHref={(item: SafetyExpectedDocumentItem) => {
                           const matchingDoc = docRows.find(
-                            (doc) => normalizeText(doc.tipo_documento) === normalizeText(item.label)
+                            (doc) => normalizeText(getDocumentoDisplayNome(doc)) === normalizeText(item.label)
                           );
                           const params = new URLSearchParams({
                             azienda_id: aziendaId,
@@ -1283,9 +1304,11 @@ function AziendePageContent() {
                           </div>
                         ) : (
                           docRows.map((doc) => {
+                            const displayNome = getDocumentoDisplayNome(doc);
+                            const displayMeta = getDocumentoDisplayMeta(doc);
                             const docTypeChoices =
-                              doc.tipo_documento && !documentTypeOptions.includes(doc.tipo_documento)
-                                ? [doc.tipo_documento, ...documentTypeOptions]
+                              displayNome !== "—" && !documentTypeOptions.includes(displayNome)
+                                ? [displayNome, ...documentTypeOptions]
                                 : documentTypeOptions;
                             const isEditing = doc.isNew || editingDocumentoId === doc.id;
                             const rowId = String(doc.id || "");
@@ -1342,7 +1365,7 @@ function AziendePageContent() {
                                       <label style={{ display: "block", fontSize: 12 }}>
                                         Tipo documento
                                         <select
-                                          value={doc.tipo_documento}
+                                          value={displayNome === "—" ? "" : displayNome}
                                           onChange={(e) => {
                                             const selectedLabel = e.target.value;
                                             const selectedCatalog = documentCatalog.find(
@@ -1366,6 +1389,11 @@ function AziendePageContent() {
                                             </option>
                                           ))}
                                         </select>
+                                        {displayMeta ? (
+                                          <div style={{ marginTop: 6, fontSize: 11, color: "#6b7280" }}>
+                                            {displayMeta}
+                                          </div>
+                                        ) : null}
                                       </label>
                                       <label style={{ display: "block", fontSize: 12 }}>
                                         Data emissione
@@ -1569,9 +1597,9 @@ function AziendePageContent() {
                                       }}
                                     >
                                       <div style={{ display: "grid", gap: 6 }}>
-                                        <div style={{ fontSize: 12, color: "#6b7280" }}>Tipo documento</div>
-                                        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                                          <span style={{ fontWeight: 600 }}>{doc.tipo_documento || "—"}</span>
+                                      <div style={{ fontSize: 12, color: "#6b7280" }}>Tipo documento</div>
+                                      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                                          <span style={{ fontWeight: 600 }}>{displayNome}</span>
                                           {badgeListState !== "MANCANTE" ? (
                                             <span
                                               style={{
@@ -1586,6 +1614,9 @@ function AziendePageContent() {
                                             >
                                               {badgeListState}
                                             </span>
+                                          ) : null}
+                                          {displayMeta ? (
+                                            <span style={{ fontSize: 11, color: "#6b7280" }}>{displayMeta}</span>
                                           ) : null}
                                         </div>
                                       </div>
