@@ -29,3 +29,50 @@ export type InterventoRow = {
     magazzino_importazione: string | null;
   } | null;
 };
+
+export type CanonicalInterventoEsitoFatturazione =
+  | "DA_FATTURARE"
+  | "INCLUSO"
+  | "FATTURATO";
+
+function normalizeUpper(value?: string | null) {
+  return String(value || "").trim().toUpperCase().replace(/\s+/g, "_");
+}
+
+export function normalizeInterventoEsitoFatturazioneValue(
+  value?: string | null
+): CanonicalInterventoEsitoFatturazione | null {
+  const raw = normalizeUpper(value);
+  if (!raw) return null;
+  if (raw === "DA_FATTURARE") return "DA_FATTURARE";
+  if (raw === "FATTURATO") return "FATTURATO";
+  if (raw === "INCLUSO" || raw === "INCLUSO_DA_CONSUNTIVO" || raw === "NON_FATTURARE") {
+    return "INCLUSO";
+  }
+  return null;
+}
+
+export function getCanonicalInterventoEsitoFatturazione(input: {
+  esito_fatturazione?: string | null;
+  fatturazione_stato?: string | null;
+  incluso?: boolean | null;
+}): CanonicalInterventoEsitoFatturazione | null {
+  return (
+    normalizeInterventoEsitoFatturazioneValue(input.esito_fatturazione) ||
+    normalizeInterventoEsitoFatturazioneValue(input.fatturazione_stato) ||
+    (input.incluso === true ? "INCLUSO" : null)
+  );
+}
+
+export function getInterventoLifecycleStatus(input: {
+  stato_intervento?: string | null;
+  chiuso_il?: string | null;
+  fatturazione_stato?: string | null;
+}): "APERTO" | "CHIUSO" {
+  const raw = normalizeUpper(input.stato_intervento);
+  if (raw === "APERTO" || raw === "CHIUSO") return raw;
+  if (input.chiuso_il || normalizeInterventoEsitoFatturazioneValue(input.fatturazione_stato)) {
+    return "CHIUSO";
+  }
+  return "APERTO";
+}
