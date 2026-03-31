@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import ConfigMancante from "@/components/ConfigMancante";
 import { dbFrom } from "@/lib/clientDbBroker";
@@ -76,6 +76,11 @@ export default function DocumentiPage() {
   const [newDocumentForm, setNewDocumentForm] = useState<NewDocumentFormState>(EMPTY_NEW_DOCUMENT_FORM);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<EditDocumentFormState | null>(null);
+  const topScrollRef = useRef<HTMLDivElement | null>(null);
+  const mainScrollRef = useRef<HTMLDivElement | null>(null);
+  const scrollContentRef = useRef<HTMLDivElement | null>(null);
+  const syncingScrollRef = useRef<"top" | "main" | null>(null);
+  const [scrollContentWidth, setScrollContentWidth] = useState(0);
 
   async function loadRows() {
     setLoading(true);
@@ -129,6 +134,51 @@ export default function DocumentiPage() {
     })();
     return () => {
       active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    const updateWidth = () => {
+      const nextWidth = scrollContentRef.current?.scrollWidth || 0;
+      setScrollContentWidth(nextWidth);
+    };
+
+    updateWidth();
+
+    if (typeof window === "undefined") return;
+    window.addEventListener("resize", updateWidth);
+    return () => {
+      window.removeEventListener("resize", updateWidth);
+    };
+  }, [rows, newDocumentOpen, editingId, editForm]);
+
+  useEffect(() => {
+    const topNode = topScrollRef.current;
+    const mainNode = mainScrollRef.current;
+    if (!topNode || !mainNode) return;
+
+    const handleTopScroll = () => {
+      if (!topScrollRef.current || !mainScrollRef.current) return;
+      if (syncingScrollRef.current === "main") return;
+      syncingScrollRef.current = "top";
+      mainScrollRef.current.scrollLeft = topScrollRef.current.scrollLeft;
+      syncingScrollRef.current = null;
+    };
+
+    const handleMainScroll = () => {
+      if (!topScrollRef.current || !mainScrollRef.current) return;
+      if (syncingScrollRef.current === "top") return;
+      syncingScrollRef.current = "main";
+      topScrollRef.current.scrollLeft = mainScrollRef.current.scrollLeft;
+      syncingScrollRef.current = null;
+    };
+
+    topNode.addEventListener("scroll", handleTopScroll, { passive: true });
+    mainNode.addEventListener("scroll", handleMainScroll, { passive: true });
+
+    return () => {
+      topNode.removeEventListener("scroll", handleTopScroll);
+      mainNode.removeEventListener("scroll", handleMainScroll);
     };
   }, []);
 
@@ -253,7 +303,7 @@ export default function DocumentiPage() {
     <div style={{ maxWidth: 1280, margin: "24px auto", padding: 16 }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
         <div>
-          <h1 style={{ margin: 0, fontSize: 32 }}>Documenti</h1>
+          <h1 style={{ margin: 0, fontSize: 32 }}>Doc sicurezza</h1>
           <div style={{ marginTop: 4, fontSize: 13, color: "#6b7280" }}>
             Catalogo documenti e corsi usato come base del sistema.
           </div>
@@ -481,65 +531,83 @@ export default function DocumentiPage() {
         </div>
       ) : null}
 
-      <div
-        style={{
-          marginTop: 18,
-          border: "1px solid #e5e7eb",
-          borderRadius: 16,
-          overflow: "hidden",
-          background: "#fff",
-          boxShadow: "0 10px 30px rgba(15, 23, 42, 0.05)",
-        }}
-      >
+      <div style={{ marginTop: 18, display: "grid", gap: 8 }}>
         <div
+          ref={topScrollRef}
           style={{
-            display: "grid",
-            gridTemplateColumns:
-              "minmax(220px,1.4fr) 120px 150px 130px 120px 130px 100px 90px 160px",
-            gap: 12,
-            padding: "14px 16px",
-            fontSize: 12,
-            fontWeight: 800,
-            color: "#374151",
-            background: "#f8fafc",
-            borderBottom: "1px solid #e5e7eb",
+            overflowX: "auto",
+            overflowY: "hidden",
+            border: "1px solid #e5e7eb",
+            borderRadius: 12,
+            background: "#fff",
           }}
         >
-          <div>Nome</div>
-          <div>Target</div>
-          <div>Categoria</div>
-          <div>Scadenza</div>
-          <div>Validita mesi</div>
-          <div>Required default</div>
-          <div>Attivo</div>
-          <div>Ordine</div>
-          <div>Azioni</div>
+          <div style={{ width: Math.max(scrollContentWidth, 1), height: 18 }} />
         </div>
 
-        {loading ? (
-          <div style={{ padding: 18, color: "#6b7280" }}>Caricamento...</div>
-        ) : rows.length === 0 ? (
-          <div style={{ padding: 18, color: "#6b7280" }}>Nessun documento presente nel catalogo.</div>
-        ) : (
-          rows.map((row) => {
-            const isEditing = editingId === row.id && editForm;
-            return (
-              <div
-                key={row.id}
-                style={{
-                  display: "grid",
-                  gridTemplateColumns:
-                    "minmax(220px,1.4fr) 120px 150px 130px 120px 130px 100px 90px 160px",
-                  gap: 12,
-                  padding: "14px 16px",
-                  fontSize: 14,
-                  borderBottom: "1px solid #f3f4f6",
-                  alignItems: "center",
-                  background: row.attivo ? "#fff" : "#f8fafc",
-                  opacity: row.attivo ? 1 : 0.72,
-                }}
-              >
-                {isEditing ? (
+        <div
+          ref={mainScrollRef}
+          style={{
+            border: "1px solid #e5e7eb",
+            borderRadius: 16,
+            overflowX: "auto",
+            overflowY: "hidden",
+            background: "#fff",
+            boxShadow: "0 10px 30px rgba(15, 23, 42, 0.05)",
+          }}
+        >
+          <div ref={scrollContentRef} style={{ width: "max-content", minWidth: "100%" }}>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns:
+                  "minmax(220px,1.4fr) 120px 150px 130px 120px 130px 100px 90px 200px",
+                gap: 12,
+                padding: "14px 16px",
+                fontSize: 12,
+                fontWeight: 800,
+                color: "#374151",
+                background: "#f8fafc",
+                borderBottom: "1px solid #e5e7eb",
+                minWidth: 1340,
+              }}
+            >
+              <div>Nome</div>
+              <div>Target</div>
+              <div>Categoria</div>
+              <div>Scadenza</div>
+              <div>Validita mesi</div>
+              <div>Required default</div>
+              <div>Attivo</div>
+              <div>Ordine</div>
+              <div>Azioni</div>
+            </div>
+
+            {loading ? (
+              <div style={{ padding: 18, color: "#6b7280" }}>Caricamento...</div>
+            ) : rows.length === 0 ? (
+              <div style={{ padding: 18, color: "#6b7280" }}>Nessun documento presente nel catalogo.</div>
+            ) : (
+              rows.map((row) => {
+                const isEditing = editingId === row.id && editForm;
+                return (
+                  <div
+                    key={row.id}
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns:
+                        "minmax(220px,1.4fr) 120px 150px 130px 120px 130px 100px 90px 200px",
+                      gap: 12,
+                      padding: "14px 16px",
+                      fontSize: 14,
+                      borderBottom: "1px solid #f3f4f6",
+                      alignItems: "center",
+                      background: row.attivo ? "#fff" : "#f8fafc",
+                      opacity: row.attivo ? 1 : 0.72,
+                      minWidth: 1340,
+                    }}
+                  >
+                    {isEditing ? (
                   <>
                     <input
                       value={editForm.nome}
@@ -650,11 +718,21 @@ export default function DocumentiPage() {
                       </button>
                     </div>
                   </>
-                ) : (
+                    ) : (
                   <>
-                    <div style={{ fontWeight: 700 }}>{row.nome || "—"}</div>
-                    <div>{row.target || "—"}</div>
-                    <div>{row.categoria || "—"}</div>
+                    <div
+                      title={row.nome || undefined}
+                      style={{ fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}
+                    >
+                      {row.nome || "—"}
+                    </div>
+                    <div style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{row.target || "—"}</div>
+                    <div
+                      title={row.categoria || undefined}
+                      style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}
+                    >
+                      {row.categoria || "—"}
+                    </div>
                     <div>{renderBooleanBadge(row.has_scadenza, "SI", "NO")}</div>
                     <div>{row.validita_mesi == null ? "—" : row.validita_mesi}</div>
                     <div>{renderBooleanBadge(row.required_default, "SI", "NO")}</div>
@@ -699,11 +777,13 @@ export default function DocumentiPage() {
                       </div>
                     </div>
                   </>
-                )}
-              </div>
-            );
-          })
-        )}
+                    )}
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </div>
       </div>
     </div>
   );

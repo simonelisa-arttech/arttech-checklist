@@ -137,7 +137,7 @@ export default function ImpostazioniPage() {
             color: "inherit",
           }}
         >
-          Documenti
+          Doc sicurezza
         </Link>
         <Link
           href="/catalogo"
