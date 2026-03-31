@@ -3730,7 +3730,10 @@ function buildFormData(c: Checklist): FormData {
   }
 
   async function associateFreeSimToProject() {
-    if (!id || !selectedFreeSimId) return;
+    if (!id || !selectedFreeSimId || selectedFreeSimId === "null") {
+      setProjectSimsError("Seleziona una SIM valida");
+      return;
+    }
     setProjectSimSavingKey(`associate:${selectedFreeSimId}`);
     setProjectSimsError(null);
     try {
@@ -8284,15 +8287,15 @@ function buildFormData(c: Checklist): FormData {
                 <button
                   type="button"
                   onClick={associateFreeSimToProject}
-                  disabled={!selectedFreeSimId || projectSimSavingKey != null}
+                  disabled={!selectedFreeSimId || selectedFreeSimId === "null" || projectSimSavingKey != null}
                   style={{
                     padding: "10px 12px",
                     borderRadius: 10,
                     border: "1px solid #ddd",
                     background:
-                      !selectedFreeSimId || projectSimSavingKey != null ? "#f3f4f6" : "white",
+                      !selectedFreeSimId || selectedFreeSimId === "null" || projectSimSavingKey != null ? "#f3f4f6" : "white",
                     cursor:
-                      !selectedFreeSimId || projectSimSavingKey != null ? "not-allowed" : "pointer",
+                      !selectedFreeSimId || selectedFreeSimId === "null" || projectSimSavingKey != null ? "not-allowed" : "pointer",
                   }}
                 >
                   Associa al progetto
