@@ -7,11 +7,13 @@ import { isSupabaseConfigured } from "@/lib/supabaseClient";
 
 type SimCardRow = {
   id?: string;
+  checklist_id: string;
   numero_telefono: string;
   intestatario: string;
   piano_attivo: string;
   operatore: string;
   tariffa: number | null;
+  data_attivazione: string;
   data_scadenza: string;
   giorni_preavviso: number | null;
   alert_frequenza: string;
@@ -19,6 +21,7 @@ type SimCardRow = {
   billing_status: string;
   attiva: boolean;
   in_abbonamento: boolean;
+  device_installato: string;
   note: string;
   isNew?: boolean;
 };
@@ -28,7 +31,14 @@ type SimRechargeRow = {
   sim_id: string;
   data_ricarica: string;
   importo: number | null;
+  billing_status: string;
   note: string;
+};
+
+type ChecklistProjectRow = {
+  id: string;
+  nome_checklist: string;
+  cliente: string;
 };
 
 function normalizeText(value?: string | null) {
@@ -56,6 +66,14 @@ function formatCurrency(value: number | null) {
   }).format(value);
 }
 
+function formatDateOnlyValue(date?: Date | null) {
+  if (!date || !Number.isFinite(date.getTime())) return "";
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
 function parseLocalDay(value?: string | null) {
   const raw = String(value || "").trim();
   if (!raw) return null;
@@ -71,9 +89,57 @@ function parseLocalDay(value?: string | null) {
   return date;
 }
 
-function getScadenzaBadgeState(row: Pick<SimCardRow, "data_scadenza" | "giorni_preavviso">) {
-  const scadenza = parseLocalDay(row.data_scadenza);
-  if (!scadenza) return null;
+function addOneYearToDate(value?: string | null) {
+  const source = parseLocalDay(value);
+  if (!source) return "";
+  const next = new Date(source.getTime());
+  next.setFullYear(next.getFullYear() + 1);
+  if (next.getMonth() !== source.getMonth()) {
+    next.setDate(0);
+  }
+  return formatDateOnlyValue(next);
+}
+
+function getLatestRechargeRow(rows: SimRechargeRow[]) {
+  if (!rows.length) return null;
+  return [...rows]
+    .sort((a, b) => {
+      const aTime = parseLocalDay(a.data_ricarica)?.getTime() || 0;
+      const bTime = parseLocalDay(b.data_ricarica)?.getTime() || 0;
+      return bTime - aTime;
+    })[0] || null;
+}
+
+function getEffectiveSimScadenza(
+  row: Pick<SimCardRow, "data_attivazione" | "data_scadenza">,
+  latestRecharge?: Pick<SimRechargeRow, "data_ricarica"> | null
+) {
+  const activation = parseLocalDay(row.data_attivazione);
+  const lastRecharge = parseLocalDay(latestRecharge?.data_ricarica);
+  const baseDate =
+    activation && lastRecharge
+      ? activation.getTime() >= lastRecharge.getTime()
+        ? row.data_attivazione
+        : latestRecharge?.data_ricarica || ""
+      : activation
+        ? row.data_attivazione
+        : lastRecharge
+          ? latestRecharge?.data_ricarica || ""
+          : "";
+
+  if (baseDate) return addOneYearToDate(baseDate);
+  return String(row.data_scadenza || "").trim();
+}
+
+function getSimOperationalState(
+  row: Pick<SimCardRow, "attiva" | "giorni_preavviso" | "data_attivazione" | "data_scadenza">,
+  latestRecharge?: Pick<SimRechargeRow, "data_ricarica"> | null
+) {
+  if (!row.attiva) return { stato: "OFF" as const, giorniDelta: null as number | null };
+
+  const effectiveScadenza = getEffectiveSimScadenza(row, latestRecharge);
+  const scadenza = parseLocalDay(effectiveScadenza);
+  if (!scadenza) return { stato: "ATTIVA" as const, giorniDelta: null as number | null };
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const msPerDay = 24 * 60 * 60 * 1000;
@@ -88,11 +154,11 @@ function getScadenzaBadgeState(row: Pick<SimCardRow, "data_scadenza" | "giorni_p
   if (giorniDelta <= giorniPreavvisoEffettivi) {
     return { stato: "IN_SCADENZA" as const, giorniDelta };
   }
-  return null;
+  return { stato: "ATTIVA" as const, giorniDelta };
 }
 
-function renderScadenzaBadge(state: ReturnType<typeof getScadenzaBadgeState>) {
-  if (!state) return null;
+function renderScadenzaBadge(state: ReturnType<typeof getSimOperationalState> | null) {
+  if (!state || state.stato === "ATTIVA" || state.stato === "OFF") return null;
   const isScaduto = state.stato === "SCADUTO";
   return (
     <span
@@ -151,6 +217,41 @@ function renderBillingBadge(value?: string | null) {
   );
 }
 
+function renderRechargeBillingBadge(value?: string | null) {
+  const raw = String(value || "").trim().toUpperCase();
+  let background = "#f3f4f6";
+  let color = "#374151";
+
+  if (raw === "DA_FATTURARE") {
+    background = "#fef3c7";
+    color = "#92400e";
+  } else if (raw === "FATTURATO") {
+    background = "#dcfce7";
+    color = "#166534";
+  } else if (raw === "NON_FATTURARE") {
+    background = "#e5e7eb";
+    color = "#4b5563";
+  }
+
+  return (
+    <span
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        padding: "4px 10px",
+        borderRadius: 999,
+        fontSize: 12,
+        fontWeight: 800,
+        background,
+        color,
+        whiteSpace: "nowrap",
+      }}
+    >
+      {raw || "—"}
+    </span>
+  );
+}
+
 export default function SimPage() {
   if (!isSupabaseConfigured) {
     return <ConfigMancante />;
@@ -163,15 +264,17 @@ export default function SimPage() {
   const [syncing, setSyncing] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
   const [rows, setRows] = useState<SimCardRow[]>([]);
+  const [projectByChecklistId, setProjectByChecklistId] = useState<Record<string, ChecklistProjectRow>>({});
   const [search, setSearch] = useState("");
-  const [attiveFilter, setAttiveFilter] = useState<"ATTIVE" | "TUTTE">("ATTIVE");
+  const [simStatusFilter, setSimStatusFilter] = useState<"ATTIVE" | "SCADUTE" | "IN_SCADENZA" | "OFF" | "TUTTE">("ATTIVE");
+  const [projectFilter, setProjectFilter] = useState("TUTTI");
   const [operatoreFilter, setOperatoreFilter] = useState("TUTTI");
-  const [billingStatusFilter, setBillingStatusFilter] = useState("TUTTI");
+  const [latestRechargeBillingFilter, setLatestRechargeBillingFilter] = useState("TUTTI");
   const [editingSimId, setEditingSimId] = useState<string | null>(null);
   const [expandedSimId, setExpandedSimId] = useState<string | null>(null);
   const [rechargesBySimId, setRechargesBySimId] = useState<Record<string, SimRechargeRow[]>>({});
   const [newRechargeBySimId, setNewRechargeBySimId] = useState<
-    Record<string, { data_ricarica: string; importo: string; note: string }>
+    Record<string, { data_ricarica: string; importo: string; billing_status: string; note: string }>
   >({});
   const [savingRechargeKey, setSavingRechargeKey] = useState<string | null>(null);
   const topScrollRef = useRef<HTMLDivElement | null>(null);
@@ -187,7 +290,7 @@ export default function SimPage() {
       setError(null);
       const { data, error: loadError } = await dbFrom("sim_cards")
         .select(
-          "id, numero_telefono, intestatario, piano_attivo, operatore, tariffa, data_scadenza, giorni_preavviso, alert_frequenza, stato_alert, billing_status, attiva, in_abbonamento, note"
+          "id, checklist_id, numero_telefono, intestatario, piano_attivo, operatore, tariffa, data_attivazione, data_scadenza, giorni_preavviso, alert_frequenza, stato_alert, billing_status, attiva, in_abbonamento, device_installato, note"
         )
         .order("numero_telefono", { ascending: true });
 
@@ -202,6 +305,7 @@ export default function SimPage() {
 
       const nextRows = (((data as any[]) || []) as Array<Record<string, any>>).map((row) => ({
           id: String(row.id || ""),
+          checklist_id: String(row.checklist_id || ""),
           numero_telefono: String(row.numero_telefono || ""),
           intestatario: String(row.intestatario || ""),
           piano_attivo: String(row.piano_attivo || ""),
@@ -212,6 +316,7 @@ export default function SimPage() {
               : row.tariffa == null || row.tariffa === ""
                 ? null
                 : Number(row.tariffa),
+          data_attivazione: String(row.data_attivazione || ""),
           data_scadenza: String(row.data_scadenza || ""),
           giorni_preavviso:
             typeof row.giorni_preavviso === "number"
@@ -224,10 +329,34 @@ export default function SimPage() {
           billing_status: String(row.billing_status || ""),
           attiva: row.attiva !== false,
           in_abbonamento: row.in_abbonamento === true,
+          device_installato: String(row.device_installato || ""),
           note: String(row.note || ""),
           isNew: false,
         }));
       setRows(nextRows);
+
+      const checklistIds = Array.from(
+        new Set(nextRows.map((row) => String(row.checklist_id || "").trim()).filter(Boolean))
+      );
+      if (checklistIds.length > 0) {
+        const { data: checklistData } = await dbFrom("checklists")
+          .select("id, nome_checklist, cliente")
+          .in("id", checklistIds);
+        if (!active) return;
+        const nextProjectMap: Record<string, ChecklistProjectRow> = {};
+        for (const row of (((checklistData as any[]) || []) as Array<Record<string, any>>)) {
+          const id = String(row.id || "").trim();
+          if (!id) continue;
+          nextProjectMap[id] = {
+            id,
+            nome_checklist: String(row.nome_checklist || ""),
+            cliente: String(row.cliente || ""),
+          };
+        }
+        setProjectByChecklistId(nextProjectMap);
+      } else {
+        setProjectByChecklistId({});
+      }
 
       const persistedSimIds = nextRows
         .map((row) => String(row.id || ""))
@@ -235,7 +364,7 @@ export default function SimPage() {
       const rechargeEntries = await Promise.all(
         persistedSimIds.map(async (simId) => {
           const { data: rechargeData, error: rechargeError } = await dbFrom("sim_recharges")
-            .select("id, sim_id, data_ricarica, importo, note")
+            .select("id, sim_id, data_ricarica, importo, billing_status, note")
             .eq("sim_id", simId)
             .order("data_ricarica", { ascending: false });
 
@@ -260,6 +389,7 @@ export default function SimPage() {
                   : recharge.importo == null || recharge.importo === ""
                     ? null
                     : Number(recharge.importo),
+              billing_status: String(recharge.billing_status || ""),
               note: String(recharge.note || ""),
             })),
           };
@@ -296,30 +426,80 @@ export default function SimPage() {
     ).sort((a, b) => a.localeCompare(b, "it"));
   }, [rows]);
 
-  const billingStatusOptions = useMemo(() => {
+  const projectFilterOptions = useMemo(() => {
     return Array.from(
       new Set(
         rows
-          .map((row) => String(row.billing_status || "").trim())
+          .map((row) => {
+            const checklistId = String(row.checklist_id || "").trim();
+            if (!checklistId) return "SIM_LIBERA";
+            const project = projectByChecklistId[checklistId];
+            return project ? `${project.nome_checklist}${project.cliente ? ` · ${project.cliente}` : ""}` : checklistId;
+          })
           .filter(Boolean)
       )
     ).sort((a, b) => a.localeCompare(b, "it"));
-  }, [rows]);
+  }, [rows, projectByChecklistId]);
+
+  const latestRechargeBySimId = useMemo(() => {
+    const map: Record<string, SimRechargeRow | null> = {};
+    for (const row of rows) {
+      const rowId = String(row.id || "");
+      if (!rowId) continue;
+      map[rowId] = getLatestRechargeRow(rechargesBySimId[rowId] || []);
+    }
+    return map;
+  }, [rows, rechargesBySimId]);
+
+  const latestRechargeBillingOptions = useMemo(() => {
+    return Array.from(
+      new Set(
+        Object.values(latestRechargeBySimId)
+          .map((row) => String(row?.billing_status || "").trim())
+          .filter(Boolean)
+      )
+    ).sort((a, b) => a.localeCompare(b, "it"));
+  }, [latestRechargeBySimId]);
 
   const filteredRows = useMemo(() => {
     const query = normalizeText(search);
     return rows.filter((row) => {
-      if (attiveFilter === "ATTIVE" && !row.attiva) return false;
+      const rowId = String(row.id || "");
+      const latestRecharge = latestRechargeBySimId[rowId] || null;
+      const simState = getSimOperationalState(row, latestRecharge);
+      const checklistId = String(row.checklist_id || "").trim();
+      const projectLabel =
+        !checklistId
+          ? "SIM_LIBERA"
+          : projectByChecklistId[checklistId]
+            ? `${projectByChecklistId[checklistId].nome_checklist}${projectByChecklistId[checklistId].cliente ? ` · ${projectByChecklistId[checklistId].cliente}` : ""}`
+            : checklistId;
+
+      if (simStatusFilter === "ATTIVE" && !["ATTIVA", "IN_SCADENZA"].includes(simState.stato)) return false;
+      if (simStatusFilter === "SCADUTE" && simState.stato !== "SCADUTO") return false;
+      if (simStatusFilter === "IN_SCADENZA" && simState.stato !== "IN_SCADENZA") return false;
+      if (simStatusFilter === "OFF" && simState.stato !== "OFF") return false;
+      if (projectFilter !== "TUTTI" && projectLabel !== projectFilter) return false;
       if (operatoreFilter !== "TUTTI" && row.operatore !== operatoreFilter) return false;
-      if (billingStatusFilter !== "TUTTI" && row.billing_status !== billingStatusFilter) return false;
+      if (
+        latestRechargeBillingFilter !== "TUTTI" &&
+        String(latestRecharge?.billing_status || "").trim() !== latestRechargeBillingFilter
+      ) return false;
 
       if (!query) return true;
       const haystack = normalizeText(
-        [row.numero_telefono, row.intestatario, row.operatore, row.piano_attivo].join(" ")
+        [
+          row.numero_telefono,
+          row.intestatario,
+          row.operatore,
+          row.piano_attivo,
+          row.device_installato,
+          projectLabel === "SIM_LIBERA" ? "SIM libera" : projectLabel,
+        ].join(" ")
       );
       return haystack.includes(query);
     });
-  }, [rows, search, attiveFilter, operatoreFilter, billingStatusFilter]);
+  }, [rows, search, simStatusFilter, projectFilter, operatoreFilter, latestRechargeBillingFilter, latestRechargeBySimId, projectByChecklistId]);
 
   useEffect(() => {
     function syncScrollWidth() {
@@ -366,13 +546,14 @@ export default function SimPage() {
 
   function updateRechargeDraft(
     simId: string,
-    patch: Partial<{ data_ricarica: string; importo: string; note: string }>
+    patch: Partial<{ data_ricarica: string; importo: string; billing_status: string; note: string }>
   ) {
     setNewRechargeBySimId((prev) => ({
       ...prev,
       [simId]: {
         data_ricarica: prev[simId]?.data_ricarica || "",
         importo: prev[simId]?.importo || "",
+        billing_status: prev[simId]?.billing_status || "",
         note: prev[simId]?.note || "",
         ...patch,
       },
@@ -384,11 +565,13 @@ export default function SimPage() {
     setRows((prev) => [
       {
         id: tempId,
+        checklist_id: "",
         numero_telefono: "",
         intestatario: "",
         piano_attivo: "",
         operatore: "",
         tariffa: null,
+        data_attivazione: "",
         data_scadenza: "",
         giorni_preavviso: null,
         alert_frequenza: "",
@@ -396,6 +579,7 @@ export default function SimPage() {
         billing_status: "",
         attiva: true,
         in_abbonamento: false,
+        device_installato: "",
         note: "",
         isNew: true,
       },
@@ -428,11 +612,13 @@ export default function SimPage() {
     setNotice(null);
 
     const payload = {
+      checklist_id: row.checklist_id.trim() || null,
       numero_telefono: numeroTelefono,
       intestatario: row.intestatario.trim() || null,
       piano_attivo: row.piano_attivo.trim() || null,
       operatore: row.operatore.trim() || null,
       tariffa: row.tariffa == null || !Number.isFinite(row.tariffa) ? null : row.tariffa,
+      data_attivazione: row.data_attivazione.trim() || null,
       data_scadenza: row.data_scadenza.trim() || null,
       giorni_preavviso:
         row.giorni_preavviso == null || !Number.isFinite(row.giorni_preavviso)
@@ -443,6 +629,7 @@ export default function SimPage() {
       billing_status: row.billing_status.trim() || null,
       attiva: row.attiva !== false,
       in_abbonamento: row.in_abbonamento === true,
+      device_installato: row.device_installato.trim() || null,
       note: row.note.trim() || null,
     };
 
@@ -460,6 +647,7 @@ export default function SimPage() {
     const saved = result.data as Record<string, any> | null;
     const nextRow: SimCardRow = {
       id: String(saved?.id || row.id || ""),
+      checklist_id: String(saved?.checklist_id || row.checklist_id || ""),
       numero_telefono: String(saved?.numero_telefono || payload.numero_telefono),
       intestatario: String(saved?.intestatario || ""),
       piano_attivo: String(saved?.piano_attivo || ""),
@@ -470,6 +658,7 @@ export default function SimPage() {
           : saved?.tariffa == null || saved?.tariffa === ""
             ? payload.tariffa
             : Number(saved.tariffa),
+      data_attivazione: String(saved?.data_attivazione || payload.data_attivazione || ""),
       data_scadenza: String(saved?.data_scadenza || ""),
       giorni_preavviso:
         typeof saved?.giorni_preavviso === "number"
@@ -482,6 +671,7 @@ export default function SimPage() {
       billing_status: String(saved?.billing_status || ""),
       attiva: saved?.attiva !== false,
       in_abbonamento: saved?.in_abbonamento === true,
+      device_installato: String(saved?.device_installato || ""),
       note: String(saved?.note || ""),
       isNew: false,
     };
@@ -537,7 +727,7 @@ export default function SimPage() {
     const simId = String(row.id || "");
     if (!simId || row.isNew || row.in_abbonamento) return;
 
-    const draft = newRechargeBySimId[simId] || { data_ricarica: "", importo: "", note: "" };
+    const draft = newRechargeBySimId[simId] || { data_ricarica: "", importo: "", billing_status: "", note: "" };
     const dataRicarica = draft.data_ricarica.trim();
     if (!dataRicarica) {
       setError("Data ricarica obbligatoria.");
@@ -552,12 +742,13 @@ export default function SimPage() {
       sim_id: simId,
       data_ricarica: dataRicarica,
       importo: draft.importo.trim() ? Number(draft.importo) : null,
+      billing_status: draft.billing_status.trim() || null,
       note: draft.note.trim() || null,
     };
 
     const { data, error: insertError } = await dbFrom("sim_recharges")
       .insert(payload)
-      .select("id, sim_id, data_ricarica, importo, note")
+      .select("id, sim_id, data_ricarica, importo, billing_status, note")
       .single();
 
     setSavingRechargeKey(null);
@@ -578,6 +769,7 @@ export default function SimPage() {
           : saved?.importo == null || saved?.importo === ""
             ? payload.importo
             : Number(saved.importo),
+      billing_status: String(saved?.billing_status || payload.billing_status || ""),
       note: String(saved?.note || payload.note || ""),
     };
 
@@ -587,7 +779,7 @@ export default function SimPage() {
     }));
     setNewRechargeBySimId((prev) => ({
       ...prev,
-      [simId]: { data_ricarica: "", importo: "", note: "" },
+      [simId]: { data_ricarica: "", importo: "", billing_status: "", note: "" },
     }));
     setNotice("Ricarica salvata.");
   }
@@ -668,7 +860,8 @@ export default function SimPage() {
       <div
         style={{
           display: "grid",
-          gridTemplateColumns: "minmax(260px,1.4fr) minmax(160px,0.7fr) minmax(180px,0.8fr) minmax(180px,0.8fr)",
+          gridTemplateColumns:
+            "minmax(240px,1.3fr) minmax(180px,0.8fr) minmax(220px,0.9fr) minmax(180px,0.8fr) minmax(220px,0.9fr)",
           gap: 12,
           marginBottom: 18,
         }}
@@ -686,12 +879,38 @@ export default function SimPage() {
         <label style={{ display: "grid", gap: 6, fontSize: 13, fontWeight: 600 }}>
           Stato SIM
           <select
-            value={attiveFilter}
-            onChange={(e) => setAttiveFilter(e.target.value as "ATTIVE" | "TUTTE")}
+            value={simStatusFilter}
+            onChange={(e) =>
+              setSimStatusFilter(
+                e.target.value as "ATTIVE" | "SCADUTE" | "IN_SCADENZA" | "OFF" | "TUTTE"
+              )
+            }
             style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: "1px solid #d1d5db" }}
           >
             <option value="ATTIVE">Solo attive</option>
+            <option value="IN_SCADENZA">In scadenza</option>
+            <option value="SCADUTE">Scadute</option>
+            <option value="OFF">Off</option>
             <option value="TUTTE">Tutte</option>
+          </select>
+        </label>
+
+        <label style={{ display: "grid", gap: 6, fontSize: 13, fontWeight: 600 }}>
+          Progetto associato
+          <select
+            value={projectFilter}
+            onChange={(e) => setProjectFilter(e.target.value)}
+            style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: "1px solid #d1d5db" }}
+          >
+            <option value="TUTTI">Tutti</option>
+            <option value="SIM_LIBERA">SIM libere</option>
+            {projectFilterOptions
+              .filter((option) => option !== "SIM_LIBERA")
+              .map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
           </select>
         </label>
 
@@ -712,14 +931,14 @@ export default function SimPage() {
         </label>
 
         <label style={{ display: "grid", gap: 6, fontSize: 13, fontWeight: 600 }}>
-          Stato fatturazione
+          Stato fatturazione ultima ricarica
           <select
-            value={billingStatusFilter}
-            onChange={(e) => setBillingStatusFilter(e.target.value)}
+            value={latestRechargeBillingFilter}
+            onChange={(e) => setLatestRechargeBillingFilter(e.target.value)}
             style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: "1px solid #d1d5db" }}
           >
             <option value="TUTTI">Tutti</option>
-            {billingStatusOptions.map((option) => (
+            {latestRechargeBillingOptions.map((option) => (
               <option key={option} value={option}>
                 {option}
               </option>
@@ -791,7 +1010,8 @@ export default function SimPage() {
             <div
               style={{
                 display: "grid",
-                gridTemplateColumns: "160px minmax(180px,1fr) minmax(180px,1fr) 140px 110px 130px 170px 90px",
+                gridTemplateColumns:
+                  "140px minmax(180px,1fr) 120px minmax(160px,1fr) 110px 130px minmax(220px,1fr) 130px 130px 150px 160px 150px 120px",
                 gap: 12,
                 padding: "14px 16px",
                 fontSize: 12,
@@ -803,12 +1023,17 @@ export default function SimPage() {
             >
               <div>Numero</div>
               <div>Intestatario</div>
-              <div>Piano attivo</div>
               <div>Operatore</div>
+              <div>Piano attivo</div>
               <div>Tariffa</div>
               <div>Scadenza</div>
+              <div>Progetto associato</div>
+              <div>Ultima ricarica</div>
+              <div>Importo ultima</div>
+              <div>Fatt. ricarica</div>
+              <div>Device installato</div>
               <div>Fatturazione</div>
-              <div>Attiva</div>
+              <div>Stato SIM</div>
             </div>
 
             {loading ? (
@@ -820,13 +1045,25 @@ export default function SimPage() {
             const rowId = String(row.id || "");
             const isEditing = editingSimId === rowId;
             const isExpanded = expandedSimId === rowId || isEditing;
-            const scadenzaBadge = getScadenzaBadgeState(row);
             const rechargeRows = rechargesBySimId[rowId] || [];
+            const latestRecharge = latestRechargeBySimId[rowId] || null;
+            const effectiveScadenza = getEffectiveSimScadenza(row, latestRecharge);
+            const simState = getSimOperationalState(row, latestRecharge);
+            const scadenzaBadge =
+              simState.stato === "SCADUTO" || simState.stato === "IN_SCADENZA" ? simState : null;
             const rechargeDraft = newRechargeBySimId[rowId] || {
               data_ricarica: "",
               importo: "",
+              billing_status: "",
               note: "",
             };
+            const checklistId = String(row.checklist_id || "").trim();
+            const project = checklistId ? projectByChecklistId[checklistId] : null;
+            const projectLabel = !checklistId
+              ? "SIM libera"
+              : project
+                ? `${project.nome_checklist}${project.cliente ? ` · ${project.cliente}` : ""}`
+                : checklistId;
             return (
               <div
                 key={rowId}
@@ -905,6 +1142,15 @@ export default function SimPage() {
                         />
                       </label>
                       <label style={{ display: "grid", gap: 6, fontSize: 13, fontWeight: 600 }}>
+                        Data attivazione
+                        <input
+                          type="date"
+                          value={row.data_attivazione}
+                          onChange={(e) => updateRow(rowId, { data_attivazione: e.target.value })}
+                          style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: "1px solid #d1d5db" }}
+                        />
+                      </label>
+                      <label style={{ display: "grid", gap: 6, fontSize: 13, fontWeight: 600 }}>
                         Data scadenza
                         <input
                           type="date"
@@ -926,6 +1172,14 @@ export default function SimPage() {
                             })
                           }
                           placeholder="giorni"
+                          style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: "1px solid #d1d5db" }}
+                        />
+                      </label>
+                      <label style={{ display: "grid", gap: 6, fontSize: 13, fontWeight: 600 }}>
+                        Device installato
+                        <input
+                          value={row.device_installato}
+                          onChange={(e) => updateRow(rowId, { device_installato: e.target.value })}
                           style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: "1px solid #d1d5db" }}
                         />
                       </label>
@@ -997,6 +1251,23 @@ export default function SimPage() {
                         />
                         In abbonamento
                       </label>
+                      <div style={{ display: "grid", gap: 6, fontSize: 13, fontWeight: 600 }}>
+                        <span>Progetto associato</span>
+                        <div
+                          style={{
+                            minHeight: 42,
+                            display: "flex",
+                            alignItems: "center",
+                            padding: "0 12px",
+                            borderRadius: 10,
+                            border: "1px solid #e5e7eb",
+                            background: "#f8fafc",
+                            color: "#374151",
+                          }}
+                        >
+                          {projectLabel}
+                        </div>
+                      </div>
                     </div>
                     <label style={{ display: "grid", gap: 6, fontSize: 13, fontWeight: 600 }}>
                       Note
@@ -1075,7 +1346,7 @@ export default function SimPage() {
                                 key={String(recharge.id || `${recharge.sim_id}-${recharge.data_ricarica}`)}
                                 style={{
                                   display: "grid",
-                                  gridTemplateColumns: "140px 120px minmax(220px,1fr)",
+                                  gridTemplateColumns: "140px 120px 160px minmax(220px,1fr)",
                                   gap: 12,
                                   fontSize: 13,
                                   padding: "10px 12px",
@@ -1086,6 +1357,7 @@ export default function SimPage() {
                               >
                                 <div>{formatDate(recharge.data_ricarica)}</div>
                                 <div>{formatCurrency(recharge.importo)}</div>
+                                <div>{renderRechargeBillingBadge(recharge.billing_status)}</div>
                                 <div>{recharge.note || "—"}</div>
                               </div>
                             ))}
@@ -1094,7 +1366,7 @@ export default function SimPage() {
                         <div
                           style={{
                             display: "grid",
-                            gridTemplateColumns: "160px 140px minmax(220px,1fr) 150px",
+                            gridTemplateColumns: "160px 140px 180px minmax(220px,1fr) 150px",
                             gap: 12,
                             alignItems: "end",
                           }}
@@ -1119,6 +1391,19 @@ export default function SimPage() {
                               onChange={(e) => updateRechargeDraft(rowId, { importo: e.target.value })}
                               style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: "1px solid #d1d5db" }}
                             />
+                          </label>
+                          <label style={{ display: "grid", gap: 6, fontSize: 13, fontWeight: 600 }}>
+                            Stato fatturazione
+                            <select
+                              value={rechargeDraft.billing_status}
+                              onChange={(e) => updateRechargeDraft(rowId, { billing_status: e.target.value })}
+                              style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: "1px solid #d1d5db" }}
+                            >
+                              <option value="">—</option>
+                              <option value="DA_FATTURARE">DA_FATTURARE</option>
+                              <option value="FATTURATO">FATTURATO</option>
+                              <option value="NON_FATTURARE">NON_FATTURARE</option>
+                            </select>
                           </label>
                           <label style={{ display: "grid", gap: 6, fontSize: 13, fontWeight: 600 }}>
                             Note
@@ -1171,7 +1456,7 @@ export default function SimPage() {
                       style={{
                         display: "grid",
                         gridTemplateColumns:
-                          "150px minmax(160px,1fr) 130px minmax(180px,1fr) 130px 160px 150px 90px",
+                          "140px minmax(180px,1fr) 120px minmax(160px,1fr) 110px 130px minmax(220px,1fr) 130px 130px 150px 160px 150px 120px",
                         gap: 12,
                         alignItems: "center",
                         cursor: "pointer",
@@ -1184,7 +1469,15 @@ export default function SimPage() {
                       <div>{row.intestatario || "—"}</div>
                       <div>{row.operatore || "—"}</div>
                       <div>{row.piano_attivo || "—"}</div>
-                      <div>{formatDate(row.data_scadenza)}</div>
+                      <div>
+                        {formatCurrency(row.tariffa)}
+                      </div>
+                      <div>{formatDate(effectiveScadenza)}</div>
+                      <div title={projectLabel}>{projectLabel}</div>
+                      <div>{formatDate(latestRecharge?.data_ricarica)}</div>
+                      <div>{formatCurrency(latestRecharge?.importo ?? null)}</div>
+                      <div>{renderRechargeBillingBadge(latestRecharge?.billing_status)}</div>
+                      <div>{row.device_installato || "—"}</div>
                       <div>{renderBillingBadge(row.billing_status)}</div>
                       <div>
                         <span
@@ -1195,40 +1488,26 @@ export default function SimPage() {
                             borderRadius: 999,
                             fontSize: 12,
                             fontWeight: 800,
-                            background: row.in_abbonamento ? "#dbeafe" : "#f3f4f6",
-                            color: row.in_abbonamento ? "#1d4ed8" : "#374151",
-                            whiteSpace: "nowrap",
+                            background:
+                              simState.stato === "SCADUTO"
+                                ? "#fee2e2"
+                                : simState.stato === "IN_SCADENZA"
+                                  ? "#ffedd5"
+                                  : simState.stato === "ATTIVA"
+                                    ? "#dcfce7"
+                                    : "#e5e7eb",
+                            color:
+                              simState.stato === "SCADUTO"
+                                ? "#991b1b"
+                                : simState.stato === "IN_SCADENZA"
+                                  ? "#c2410c"
+                                  : simState.stato === "ATTIVA"
+                                    ? "#166534"
+                                    : "#4b5563",
                           }}
                         >
-                          {row.in_abbonamento ? "IN ABBONAMENTO" : "RICARICABILE"}
+                          {simState.stato === "OFF" ? "OFF" : simState.stato.replace("_", " ")}
                         </span>
-                      </div>
-                      <div>
-                        <span
-                          style={{
-                            display: "inline-flex",
-                            alignItems: "center",
-                            padding: "4px 10px",
-                            borderRadius: 999,
-                            fontSize: 12,
-                            fontWeight: 800,
-                            background: row.attiva ? "#dcfce7" : "#e5e7eb",
-                            color: row.attiva ? "#166534" : "#4b5563",
-                          }}
-                        >
-                          {row.attiva ? "ATTIVA" : "OFF"}
-                        </span>
-                      </div>
-                      <div
-                        style={{
-                          justifySelf: "end",
-                          fontSize: 12,
-                          fontWeight: 700,
-                          color: "#6b7280",
-                          whiteSpace: "nowrap",
-                        }}
-                      >
-                        {isExpanded ? "Nascondi dettagli" : "Apri dettagli"}
                       </div>
                     </div>
                     {isExpanded ? (
@@ -1237,14 +1516,22 @@ export default function SimPage() {
                           style={{
                             display: "grid",
                             gridTemplateColumns:
-                              "minmax(140px, 0.8fr) minmax(140px, 0.8fr) minmax(140px, 0.8fr) minmax(140px, 0.8fr) minmax(140px, 0.8fr) minmax(140px, 0.8fr)",
+                              "repeat(8, minmax(140px, 0.8fr))",
                             gap: 12,
                             alignItems: "start",
                           }}
                         >
                           <div style={{ display: "grid", gap: 6 }}>
+                            <div style={{ fontSize: 12, color: "#6b7280" }}>Data attivazione</div>
+                            <div>{formatDate(row.data_attivazione)}</div>
+                          </div>
+                          <div style={{ display: "grid", gap: 6 }}>
                             <div style={{ fontSize: 12, color: "#6b7280" }}>Tariffa</div>
                             <div>{formatCurrency(row.tariffa)}</div>
+                          </div>
+                          <div style={{ display: "grid", gap: 6 }}>
+                            <div style={{ fontSize: 12, color: "#6b7280" }}>Scadenza effettiva</div>
+                            <div>{formatDate(effectiveScadenza)}</div>
                           </div>
                           <div style={{ display: "grid", gap: 6 }}>
                             <div style={{ fontSize: 12, color: "#6b7280" }}>Preavviso</div>
@@ -1266,7 +1553,15 @@ export default function SimPage() {
                           </div>
                           <div style={{ display: "grid", gap: 6 }}>
                             <div style={{ fontSize: 12, color: "#6b7280" }}>Stato SIM</div>
-                            <div>{row.attiva ? "ATTIVA" : "OFF"}</div>
+                            <div>{simState.stato === "OFF" ? "OFF" : simState.stato.replace("_", " ")}</div>
+                          </div>
+                          <div style={{ display: "grid", gap: 6 }}>
+                            <div style={{ fontSize: 12, color: "#6b7280" }}>Progetto associato</div>
+                            <div>{projectLabel}</div>
+                          </div>
+                          <div style={{ display: "grid", gap: 6 }}>
+                            <div style={{ fontSize: 12, color: "#6b7280" }}>Device installato</div>
+                            <div>{row.device_installato || "—"}</div>
                           </div>
                         </div>
                         <div style={{ display: "grid", gap: 6 }}>
@@ -1349,7 +1644,7 @@ export default function SimPage() {
                                     key={String(recharge.id || `${recharge.sim_id}-${recharge.data_ricarica}`)}
                                     style={{
                                       display: "grid",
-                                      gridTemplateColumns: "140px 120px minmax(220px,1fr)",
+                                      gridTemplateColumns: "140px 120px 160px minmax(220px,1fr)",
                                       gap: 12,
                                       fontSize: 13,
                                       padding: "10px 12px",
@@ -1360,6 +1655,7 @@ export default function SimPage() {
                                   >
                                     <div>{formatDate(recharge.data_ricarica)}</div>
                                     <div>{formatCurrency(recharge.importo)}</div>
+                                    <div>{renderRechargeBillingBadge(recharge.billing_status)}</div>
                                     <div>{recharge.note || "—"}</div>
                                   </div>
                                 ))}
@@ -1368,7 +1664,7 @@ export default function SimPage() {
                             <div
                               style={{
                                 display: "grid",
-                                gridTemplateColumns: "160px 140px minmax(220px,1fr) 150px",
+                                gridTemplateColumns: "160px 140px 180px minmax(220px,1fr) 150px",
                                 gap: 12,
                                 alignItems: "end",
                               }}
@@ -1393,6 +1689,19 @@ export default function SimPage() {
                                   onChange={(e) => updateRechargeDraft(rowId, { importo: e.target.value })}
                                   style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: "1px solid #d1d5db" }}
                                 />
+                              </label>
+                              <label style={{ display: "grid", gap: 6, fontSize: 13, fontWeight: 600 }}>
+                                Stato fatturazione
+                                <select
+                                  value={rechargeDraft.billing_status}
+                                  onChange={(e) => updateRechargeDraft(rowId, { billing_status: e.target.value })}
+                                  style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: "1px solid #d1d5db" }}
+                                >
+                                  <option value="">—</option>
+                                  <option value="DA_FATTURARE">DA_FATTURARE</option>
+                                  <option value="FATTURATO">FATTURATO</option>
+                                  <option value="NON_FATTURARE">NON_FATTURARE</option>
+                                </select>
                               </label>
                               <label style={{ display: "grid", gap: 6, fontSize: 13, fontWeight: 600 }}>
                                 Note
