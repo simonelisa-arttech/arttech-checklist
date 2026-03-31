@@ -227,6 +227,28 @@ export default function DocumentiPage() {
     await loadRows();
   }
 
+  async function toggleDocumentoAttivo(row: DocumentCatalogRow) {
+    setSaving(true);
+    setError(null);
+    setNotice(null);
+
+    const nextAttivo = !row.attivo;
+    const result = await dbFrom("document_catalog")
+      .update({ attivo: nextAttivo })
+      .eq("id", row.id);
+
+    setSaving(false);
+
+    if (result.error) {
+      setError(`Errore aggiornamento stato documento: ${result.error.message}`);
+      return;
+    }
+
+    setNotice(`Documento ${row.nome} ${nextAttivo ? "riattivato" : "disattivato"}.`);
+    if (editingId === row.id) cancelEdit();
+    await loadRows();
+  }
+
   return (
     <div style={{ maxWidth: 1280, margin: "24px auto", padding: 16 }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
@@ -513,6 +535,8 @@ export default function DocumentiPage() {
                   fontSize: 14,
                   borderBottom: "1px solid #f3f4f6",
                   alignItems: "center",
+                  background: row.attivo ? "#fff" : "#f8fafc",
+                  opacity: row.attivo ? 1 : 0.72,
                 }}
               >
                 {isEditing ? (
@@ -637,22 +661,42 @@ export default function DocumentiPage() {
                     <div>{renderBooleanBadge(row.attivo, "SI", "NO")}</div>
                     <div>{row.sort_order == null ? "—" : row.sort_order}</div>
                     <div>
-                      <button
-                        type="button"
-                        onClick={() => startEdit(row)}
-                        style={{
-                          height: 40,
-                          padding: "0 12px",
-                          borderRadius: 10,
-                          border: "1px solid #d1d5db",
-                          background: "#fff",
-                          color: "#111827",
-                          fontWeight: 700,
-                          cursor: "pointer",
-                        }}
-                      >
-                        Modifica
-                      </button>
+                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                        <button
+                          type="button"
+                          onClick={() => startEdit(row)}
+                          style={{
+                            height: 40,
+                            padding: "0 12px",
+                            borderRadius: 10,
+                            border: "1px solid #d1d5db",
+                            background: "#fff",
+                            color: "#111827",
+                            fontWeight: 700,
+                            cursor: "pointer",
+                          }}
+                        >
+                          Modifica
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void toggleDocumentoAttivo(row)}
+                          disabled={saving}
+                          style={{
+                            height: 40,
+                            padding: "0 12px",
+                            borderRadius: 10,
+                            border: row.attivo ? "1px solid #fecaca" : "1px solid #bbf7d0",
+                            background: row.attivo ? "#fff1f2" : "#f0fdf4",
+                            color: row.attivo ? "#991b1b" : "#166534",
+                            fontWeight: 700,
+                            cursor: saving ? "wait" : "pointer",
+                            opacity: saving ? 0.8 : 1,
+                          }}
+                        >
+                          {row.attivo ? "Disattiva" : "Riattiva"}
+                        </button>
+                      </div>
                     </div>
                   </>
                 )}
