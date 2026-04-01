@@ -280,6 +280,9 @@ function renderFatturazioneBadge(label: string) {
   } else if (upper === "INCLUSO") {
     bg = "#dbeafe";
     color = "#1d4ed8";
+  } else if (upper === "NON_FATTURARE") {
+    bg = "#e5e7eb";
+    color = "#4b5563";
   } else if (upper === "FATTURATO") {
     bg = "#dcfce7";
     color = "#166534";
@@ -536,6 +539,7 @@ function formatInvoiceStatus(label?: string | null) {
   if (upper === "DA_FATTURARE") return "Da fatturare";
   if (upper === "FATTURATO") return "Fatturato";
   if (upper === "INCLUSO") return "Incluso";
+  if (upper === "NON_FATTURARE") return "Non fatturare";
   return upper || "";
 }
 

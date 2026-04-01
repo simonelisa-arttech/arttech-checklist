@@ -33,6 +33,7 @@ export type InterventoRow = {
 export type CanonicalInterventoEsitoFatturazione =
   | "DA_FATTURARE"
   | "INCLUSO"
+  | "NON_FATTURARE"
   | "FATTURATO";
 
 function normalizeUpper(value?: string | null) {
@@ -46,7 +47,8 @@ export function normalizeInterventoEsitoFatturazioneValue(
   if (!raw) return null;
   if (raw === "DA_FATTURARE") return "DA_FATTURARE";
   if (raw === "FATTURATO") return "FATTURATO";
-  if (raw === "INCLUSO" || raw === "INCLUSO_DA_CONSUNTIVO" || raw === "NON_FATTURARE") {
+  if (raw === "NON_FATTURARE") return "NON_FATTURARE";
+  if (raw === "INCLUSO" || raw === "INCLUSO_DA_CONSUNTIVO") {
     return "INCLUSO";
   }
   return null;

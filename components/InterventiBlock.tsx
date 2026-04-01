@@ -6,7 +6,11 @@ import AttachmentsPanel from "@/components/AttachmentsPanel";
 import OperativeNotesPanel from "@/components/OperativeNotesPanel";
 import PersonaleMultiSelect from "@/components/PersonaleMultiSelect";
 import SafetyComplianceBadge from "@/components/SafetyComplianceBadge";
-import type { InterventoRow } from "@/lib/interventi";
+import {
+  getCanonicalInterventoEsitoFatturazione,
+  getInterventoLifecycleStatus,
+  type InterventoRow,
+} from "@/lib/interventi";
 import { computeOperativiEndDate } from "@/lib/operativiSchedule";
 
 export type InterventiChecklistOption = {
@@ -138,9 +142,9 @@ type Props = {
 
 const FATTURAZIONE_MENU_OPTIONS = [
   "DA_FATTURARE",
-  "FATTURATO",
+  "INCLUSO",
   "NON_FATTURARE",
-  "INCLUSO_DA_CONSUNTIVO",
+  "FATTURATO",
 ];
 
 function renderInterventoBadge(label: "INCLUSO" | "EXTRA") {
@@ -171,10 +175,13 @@ function renderFatturazioneBadge(label: string) {
   if (upper === "DA_FATTURARE") {
     bg = "#fee2e2";
     color = "#991b1b";
-  } else if (upper === "INCLUSO_DA_CONSUNTIVO") {
+  } else if (upper === "INCLUSO") {
     bg = "#dbeafe";
     color = "#1d4ed8";
-  } else if (upper === "FATTURATO" || upper === "NON_FATTURARE") {
+  } else if (upper === "NON_FATTURARE") {
+    bg = "#e5e7eb";
+    color = "#4b5563";
+  } else if (upper === "FATTURATO") {
     bg = "#dcfce7";
     color = "#166534";
   }
@@ -191,7 +198,7 @@ function renderFatturazioneBadge(label: string) {
         whiteSpace: "nowrap",
       }}
     >
-      {upper === "INCLUSO_DA_CONSUNTIVO" ? "A CONSUNTIVO" : upper || "—"}
+      {upper || "—"}
     </span>
   );
 }
@@ -223,22 +230,11 @@ function renderStatoInterventoBadge(label: string) {
 }
 
 function getInterventoStato(i: InterventoRow): "APERTO" | "CHIUSO" {
-  const raw = String(i.stato_intervento || "").toUpperCase();
-  if (raw === "APERTO" || raw === "CHIUSO") return raw;
-  if (i.fatturazione_stato) return "CHIUSO";
-  return "APERTO";
+  return getInterventoLifecycleStatus(i);
 }
 
 function getEsitoFatturazione(i: InterventoRow): string | null {
-  const raw = String(i.esito_fatturazione || "").toUpperCase();
-  if (raw === "DA_FATTURARE" || raw === "NON_FATTURARE" || raw === "INCLUSO_DA_CONSUNTIVO") {
-    return raw;
-  }
-  const fallback = String(i.fatturazione_stato || "").toUpperCase();
-  if (fallback === "DA_FATTURARE" || fallback === "NON_FATTURARE" || fallback === "INCLUSO_DA_CONSUNTIVO") {
-    return fallback;
-  }
-  return null;
+  return getCanonicalInterventoEsitoFatturazione(i);
 }
 
 function canReopenIntervento(currentRole: string | null) {
@@ -1041,13 +1037,15 @@ export default function InterventiBlock({
                         {row.codice_magazzino || checklistMeta.codMag || "—"}
                       </div>
                       <div style={{ display: "flex", flexDirection: "column", gap: 6, whiteSpace: "nowrap" }}>
-                        {stato === "APERTO" ? (
+                        {getEsitoFatturazione(row) ? (
+                          <>{renderFatturazioneBadge(getEsitoFatturazione(row) || "—")}</>
+                        ) : stato === "APERTO" ? (
                           <>
                             <div>—</div>
                             <div style={{ fontSize: 12, opacity: 0.7 }}>da chiudere</div>
                           </>
                         ) : (
-                          <>{renderFatturazioneBadge(getEsitoFatturazione(row) || "—")}</>
+                          <div>—</div>
                         )}
                       </div>
                       <div
@@ -1288,7 +1286,7 @@ export default function InterventiBlock({
                           }}
                         >
                           <label>
-                            Stato fatturazione<br />
+                            Esito fatturazione<br />
                             <select
                               value={editIntervento.fatturazioneStato}
                               onChange={(e) =>
@@ -1328,7 +1326,7 @@ export default function InterventiBlock({
                           </label>
                           {editIntervento.statoIntervento !== "CHIUSO" && (
                             <div style={{ gridColumn: "1 / span 3", fontSize: 12, opacity: 0.7 }}>
-                              Intervento aperto: la fatturazione verrà completata alla chiusura.
+                              Intervento aperto: lo stato economico resta modificabile e verrà confermato alla chiusura.
                             </div>
                           )}
                           <label>
@@ -1529,7 +1527,7 @@ export default function InterventiBlock({
                 Esito fatturazione<br />
                 <select value={closeEsito} onChange={(e) => setCloseEsito(e.target.value)} style={{ width: "100%", padding: 8 }}>
                   <option value="">—</option>
-                  {FATTURAZIONE_MENU_OPTIONS.filter((opt) => opt !== "FATTURATO").map((opt) => (
+                  {FATTURAZIONE_MENU_OPTIONS.map((opt) => (
                     <option key={opt} value={opt}>
                       {opt}
                     </option>
