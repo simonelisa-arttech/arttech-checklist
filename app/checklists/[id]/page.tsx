@@ -3744,9 +3744,16 @@ function buildFormData(c: Checklist): FormData {
       setSelectedFreeSimId("");
       await loadProjectSimsSection(id);
     } catch (err) {
-      setProjectSimsError(
-        err instanceof Error ? err.message : "Errore associazione SIM al progetto"
-      );
+      const message = err instanceof Error ? err.message : "Errore associazione SIM al progetto";
+      const normalizedMessage = String(message || "").toLowerCase();
+      if (
+        normalizedMessage.includes("invalid input syntax for type uuid") ||
+        (normalizedMessage.includes("uuid") && normalizedMessage.includes("null"))
+      ) {
+        setProjectSimsError("Seleziona una SIM valida");
+      } else {
+        setProjectSimsError(message);
+      }
     } finally {
       setProjectSimSavingKey(null);
     }
