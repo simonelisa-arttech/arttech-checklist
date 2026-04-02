@@ -2119,7 +2119,7 @@ export default function Page() {
                   interventiEntro7Summary.overdue
                 )}
                 {renderCockpitMetricCard(
-                  "/cronoprogramma",
+                  "/cronoprogramma?filter=7gg_scadute",
                   "ATTIVITÀ ENTRO 7 GG",
                   attivitaEntro7Summary.count,
                   "Scadute",

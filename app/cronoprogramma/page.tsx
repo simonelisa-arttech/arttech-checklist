@@ -5,6 +5,7 @@ import Link from "next/link";
 import ConfigMancante from "@/components/ConfigMancante";
 import CronoprogrammaPanel from "@/components/cronoprogramma/CronoprogrammaPanel";
 import { isSupabaseConfigured } from "@/lib/supabaseClient";
+import { isTimelineRowOverdueNotDone } from "@/lib/cronoprogrammaStatus";
 import {
   buildOperativiSchedule,
   dateToOperativiIsoDay,
@@ -263,6 +264,7 @@ export default function CronoprogrammaPage() {
   const [personaleFilter, setPersonaleFilter] = useState("");
   const [sortBy, setSortBy] = useState<"data_prevista" | "data_tassativa">("data_tassativa");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+  const [presetFilterMode, setPresetFilterMode] = useState<"" | "7gg_scadute">("");
   const [metaByKey, setMetaByKey] = useState<Record<string, CronoMeta>>({});
   const [commentsByKey, setCommentsByKey] = useState<Record<string, CronoComment[]>>({});
   const [noteDraftByKey, setNoteDraftByKey] = useState<Record<string, string>>({});
@@ -494,6 +496,22 @@ export default function CronoprogrammaPage() {
     setToDate(dateToOperativiIsoDay(to));
   }, []);
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const filter = new URLSearchParams(window.location.search).get("filter");
+    if (filter !== "7gg_scadute") return;
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const to = new Date(today.getTime());
+    to.setDate(to.getDate() + 7);
+
+    setFromDate(dateToOperativiIsoDay(today));
+    setToDate(dateToOperativiIsoDay(to));
+    setQuickRangeDays(7);
+    setPresetFilterMode("7gg_scadute");
+  }, []);
+
   function applyQuickRange(days: 7 | 15 | 30) {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -502,6 +520,7 @@ export default function CronoprogrammaPage() {
     setFromDate(dateToOperativiIsoDay(today));
     setToDate(dateToOperativiIsoDay(to));
     setQuickRangeDays(days);
+    setPresetFilterMode("");
   }
 
   useEffect(() => {
@@ -565,6 +584,8 @@ export default function CronoprogrammaPage() {
   const filtered = useMemo(() => {
     const needle = q.trim().toLowerCase();
     const personaleNeedle = normalizePersonaleText(personaleFilter);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
     return rows.filter((r) => {
       const key = getRowKey(r.kind, r.row_ref_id);
       const fatto = Boolean(metaByKey[key]?.fatto ?? r.fatto);
@@ -572,6 +593,7 @@ export default function CronoprogrammaPage() {
       const operativi = extractOperativi(metaByKey[key] || null);
       const personalePrevisto = operativi.personale_previsto;
       const schedule = getRowSchedule(r, metaByKey[key] || null);
+      const isOverdueNotDone = isTimelineRowOverdueNotDone(r, metaByKey[key] || null, today);
       if (hidden && !showHidden) return false;
       if (fatto && !showFatto) return false;
       if (clienteFilter !== "TUTTI" && r.cliente !== clienteFilter) return false;
@@ -591,6 +613,7 @@ export default function CronoprogrammaPage() {
       // Se chiedo esplicitamente di vedere i "Fatto", li mostro sempre
       // (indipendentemente dal range date) per permettere il reset del flag.
       if (fatto && showFatto) return true;
+      if (presetFilterMode === "7gg_scadute" && isOverdueNotDone) return true;
       if (fromDate && schedule.data_fine < fromDate) return false;
       if (toDate && schedule.data_inizio > toDate) return false;
       return true;
@@ -604,6 +627,7 @@ export default function CronoprogrammaPage() {
     q,
     personaleFilter,
     metaByKey,
+    presetFilterMode,
     showFatto,
     showHidden,
   ]);
@@ -708,27 +732,47 @@ export default function CronoprogrammaPage() {
         setFromDate={(value) => {
           setFromDate(typeof value === "function" ? value(fromDate) : value);
           setQuickRangeDays(null);
+          setPresetFilterMode("");
         }}
         toDate={toDate}
         setToDate={(value) => {
           setToDate(typeof value === "function" ? value(toDate) : value);
           setQuickRangeDays(null);
+          setPresetFilterMode("");
         }}
         clienteFilter={clienteFilter}
-        setClienteFilter={setClienteFilter}
+        setClienteFilter={(value) => {
+          setClienteFilter(value);
+          setPresetFilterMode("");
+        }}
         kindFilter={kindFilter}
-        setKindFilter={setKindFilter}
+        setKindFilter={(value) => {
+          setKindFilter(value);
+          setPresetFilterMode("");
+        }}
         q={q}
-        setQ={setQ}
+        setQ={(value) => {
+          setQ(value);
+          setPresetFilterMode("");
+        }}
         personaleFilter={personaleFilter}
-        setPersonaleFilter={setPersonaleFilter}
+        setPersonaleFilter={(value) => {
+          setPersonaleFilter(value);
+          setPresetFilterMode("");
+        }}
         clienti={clienti}
         quickRangeDays={quickRangeDays}
         applyQuickRange={applyQuickRange}
         showFatto={showFatto}
-        setShowFatto={setShowFatto}
+        setShowFatto={(value) => {
+          setShowFatto(value);
+          setPresetFilterMode("");
+        }}
         showHidden={showHidden}
-        setShowHidden={setShowHidden}
+        setShowHidden={(value) => {
+          setShowHidden(value);
+          setPresetFilterMode("");
+        }}
         filteredSorted={filteredSorted}
         onExportCsv={() =>
           downloadCsv(
