@@ -5,6 +5,7 @@ import Link from "next/link";
 import type { Dispatch, MutableRefObject, SetStateAction, UIEvent } from "react";
 import PersonaleMultiSelect from "@/components/PersonaleMultiSelect";
 import SafetyComplianceBadge from "@/components/SafetyComplianceBadge";
+import { isTimelineRowOverdueNotDone } from "@/lib/cronoprogrammaStatus";
 import { formatOperativiDateLabel } from "@/lib/operativiSchedule";
 
 type TimelineRow = any;
@@ -377,6 +378,7 @@ export default function CronoprogrammaPanel({
               const meta = metaByKey[key];
               const schedule = getRowSchedule(r, meta);
               const fatto = Boolean(meta?.fatto ?? r.fatto);
+              const overdueNotDone = isTimelineRowOverdueNotDone(r, meta);
               const hidden = Boolean(meta?.hidden);
               const operativoDefinito = hasDefinedOperativi(meta);
               const comments = commentsByKey[key] || [];
@@ -395,10 +397,15 @@ export default function CronoprogrammaPanel({
                     gap: 12,
                     padding: "10px 12px",
                     borderBottom: "1px solid #f3f4f6",
+                    borderLeft: overdueNotDone ? "4px solid #f59e0b" : "4px solid transparent",
                     alignItems: "start",
                     opacity: hidden && showHidden ? 0.6 : 1,
                     fontStyle: hidden && showHidden ? "italic" : "normal",
-                    background: operativoDefinito ? "#f0fdf4" : "white",
+                    background: overdueNotDone
+                      ? "#fffaf5"
+                      : operativoDefinito
+                        ? "#f0fdf4"
+                        : "white",
                     boxShadow: "none",
                     minWidth: 3270,
                   }}
@@ -427,6 +434,26 @@ export default function CronoprogrammaPanel({
                         }}
                       >
                         Operativo definito
+                      </div>
+                    ) : null}
+                    {overdueNotDone ? (
+                      <div
+                        style={{
+                          marginTop: 6,
+                          display: "inline-flex",
+                          alignItems: "center",
+                          gap: 6,
+                          borderRadius: 999,
+                          border: "1px solid #fdba74",
+                          background: "#ffedd5",
+                          color: "#c2410c",
+                          padding: "3px 8px",
+                          fontSize: 12,
+                          fontWeight: 700,
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        SCADUTA
                       </div>
                     ) : null}
                   </div>
