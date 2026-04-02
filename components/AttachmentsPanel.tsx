@@ -23,9 +23,6 @@ type Props = {
   storagePrefix?: string;
 };
 
-const MAX_UPLOAD_BYTES = 4 * 1024 * 1024;
-const MAX_UPLOAD_LABEL = "4 MB";
-
 function detectProvider(url: string) {
   return url.toLowerCase().includes("drive.google.com") ? "GOOGLE_DRIVE" : "GENERIC";
 }
@@ -63,7 +60,8 @@ export default function AttachmentsPanel({
       const res = await fetch(
         `/api/attachments?entity_type=${encodeURIComponent(entityType)}&entity_id=${encodeURIComponent(
           String(entityId)
-        )}`
+        )}`,
+        { credentials: "include" }
       );
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -92,11 +90,6 @@ export default function AttachmentsPanel({
     setError(null);
     try {
       for (const file of files) {
-        if (file.size > MAX_UPLOAD_BYTES) {
-          throw new Error(
-            `File troppo grande: questo flusso supporta solo file fino a ${MAX_UPLOAD_LABEL}. I video .mp4 più pesanti non sono supportati in questo upload.`
-          );
-        }
         const safeName = file.name.replace(/\s+/g, "_");
         const path = `${storagePrefix || entityType.toLowerCase()}/${entityId}/${Date.now()}_${safeName}`;
         const { error: upErr } = await storageUpload(path, file);
@@ -105,6 +98,7 @@ export default function AttachmentsPanel({
         const res = await fetch("/api/attachments", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
+          credentials: "include",
           body: JSON.stringify({
             source: "UPLOAD",
             entity_type: entityType,
@@ -142,6 +136,7 @@ export default function AttachmentsPanel({
       const res = await fetch("/api/attachments", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({
           source: "LINK",
           entity_type: entityType,
@@ -168,7 +163,10 @@ export default function AttachmentsPanel({
     setSaving(true);
     setError(null);
     try {
-      const res = await fetch(`/api/attachments?id=${encodeURIComponent(id)}`, { method: "DELETE" });
+      const res = await fetch(`/api/attachments?id=${encodeURIComponent(id)}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data?.error || "Errore eliminazione allegato");
       await load();

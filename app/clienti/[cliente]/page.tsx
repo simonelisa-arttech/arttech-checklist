@@ -2564,6 +2564,7 @@ export default function ClientePage({
       const res = await fetch("/api/attachments", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({
           source: "LINK",
           entity_type: "INTERVENTO",

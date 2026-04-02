@@ -1,8 +1,8 @@
 export const runtime = "nodejs";
 
 import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
-import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import { requireOperatore } from "@/lib/adminAuth";
 import { getEffectiveProjectStatus } from "@/lib/projectStatus";
 
 type DbOp = "select" | "insert" | "update" | "delete" | "upsert";
@@ -273,69 +273,6 @@ const TABLE_RULES: Record<
   },
 };
 
-function parseCookieHeader(cookieHeader: string | null) {
-  const out = new Map<string, string>();
-  if (!cookieHeader) return out;
-  for (const chunk of cookieHeader.split(";")) {
-    const part = chunk.trim();
-    if (!part) continue;
-    const idx = part.indexOf("=");
-    if (idx <= 0) continue;
-    const key = part.slice(0, idx).trim();
-    const value = part.slice(idx + 1).trim();
-    if (!key) continue;
-    out.set(key, value);
-  }
-  return out;
-}
-
-function tryDecodeCookieValue(raw: string) {
-  const unquoted = raw.replace(/^"(.*)"$/, "$1");
-  try {
-    return decodeURIComponent(unquoted);
-  } catch {
-    return unquoted;
-  }
-}
-
-function extractAccessTokenFromAuthCookieValue(raw: string) {
-  const decoded = tryDecodeCookieValue(raw);
-  if (!decoded) return "";
-
-  if (/^[A-Za-z0-9-_]+\.[A-Za-z0-9-_]+\.[A-Za-z0-9-_]+$/.test(decoded)) {
-    return decoded;
-  }
-
-  const parseJsonToken = (payload: any) => {
-    if (Array.isArray(payload) && typeof payload[0] === "string") return payload[0];
-    if (payload && typeof payload === "object" && typeof payload.access_token === "string") {
-      return payload.access_token;
-    }
-    return "";
-  };
-
-  try {
-    const parsed = JSON.parse(decoded);
-    const tok = parseJsonToken(parsed);
-    if (tok) return tok;
-  } catch {
-    // not json
-  }
-
-  if (decoded.startsWith("base64-")) {
-    try {
-      const b64 = decoded.slice("base64-".length);
-      const parsed = JSON.parse(Buffer.from(b64, "base64").toString("utf8"));
-      const tok = parseJsonToken(parsed);
-      if (tok) return tok;
-    } catch {
-      // ignore
-    }
-  }
-
-  return "";
-}
-
 function normalizeClienteDenominazione(value: unknown) {
   return String(value || "")
     .toLowerCase()
@@ -345,7 +282,7 @@ function normalizeClienteDenominazione(value: unknown) {
 }
 
 async function ensureClienteAnagraficaRow(
-  supabaseAdmin: ReturnType<typeof getSupabaseAdmin>,
+  supabaseAdmin: SupabaseClient,
   denominazioneValue: unknown
 ) {
   const denominazione = String(denominazioneValue || "").trim();
@@ -384,61 +321,6 @@ async function ensureClienteAnagraficaRow(
     id: String(inserted?.id || "").trim(),
     denominazione: String(inserted?.denominazione || denominazione).trim() || denominazione,
   };
-}
-
-function getAccessTokenFromCookieHeader(cookieHeader: string | null) {
-  const cookies = parseCookieHeader(cookieHeader);
-
-  const direct = cookies.get("sb-access-token");
-  if (direct) return tryDecodeCookieValue(direct);
-
-  const authCookieNames = Array.from(cookies.keys()).filter((k) =>
-    /^sb-[a-z0-9]+-auth-token$/i.test(k)
-  );
-  for (const name of authCookieNames) {
-    const raw = cookies.get(name) || "";
-    const tok = extractAccessTokenFromAuthCookieValue(raw);
-    if (tok) return tok;
-  }
-
-  // Support chunked auth cookies: sb-<ref>-auth-token.0 / .1 / ...
-  const chunked = new Map<string, Array<{ idx: number; value: string }>>();
-  for (const [name, value] of cookies.entries()) {
-    const m = /^((?:sb-[a-z0-9]+-auth-token))\.(\d+)$/i.exec(name);
-    if (!m) continue;
-    const base = m[1];
-    const idx = Number(m[2]);
-    const list = chunked.get(base) || [];
-    list.push({ idx, value });
-    chunked.set(base, list);
-  }
-  for (const list of chunked.values()) {
-    const joined = list
-      .sort((a, b) => a.idx - b.idx)
-      .map((p) => p.value)
-      .join("");
-    const tok = extractAccessTokenFromAuthCookieValue(joined);
-    if (tok) return tok;
-  }
-
-  return "";
-}
-
-async function assertAuthenticated(request: Request) {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  if (!supabaseUrl || !anonKey) return false;
-  const accessToken = getAccessTokenFromCookieHeader(request.headers.get("cookie"));
-  if (!accessToken) return false;
-
-  const supabaseAnon = createClient(supabaseUrl, anonKey, {
-    auth: { persistSession: false, autoRefreshToken: false },
-  });
-  const {
-    data: { user },
-    error,
-  } = await supabaseAnon.auth.getUser(accessToken);
-  return !error && !!user;
 }
 
 function invalid(message: string, status = 400) {
@@ -490,15 +372,9 @@ function normalizeChecklistStatusRows(table: string, data: any) {
 
 export async function POST(request: Request) {
   try {
-    const isAuthed = await assertAuthenticated(request);
-    if (!isAuthed) return invalid("Unauthorized", 401);
-
-    let supabaseAdmin: ReturnType<typeof getSupabaseAdmin>;
-    try {
-      supabaseAdmin = getSupabaseAdmin();
-    } catch {
-      return invalid("Missing SUPABASE_SERVICE_ROLE_KEY", 500);
-    }
+    const auth = await requireOperatore(request);
+    if (!auth.ok) return auth.response;
+    const supabaseAdmin = auth.adminClient;
 
     let body: DbRequest;
     try {

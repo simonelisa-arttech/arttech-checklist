@@ -1,17 +1,7 @@
 export const runtime = "nodejs";
 
 import { NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
-
-function getAccessTokenFromCookieHeader(cookieHeader: string | null) {
-  if (!cookieHeader) return "";
-  const raw = cookieHeader
-    .split(";")
-    .map((s) => s.trim())
-    .find((s) => s.startsWith("sb-access-token="));
-  if (!raw) return "";
-  return raw.split("=").slice(1).join("=");
-}
+import { requireOperatore } from "@/lib/adminAuth";
 
 function normalizeProvider(url?: string | null) {
   const v = String(url || "").toLowerCase();
@@ -24,50 +14,10 @@ function isHttpUrl(url?: string | null) {
   return /^https?:\/\//i.test(v);
 }
 
-async function getAuthContext(request: Request) {
-  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!supabaseUrl || !anonKey || !serviceRoleKey) {
-    return { error: NextResponse.json({ error: "Missing Supabase envs" }, { status: 500 }) };
-  }
-
-  const accessToken = getAccessTokenFromCookieHeader(request.headers.get("cookie"));
-  if (!accessToken) {
-    return { error: NextResponse.json({ error: "No auth cookie" }, { status: 401 }) };
-  }
-
-  const supabaseAnon = createClient(supabaseUrl, anonKey, {
-    auth: { persistSession: false, autoRefreshToken: false },
-  });
-  const {
-    data: { user },
-    error: userErr,
-  } = await supabaseAnon.auth.getUser(accessToken);
-  if (userErr || !user) {
-    return { error: NextResponse.json({ error: "Unauthorized" }, { status: 401 }) };
-  }
-
-  const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey, {
-    auth: { persistSession: false, autoRefreshToken: false },
-  });
-
-  const { data: operatore, error: opErr } = await supabaseAdmin
-    .from("operatori")
-    .select("id")
-    .eq("user_id", user.id)
-    .maybeSingle();
-  if (opErr) {
-    return { error: NextResponse.json({ error: opErr.message }, { status: 500 }) };
-  }
-
-  return { supabaseAdmin, operatoreId: (operatore as any)?.id || null };
-}
-
 export async function GET(request: Request) {
-  const auth = await getAuthContext(request);
-  if ("error" in auth) return auth.error;
-  const { supabaseAdmin } = auth;
+  const auth = await requireOperatore(request);
+  if (!auth.ok) return auth.response;
+  const { adminClient: supabaseAdmin } = auth;
 
   const { searchParams } = new URL(request.url);
   const entityType = String(searchParams.get("entity_type") || "").trim();
@@ -88,9 +38,12 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const auth = await getAuthContext(request);
-  if ("error" in auth) return auth.error;
-  const { supabaseAdmin, operatoreId } = auth;
+  const auth = await requireOperatore(request);
+  if (!auth.ok) return auth.response;
+  const {
+    adminClient: supabaseAdmin,
+    operatore: { id: operatoreId },
+  } = auth;
 
   let body: any;
   try {
@@ -162,9 +115,9 @@ export async function POST(request: Request) {
 }
 
 export async function DELETE(request: Request) {
-  const auth = await getAuthContext(request);
-  if ("error" in auth) return auth.error;
-  const { supabaseAdmin } = auth;
+  const auth = await requireOperatore(request);
+  if (!auth.ok) return auth.response;
+  const { adminClient: supabaseAdmin } = auth;
 
   const { searchParams } = new URL(request.url);
   const id = String(searchParams.get("id") || "").trim();

@@ -331,9 +331,6 @@ function renderOperativiFields(
               })
             }
           />
-          <div style={{ marginTop: 6, fontSize: 11, opacity: 0.7 }}>
-            Visualizzazione compatibile: {form.personalePrevisto || "—"}
-          </div>
         </div>
         <div>
           <div style={{ fontSize: 12, marginBottom: 4 }}>Mezzi</div>

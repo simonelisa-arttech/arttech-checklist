@@ -2235,6 +2235,7 @@ function buildFormData(c: Checklist): FormData {
       const res = await fetch("/api/attachments", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({
           source: "UPLOAD",
           entity_type: "INTERVENTO",
@@ -2264,6 +2265,7 @@ function buildFormData(c: Checklist): FormData {
       const res = await fetch("/api/attachments", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({
           source: "LINK",
           entity_type: "INTERVENTO",
@@ -4136,9 +4138,6 @@ function buildFormData(c: Checklist): FormData {
               }))
             }
           />
-          <div style={{ marginTop: 6, fontSize: 11, opacity: 0.7 }}>
-            Visualizzazione compatibile: {form.personale_previsto || "—"}
-          </div>
         </div>
         <div>
           <div style={{ fontSize: 12, marginBottom: 4 }}>Mezzi</div>
