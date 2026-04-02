@@ -9,6 +9,7 @@ import Toast from "@/components/Toast";
 import { calcM2FromDimensioni } from "@/lib/parseDimensioni";
 import { isSupabaseConfigured, supabase } from "@/lib/supabaseClient";
 import { dbFrom } from "@/lib/clientDbBroker";
+import { isTimelineRowOverdueNotDone } from "@/lib/cronoprogrammaStatus";
 import {
   buildOperativiSchedule,
   dateToOperativiIsoDay,
@@ -980,6 +981,43 @@ export default function Page() {
     );
   }, [cronoRows, cronoMetaByKey, cronoOperativiDraftByKey]);
 
+  const attivitaEntro7Summary = useMemo(() => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const inSevenDays = new Date(today);
+    inSevenDays.setDate(inSevenDays.getDate() + 7);
+
+    let count = 0;
+    let overdue = 0;
+
+    for (const row of cronoRows) {
+      if (row.kind === "DISINSTALLAZIONE") continue;
+
+      const key = getRowKey(row.kind, row.row_ref_id);
+      const meta = cronoMetaByKey[key] || null;
+      const fatto = Boolean(meta?.fatto ?? row.fatto);
+      const hidden = Boolean(meta?.hidden);
+      if (fatto || hidden) continue;
+
+      if (isTimelineRowOverdueNotDone(row, meta, today)) {
+        overdue += 1;
+        continue;
+      }
+
+      const dueDateRaw = String(row.data_tassativa || row.data_prevista || "").trim();
+      if (!dueDateRaw) continue;
+      const dueDate = new Date(dueDateRaw);
+      if (!Number.isFinite(dueDate.getTime())) continue;
+      dueDate.setHours(0, 0, 0, 0);
+
+      if (dueDate >= today && dueDate <= inSevenDays) {
+        count += 1;
+      }
+    }
+
+    return { count, overdue };
+  }, [cronoRows, cronoMetaByKey]);
+
   useEffect(() => {
     const updateScrollWidth = () => {
       const width = cronoScrollContentRef.current?.scrollWidth || 4320;
@@ -1092,7 +1130,8 @@ export default function Page() {
     title: string,
     count: number,
     secondaryLabel?: string,
-    secondaryValue?: number
+    secondaryValue?: number,
+    showSecondaryAlert = false
   ) {
     return (
       <Link href={href} style={shortcutCardStyle}>
@@ -1101,7 +1140,7 @@ export default function Page() {
           <div style={shortcutCardNumberStyle}>{count}</div>
         </div>
         <div style={shortcutCardBadgeStyle}>
-          {secondaryLabel ? `(${secondaryLabel}: ${secondaryValue ?? 0})` : "\u00A0"}
+          {secondaryLabel ? `${showSecondaryAlert ? "⚠ " : ""}(${secondaryLabel}: ${secondaryValue ?? 0})` : "\u00A0"}
         </div>
       </Link>
     );
@@ -2080,11 +2119,12 @@ export default function Page() {
                   interventiEntro7Summary.overdue
                 )}
                 {renderCockpitMetricCard(
-                  "/admin/consegne-entro-7-giorni",
-                  "CONSEGNE ENTRO 7 GIORNI",
-                  consegneEntro7Summary.count,
+                  "/cronoprogramma",
+                  "ATTIVITÀ ENTRO 7 GG",
+                  attivitaEntro7Summary.count,
                   "Scadute",
-                  consegneEntro7Summary.overdue
+                  attivitaEntro7Summary.overdue,
+                  true
                 )}
                 {renderCockpitMetricCard(
                   "/admin/smontaggi-noleggi-entro-7-giorni",
