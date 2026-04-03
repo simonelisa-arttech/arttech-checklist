@@ -485,6 +485,10 @@ export default function InterventiBlock({
   const [topScrollbarWidth, setTopScrollbarWidth] = useState(1410);
   const [newLinkTitle, setNewLinkTitle] = useState("");
   const [newLinkUrl, setNewLinkUrl] = useState("");
+  const editInterventoEsitoFatturazione = String(
+    editIntervento.esitoFatturazione || editIntervento.fatturazioneStato || ""
+  ).toUpperCase();
+  const editInterventoIsFatturato = editInterventoEsitoFatturazione === "FATTURATO";
 
   function isHttpUrl(url: string) {
     return /^https?:\/\//i.test(String(url || "").trim());
@@ -1286,9 +1290,14 @@ export default function InterventiBlock({
                             Esito fatturazione<br />
                             <select
                               value={editIntervento.fatturazioneStato}
-                              onChange={(e) =>
-                                setEditIntervento({ ...editIntervento, fatturazioneStato: e.target.value })
-                              }
+                              onChange={(e) => {
+                                const next = e.target.value;
+                                setEditIntervento({
+                                  ...editIntervento,
+                                  fatturazioneStato: next,
+                                  esitoFatturazione: next,
+                                });
+                              }}
                               style={{ width: "100%", padding: 8 }}
                             >
                               {FATTURAZIONE_MENU_OPTIONS.map((opt) => (
@@ -1305,7 +1314,7 @@ export default function InterventiBlock({
                               onChange={(e) =>
                                 setEditIntervento({ ...editIntervento, numeroFattura: e.target.value })
                               }
-                              disabled={editIntervento.fatturazioneStato !== "FATTURATO"}
+                              disabled={!editInterventoIsFatturato}
                               style={{ width: "100%", padding: 8 }}
                             />
                           </label>
@@ -1317,7 +1326,7 @@ export default function InterventiBlock({
                               onChange={(e) =>
                                 setEditIntervento({ ...editIntervento, fatturatoIl: e.target.value })
                               }
-                              disabled={editIntervento.fatturazioneStato !== "FATTURATO"}
+                              disabled={!editInterventoIsFatturato}
                               style={{ width: "100%", padding: 8 }}
                             />
                           </label>
