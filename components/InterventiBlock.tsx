@@ -148,6 +148,8 @@ const FATTURAZIONE_MENU_OPTIONS = [
   "FATTURATO",
 ];
 
+const MODALITA_ATTIVITA_OPTIONS = ["ONSITE", "REMOTO"] as const;
+
 function renderInterventoBadge(label: "INCLUSO" | "EXTRA") {
   const bg = label === "INCLUSO" ? "#dcfce7" : "#fee2e2";
   const color = label === "INCLUSO" ? "#166534" : "#991b1b";
@@ -267,8 +269,12 @@ function getChecklistMeta(row: InterventoRow, checklists: InterventiChecklistOpt
 
 function renderOperativiFields(
   form: InterventoFormState,
-  setForm: (value: InterventoFormState) => void
+  setForm: (value: InterventoFormState) => void,
+  options?: {
+    showModalitaAttivita?: boolean;
+  }
 ) {
+  const showModalitaAttivita = Boolean(options?.showModalitaAttivita);
   const fallbackStartDate = form.dataTassativa || form.data;
   const computedEndDate = computeOperativiEndDate(
     form.dataInizio || fallbackStartDate,
@@ -333,6 +339,22 @@ function renderOperativiFields(
             }
           />
         </div>
+        {showModalitaAttivita ? (
+          <div>
+            <div style={{ fontSize: 12, marginBottom: 4 }}>Modalita attivita</div>
+            <select
+              value={form.modalitaAttivita === "REMOTO" ? "REMOTO" : "ONSITE"}
+              onChange={(e) => setForm({ ...form, modalitaAttivita: e.target.value })}
+              style={{ width: "100%", padding: 8 }}
+            >
+              {MODALITA_ATTIVITA_OPTIONS.map((option) => (
+                <option key={option} value={option}>
+                  {option}
+                </option>
+              ))}
+            </select>
+          </div>
+        ) : null}
         <div>
           <div style={{ fontSize: 12, marginBottom: 4 }}>Mezzi</div>
           <textarea
@@ -1346,7 +1368,9 @@ export default function InterventiBlock({
                             />
                           </label>
                         </div>
-                        {renderOperativiFields(editIntervento, setEditIntervento)}
+                        {renderOperativiFields(editIntervento, setEditIntervento, {
+                          showModalitaAttivita: true,
+                        })}
                         <div style={{ marginTop: 10 }}>
                           <AttachmentsPanel
                             title="Allegati intervento (upload + link Drive)"
