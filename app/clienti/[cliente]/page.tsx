@@ -1149,6 +1149,7 @@ export default function ClientePage({
     noteTecniche: "",
     dataInizio: "",
     durataGiorni: "",
+    modalitaAttivita: "",
     personalePrevisto: "",
     personaleIds: [] as string[],
     mezzi: "",
@@ -1176,6 +1177,7 @@ export default function ClientePage({
     statoIntervento: "APERTO",
     dataInizio: "",
     durataGiorni: "",
+    modalitaAttivita: "",
     personalePrevisto: "",
     personaleIds: [] as string[],
     mezzi: "",
@@ -1191,6 +1193,7 @@ export default function ClientePage({
   type ClienteInterventoOperativiInput = {
     dataInizio: string;
     durataGiorni: string;
+    modalitaAttivita: string;
     personalePrevisto: string;
     personaleIds: string[];
     mezzi: string;
@@ -1207,6 +1210,7 @@ export default function ClientePage({
     return {
       data_inizio: form.dataInizio,
       durata_giorni: form.durataGiorni,
+      modalita_attivita: form.modalitaAttivita,
       personale_previsto: form.personalePrevisto,
       personale_ids: form.personaleIds,
       mezzi: form.mezzi,
@@ -1228,6 +1232,7 @@ export default function ClientePage({
       ...base,
       dataInizio: form.data_inizio,
       durataGiorni: form.durata_giorni,
+      modalitaAttivita: form.modalita_attivita,
       personalePrevisto: form.personale_previsto,
       personaleIds: form.personale_ids,
       mezzi: form.mezzi,
@@ -2361,6 +2366,7 @@ export default function ClientePage({
       noteTecniche: i.note_tecniche ?? "",
       dataInizio: "",
       durataGiorni: "",
+      modalitaAttivita: "",
       personalePrevisto: "",
       personaleIds: [],
       mezzi: "",
@@ -3774,6 +3780,7 @@ export default function ClientePage({
       statoIntervento: "APERTO",
       dataInizio: "",
       durataGiorni: "",
+      modalitaAttivita: "",
       personalePrevisto: "",
       personaleIds: [],
       mezzi: "",
@@ -7469,6 +7476,7 @@ ${rinnovi30ggBreakdown.debugSample
           noteTecniche: "",
           dataInizio: newIntervento.dataInizio,
           durataGiorni: newIntervento.durataGiorni,
+          modalitaAttivita: newIntervento.modalitaAttivita,
           personalePrevisto: newIntervento.personalePrevisto,
           personaleIds: newIntervento.personaleIds,
           mezzi: newIntervento.mezzi,
@@ -7497,6 +7505,7 @@ ${rinnovi30ggBreakdown.debugSample
             statoIntervento: value.statoIntervento,
             dataInizio: value.dataInizio,
             durataGiorni: value.durataGiorni,
+            modalitaAttivita: value.modalitaAttivita,
             personalePrevisto: value.personalePrevisto,
             personaleIds: value.personaleIds,
             mezzi: value.mezzi,
@@ -7538,6 +7547,7 @@ ${rinnovi30ggBreakdown.debugSample
             noteTecniche: value.noteTecniche,
             dataInizio: value.dataInizio,
             durataGiorni: value.durataGiorni,
+            modalitaAttivita: value.modalitaAttivita,
             personalePrevisto: value.personalePrevisto,
             personaleIds: value.personaleIds,
             mezzi: value.mezzi,

@@ -13,6 +13,7 @@ type RowRef = { row_kind: RowKind; row_ref_id: string };
 type OperativiInput = {
   data_inizio?: string | null;
   durata_giorni?: string | number | null;
+  modalita_attivita?: string | null;
   personale_previsto?: string | null;
   personale_ids?: string[] | null;
   mezzi?: string | null;
@@ -53,6 +54,11 @@ function cleanText(v: unknown) {
   return s ? s : null;
 }
 
+function cleanModalitaAttivita(value: unknown) {
+  const normalized = String(value ?? "").trim().toUpperCase();
+  return normalized === "ONSITE" || normalized === "REMOTO" ? normalized : null;
+}
+
 function normalizeUpper(value: unknown) {
   return String(value || "").trim().toUpperCase();
 }
@@ -80,6 +86,7 @@ function toOperativiPayload(input: OperativiInput) {
   return {
     data_inizio: normalizeOperativiDate(input?.data_inizio) || null,
     durata_giorni: normalizeOperativiDuration(input?.durata_giorni),
+    modalita_attivita: cleanModalitaAttivita(input?.modalita_attivita),
     personale_previsto: cleanText(input?.personale_previsto),
     personale_ids: cleanUuidArray(input?.personale_ids),
     mezzi: cleanText(input?.mezzi),
@@ -105,6 +112,7 @@ function mapMetaRow(row: any) {
       Number.isFinite(Number(row?.durata_giorni)) && Number(row?.durata_giorni) > 0
         ? Number(row?.durata_giorni)
         : null,
+    modalita_attivita: row?.modalita_attivita || null,
     personale_previsto: row?.personale_previsto || null,
     personale_ids: Array.isArray(row?.personale_ids)
       ? row.personale_ids.map((value: unknown) => String(value || "").trim()).filter(Boolean)

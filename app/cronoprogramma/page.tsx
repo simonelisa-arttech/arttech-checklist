@@ -39,6 +39,7 @@ type CronoMeta = {
   updated_by_nome: string | null;
   data_inizio?: string | null;
   durata_giorni?: number | null;
+  modalita_attivita?: string | null;
   personale_previsto?: string | null;
   personale_ids?: string[] | null;
   mezzi?: string | null;
@@ -62,6 +63,7 @@ type CronoComment = {
 type OperativiFields = {
   data_inizio: string;
   durata_giorni: string;
+  modalita_attivita: string;
   personale_previsto: string;
   personale_ids: string[];
   mezzi: string;
@@ -77,6 +79,7 @@ type OperativiFields = {
 const EMPTY_OPERATIVI: OperativiFields = {
   data_inizio: "",
   durata_giorni: "",
+  modalita_attivita: "",
   personale_previsto: "",
   personale_ids: [],
   mezzi: "",
@@ -93,6 +96,7 @@ function extractOperativi(meta?: CronoMeta | null): OperativiFields {
   return {
     data_inizio: normalizeOperativiDate(meta?.data_inizio),
     durata_giorni: durationToInputValue(meta?.durata_giorni),
+    modalita_attivita: String(meta?.modalita_attivita || ""),
     personale_previsto: String(meta?.personale_previsto || ""),
     personale_ids: Array.isArray(meta?.personale_ids)
       ? meta.personale_ids.map((value) => String(value || "").trim()).filter(Boolean)

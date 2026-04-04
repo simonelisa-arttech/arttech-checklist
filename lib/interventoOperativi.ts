@@ -8,6 +8,7 @@ import {
 export type InterventoOperativiMeta = {
   data_inizio?: string | null;
   durata_giorni?: number | null;
+  modalita_attivita?: string | null;
   personale_previsto?: string | null;
   personale_ids?: string[] | null;
   mezzi?: string | null;
@@ -26,6 +27,7 @@ export type InterventoOperativiMeta = {
 export type InterventoOperativiFormState = {
   data_inizio: string;
   durata_giorni: string;
+  modalita_attivita: string;
   personale_previsto: string;
   personale_ids: string[];
   mezzi: string;
@@ -41,6 +43,7 @@ export type InterventoOperativiFormState = {
 export const EMPTY_INTERVENTO_OPERATIVI: InterventoOperativiFormState = {
   data_inizio: "",
   durata_giorni: "",
+  modalita_attivita: "",
   personale_previsto: "",
   personale_ids: [],
   mezzi: "",
@@ -59,6 +62,7 @@ export function extractInterventoOperativi(
   return {
     data_inizio: normalizeOperativiDate(meta?.data_inizio),
     durata_giorni: durationToInputValue(meta?.durata_giorni),
+    modalita_attivita: String(meta?.modalita_attivita || ""),
     personale_previsto: String(meta?.personale_previsto || ""),
     personale_ids: Array.isArray(meta?.personale_ids)
       ? meta.personale_ids.map((value) => String(value || "").trim()).filter(Boolean)

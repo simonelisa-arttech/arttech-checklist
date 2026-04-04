@@ -46,6 +46,7 @@ export type InterventoFormState = {
   noteTecniche: string;
   dataInizio: string;
   durataGiorni: string;
+  modalitaAttivita: string;
   personalePrevisto: string;
   personaleIds: string[];
   mezzi: string;
