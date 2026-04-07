@@ -82,14 +82,23 @@ function extractAccessTokenFromAuthCookieValue(rawValue: string) {
   return "";
 }
 
+function matchesCookieName(name: string, pattern: RegExp) {
+  return pattern.test(String(name || "").trim());
+}
+
 export function getAccessTokenFromCookieHeader(cookieHeader: string | null) {
   const cookies = parseCookieHeader(cookieHeader);
 
-  const direct = cookies.get("sb-access-token");
-  if (direct) return tryDecodeCookieValue(direct);
+  const directCookieNames = Array.from(cookies.keys()).filter((key) =>
+    matchesCookieName(key, /^(?:__Secure-|__Host-)?sb-access-token$/i)
+  );
+  for (const name of directCookieNames) {
+    const value = cookies.get(name);
+    if (value) return tryDecodeCookieValue(value);
+  }
 
   const authCookieNames = Array.from(cookies.keys()).filter((key) =>
-    /^sb-[a-z0-9]+-auth-token$/i.test(key)
+    matchesCookieName(key, /^(?:__Secure-|__Host-)?sb-[a-z0-9]+-auth-token$/i)
   );
   for (const name of authCookieNames) {
     const token = extractAccessTokenFromAuthCookieValue(cookies.get(name) || "");
@@ -98,7 +107,7 @@ export function getAccessTokenFromCookieHeader(cookieHeader: string | null) {
 
   const chunked = new Map<string, Array<{ idx: number; value: string }>>();
   for (const [name, value] of cookies.entries()) {
-    const match = /^((?:sb-[a-z0-9]+-auth-token))\.(\d+)$/i.exec(name);
+    const match = /^((?:(?:__Secure-|__Host-)?sb-[a-z0-9]+-auth-token))\.(\d+)$/i.exec(name);
     if (!match) continue;
     const base = match[1];
     const idx = Number(match[2]);

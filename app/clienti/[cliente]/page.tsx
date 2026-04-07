@@ -1856,7 +1856,9 @@ export default function ClientePage({
       }
       if (isPerfEnabled()) console.time(`[perf][cliente][mount#${mountRun}] fetch /api/dashboard`);
       perfCountFetch("GET /api/dashboard");
-      const dashboardRes = await fetch(`/api/dashboard?q=${encodeURIComponent(clienteKey)}`);
+      const dashboardRes = await fetch(`/api/dashboard?q=${encodeURIComponent(clienteKey)}`, {
+        credentials: "include",
+      });
       const dashboardJson = await dashboardRes.json().catch(() => ({}));
       if (isPerfEnabled()) console.timeEnd(`[perf][cliente][mount#${mountRun}] fetch /api/dashboard`);
       if (!dashboardRes.ok) {
