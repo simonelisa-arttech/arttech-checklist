@@ -598,6 +598,38 @@ function PersonalePageContent() {
     );
   }
 
+  function addDocumentoPersona(persona: PersonaleRow) {
+    const personaleId = String(persona.id || "").trim();
+    if (!personaleId || persona.isNew) {
+      setError("Salva prima la persona per associare documenti.");
+      return;
+    }
+
+    const nextId = createTempId("personale-doc");
+    setError(null);
+    setNotice(null);
+    setExpandedPersonId(personaleId);
+    setDocumenti((prev) => [
+      {
+        id: nextId,
+        personale_id: personaleId,
+        document_catalog_id: "",
+        tipo_documento: "",
+        data_rilascio: "",
+        data_scadenza: "",
+        scadenza_override_manuale: false,
+        giorni_preavviso: "",
+        alert_frequenza: "",
+        alert_stato: "",
+        note: "",
+        file_url: "",
+        isNew: true,
+      },
+      ...prev,
+    ]);
+    setEditingDocumentoId(nextId);
+  }
+
   async function savePersona(row: PersonaleRow) {
     const nome = row.nome.trim();
     const cognome = row.cognome.trim();
@@ -1100,6 +1132,23 @@ function PersonalePageContent() {
                       ) : null}
                     </div>
                     <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                      {isExpanded ? (
+                        <button
+                          type="button"
+                          onClick={() => addDocumentoPersona(persona)}
+                          disabled={persona.isNew}
+                          style={{
+                            padding: "8px 12px",
+                            borderRadius: 10,
+                            border: "1px solid #d1d5db",
+                            background: "white",
+                            cursor: persona.isNew ? "not-allowed" : "pointer",
+                            opacity: persona.isNew ? 0.7 : 1,
+                          }}
+                        >
+                          + Documento persona
+                        </button>
+                      ) : null}
                       <button
                         type="button"
                         onClick={() => savePersona(persona)}
