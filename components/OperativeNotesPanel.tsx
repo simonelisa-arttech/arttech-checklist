@@ -106,6 +106,7 @@ export default function OperativeNotesPanel({
   const [commentSavingKey, setCommentSavingKey] = useState<string | null>(null);
   const [historyKey, setHistoryKey] = useState<string | null>(null);
   const [authGateTimedOut, setAuthGateTimedOut] = useState(false);
+  const visibleError = compact ? null : error;
 
   useEffect(() => {
     if (authReady) {
@@ -269,7 +270,7 @@ export default function OperativeNotesPanel({
       {loading && Object.keys(metaByKey).length === 0 ? (
         <div style={{ fontSize: 12, opacity: 0.7 }}>Caricamento note...</div>
       ) : null}
-      {error ? <div style={{ fontSize: 12, color: "#b91c1c" }}>{error}</div> : null}
+      {visibleError ? <div style={{ fontSize: 12, color: "#b91c1c" }}>{visibleError}</div> : null}
       {normalizedItems.map((item) => {
         const key = rowKey(item.rowKind, item.rowRefId);
         const meta = metaByKey[key] || {};
@@ -401,7 +402,7 @@ export default function OperativeNotesPanel({
                       : { whiteSpace: "pre-wrap", fontSize: 13 }
                   }
                 >
-                  {preview || "—"}
+                  {preview || "Nessuna nota operativa"}
                 </div>
                 <div
                   title={latestPreview || "Nessuna nota storica"}

@@ -2100,7 +2100,7 @@ export default function ClientePage({
       if (simErr) {
         setClienteSims([]);
         setClienteSimRechargesById({});
-        setClienteSimsError(normalizeClienteSectionError("Errore caricamento SIM cliente", simErr.message));
+        setClienteSimsError(null);
         return;
       }
 
@@ -2143,9 +2143,7 @@ export default function ClientePage({
 
       if (rechargeErr) {
         setClienteSimRechargesById({});
-        setClienteSimsError(
-          normalizeClienteSectionError("Errore caricamento ricariche SIM cliente", rechargeErr.message)
-        );
+        setClienteSimsError(null);
         return;
       }
 
