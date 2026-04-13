@@ -47,6 +47,22 @@ type DocumentiAlertSummary = {
   aziende_in_scadenza: number;
 };
 
+type DashboardClienteCockpitRow = {
+  cliente: string;
+  projectCount: number;
+  openActivities: number;
+  imminentActivities: number;
+  overdueActivities: number;
+  relevantDeadlines: number;
+  overdueDeadlines: number;
+  attentionLabel: "ATTENZIONE" | "MONITORARE" | "STABILE";
+  attentionColors: {
+    border: string;
+    background: string;
+    color: string;
+  };
+};
+
 const EMPTY_SCADENZE_BREAKDOWN: DashboardScadenzeBreakdown = {
   garanzie: 0,
   licenze: 0,
@@ -1058,6 +1074,110 @@ export default function Page() {
     });
     return Array.from(set).sort((a, b) => a.localeCompare(b, "it", { sensitivity: "base" }));
   }, [items]);
+
+  const dashboardClientRows = useMemo<DashboardClienteCockpitRow[]>(() => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const todayIso = toDateInputValue(today);
+    const upcoming7 = new Date(today);
+    upcoming7.setDate(upcoming7.getDate() + 7);
+    const upcoming30 = new Date(today);
+    upcoming30.setDate(upcoming30.getDate() + 30);
+    const upcoming7Iso = toDateInputValue(upcoming7);
+    const upcoming30Iso = toDateInputValue(upcoming30);
+
+    const clientMap = new Map<string, Omit<DashboardClienteCockpitRow, "attentionLabel" | "attentionColors">>();
+
+    const ensureClient = (clienteValue?: string | null) => {
+      const cliente = String(clienteValue || "").trim();
+      if (!cliente) return null;
+      if (!clientMap.has(cliente)) {
+        clientMap.set(cliente, {
+          cliente,
+          projectCount: 0,
+          openActivities: 0,
+          imminentActivities: 0,
+          overdueActivities: 0,
+          relevantDeadlines: 0,
+          overdueDeadlines: 0,
+        });
+      }
+      return clientMap.get(cliente) || null;
+    };
+
+    const registerDeadline = (
+      entry: Omit<DashboardClienteCockpitRow, "attentionLabel" | "attentionColors"> | null,
+      rawValue?: string | null
+    ) => {
+      const value = String(rawValue || "").trim().slice(0, 10);
+      if (!entry || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return;
+      if (value < todayIso) {
+        entry.overdueDeadlines += 1;
+        return;
+      }
+      if (value <= upcoming30Iso) {
+        entry.relevantDeadlines += 1;
+      }
+    };
+
+    for (const item of items) {
+      const entry = ensureClient(item.cliente);
+      if (!entry) continue;
+      entry.projectCount += 1;
+      registerDeadline(entry, item.data_tassativa || item.data_prevista);
+      registerDeadline(entry, item.garanzia_scadenza);
+      registerDeadline(entry, item.licenze_prossima_scadenza);
+      registerDeadline(entry, item.fine_noleggio);
+    }
+
+    for (const row of cronoRows) {
+      const entry = ensureClient(row.cliente);
+      if (!entry) continue;
+      const key = getRowKey(row.kind, row.row_ref_id);
+      const meta = cronoMetaByKey[key] || null;
+      const fatto = Boolean(meta?.fatto ?? row.fatto);
+      const hidden = Boolean(meta?.hidden);
+      if (fatto || hidden) continue;
+
+      entry.openActivities += 1;
+
+      if (isTimelineRowOverdueNotDone(row, meta, today)) {
+        entry.overdueActivities += 1;
+        continue;
+      }
+
+      const dueDate = String(row.data_tassativa || row.data_prevista || "").trim().slice(0, 10);
+      if (dueDate && dueDate >= todayIso && dueDate <= upcoming7Iso) {
+        entry.imminentActivities += 1;
+      }
+    }
+
+    return Array.from(clientMap.values())
+      .map((entry) => {
+        const hasAttention = entry.overdueActivities > 0 || entry.overdueDeadlines > 0;
+        const hasMonitoring = entry.imminentActivities > 0 || entry.relevantDeadlines > 0;
+        return {
+          ...entry,
+          attentionLabel: hasAttention
+            ? ("ATTENZIONE" as const)
+            : hasMonitoring
+            ? ("MONITORARE" as const)
+            : ("STABILE" as const),
+          attentionColors: hasAttention
+            ? { border: "#fdba74", background: "#fff7ed", color: "#c2410c" }
+            : hasMonitoring
+            ? { border: "#93c5fd", background: "#eff6ff", color: "#1d4ed8" }
+            : { border: "#86efac", background: "#f0fdf4", color: "#166534" },
+        };
+      })
+      .sort((a, b) => {
+        const aScore = a.overdueActivities + a.overdueDeadlines * 2 + a.imminentActivities + a.relevantDeadlines;
+        const bScore = b.overdueActivities + b.overdueDeadlines * 2 + b.imminentActivities + b.relevantDeadlines;
+        if (bScore !== aScore) return bScore - aScore;
+        if (b.projectCount !== a.projectCount) return b.projectCount - a.projectCount;
+        return a.cliente.localeCompare(b.cliente, "it", { sensitivity: "base" });
+      });
+  }, [items, cronoRows, cronoMetaByKey]);
 
   const checklistOptions = useMemo(() => {
     if (!addInterventoCliente) return [];
@@ -2144,6 +2264,124 @@ export default function Page() {
                 )}
               </div>
           </div>
+          </div>
+          <div style={{ marginTop: 24 }}>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 12,
+                marginBottom: 14,
+              }}
+            >
+              <h2
+                style={{
+                  margin: 0,
+                  fontSize: 22,
+                  fontWeight: 800,
+                  color: "#0f172a",
+                }}
+              >
+                Clienti
+              </h2>
+              <div
+                style={{
+                  fontSize: 12,
+                  fontWeight: 700,
+                  color: "#64748b",
+                  padding: "4px 10px",
+                  borderRadius: 999,
+                  background: "#f8fafc",
+                  border: "1px solid #e2e8f0",
+                }}
+              >
+                {dashboardClientRows.length} clienti
+              </div>
+              <div
+                style={{
+                  flex: 1,
+                  height: 1,
+                  background: "#e5e7eb",
+                }}
+              />
+            </div>
+            <div style={{ display: "grid", gap: 10 }}>
+              {dashboardClientRows.map((row) => (
+                <Link
+                  key={row.cliente}
+                  href={`/clienti/${encodeURIComponent(row.cliente)}`}
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "minmax(0, 1fr) auto",
+                    gap: 14,
+                    alignItems: "center",
+                    padding: "12px 14px",
+                    borderRadius: 14,
+                    border: "1px solid #e2e8f0",
+                    background: "white",
+                    color: "inherit",
+                    textDecoration: "none",
+                    boxShadow: "0 1px 2px rgba(15, 23, 42, 0.06)",
+                  }}
+                >
+                  <div style={{ minWidth: 0 }}>
+                    <div
+                      style={{
+                        fontSize: 17,
+                        fontWeight: 800,
+                        color: "#0f172a",
+                        lineHeight: 1.2,
+                        wordBreak: "break-word",
+                      }}
+                    >
+                      {row.cliente}
+                    </div>
+                    <div
+                      style={{
+                        display: "flex",
+                        flexWrap: "wrap",
+                        gap: 8,
+                        marginTop: 8,
+                        fontSize: 12,
+                        color: "#64748b",
+                      }}
+                    >
+                      <span style={{ padding: "4px 8px", borderRadius: 999, background: "#f8fafc", border: "1px solid #e2e8f0" }}>
+                        {row.projectCount} progetti
+                      </span>
+                      <span style={{ padding: "4px 8px", borderRadius: 999, background: "#f8fafc", border: "1px solid #e2e8f0" }}>
+                        {row.openActivities} attivita aperte
+                      </span>
+                      <span style={{ padding: "4px 8px", borderRadius: 999, background: "#eff6ff", border: "1px solid #bfdbfe", color: "#1d4ed8" }}>
+                        {row.imminentActivities} imminenti 7 gg
+                      </span>
+                      <span style={{ padding: "4px 8px", borderRadius: 999, background: "#fffbeb", border: "1px solid #fde68a", color: "#92400e" }}>
+                        {row.relevantDeadlines + row.overdueDeadlines} scadenze rilevanti
+                      </span>
+                    </div>
+                  </div>
+                  <div style={{ display: "grid", justifyItems: "end", gap: 8 }}>
+                    <span
+                      style={{
+                        padding: "5px 10px",
+                        borderRadius: 999,
+                        border: `1px solid ${row.attentionColors.border}`,
+                        background: row.attentionColors.background,
+                        color: row.attentionColors.color,
+                        fontSize: 12,
+                        fontWeight: 800,
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      {row.attentionLabel}
+                    </span>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: "#94a3b8", whiteSpace: "nowrap" }}>
+                      Apri cliente →
+                    </span>
+                  </div>
+                </Link>
+              ))}
+            </div>
           </div>
           <div style={{ marginTop: 24 }}>
             <div
