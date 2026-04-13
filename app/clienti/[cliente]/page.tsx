@@ -416,6 +416,16 @@ function isUnauthorizedMessage(error: { message?: string | null } | null | undef
     .includes("unauthorized");
 }
 
+function normalizeClienteSectionError(prefix: string, message: unknown) {
+  const raw = String(message || "").trim();
+  if (!raw) return prefix;
+  const normalized = raw.toLowerCase();
+  if (normalized === "unauthorized" || normalized === "no auth cookie") {
+    return prefix;
+  }
+  return `${prefix}: ${raw}`;
+}
+
 async function selectClienteSimRows(checklistIds: string[]) {
   return dbFrom("sim_cards")
     .select(
@@ -2089,7 +2099,7 @@ export default function ClientePage({
       if (simErr) {
         setClienteSims([]);
         setClienteSimRechargesById({});
-        setClienteSimsError("Errore caricamento SIM cliente: " + simErr.message);
+        setClienteSimsError(normalizeClienteSectionError("Errore caricamento SIM cliente", simErr.message));
         return;
       }
 
@@ -2132,7 +2142,9 @@ export default function ClientePage({
 
       if (rechargeErr) {
         setClienteSimRechargesById({});
-        setClienteSimsError("Errore caricamento ricariche SIM cliente: " + rechargeErr.message);
+        setClienteSimsError(
+          normalizeClienteSectionError("Errore caricamento ricariche SIM cliente", rechargeErr.message)
+        );
         return;
       }
 

@@ -52,6 +52,16 @@ function normalizePreviewText(value?: string | null) {
   return raw.replace(/\s+/g, " ");
 }
 
+function normalizeOperativeNotesError(message: unknown, fallback: string) {
+  const raw = String(message || "").trim();
+  if (!raw) return fallback;
+  const normalized = raw.toLowerCase();
+  if (normalized === "unauthorized" || normalized === "no auth cookie") {
+    return fallback;
+  }
+  return raw;
+}
+
 async function fetchCronoprogramma(body: Record<string, unknown>) {
   const run = () =>
     fetch("/api/cronoprogramma", {
@@ -140,14 +150,18 @@ export default function OperativeNotesPanel({
         });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) {
-          throw new Error(String(data?.error || "Errore caricamento note operative"));
+          throw new Error(
+            normalizeOperativeNotesError(data?.error, "Errore caricamento note operative")
+          );
         }
         if (cancelled) return;
         setMetaByKey((data?.meta || {}) as Record<string, CronoMeta>);
         setCommentsByKey((data?.comments || {}) as Record<string, CronoComment[]>);
       } catch (err: any) {
         if (!cancelled) {
-          setError(String(err?.message || "Errore caricamento note operative"));
+          setError(
+            normalizeOperativeNotesError(err?.message, "Errore caricamento note operative")
+          );
         }
       } finally {
         if (!cancelled) {
@@ -187,13 +201,17 @@ export default function OperativeNotesPanel({
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        throw new Error(String(data?.error || "Errore salvataggio nota operativa"));
+        throw new Error(
+          normalizeOperativeNotesError(data?.error, "Errore salvataggio nota operativa")
+        );
       }
       setMetaByKey((prev) => ({ ...prev, [key]: (data?.meta || null) as CronoMeta }));
       setNoteDraftByKey((prev) => ({ ...prev, [key]: descrizione_attivita }));
       setEditingKey(null);
     } catch (err: any) {
-      setError(String(err?.message || "Errore salvataggio nota operativa"));
+      setError(
+        normalizeOperativeNotesError(err?.message, "Errore salvataggio nota operativa")
+      );
     } finally {
       setSavingKey(null);
     }
@@ -214,7 +232,9 @@ export default function OperativeNotesPanel({
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        throw new Error(String(data?.error || "Errore salvataggio nota storica"));
+        throw new Error(
+          normalizeOperativeNotesError(data?.error, "Errore salvataggio nota storica")
+        );
       }
       setCommentsByKey((prev) => ({
         ...prev,
@@ -222,7 +242,9 @@ export default function OperativeNotesPanel({
       }));
       setCommentDraftByKey((prev) => ({ ...prev, [key]: "" }));
     } catch (err: any) {
-      setError(String(err?.message || "Errore salvataggio nota storica"));
+      setError(
+        normalizeOperativeNotesError(err?.message, "Errore salvataggio nota storica")
+      );
     } finally {
       setCommentSavingKey(null);
     }
