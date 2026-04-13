@@ -95,12 +95,24 @@ export default function OperativeNotesPanel({
   const [savingKey, setSavingKey] = useState<string | null>(null);
   const [commentSavingKey, setCommentSavingKey] = useState<string | null>(null);
   const [historyKey, setHistoryKey] = useState<string | null>(null);
+  const [authGateTimedOut, setAuthGateTimedOut] = useState(false);
+
+  useEffect(() => {
+    if (authReady) {
+      setAuthGateTimedOut(false);
+      return;
+    }
+    const timeout = setTimeout(() => setAuthGateTimedOut(true), 1200);
+    return () => clearTimeout(timeout);
+  }, [authReady]);
+
+  const canLoad = authReady || authGateTimedOut;
 
   useEffect(() => {
     let cancelled = false;
 
     async function load() {
-      if (!authReady) {
+      if (!canLoad) {
         if (!cancelled) {
           setLoading(false);
           setError(null);
@@ -148,7 +160,7 @@ export default function OperativeNotesPanel({
     return () => {
       cancelled = true;
     };
-  }, [authReady, itemsKey]);
+  }, [canLoad, itemsKey]);
 
   async function saveNote(item: OperativeNotesItem) {
     const key = rowKey(item.rowKind, item.rowRefId);
@@ -229,7 +241,7 @@ export default function OperativeNotesPanel({
       }}
     >
       {title ? <div style={{ fontSize: 12, fontWeight: 800, opacity: 0.8 }}>{title}</div> : null}
-      {!authReady ? (
+      {!canLoad ? (
         <div style={{ fontSize: 12, opacity: 0.7 }}>Verifica sessione...</div>
       ) : null}
       {loading && Object.keys(metaByKey).length === 0 ? (

@@ -947,7 +947,6 @@ export default function ClientePage({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [authReady, setAuthReady] = useState(false);
-  const [authReadyError, setAuthReadyError] = useState<string | null>(null);
   const [checklists, setChecklists] = useState<ChecklistRow[]>([]);
   const [clienteSims, setClienteSims] = useState<ClienteSimRow[]>([]);
   const [clienteSimRechargesById, setClienteSimRechargesById] = useState<
@@ -1806,31 +1805,28 @@ export default function ClientePage({
 
   useEffect(() => {
     let cancelled = false;
+    const fallback = setTimeout(() => {
+      if (!cancelled) setAuthReady(true);
+    }, 1200);
 
     (async () => {
       setAuthReady(false);
-      setAuthReadyError(null);
       try {
         const res = await fetch("/api/me-operatore", {
           credentials: "include",
           cache: "no-store",
         });
-        const data = await res.json().catch(() => ({}));
         if (cancelled) return;
-        if (!res.ok) {
-          setAuthReadyError(String(data?.error || "Sessione non pronta"));
-          return;
+        if (res.ok) {
+          clearTimeout(fallback);
+          setAuthReady(true);
         }
-        setAuthReady(true);
-      } catch (err: any) {
-        if (!cancelled) {
-          setAuthReadyError(String(err?.message || "Sessione non pronta"));
-        }
-      }
+      } catch {}
     })();
 
     return () => {
       cancelled = true;
+      clearTimeout(fallback);
     };
   }, []);
 
@@ -8304,10 +8300,7 @@ ${rinnovi30ggBreakdown.debugSample
 
       <div style={{ marginTop: 18 }}>
         <h2 style={{ margin: 0 }}>SIM cliente</h2>
-        {!authReady && !authReadyError ? (
-          <div style={{ opacity: 0.7, marginTop: 6 }}>Verifica sessione...</div>
-        ) : null}
-        {authReadyError ? <div style={{ color: "crimson", marginTop: 6 }}>{authReadyError}</div> : null}
+        {!authReady ? <div style={{ opacity: 0.7, marginTop: 6 }}>Caricamento SIM cliente...</div> : null}
         {clienteSimsError && <div style={{ color: "crimson", marginTop: 6 }}>{clienteSimsError}</div>}
         {!authReady ? null : clienteSimRows.length === 0 ? (
           <div style={{ opacity: 0.7, marginTop: 6 }}>Nessuna SIM associata ai progetti del cliente</div>
