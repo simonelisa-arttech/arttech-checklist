@@ -275,6 +275,7 @@ function renderOperativiFields(
   }
 ) {
   const showModalitaAttivita = Boolean(options?.showModalitaAttivita);
+  const isRemote = form.modalitaAttivita === "REMOTO";
   const fallbackStartDate = form.dataTassativa || form.data;
   const computedEndDate = computeOperativiEndDate(
     form.dataInizio || fallbackStartDate,
@@ -326,18 +327,34 @@ function renderOperativiFields(
           </div>
         </div>
         <div>
-          <div style={{ fontSize: 12, marginBottom: 4 }}>Personale previsto / incarico</div>
-          <PersonaleMultiSelect
-            personaleIds={form.personaleIds}
-            legacyValue={form.personalePrevisto}
-            onChange={({ personaleIds, personaleDisplay }) =>
-              setForm({
-                ...form,
-                personaleIds,
-                personalePrevisto: personaleDisplay,
-              })
-            }
-          />
+          <div
+            style={{
+              border: isRemote ? "1px solid #c7d2fe" : undefined,
+              background: isRemote ? "#eef2ff" : undefined,
+              borderRadius: isRemote ? 10 : undefined,
+              padding: isRemote ? 10 : undefined,
+            }}
+          >
+            <div style={{ fontSize: 12, marginBottom: 4, fontWeight: isRemote ? 700 : undefined }}>
+              {isRemote ? "Operatore remoto" : "Personale previsto / incarico"}
+            </div>
+            {isRemote ? (
+              <div style={{ fontSize: 11, color: "#4338ca", marginBottom: 6 }}>
+                Indica l’operatore interno che segue il collegamento remoto.
+              </div>
+            ) : null}
+            <PersonaleMultiSelect
+              personaleIds={form.personaleIds}
+              legacyValue={form.personalePrevisto}
+              onChange={({ personaleIds, personaleDisplay }) =>
+                setForm({
+                  ...form,
+                  personaleIds,
+                  personalePrevisto: personaleDisplay,
+                })
+              }
+            />
+          </div>
         </div>
         {showModalitaAttivita ? (
           <div>
@@ -388,20 +405,36 @@ function renderOperativiFields(
           />
         </div>
         <div>
-          <div style={{ fontSize: 12, marginBottom: 4 }}>Referente cliente</div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+          <div
+            style={{
+              border: isRemote ? "1px solid #c7d2fe" : undefined,
+              background: isRemote ? "#eef2ff" : undefined,
+              borderRadius: isRemote ? 10 : undefined,
+              padding: isRemote ? 10 : undefined,
+            }}
+          >
+            <div style={{ fontSize: 12, marginBottom: 4, fontWeight: isRemote ? 700 : undefined }}>
+              {isRemote ? "Referente tecnico cliente" : "Referente cliente"}
+            </div>
+            {isRemote ? (
+              <div style={{ fontSize: 11, color: "#4338ca", marginBottom: 6 }}>
+                Inserisci il contatto cliente da coinvolgere durante l’assistenza remota.
+              </div>
+            ) : null}
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
             <input
               value={form.referenteClienteNome}
               onChange={(e) => setForm({ ...form, referenteClienteNome: e.target.value })}
-              placeholder="Nome"
+              placeholder={isRemote ? "Referente tecnico" : "Nome"}
               style={{ width: "100%", padding: 8 }}
             />
             <input
               value={form.referenteClienteContatto}
               onChange={(e) => setForm({ ...form, referenteClienteContatto: e.target.value })}
-              placeholder="Contatto"
+              placeholder={isRemote ? "Telefono o email" : "Contatto"}
               style={{ width: "100%", padding: 8 }}
             />
+          </div>
           </div>
         </div>
         <div>
