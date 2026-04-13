@@ -24,6 +24,12 @@ function parseIsoDateOnly(value?: string | null) {
   return normalizeToDay(date);
 }
 
+function getOverdueTargetDate(row: TimelineLikeRow) {
+  const tassativa = parseIsoDateOnly(row.data_tassativa);
+  if (tassativa) return tassativa;
+  return parseIsoDateOnly(row.data_prevista);
+}
+
 export function isTimelineRowOverdueNotDone(
   row: TimelineLikeRow,
   meta?: TimelineLikeMeta | null,
@@ -33,13 +39,7 @@ export function isTimelineRowOverdueNotDone(
   if (fatto) return false;
 
   const today = normalizeToDay(todayArg ? new Date(todayArg) : new Date());
-
-  const prevista = parseIsoDateOnly(row.data_prevista);
-  const tassativa = parseIsoDateOnly(row.data_tassativa);
-  if (!prevista && !tassativa) return false;
-
-  return Boolean(
-    (prevista && prevista.getTime() < today.getTime()) ||
-      (tassativa && tassativa.getTime() < today.getTime())
-  );
+  const target = getOverdueTargetDate(row);
+  if (!target) return false;
+  return target.getTime() < today.getTime();
 }

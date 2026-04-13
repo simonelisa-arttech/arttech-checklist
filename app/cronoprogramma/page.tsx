@@ -640,12 +640,22 @@ export default function CronoprogrammaPage() {
     const sorted = [...filtered];
     const field = sortBy;
     sorted.sort((a, b) => {
-      const avSchedule = getRowSchedule(a, metaByKey[getRowKey(a.kind, a.row_ref_id)] || null);
-      const bvSchedule = getRowSchedule(b, metaByKey[getRowKey(b.kind, b.row_ref_id)] || null);
+      const aMeta = metaByKey[getRowKey(a.kind, a.row_ref_id)] || null;
+      const bMeta = metaByKey[getRowKey(b.kind, b.row_ref_id)] || null;
+      const avSchedule = getRowSchedule(a, aMeta);
+      const bvSchedule = getRowSchedule(b, bMeta);
       const av = field === "data_prevista" ? avSchedule.data_inizio : avSchedule.data_fine;
       const bv = field === "data_prevista" ? bvSchedule.data_inizio : bvSchedule.data_fine;
       const cmp = String(av || "").localeCompare(String(bv || ""));
-      return sortDir === "asc" ? cmp : -cmp;
+      if (cmp !== 0) return sortDir === "asc" ? cmp : -cmp;
+
+      const aHasDefinedOperativi = hasDefinedOperativi(aMeta);
+      const bHasDefinedOperativi = hasDefinedOperativi(bMeta);
+      if (aHasDefinedOperativi !== bHasDefinedOperativi) {
+        return aHasDefinedOperativi ? -1 : 1;
+      }
+
+      return 0;
     });
     return sorted;
   }, [filtered, sortBy, sortDir, metaByKey]);
