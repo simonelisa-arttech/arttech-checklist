@@ -1,6 +1,6 @@
 "use client";
 
-import { use, useEffect, useMemo, useRef, useState } from "react";
+import { use, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import ConfigMancante from "@/components/ConfigMancante";
@@ -6129,6 +6129,34 @@ export default function ClientePage({
     .sort((a, b) =>
       String(a.numero_telefono || "").localeCompare(String(b.numero_telefono || ""), "it")
     );
+  const compactInterventiRows = [...interventi].sort((a, b) =>
+    String(b.data_tassativa || b.data || b.created_at || "").localeCompare(
+      String(a.data_tassativa || a.data || a.created_at || "")
+    )
+  );
+  const compactRowStyle: CSSProperties = {
+    border: "1px solid #e5e7eb",
+    borderRadius: 12,
+    background: "white",
+    padding: "12px 14px",
+    display: "grid",
+    gap: 8,
+  };
+  const compactMetaRowStyle: CSSProperties = {
+    display: "flex",
+    gap: 8,
+    flexWrap: "wrap",
+    alignItems: "center",
+    fontSize: 12,
+    color: "#475569",
+  };
+  const detailsStyle: CSSProperties = {
+    marginTop: 12,
+    border: "1px solid #e5e7eb",
+    borderRadius: 12,
+    background: "#f8fafc",
+    padding: 12,
+  };
 
   return (
     <div style={{ maxWidth: 1100, margin: "40px auto", padding: 16 }}>
@@ -7265,65 +7293,131 @@ ${rinnovi30ggBreakdown.debugSample
           </div>
         </div>
 
-        <RenewalsBlock
-          cliente={cliente}
-          rows={filteredRinnovi}
-          checklistById={checklistById}
-          rinnoviError={rinnoviError}
-          rinnoviNotice={rinnoviNotice}
-          setRinnoviNotice={setRinnoviNotice}
-          getWorkflowStato={getWorkflowStato}
-          actionsByTipo={ACTIONS_BY_TIPO}
-          alertStatsMap={alertStatsMap}
-          getAlertKeyForRow={getAlertKeyForRow}
-          renderScadenzaBadge={renderScadenzaBadge}
-          renderTagliandoStatoBadge={renderTagliandoStatoBadge}
-          renderAvvisatoBadge={renderAvvisatoBadge}
-          renderRinnovoStatoBadge={renderRinnovoStatoBadge}
-          renderModalitaBadge={renderModalitaBadge}
-          onSendAlert={(r) => openRinnoviAlert("stage1", false, [r])}
-          onSetDaFatturare={(r) =>
-            r.source === "tagliandi"
-              ? markTagliandoDaFatturare(r)
-              : r.source === "licenze"
-              ? markLicenzaDaFatturare(r)
-              : markRinnovoDaFatturare(r as RinnovoServizioRow)
-          }
-          onSetFatturato={(r) =>
-            r.source === "tagliandi"
-              ? markTagliandoFatturato(r)
-              : r.source === "licenze"
-              ? markLicenzaFatturato(r)
-              : markRinnovoFatturato(r as RinnovoServizioRow)
-          }
-          onSetConfermato={(r) =>
-            r.source === "tagliandi"
-              ? markTagliandoOk(r)
-              : r.source === "licenze"
-              ? markLicenzaConfermata(r)
-              : markWorkflowConfermato(r)
-          }
-          onSetNonRinnovato={(r) =>
-            r.source === "licenze"
-              ? markLicenzaNonRinnovata(r)
-              : r.source === "tagliandi"
-              ? markTagliandoNonRinnovato(r)
-              : markWorkflowNonRinnovato(r)
-          }
-          onEdit={openEditScadenza}
-          editOpen={editScadenzaOpen}
-          editForm={editScadenzaForm}
-          setEditOpen={setEditScadenzaOpen}
-          setEditForm={setEditScadenzaForm}
-          saveEdit={saveEditScadenza}
-          deleteEdit={deleteScadenzaItemFromEdit}
-          editSaving={editScadenzaSaving}
-          editError={editScadenzaErr}
-          licenzaStati={LICENZA_STATI}
-          tagliandoStati={TAGLIANDO_STATI}
-          tagliandoModalita={TAGLIANDO_MODALITA}
-          rinnovoStati={RINNOVO_STATI}
-        />
+        {filteredRinnovi.length === 0 ? (
+          <div style={{ marginTop: 10, opacity: 0.7 }}>Nessuna scadenza trovata</div>
+        ) : (
+          <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
+            {filteredRinnovi.map((row) => {
+              const project = checklistById.get(String(row.checklist_id || ""));
+              const workflowStato = getWorkflowStato(row);
+              const scadenzaBadge =
+                row.source === "licenze"
+                  ? renderLicenseStatusBadge(row.stato, row.scadenza)
+                  : row.source === "tagliandi"
+                  ? renderTagliandoStatoBadge(row.stato)
+                  : row.source === "sim"
+                  ? renderBadge(String(row.stato || "—"))
+                  : renderScadenzaBadge(row.scadenza);
+
+              return (
+                <div
+                  key={row.id}
+                  role={row.checklist_id ? "button" : undefined}
+                  tabIndex={row.checklist_id ? 0 : undefined}
+                  onClick={() => {
+                    if (row.checklist_id) router.push(`/checklists/${row.checklist_id}`);
+                  }}
+                  onKeyDown={(e) => {
+                    if (!row.checklist_id) return;
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      router.push(`/checklists/${row.checklist_id}`);
+                    }
+                  }}
+                  style={{
+                    ...compactRowStyle,
+                    cursor: row.checklist_id ? "pointer" : "default",
+                  }}
+                >
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+                    <div style={{ display: "grid", gap: 6 }}>
+                      <div style={{ fontWeight: 800, fontSize: 15 }}>
+                        {formatRinnovoTipo(row.item_tipo) || "Scadenza"}
+                      </div>
+                      <div style={compactMetaRowStyle}>
+                        <span>Rif: {row.riferimento || row.descrizione || "—"}</span>
+                        <span>Progetto: {project?.nome_checklist || "—"}</span>
+                        <span>Scadenza: {fmtDate(row.scadenza) || "—"}</span>
+                      </div>
+                    </div>
+                    <div>{renderRinnovoStatoBadge(workflowStato)}</div>
+                  </div>
+                  <div style={compactMetaRowStyle}>
+                    <span>{scadenzaBadge}</span>
+                    {row.modalita ? <span>{renderModalitaBadge(row.modalita)}</span> : null}
+                    {row.proforma ? <span>Proforma: {row.proforma}</span> : null}
+                    {row.cod_magazzino ? <span>Magazzino: {row.cod_magazzino}</span> : null}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        <details style={detailsStyle}>
+          <summary style={{ cursor: "pointer", fontWeight: 700 }}>Gestione completa scadenze e rinnovi</summary>
+          <div style={{ marginTop: 12 }}>
+            <RenewalsBlock
+              cliente={cliente}
+              rows={filteredRinnovi}
+              checklistById={checklistById}
+              rinnoviError={rinnoviError}
+              rinnoviNotice={rinnoviNotice}
+              setRinnoviNotice={setRinnoviNotice}
+              getWorkflowStato={getWorkflowStato}
+              actionsByTipo={ACTIONS_BY_TIPO}
+              alertStatsMap={alertStatsMap}
+              getAlertKeyForRow={getAlertKeyForRow}
+              renderScadenzaBadge={renderScadenzaBadge}
+              renderTagliandoStatoBadge={renderTagliandoStatoBadge}
+              renderAvvisatoBadge={renderAvvisatoBadge}
+              renderRinnovoStatoBadge={renderRinnovoStatoBadge}
+              renderModalitaBadge={renderModalitaBadge}
+              onSendAlert={(r) => openRinnoviAlert("stage1", false, [r])}
+              onSetDaFatturare={(r) =>
+                r.source === "tagliandi"
+                  ? markTagliandoDaFatturare(r)
+                  : r.source === "licenze"
+                  ? markLicenzaDaFatturare(r)
+                  : markRinnovoDaFatturare(r as RinnovoServizioRow)
+              }
+              onSetFatturato={(r) =>
+                r.source === "tagliandi"
+                  ? markTagliandoFatturato(r)
+                  : r.source === "licenze"
+                  ? markLicenzaFatturato(r)
+                  : markRinnovoFatturato(r as RinnovoServizioRow)
+              }
+              onSetConfermato={(r) =>
+                r.source === "tagliandi"
+                  ? markTagliandoOk(r)
+                  : r.source === "licenze"
+                  ? markLicenzaConfermata(r)
+                  : markWorkflowConfermato(r)
+              }
+              onSetNonRinnovato={(r) =>
+                r.source === "licenze"
+                  ? markLicenzaNonRinnovata(r)
+                  : r.source === "tagliandi"
+                  ? markTagliandoNonRinnovato(r)
+                  : markWorkflowNonRinnovato(r)
+              }
+              onEdit={openEditScadenza}
+              editOpen={editScadenzaOpen}
+              editForm={editScadenzaForm}
+              setEditOpen={setEditScadenzaOpen}
+              setEditForm={setEditScadenzaForm}
+              saveEdit={saveEditScadenza}
+              deleteEdit={deleteScadenzaItemFromEdit}
+              editSaving={editScadenzaSaving}
+              editError={editScadenzaErr}
+              licenzaStati={LICENZA_STATI}
+              tagliandoStati={TAGLIANDO_STATI}
+              tagliandoModalita={TAGLIANDO_MODALITA}
+              rinnovoStati={RINNOVO_STATI}
+            />
+          </div>
+        </details>
       </div>
 
       <div style={{ marginTop: 18 }}>
@@ -7446,171 +7540,237 @@ ${rinnovi30ggBreakdown.debugSample
         </div>
       </div>
 
-      <InterventiBlock
-        checklists={checklists}
-        interventi={interventi}
-        interventiInfo={interventiInfo}
-        interventiError={interventiError}
-        alertNotice={alertNotice}
-        setInterventiNotice={setInterventiInfo}
-        includedUsed={interventiInclusiUsati}
-        includedTotal={contratto ? interventiTotali : null}
-        includedResidual={contratto ? interventiResidui : null}
-        includedSummaryOverride={!contratto ? " / Totale inclusi: —" : null}
-        attachmentCounts={new Map(Array.from(interventoFilesById.entries()).map(([id, files]) => [id, files.length]))}
-        getOperatoreNome={getOperatoreNome}
-        currentOperatoreRole={alertOperatori.find((o) => o.id === currentOperatoreId)?.ruolo ?? null}
-        newIntervento={{
-          data: newIntervento.data,
-          dataTassativa: newIntervento.dataTassativa,
-          descrizione: newIntervento.tipo,
-          ticketNo: newIntervento.ticketNo,
-          incluso: newIntervento.incluso,
-          checklistId: newIntervento.checklistId,
-          proforma: newIntervento.proforma,
-          codiceMagazzino: newIntervento.codiceMagazzino,
-          fatturazioneStato: newIntervento.fatturazioneStato,
-          statoIntervento: newIntervento.statoIntervento,
-          esitoFatturazione: "",
-          numeroFattura: newIntervento.numeroFattura,
-          fatturatoIl: newIntervento.fatturatoIl,
-          note: newIntervento.note,
-          noteTecniche: "",
-          dataInizio: newIntervento.dataInizio,
-          durataGiorni: newIntervento.durataGiorni,
-          modalitaAttivita: newIntervento.modalitaAttivita,
-          personalePrevisto: newIntervento.personalePrevisto,
-          personaleIds: newIntervento.personaleIds,
-          mezzi: newIntervento.mezzi,
-          descrizioneAttivita: newIntervento.descrizioneAttivita,
-          indirizzo: newIntervento.indirizzo,
-          orario: newIntervento.orario,
-          referenteClienteNome: newIntervento.referenteClienteNome,
-          referenteClienteContatto: newIntervento.referenteClienteContatto,
-          commercialeArtTechNome: newIntervento.commercialeArtTechNome,
-          commercialeArtTechContatto: newIntervento.commercialeArtTechContatto,
-        }}
-        setNewIntervento={(value) => {
-          setNewIntervento({
-            data: value.data,
-            dataTassativa: value.dataTassativa,
-            tipo: value.descrizione,
-            ticketNo: value.ticketNo,
-            incluso: value.incluso,
-            note: value.note,
-            checklistId: value.checklistId,
-            proforma: value.proforma,
-            codiceMagazzino: value.codiceMagazzino,
-            fatturazioneStato: value.fatturazioneStato,
-            numeroFattura: value.numeroFattura,
-            fatturatoIl: value.fatturatoIl,
-            statoIntervento: value.statoIntervento,
-            dataInizio: value.dataInizio,
-            durataGiorni: value.durataGiorni,
-            modalitaAttivita: value.modalitaAttivita,
-            personalePrevisto: value.personalePrevisto,
-            personaleIds: value.personaleIds,
-            mezzi: value.mezzi,
-            descrizioneAttivita: value.descrizioneAttivita,
-            indirizzo: value.indirizzo,
-            orario: value.orario,
-            referenteClienteNome: value.referenteClienteNome,
-            referenteClienteContatto: value.referenteClienteContatto,
-            commercialeArtTechNome: value.commercialeArtTechNome,
-            commercialeArtTechContatto: value.commercialeArtTechContatto,
-          });
-        }}
-        newInterventoFiles={newInterventoFiles}
-        setNewInterventoFiles={setNewInterventoFiles}
-        newInterventoLinks={newInterventoLinks}
-        setNewInterventoLinks={setNewInterventoLinks}
-        addIntervento={addIntervento}
-        editInterventoId={editInterventoId}
-        setEditInterventoId={setEditInterventoId}
-        editIntervento={{
-          ...editIntervento,
-          checklistId: "",
-        }}
-        setEditIntervento={(value) =>
-          setEditIntervento({
-            data: value.data,
-            dataTassativa: value.dataTassativa,
-            descrizione: value.descrizione,
-            ticketNo: value.ticketNo,
-            incluso: value.incluso,
-            proforma: value.proforma,
-            codiceMagazzino: value.codiceMagazzino,
-            fatturazioneStato: value.fatturazioneStato,
-            statoIntervento: value.statoIntervento,
-            esitoFatturazione: value.esitoFatturazione,
-            numeroFattura: value.numeroFattura,
-            fatturatoIl: value.fatturatoIl,
-            note: value.note,
-            noteTecniche: value.noteTecniche,
-            dataInizio: value.dataInizio,
-            durataGiorni: value.durataGiorni,
-            modalitaAttivita: value.modalitaAttivita,
-            personalePrevisto: value.personalePrevisto,
-            personaleIds: value.personaleIds,
-            mezzi: value.mezzi,
-            descrizioneAttivita: value.descrizioneAttivita,
-            indirizzo: value.indirizzo,
-            orario: value.orario,
-            referenteClienteNome: value.referenteClienteNome,
-            referenteClienteContatto: value.referenteClienteContatto,
-            commercialeArtTechNome: value.commercialeArtTechNome,
-            commercialeArtTechContatto: value.commercialeArtTechContatto,
-          })
-        }
-        startEditIntervento={startEditIntervento}
-        saveEditIntervento={saveEditIntervento}
-        expandedInterventoId={expandedInterventoId}
-        setExpandedInterventoId={setExpandedInterventoId}
-        deleteIntervento={deleteIntervento}
-        closeInterventoId={closeInterventoId}
-        setCloseInterventoId={setCloseInterventoId}
-        closeEsito={closeEsito}
-        setCloseEsito={setCloseEsito}
-        closeNote={closeNote}
-        setCloseNote={setCloseNote}
-        closeError={closeError}
-        setCloseError={setCloseError}
-        confirmCloseIntervento={confirmCloseIntervento}
-        alertInterventoId={alertInterventoId}
-        setAlertInterventoId={setAlertInterventoId}
-        alertDestinatarioId={alertDestinatarioId}
-        setAlertDestinatarioId={setAlertDestinatarioId}
-        alertMessaggio={alertMessaggio}
-        setAlertMessaggio={setAlertMessaggio}
-        alertSendEmail={alertSendEmail}
-        setAlertSendEmail={setAlertSendEmail}
-        sending={sending}
-        sendErr={sendErr}
-        sendOk={sendOk}
-        sendInterventoAlert={sendInterventoAlert}
-        openAlertModal={openInterventoAlertModal}
-        getAlertRecipients={getAlertRecipients}
-        bulkOpen={bulkOpen}
-        setBulkOpen={setBulkOpen}
-        bulkToOperatoreId={bulkToOperatoreId}
-        setBulkToOperatoreId={setBulkToOperatoreId}
-        bulkMsg={bulkMsg}
-        setBulkMsg={setBulkMsg}
-        bulkSendEmail={bulkSendEmail}
-        setBulkSendEmail={setBulkSendEmail}
-        bulkSending={bulkSending}
-        bulkErr={bulkErr}
-        bulkOk={bulkOk}
-        sendBulkFatturaAlert={sendBulkFatturaAlert}
-        getFatturaAlertRecipients={getFatturaAlertRecipients}
-        bulkLastSentAt={bulkLastSentAt}
-        bulkLastToOperatoreId={bulkLastToOperatoreId}
-        bulkLastMessage={bulkLastMessage}
-        bulkPreviewOpen={bulkPreviewOpen}
-        setBulkPreviewOpen={setBulkPreviewOpen}
-        openBulkAlertModal={openBulkInterventoAlertModal}
-        reopenIntervento={reopenIntervento}
-      />
+      <div style={{ marginTop: 18 }}>
+        <h2 style={{ margin: 0 }}>ATTIVITÀ</h2>
+        {compactInterventiRows.length === 0 ? (
+          <div style={{ opacity: 0.7, marginTop: 6 }}>Nessuna attività presente</div>
+        ) : (
+          <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
+            {compactInterventiRows.map((row) => {
+              const targetProjectId = String(row.checklist_id || "");
+              const project = checklistById.get(targetProjectId);
+              const lifecycleStatus = getInterventoLifecycleStatus(row);
+              const esitoFatturazione =
+                getCanonicalInterventoEsitoFatturazione(row) ||
+                row.fatturazione_stato ||
+                row.esito_fatturazione;
+
+              return (
+                <div
+                  key={row.id}
+                  role={targetProjectId ? "button" : undefined}
+                  tabIndex={targetProjectId ? 0 : undefined}
+                  onClick={() => {
+                    if (targetProjectId) router.push(`/checklists/${targetProjectId}`);
+                  }}
+                  onKeyDown={(e) => {
+                    if (!targetProjectId) return;
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      router.push(`/checklists/${targetProjectId}`);
+                    }
+                  }}
+                  style={{
+                    ...compactRowStyle,
+                    cursor: targetProjectId ? "pointer" : "default",
+                  }}
+                >
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+                    <div style={{ display: "grid", gap: 6 }}>
+                      <div style={{ fontWeight: 800, fontSize: 15 }}>{row.descrizione || "Intervento"}</div>
+                      <div style={compactMetaRowStyle}>
+                        <span>Progetto: {project?.nome_checklist || "—"}</span>
+                        <span>Data: {fmtDate(row.data_tassativa || row.data) || "—"}</span>
+                        <span>Ticket: {row.ticket_no || "—"}</span>
+                      </div>
+                    </div>
+                    <div>{renderStatoInterventoBadge(lifecycleStatus)}</div>
+                  </div>
+                  <div style={compactMetaRowStyle}>
+                    <span>{renderInterventoBadge(row.incluso ? "INCLUSO" : "EXTRA")}</span>
+                    <span>{renderFatturazioneBadge(String(esitoFatturazione || "—"))}</span>
+                    <span>Stato: {row.stato_intervento || lifecycleStatus}</span>
+                    {row.proforma ? <span>Proforma: {row.proforma}</span> : null}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        <details style={detailsStyle}>
+          <summary style={{ cursor: "pointer", fontWeight: 700 }}>Gestione completa attività</summary>
+          <div style={{ marginTop: 12 }}>
+            <InterventiBlock
+              checklists={checklists}
+              interventi={interventi}
+              interventiInfo={interventiInfo}
+              interventiError={interventiError}
+              alertNotice={alertNotice}
+              setInterventiNotice={setInterventiInfo}
+              includedUsed={interventiInclusiUsati}
+              includedTotal={contratto ? interventiTotali : null}
+              includedResidual={contratto ? interventiResidui : null}
+              includedSummaryOverride={!contratto ? " / Totale inclusi: —" : null}
+              attachmentCounts={new Map(
+                Array.from(interventoFilesById.entries()).map(([id, files]) => [id, files.length])
+              )}
+              getOperatoreNome={getOperatoreNome}
+              currentOperatoreRole={alertOperatori.find((o) => o.id === currentOperatoreId)?.ruolo ?? null}
+              newIntervento={{
+                data: newIntervento.data,
+                dataTassativa: newIntervento.dataTassativa,
+                descrizione: newIntervento.tipo,
+                ticketNo: newIntervento.ticketNo,
+                incluso: newIntervento.incluso,
+                checklistId: newIntervento.checklistId,
+                proforma: newIntervento.proforma,
+                codiceMagazzino: newIntervento.codiceMagazzino,
+                fatturazioneStato: newIntervento.fatturazioneStato,
+                statoIntervento: newIntervento.statoIntervento,
+                esitoFatturazione: "",
+                numeroFattura: newIntervento.numeroFattura,
+                fatturatoIl: newIntervento.fatturatoIl,
+                note: newIntervento.note,
+                noteTecniche: "",
+                dataInizio: newIntervento.dataInizio,
+                durataGiorni: newIntervento.durataGiorni,
+                modalitaAttivita: newIntervento.modalitaAttivita,
+                personalePrevisto: newIntervento.personalePrevisto,
+                personaleIds: newIntervento.personaleIds,
+                mezzi: newIntervento.mezzi,
+                descrizioneAttivita: newIntervento.descrizioneAttivita,
+                indirizzo: newIntervento.indirizzo,
+                orario: newIntervento.orario,
+                referenteClienteNome: newIntervento.referenteClienteNome,
+                referenteClienteContatto: newIntervento.referenteClienteContatto,
+                commercialeArtTechNome: newIntervento.commercialeArtTechNome,
+                commercialeArtTechContatto: newIntervento.commercialeArtTechContatto,
+              }}
+              setNewIntervento={(value) => {
+                setNewIntervento({
+                  data: value.data,
+                  dataTassativa: value.dataTassativa,
+                  tipo: value.descrizione,
+                  ticketNo: value.ticketNo,
+                  incluso: value.incluso,
+                  note: value.note,
+                  checklistId: value.checklistId,
+                  proforma: value.proforma,
+                  codiceMagazzino: value.codiceMagazzino,
+                  fatturazioneStato: value.fatturazioneStato,
+                  numeroFattura: value.numeroFattura,
+                  fatturatoIl: value.fatturatoIl,
+                  statoIntervento: value.statoIntervento,
+                  dataInizio: value.dataInizio,
+                  durataGiorni: value.durataGiorni,
+                  modalitaAttivita: value.modalitaAttivita,
+                  personalePrevisto: value.personalePrevisto,
+                  personaleIds: value.personaleIds,
+                  mezzi: value.mezzi,
+                  descrizioneAttivita: value.descrizioneAttivita,
+                  indirizzo: value.indirizzo,
+                  orario: value.orario,
+                  referenteClienteNome: value.referenteClienteNome,
+                  referenteClienteContatto: value.referenteClienteContatto,
+                  commercialeArtTechNome: value.commercialeArtTechNome,
+                  commercialeArtTechContatto: value.commercialeArtTechContatto,
+                });
+              }}
+              newInterventoFiles={newInterventoFiles}
+              setNewInterventoFiles={setNewInterventoFiles}
+              newInterventoLinks={newInterventoLinks}
+              setNewInterventoLinks={setNewInterventoLinks}
+              addIntervento={addIntervento}
+              editInterventoId={editInterventoId}
+              setEditInterventoId={setEditInterventoId}
+              editIntervento={{
+                ...editIntervento,
+                checklistId: "",
+              }}
+              setEditIntervento={(value) =>
+                setEditIntervento({
+                  data: value.data,
+                  dataTassativa: value.dataTassativa,
+                  descrizione: value.descrizione,
+                  ticketNo: value.ticketNo,
+                  incluso: value.incluso,
+                  proforma: value.proforma,
+                  codiceMagazzino: value.codiceMagazzino,
+                  fatturazioneStato: value.fatturazioneStato,
+                  statoIntervento: value.statoIntervento,
+                  esitoFatturazione: value.esitoFatturazione,
+                  numeroFattura: value.numeroFattura,
+                  fatturatoIl: value.fatturatoIl,
+                  note: value.note,
+                  noteTecniche: value.noteTecniche,
+                  dataInizio: value.dataInizio,
+                  durataGiorni: value.durataGiorni,
+                  modalitaAttivita: value.modalitaAttivita,
+                  personalePrevisto: value.personalePrevisto,
+                  personaleIds: value.personaleIds,
+                  mezzi: value.mezzi,
+                  descrizioneAttivita: value.descrizioneAttivita,
+                  indirizzo: value.indirizzo,
+                  orario: value.orario,
+                  referenteClienteNome: value.referenteClienteNome,
+                  referenteClienteContatto: value.referenteClienteContatto,
+                  commercialeArtTechNome: value.commercialeArtTechNome,
+                  commercialeArtTechContatto: value.commercialeArtTechContatto,
+                })
+              }
+              startEditIntervento={startEditIntervento}
+              saveEditIntervento={saveEditIntervento}
+              expandedInterventoId={expandedInterventoId}
+              setExpandedInterventoId={setExpandedInterventoId}
+              deleteIntervento={deleteIntervento}
+              closeInterventoId={closeInterventoId}
+              setCloseInterventoId={setCloseInterventoId}
+              closeEsito={closeEsito}
+              setCloseEsito={setCloseEsito}
+              closeNote={closeNote}
+              setCloseNote={setCloseNote}
+              closeError={closeError}
+              setCloseError={setCloseError}
+              confirmCloseIntervento={confirmCloseIntervento}
+              alertInterventoId={alertInterventoId}
+              setAlertInterventoId={setAlertInterventoId}
+              alertDestinatarioId={alertDestinatarioId}
+              setAlertDestinatarioId={setAlertDestinatarioId}
+              alertMessaggio={alertMessaggio}
+              setAlertMessaggio={setAlertMessaggio}
+              alertSendEmail={alertSendEmail}
+              setAlertSendEmail={setAlertSendEmail}
+              sending={sending}
+              sendErr={sendErr}
+              sendOk={sendOk}
+              sendInterventoAlert={sendInterventoAlert}
+              openAlertModal={openInterventoAlertModal}
+              getAlertRecipients={getAlertRecipients}
+              bulkOpen={bulkOpen}
+              setBulkOpen={setBulkOpen}
+              bulkToOperatoreId={bulkToOperatoreId}
+              setBulkToOperatoreId={setBulkToOperatoreId}
+              bulkMsg={bulkMsg}
+              setBulkMsg={setBulkMsg}
+              bulkSendEmail={bulkSendEmail}
+              setBulkSendEmail={setBulkSendEmail}
+              bulkSending={bulkSending}
+              bulkErr={bulkErr}
+              bulkOk={bulkOk}
+              sendBulkFatturaAlert={sendBulkFatturaAlert}
+              getFatturaAlertRecipients={getFatturaAlertRecipients}
+              bulkLastSentAt={bulkLastSentAt}
+              bulkLastToOperatoreId={bulkLastToOperatoreId}
+              bulkLastMessage={bulkLastMessage}
+              bulkPreviewOpen={bulkPreviewOpen}
+              setBulkPreviewOpen={setBulkPreviewOpen}
+              openBulkAlertModal={openBulkInterventoAlertModal}
+              reopenIntervento={reopenIntervento}
+            />
+          </div>
+        </details>
+      </div>
 
       {licenseAlertOpen && (
         <div
@@ -7996,28 +8156,7 @@ ${rinnovi30ggBreakdown.debugSample
         {checklists.length === 0 ? (
           <div style={{ opacity: 0.7 }}>Nessun PROGETTO trovato</div>
         ) : (
-          <div style={{ marginTop: 10, border: "1px solid #eee", borderRadius: 12, overflow: "hidden" }}>
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns: "2fr 1fr 1fr 1fr 1fr 1fr 1fr 1fr 1fr",
-                padding: "10px 12px",
-                fontWeight: 800,
-                background: "#fafafa",
-                borderBottom: "1px solid #eee",
-              }}
-            >
-              <div>Progetto</div>
-              <div>Proforma</div>
-              <div>PO</div>
-              <div>Dimensioni</div>
-              <div>m2</div>
-              <div>Passo</div>
-              <div>Tipo impianto</div>
-              <div>Date</div>
-              <div>Stato</div>
-            </div>
-
+          <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
             {checklists.map((c) => (
               <div
                 key={c.id}
@@ -8031,17 +8170,40 @@ ${rinnovi30ggBreakdown.debugSample
                   }
                 }}
                 style={{
-                  display: "grid",
-                  gridTemplateColumns: "2fr 1fr 1fr 1fr 1fr 1fr 1fr 1fr 1fr",
-                  padding: "10px 12px",
-                  borderBottom: "1px solid #f3f4f6",
-                  alignItems: "center",
-                  fontSize: 13,
+                  ...compactRowStyle,
                   cursor: "pointer",
                 }}
               >
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+                  <div style={{ display: "grid", gap: 6 }}>
+                    <div style={{ fontWeight: 800, fontSize: 15 }}>{c.nome_checklist ?? "—"}</div>
+                    <div style={compactMetaRowStyle}>
+                      <span>Proforma: {c.proforma ?? "—"}</span>
+                      <span>PO: {c.po ?? "—"}</span>
+                      <span>
+                        Data chiave:{" "}
+                        {c.data_tassativa
+                          ? new Date(c.data_tassativa).toLocaleDateString()
+                          : c.data_prevista
+                          ? new Date(c.data_prevista).toLocaleDateString()
+                          : "—"}
+                      </span>
+                    </div>
+                  </div>
+                  <div>{renderBadge(getEffectiveProjectStatus({ stato_progetto: c.stato_progetto }) ?? "—")}</div>
+                </div>
+                <div style={compactMetaRowStyle}>
+                  <span>Impianto: {c.tipo_impianto ?? "—"}</span>
+                  <span>Dimensioni: {c.dimensioni ?? "—"}</span>
+                  <span>
+                    m2:{" "}
+                    {calcM2(c.dimensioni, c.numero_facce) != null
+                      ? calcM2(c.dimensioni, c.numero_facce)!.toFixed(2)
+                      : "—"}
+                  </span>
+                  <span>Passo: {c.passo ?? "—"}</span>
+                </div>
                 <div style={{ display: "grid", gap: 6 }}>
-                  <div style={{ fontWeight: 800 }}>{c.nome_checklist ?? "—"}</div>
                   <OperativeNotesPanel
                     compact
                     title="Note operative"
@@ -8054,31 +8216,6 @@ ${rinnovi30ggBreakdown.debugSample
                     ]}
                   />
                 </div>
-                <div>{c.proforma ?? "—"}</div>
-                <div>{c.po ?? "—"}</div>
-                <div>{c.dimensioni ?? "—"}</div>
-                <div>
-                  {calcM2(c.dimensioni, c.numero_facce) != null
-                    ? calcM2(c.dimensioni, c.numero_facce)!.toFixed(2)
-                    : "—"}
-                </div>
-                <div>{c.passo ?? "—"}</div>
-                <div>{c.tipo_impianto ?? "—"}</div>
-                <div style={{ fontSize: 12, opacity: 0.8 }}>
-                  <div>
-                    Prev: {c.data_prevista ? new Date(c.data_prevista).toLocaleDateString() : "—"}
-                  </div>
-                  <div>
-                    Tass: {c.data_tassativa ? new Date(c.data_tassativa).toLocaleDateString() : "—"}
-                  </div>
-                  <div>
-                    Reale:{" "}
-                    {c.data_installazione_reale
-                      ? new Date(c.data_installazione_reale).toLocaleDateString()
-                      : "—"}
-                  </div>
-                </div>
-                <div>{getEffectiveProjectStatus({ stato_progetto: c.stato_progetto }) ?? "—"}</div>
               </div>
             ))}
           </div>
@@ -8091,40 +8228,7 @@ ${rinnovi30ggBreakdown.debugSample
         {clienteSimRows.length === 0 ? (
           <div style={{ opacity: 0.7, marginTop: 6 }}>Nessuna SIM associata ai progetti del cliente</div>
         ) : (
-          <div
-            style={{
-              marginTop: 10,
-              border: "1px solid #eee",
-              borderRadius: 12,
-              overflowX: "auto",
-              overflowY: "hidden",
-              background: "white",
-            }}
-          >
-            <div style={{ minWidth: 1260 }}>
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "140px 180px 110px 160px 160px 140px 140px 120px 150px 110px",
-                  padding: "10px 12px",
-                  fontWeight: 800,
-                  background: "#fafafa",
-                  borderBottom: "1px solid #eee",
-                  gap: 10,
-                }}
-              >
-                <div>Numero</div>
-                <div>Progetto associato</div>
-                <div>Operatore</div>
-                <div>Piano</div>
-                <div>Device</div>
-                <div>Scadenza</div>
-                <div>Ultima ricarica</div>
-                <div>Importo</div>
-                <div>Stato fatturazione</div>
-                <div>Stato SIM</div>
-              </div>
-
+          <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
               {clienteSimRows.map((row) => {
                 const latestRecharge = getLatestClienteSimRechargeRow(
                   clienteSimRechargesById[row.id] || []
@@ -8136,31 +8240,42 @@ ${rinnovi30ggBreakdown.debugSample
                 return (
                   <div
                     key={row.id}
+                    role={row.checklist_id ? "button" : undefined}
+                    tabIndex={row.checklist_id ? 0 : undefined}
+                    onClick={() => {
+                      if (row.checklist_id) router.push(`/checklists/${row.checklist_id}`);
+                    }}
+                    onKeyDown={(e) => {
+                      if (!row.checklist_id) return;
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        router.push(`/checklists/${row.checklist_id}`);
+                      }
+                    }}
                     style={{
-                      display: "grid",
-                      gridTemplateColumns:
-                        "140px 180px 110px 160px 160px 140px 140px 120px 150px 110px",
-                      padding: "10px 12px",
-                      borderBottom: "1px solid #f3f4f6",
-                      alignItems: "center",
-                      fontSize: 13,
-                      gap: 10,
+                      ...compactRowStyle,
+                      cursor: row.checklist_id ? "pointer" : "default",
                     }}
                   >
-                    <div style={{ fontWeight: 700 }}>{row.numero_telefono || "—"}</div>
-                    <div>{project?.nome_checklist || "—"}</div>
-                    <div>{row.operatore || "—"}</div>
-                    <div>{row.piano_attivo || "—"}</div>
-                    <div>{row.device_installato || "—"}</div>
-                    <div>{fmtDate(effectiveScadenza) || "—"}</div>
-                    <div>{fmtDate(latestRecharge?.data_ricarica) || "—"}</div>
-                    <div>{formatCurrency(latestRecharge?.importo)}</div>
-                    <div>{renderRechargeBillingBadge(latestRecharge?.billing_status)}</div>
-                    <div>{renderClienteSimStateBadge(simState)}</div>
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+                      <div style={{ fontWeight: 800, fontSize: 15 }}>{row.numero_telefono || "—"}</div>
+                      <div>{renderClienteSimStateBadge(simState)}</div>
+                    </div>
+                    <div style={compactMetaRowStyle}>
+                      <span>Progetto: {project?.nome_checklist || "—"}</span>
+                      <span>Operatore: {row.operatore || "—"}</span>
+                      <span>Piano: {row.piano_attivo || "—"}</span>
+                      <span>Scadenza: {fmtDate(effectiveScadenza) || "—"}</span>
+                    </div>
+                    <div style={compactMetaRowStyle}>
+                      <span>Device: {row.device_installato || "—"}</span>
+                      <span>Ultima ricarica: {fmtDate(latestRecharge?.data_ricarica) || "—"}</span>
+                      <span>Importo: {formatCurrency(latestRecharge?.importo)}</span>
+                      <span>{renderRechargeBillingBadge(latestRecharge?.billing_status)}</span>
+                    </div>
                   </div>
                 );
               })}
-            </div>
           </div>
         )}
       </div>
