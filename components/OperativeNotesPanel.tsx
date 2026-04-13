@@ -51,6 +51,24 @@ function normalizePreviewText(value?: string | null) {
   return raw.replace(/\s+/g, " ");
 }
 
+async function fetchCronoprogramma(body: Record<string, unknown>) {
+  const run = () =>
+    fetch("/api/cronoprogramma", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      cache: "no-store",
+      body: JSON.stringify(body),
+    });
+
+  let res = await run();
+  if (res.status === 401) {
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    res = await run();
+  }
+  return res;
+}
+
 export default function OperativeNotesPanel({ items, compact = false, title }: Props) {
   const normalizedItems = useMemo(
     () =>
@@ -87,17 +105,12 @@ export default function OperativeNotesPanel({ items, compact = false, title }: P
       setLoading(true);
       setError(null);
       try {
-        const res = await fetch("/api/cronoprogramma", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          credentials: "include",
-          body: JSON.stringify({
-            action: "load",
-            rows: normalizedItems.map((item) => ({
-              row_kind: item.rowKind,
-              row_ref_id: item.rowRefId,
-            })),
-          }),
+        const res = await fetchCronoprogramma({
+          action: "load",
+          rows: normalizedItems.map((item) => ({
+            row_kind: item.rowKind,
+            row_ref_id: item.rowRefId,
+          })),
         });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) {
@@ -130,26 +143,21 @@ export default function OperativeNotesPanel({ items, compact = false, title }: P
     setSavingKey(key);
     setError(null);
     try {
-      const res = await fetch("/api/cronoprogramma", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({
-          action: "set_operativi",
-          row_kind: item.rowKind,
-          row_ref_id: item.rowRefId,
-          data_inizio: meta.data_inizio || "",
-          durata_giorni: meta.durata_giorni || "",
-          personale_previsto: meta.personale_previsto || "",
-          mezzi: meta.mezzi || "",
-          descrizione_attivita,
-          indirizzo: meta.indirizzo || "",
-          orario: meta.orario || "",
-          referente_cliente_nome: meta.referente_cliente_nome || "",
-          referente_cliente_contatto: meta.referente_cliente_contatto || "",
-          commerciale_art_tech_nome: meta.commerciale_art_tech_nome || "",
-          commerciale_art_tech_contatto: meta.commerciale_art_tech_contatto || "",
-        }),
+      const res = await fetchCronoprogramma({
+        action: "set_operativi",
+        row_kind: item.rowKind,
+        row_ref_id: item.rowRefId,
+        data_inizio: meta.data_inizio || "",
+        durata_giorni: meta.durata_giorni || "",
+        personale_previsto: meta.personale_previsto || "",
+        mezzi: meta.mezzi || "",
+        descrizione_attivita,
+        indirizzo: meta.indirizzo || "",
+        orario: meta.orario || "",
+        referente_cliente_nome: meta.referente_cliente_nome || "",
+        referente_cliente_contatto: meta.referente_cliente_contatto || "",
+        commerciale_art_tech_nome: meta.commerciale_art_tech_nome || "",
+        commerciale_art_tech_contatto: meta.commerciale_art_tech_contatto || "",
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -172,16 +180,11 @@ export default function OperativeNotesPanel({ items, compact = false, title }: P
     setCommentSavingKey(key);
     setError(null);
     try {
-      const res = await fetch("/api/cronoprogramma", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({
-          action: "add_comment",
-          row_kind: item.rowKind,
-          row_ref_id: item.rowRefId,
-          commento,
-        }),
+      const res = await fetchCronoprogramma({
+        action: "add_comment",
+        row_kind: item.rowKind,
+        row_ref_id: item.rowRefId,
+        commento,
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {

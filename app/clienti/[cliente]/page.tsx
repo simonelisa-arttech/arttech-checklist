@@ -409,6 +409,29 @@ function formatDateOnlyValue(date?: Date | null) {
   return `${year}-${month}-${day}`;
 }
 
+function isUnauthorizedMessage(error: { message?: string | null } | null | undefined) {
+  return String(error?.message || "")
+    .trim()
+    .toLowerCase()
+    .includes("unauthorized");
+}
+
+async function selectClienteSimRows(checklistIds: string[]) {
+  return dbFrom("sim_cards")
+    .select(
+      "id, checklist_id, numero_telefono, intestatario, operatore, piano_attivo, device_installato, data_attivazione, data_scadenza, giorni_preavviso, attiva"
+    )
+    .in("checklist_id", checklistIds)
+    .order("numero_telefono", { ascending: true });
+}
+
+async function selectClienteSimRechargeRows(simIds: string[]) {
+  return dbFrom("sim_recharges")
+    .select("id, sim_id, data_ricarica, importo, billing_status")
+    .in("sim_id", simIds)
+    .order("data_ricarica", { ascending: false });
+}
+
 function addOneYearToDate(value?: string | null) {
   const source = parseLocalDay(value);
   if (!source) return "";
@@ -1899,12 +1922,13 @@ export default function ClientePage({
         setClienteSimRechargesById({});
         setClienteSimsError(null);
       } else {
-        const { data: simData, error: simErr } = await dbFrom("sim_cards")
-          .select(
-            "id, checklist_id, numero_telefono, intestatario, operatore, piano_attivo, device_installato, data_attivazione, data_scadenza, giorni_preavviso, attiva"
-          )
-          .in("checklist_id", checklistIds)
-          .order("numero_telefono", { ascending: true });
+        let { data: simData, error: simErr } = await selectClienteSimRows(checklistIds);
+        if (simErr && isUnauthorizedMessage(simErr)) {
+          await new Promise((resolve) => setTimeout(resolve, 250));
+          const retry = await selectClienteSimRows(checklistIds);
+          simData = retry.data;
+          simErr = retry.error;
+        }
 
         if (simErr) {
           setClienteSims([]);
@@ -1937,10 +1961,13 @@ export default function ClientePage({
           if (simIds.length === 0) {
             setClienteSimRechargesById({});
           } else {
-            const { data: rechargeData, error: rechargeErr } = await dbFrom("sim_recharges")
-              .select("id, sim_id, data_ricarica, importo, billing_status")
-              .in("sim_id", simIds)
-              .order("data_ricarica", { ascending: false });
+            let { data: rechargeData, error: rechargeErr } = await selectClienteSimRechargeRows(simIds);
+            if (rechargeErr && isUnauthorizedMessage(rechargeErr)) {
+              await new Promise((resolve) => setTimeout(resolve, 250));
+              const retry = await selectClienteSimRechargeRows(simIds);
+              rechargeData = retry.data;
+              rechargeErr = retry.error;
+            }
 
             if (rechargeErr) {
               setClienteSimRechargesById({});
