@@ -37,6 +37,7 @@ type Props = {
   items: OperativeNotesItem[];
   compact?: boolean;
   title?: string | null;
+  authReady?: boolean;
 };
 
 function rowKey(rowKind: OperativeRowKind, rowRefId: string) {
@@ -69,7 +70,12 @@ async function fetchCronoprogramma(body: Record<string, unknown>) {
   return res;
 }
 
-export default function OperativeNotesPanel({ items, compact = false, title }: Props) {
+export default function OperativeNotesPanel({
+  items,
+  compact = false,
+  title,
+  authReady = true,
+}: Props) {
   const normalizedItems = useMemo(
     () =>
       items.filter((item) => String(item.rowRefId || "").trim()).map((item) => ({
@@ -94,6 +100,14 @@ export default function OperativeNotesPanel({ items, compact = false, title }: P
     let cancelled = false;
 
     async function load() {
+      if (!authReady) {
+        if (!cancelled) {
+          setLoading(false);
+          setError(null);
+        }
+        return;
+      }
+
       if (normalizedItems.length === 0) {
         if (!cancelled) {
           setMetaByKey({});
@@ -134,7 +148,7 @@ export default function OperativeNotesPanel({ items, compact = false, title }: P
     return () => {
       cancelled = true;
     };
-  }, [itemsKey]);
+  }, [authReady, itemsKey]);
 
   async function saveNote(item: OperativeNotesItem) {
     const key = rowKey(item.rowKind, item.rowRefId);
@@ -215,6 +229,9 @@ export default function OperativeNotesPanel({ items, compact = false, title }: P
       }}
     >
       {title ? <div style={{ fontSize: 12, fontWeight: 800, opacity: 0.8 }}>{title}</div> : null}
+      {!authReady ? (
+        <div style={{ fontSize: 12, opacity: 0.7 }}>Verifica sessione...</div>
+      ) : null}
       {loading && Object.keys(metaByKey).length === 0 ? (
         <div style={{ fontSize: 12, opacity: 0.7 }}>Caricamento note...</div>
       ) : null}

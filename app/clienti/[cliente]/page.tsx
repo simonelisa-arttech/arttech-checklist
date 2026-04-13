@@ -946,6 +946,8 @@ export default function ClientePage({
   const [cliente, setCliente] = useState<string>("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [authReady, setAuthReady] = useState(false);
+  const [authReadyError, setAuthReadyError] = useState<string | null>(null);
   const [checklists, setChecklists] = useState<ChecklistRow[]>([]);
   const [clienteSims, setClienteSims] = useState<ClienteSimRow[]>([]);
   const [clienteSimRechargesById, setClienteSimRechargesById] = useState<
@@ -1803,6 +1805,36 @@ export default function ClientePage({
   }, []);
 
   useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      setAuthReady(false);
+      setAuthReadyError(null);
+      try {
+        const res = await fetch("/api/me-operatore", {
+          credentials: "include",
+          cache: "no-store",
+        });
+        const data = await res.json().catch(() => ({}));
+        if (cancelled) return;
+        if (!res.ok) {
+          setAuthReadyError(String(data?.error || "Sessione non pronta"));
+          return;
+        }
+        setAuthReady(true);
+      } catch (err: any) {
+        if (!cancelled) {
+          setAuthReadyError(String(err?.message || "Sessione non pronta"));
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
     let alive = true;
     (async () => {
       const mountRun = ++perfRef.current.mountRun;
@@ -1917,86 +1949,6 @@ export default function ClientePage({
       }
       setChecklists(list);
       const checklistIds = list.map((c) => c.id).filter(Boolean);
-      if (checklistIds.length === 0) {
-        setClienteSims([]);
-        setClienteSimRechargesById({});
-        setClienteSimsError(null);
-      } else {
-        let { data: simData, error: simErr } = await selectClienteSimRows(checklistIds);
-        if (simErr && isUnauthorizedMessage(simErr)) {
-          await new Promise((resolve) => setTimeout(resolve, 250));
-          const retry = await selectClienteSimRows(checklistIds);
-          simData = retry.data;
-          simErr = retry.error;
-        }
-
-        if (simErr) {
-          setClienteSims([]);
-          setClienteSimRechargesById({});
-          setClienteSimsError("Errore caricamento SIM cliente: " + simErr.message);
-        } else {
-          const simRows = (((simData as any[]) || []) as Array<Record<string, any>>).map((row) => ({
-            id: String(row.id || ""),
-            checklist_id: row.checklist_id ? String(row.checklist_id) : null,
-            numero_telefono: row.numero_telefono ? String(row.numero_telefono) : null,
-            intestatario: row.intestatario ? String(row.intestatario) : null,
-            operatore: row.operatore ? String(row.operatore) : null,
-            piano_attivo: row.piano_attivo ? String(row.piano_attivo) : null,
-            device_installato: row.device_installato ? String(row.device_installato) : null,
-            data_attivazione: row.data_attivazione ? String(row.data_attivazione) : null,
-            data_scadenza: row.data_scadenza ? String(row.data_scadenza) : null,
-            giorni_preavviso:
-              typeof row.giorni_preavviso === "number"
-                ? row.giorni_preavviso
-                : row.giorni_preavviso == null || row.giorni_preavviso === ""
-                  ? null
-                  : Number(row.giorni_preavviso),
-            attiva: row.attiva !== false,
-          })) as ClienteSimRow[];
-
-          setClienteSims(simRows);
-          setClienteSimsError(null);
-
-          const simIds = simRows.map((row) => row.id).filter(Boolean);
-          if (simIds.length === 0) {
-            setClienteSimRechargesById({});
-          } else {
-            let { data: rechargeData, error: rechargeErr } = await selectClienteSimRechargeRows(simIds);
-            if (rechargeErr && isUnauthorizedMessage(rechargeErr)) {
-              await new Promise((resolve) => setTimeout(resolve, 250));
-              const retry = await selectClienteSimRechargeRows(simIds);
-              rechargeData = retry.data;
-              rechargeErr = retry.error;
-            }
-
-            if (rechargeErr) {
-              setClienteSimRechargesById({});
-              setClienteSimsError("Errore caricamento ricariche SIM cliente: " + rechargeErr.message);
-            } else {
-              const rechargeMap: Record<string, ClienteSimRechargeRow[]> = {};
-              for (const row of (((rechargeData as any[]) || []) as Array<Record<string, any>>)) {
-                const simId = String(row.sim_id || "").trim();
-                if (!simId) continue;
-                const bucket = rechargeMap[simId] || [];
-                bucket.push({
-                  id: String(row.id || ""),
-                  sim_id: simId,
-                  data_ricarica: row.data_ricarica ? String(row.data_ricarica) : null,
-                  importo:
-                    typeof row.importo === "number"
-                      ? row.importo
-                      : row.importo == null || row.importo === ""
-                        ? null
-                        : Number(row.importo),
-                  billing_status: row.billing_status ? String(row.billing_status) : null,
-                });
-                rechargeMap[simId] = bucket;
-              }
-              setClienteSimRechargesById(rechargeMap);
-            }
-          }
-        }
-      }
       if (checklistIds.length > 0) {
         const byChecklist = new Map<string, string>();
         for (const c of list) {
@@ -2115,6 +2067,106 @@ export default function ClientePage({
       alive = false;
     };
   }, [resolvedParams]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadClienteSims() {
+      if (!authReady) return;
+      const checklistIds = checklists.map((c) => c.id).filter(Boolean);
+      if (checklistIds.length === 0) {
+        setClienteSims([]);
+        setClienteSimRechargesById({});
+        setClienteSimsError(null);
+        return;
+      }
+
+      let { data: simData, error: simErr } = await selectClienteSimRows(checklistIds);
+      if (simErr && isUnauthorizedMessage(simErr)) {
+        await new Promise((resolve) => setTimeout(resolve, 250));
+        const retry = await selectClienteSimRows(checklistIds);
+        simData = retry.data;
+        simErr = retry.error;
+      }
+      if (cancelled) return;
+
+      if (simErr) {
+        setClienteSims([]);
+        setClienteSimRechargesById({});
+        setClienteSimsError("Errore caricamento SIM cliente: " + simErr.message);
+        return;
+      }
+
+      const simRows = (((simData as any[]) || []) as Array<Record<string, any>>).map((row) => ({
+        id: String(row.id || ""),
+        checklist_id: row.checklist_id ? String(row.checklist_id) : null,
+        numero_telefono: row.numero_telefono ? String(row.numero_telefono) : null,
+        intestatario: row.intestatario ? String(row.intestatario) : null,
+        operatore: row.operatore ? String(row.operatore) : null,
+        piano_attivo: row.piano_attivo ? String(row.piano_attivo) : null,
+        device_installato: row.device_installato ? String(row.device_installato) : null,
+        data_attivazione: row.data_attivazione ? String(row.data_attivazione) : null,
+        data_scadenza: row.data_scadenza ? String(row.data_scadenza) : null,
+        giorni_preavviso:
+          typeof row.giorni_preavviso === "number"
+            ? row.giorni_preavviso
+            : row.giorni_preavviso == null || row.giorni_preavviso === ""
+              ? null
+              : Number(row.giorni_preavviso),
+        attiva: row.attiva !== false,
+      })) as ClienteSimRow[];
+
+      setClienteSims(simRows);
+      setClienteSimsError(null);
+
+      const simIds = simRows.map((row) => row.id).filter(Boolean);
+      if (simIds.length === 0) {
+        setClienteSimRechargesById({});
+        return;
+      }
+
+      let { data: rechargeData, error: rechargeErr } = await selectClienteSimRechargeRows(simIds);
+      if (rechargeErr && isUnauthorizedMessage(rechargeErr)) {
+        await new Promise((resolve) => setTimeout(resolve, 250));
+        const retry = await selectClienteSimRechargeRows(simIds);
+        rechargeData = retry.data;
+        rechargeErr = retry.error;
+      }
+      if (cancelled) return;
+
+      if (rechargeErr) {
+        setClienteSimRechargesById({});
+        setClienteSimsError("Errore caricamento ricariche SIM cliente: " + rechargeErr.message);
+        return;
+      }
+
+      const rechargeMap: Record<string, ClienteSimRechargeRow[]> = {};
+      for (const row of (((rechargeData as any[]) || []) as Array<Record<string, any>>)) {
+        const simId = String(row.sim_id || "").trim();
+        if (!simId) continue;
+        const bucket = rechargeMap[simId] || [];
+        bucket.push({
+          id: String(row.id || ""),
+          sim_id: simId,
+          data_ricarica: row.data_ricarica ? String(row.data_ricarica) : null,
+          importo:
+            typeof row.importo === "number"
+              ? row.importo
+              : row.importo == null || row.importo === ""
+                ? null
+                : Number(row.importo),
+          billing_status: row.billing_status ? String(row.billing_status) : null,
+        });
+        rechargeMap[simId] = bucket;
+      }
+      setClienteSimRechargesById(rechargeMap);
+    }
+
+    loadClienteSims();
+    return () => {
+      cancelled = true;
+    };
+  }, [authReady, checklists]);
 
   useEffect(() => {
     if (loading) return;
@@ -8234,6 +8286,7 @@ ${rinnovi30ggBreakdown.debugSample
                   <OperativeNotesPanel
                     compact
                     title="Note operative"
+                    authReady={authReady}
                     items={[
                       {
                         rowKind: "INSTALLAZIONE",
@@ -8251,8 +8304,12 @@ ${rinnovi30ggBreakdown.debugSample
 
       <div style={{ marginTop: 18 }}>
         <h2 style={{ margin: 0 }}>SIM cliente</h2>
+        {!authReady && !authReadyError ? (
+          <div style={{ opacity: 0.7, marginTop: 6 }}>Verifica sessione...</div>
+        ) : null}
+        {authReadyError ? <div style={{ color: "crimson", marginTop: 6 }}>{authReadyError}</div> : null}
         {clienteSimsError && <div style={{ color: "crimson", marginTop: 6 }}>{clienteSimsError}</div>}
-        {clienteSimRows.length === 0 ? (
+        {!authReady ? null : clienteSimRows.length === 0 ? (
           <div style={{ opacity: 0.7, marginTop: 6 }}>Nessuna SIM associata ai progetti del cliente</div>
         ) : (
           <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
