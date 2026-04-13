@@ -505,6 +505,12 @@ export default function CronoprogrammaPanel({
                           {r.progetto || "Attività cronoprogramma"}
                         </div>
                         <div style={{ display: "flex", gap: 10, flexWrap: "wrap", fontSize: 13, color: "#475569" }}>
+                          {r.kind === "INTERVENTO" ? (
+                            <span>
+                              Data intervento:{" "}
+                              {schedule.data_inizio ? formatOperativiDateLabel(schedule.data_inizio) : "—"}
+                            </span>
+                          ) : null}
                           <span>Cliente: {r.cliente || "—"}</span>
                           <span>Persone: {operativi.personale_previsto || "—"}</span>
                           <span>Rif: {r.ticket_no || r.proforma || "—"}</span>
