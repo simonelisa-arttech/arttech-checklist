@@ -1855,217 +1855,218 @@ export default function ClientePage({
       if (!alive) return;
 
       let displayCliente = decoded.trim();
-      setCliente(displayCliente);
-      setClienteAnagraficaEmail(null);
-      setClienteAnagraficaEmailSecondarie(null);
-      setClienteAnagraficaEmailDraft("");
-      setClienteAnagraficaEmailSecondarieDraft("");
-      setClienteAnagraficaId(null);
-      setClienteDriveUrl(null);
-      setClienteDriveDraft("");
-      setClienteDriveEditing(false);
-      setClienteScadenzeDeliveryMode(DEFAULT_CLIENTE_SCADENZE_DELIVERY_MODE);
-      setLoading(true);
-      setInitialClienteLoadDone(false);
-      setError(null);
-
-      const clienteKey = decoded.trim();
-      const normalizedClienteKey = clienteKey.toLowerCase();
-      if (!normalizedClienteKey) {
-        setChecklists([]);
-        setLicenze([]);
-        setRinnovi([]);
-        setTagliandi([]);
-        setInterventi([]);
-        setLoading(false);
-        setInitialClienteLoadDone(true);
-        return;
-      }
-      if (lastMountClienteKeyRef.current === normalizedClienteKey) {
-        setLoading(false);
-        setInitialClienteLoadDone(true);
-        return;
-      }
-      lastMountClienteKeyRef.current = normalizedClienteKey;
-      if (clienteKey) {
-        try {
-          if (isPerfEnabled()) console.time(`[perf][cliente][mount#${mountRun}] fetch /api/clienti`);
-          perfCountFetch("GET /api/clienti");
-          const anagRes = await fetch(`/api/clienti?q=${encodeURIComponent(clienteKey)}&limit=20`, {
-            cache: "no-store",
-            credentials: "include",
-          });
-          const anagJson = await anagRes.json().catch(() => ({} as any));
-          if (isPerfEnabled()) console.timeEnd(`[perf][cliente][mount#${mountRun}] fetch /api/clienti`);
-          const anagList = Array.isArray(anagJson?.data) ? anagJson.data : [];
-          const anagData =
-            anagList.find(
-              (row: any) =>
-                normalizeClienteLookupKey(row?.denominazione) === normalizeClienteLookupKey(clienteKey)
-            ) || null;
-          if (anagData) {
-            applyClienteAnagraficaData(anagData);
-            const fullName = String((anagData as any)?.denominazione || "").trim();
-            if (fullName) {
-              displayCliente = fullName;
-              setCliente(fullName);
-            }
-          }
-        } catch {
-          // keep fallback values from URL
-        }
-      }
-      if (isPerfEnabled()) console.time(`[perf][cliente][mount#${mountRun}] fetch /api/dashboard`);
-      perfCountFetch("GET /api/dashboard");
-      const dashboardRes = await fetch(`/api/dashboard?q=${encodeURIComponent(clienteKey)}`, {
-        credentials: "include",
-      });
-      const dashboardJson = await dashboardRes.json().catch(() => ({}));
-      if (isPerfEnabled()) console.timeEnd(`[perf][cliente][mount#${mountRun}] fetch /api/dashboard`);
-      if (!dashboardRes.ok) {
-        setError("Errore caricamento PROGETTI: " + (dashboardJson?.error || "errore API dashboard"));
-        setLoading(false);
-        setInitialClienteLoadDone(true);
-        return;
-      }
-
-      const list = ((dashboardJson?.data?.checklists || []) as ChecklistRow[]).filter((row) =>
-        String((row as any)?.cliente || "")
-          .toLowerCase()
-          .includes(clienteKey.toLowerCase())
-      );
       let licenzeCount = 0;
-      const firstClienteId = String((list[0] as any)?.cliente_id || "").trim();
-      if (firstClienteId) {
-        if (!clienteAnagraficaId) {
-          setClienteAnagraficaId(firstClienteId);
+      let rinnoviRows: RinnovoServizioRow[] = [];
+      let tagliandiRows: TagliandoRow[] = [];
+
+      try {
+        setCliente(displayCliente);
+        setClienteAnagraficaEmail(null);
+        setClienteAnagraficaEmailSecondarie(null);
+        setClienteAnagraficaEmailDraft("");
+        setClienteAnagraficaEmailSecondarieDraft("");
+        setClienteAnagraficaId(null);
+        setClienteDriveUrl(null);
+        setClienteDriveDraft("");
+        setClienteDriveEditing(false);
+        setClienteScadenzeDeliveryMode(DEFAULT_CLIENTE_SCADENZE_DELIVERY_MODE);
+        setLoading(true);
+        setInitialClienteLoadDone(false);
+        setError(null);
+
+        const clienteKey = decoded.trim();
+        const normalizedClienteKey = clienteKey.toLowerCase();
+        if (!normalizedClienteKey) {
+          setChecklists([]);
+          setLicenze([]);
+          setRinnovi([]);
+          setTagliandi([]);
+          setInterventi([]);
+          return;
         }
-        if (isPerfEnabled()) console.time(`[perf][cliente][mount#${mountRun}] db clienti_anagrafica`);
-        perfCountDb("clienti_anagrafica.select");
-        const { data: clienteById } = await dbFrom("clienti_anagrafica")
-          .select("denominazione")
-          .eq("id", firstClienteId)
-          .maybeSingle();
-        if (isPerfEnabled()) console.timeEnd(`[perf][cliente][mount#${mountRun}] db clienti_anagrafica`);
-        const fullById = String((clienteById as any)?.denominazione || "").trim();
-        if (fullById) {
-          displayCliente = fullById;
-          setCliente(fullById);
+        if (lastMountClienteKeyRef.current === normalizedClienteKey) {
+          return;
         }
-      }
-      setChecklists(list);
-      const checklistIds = list.map((c) => c.id).filter(Boolean);
-      if (checklistIds.length > 0) {
-        const byChecklist = new Map<string, string>();
-        for (const c of list) {
-          if (c.id) {
-            const p = (c.proforma || "").trim();
-            if (p) byChecklist.set(c.id, p);
+        lastMountClienteKeyRef.current = normalizedClienteKey;
+        if (clienteKey) {
+          try {
+            if (isPerfEnabled()) console.time(`[perf][cliente][mount#${mountRun}] fetch /api/clienti`);
+            perfCountFetch("GET /api/clienti");
+            const anagRes = await fetch(`/api/clienti?q=${encodeURIComponent(clienteKey)}&limit=20`, {
+              cache: "no-store",
+              credentials: "include",
+            });
+            const anagJson = await anagRes.json().catch(() => ({} as any));
+            if (isPerfEnabled()) console.timeEnd(`[perf][cliente][mount#${mountRun}] fetch /api/clienti`);
+            const anagList = Array.isArray(anagJson?.data) ? anagJson.data : [];
+            const anagData =
+              anagList.find(
+                (row: any) =>
+                  normalizeClienteLookupKey(row?.denominazione) === normalizeClienteLookupKey(clienteKey)
+              ) || null;
+            if (anagData) {
+              applyClienteAnagraficaData(anagData);
+              const fullName = String((anagData as any)?.denominazione || "").trim();
+              if (fullName) {
+                displayCliente = fullName;
+                setCliente(fullName);
+              }
+            }
+          } catch {
+            // keep fallback values from URL
           }
         }
-        const map = new Map<string, { filename: string; storage_path: string }>();
-        for (const c of list as any[]) {
-          const docs = Array.isArray(c?.checklist_documents) ? c.checklist_documents : [];
-          for (const d of docs) {
-            const tipo = String(d?.tipo || "").toUpperCase();
-            if (tipo !== "PROFORMA" && tipo !== "FATTURA_PROFORMA") continue;
-            const p = c?.id ? byChecklist.get(c.id) : null;
-            if (!p) continue;
-            if (!map.has(p) && d?.storage_path) {
-              map.set(p, {
-                filename: d?.filename || "proforma",
-                storage_path: d.storage_path,
-              });
+        if (isPerfEnabled()) console.time(`[perf][cliente][mount#${mountRun}] fetch /api/dashboard`);
+        perfCountFetch("GET /api/dashboard");
+        const dashboardRes = await fetch(`/api/dashboard?q=${encodeURIComponent(clienteKey)}`, {
+          credentials: "include",
+        });
+        const dashboardJson = await dashboardRes.json().catch(() => ({}));
+        if (isPerfEnabled()) console.timeEnd(`[perf][cliente][mount#${mountRun}] fetch /api/dashboard`);
+        if (!dashboardRes.ok) {
+          setError("Errore caricamento PROGETTI: " + (dashboardJson?.error || "errore API dashboard"));
+          return;
+        }
+
+        const list = ((dashboardJson?.data?.checklists || []) as ChecklistRow[]).filter((row) =>
+          String((row as any)?.cliente || "")
+            .toLowerCase()
+            .includes(clienteKey.toLowerCase())
+        );
+        const firstClienteId = String((list[0] as any)?.cliente_id || "").trim();
+        if (firstClienteId) {
+          if (!clienteAnagraficaId) {
+            setClienteAnagraficaId(firstClienteId);
+          }
+          if (isPerfEnabled()) console.time(`[perf][cliente][mount#${mountRun}] db clienti_anagrafica`);
+          perfCountDb("clienti_anagrafica.select");
+          const { data: clienteById } = await dbFrom("clienti_anagrafica")
+            .select("denominazione")
+            .eq("id", firstClienteId)
+            .maybeSingle();
+          if (isPerfEnabled()) console.timeEnd(`[perf][cliente][mount#${mountRun}] db clienti_anagrafica`);
+          const fullById = String((clienteById as any)?.denominazione || "").trim();
+          if (fullById) {
+            displayCliente = fullById;
+            setCliente(fullById);
+          }
+        }
+        setChecklists(list);
+        const checklistIds = list.map((c) => c.id).filter(Boolean);
+        if (checklistIds.length > 0) {
+          const byChecklist = new Map<string, string>();
+          for (const c of list) {
+            if (c.id) {
+              const p = (c.proforma || "").trim();
+              if (p) byChecklist.set(c.id, p);
             }
           }
-        }
-        setProformaDocsByProforma(map);
-      }
-      if (checklistIds.length === 0) {
-        setLicenze([]);
-        setLicenzeError(null);
-      } else {
-        const idsKey = checklistIdsKey(checklistIds);
-        if (isPerfEnabled()) console.time(`[perf][cliente][mount#${mountRun}] db licenses`);
-        const { data: licData, error: licErr } = await runSingleFlight(
-          `licenses.select.by_checklist_id:${idsKey}`,
-          async () => {
-            perfCountDb("licenses.select");
-            return dbFrom("licenses")
-              .select(
-                "id, checklist_id, tipo, scadenza, stato, status, note, intestata_a, ref_univoco, telefono, intestatario, gestore, fornitore, alert_sent_at, alert_to, alert_note, updated_by_operatore"
-              )
-              .in("checklist_id", checklistIds)
-              .order("scadenza", { ascending: true });
+          const map = new Map<string, { filename: string; storage_path: string }>();
+          for (const c of list as any[]) {
+            const docs = Array.isArray(c?.checklist_documents) ? c.checklist_documents : [];
+            for (const d of docs) {
+              const tipo = String(d?.tipo || "").toUpperCase();
+              if (tipo !== "PROFORMA" && tipo !== "FATTURA_PROFORMA") continue;
+              const p = c?.id ? byChecklist.get(c.id) : null;
+              if (!p) continue;
+              if (!map.has(p) && d?.storage_path) {
+                map.set(p, {
+                  filename: d?.filename || "proforma",
+                  storage_path: d.storage_path,
+                });
+              }
+            }
           }
-        );
-        if (licErr) {
-          setLicenzeError("Errore caricamento licenze: " + licErr.message);
+          setProformaDocsByProforma(map);
+        }
+        if (checklistIds.length === 0) {
           setLicenze([]);
-        } else {
-          licenzeCount = (licData || []).length;
-          setLicenze((licData || []) as LicenzaRow[]);
           setLicenzeError(null);
+        } else {
+          const idsKey = checklistIdsKey(checklistIds);
+          if (isPerfEnabled()) console.time(`[perf][cliente][mount#${mountRun}] db licenses`);
+          const { data: licData, error: licErr } = await runSingleFlight(
+            `licenses.select.by_checklist_id:${idsKey}`,
+            async () => {
+              perfCountDb("licenses.select");
+              return dbFrom("licenses")
+                .select(
+                  "id, checklist_id, tipo, scadenza, stato, status, note, intestata_a, ref_univoco, telefono, intestatario, gestore, fornitore, alert_sent_at, alert_to, alert_note, updated_by_operatore"
+                )
+                .in("checklist_id", checklistIds)
+                .order("scadenza", { ascending: true });
+            }
+          );
+          if (licErr) {
+            setLicenzeError("Errore caricamento licenze: " + licErr.message);
+            setLicenze([]);
+          } else {
+            licenzeCount = (licData || []).length;
+            setLicenze((licData || []) as LicenzaRow[]);
+            setLicenzeError(null);
+          }
+          if (isPerfEnabled()) console.timeEnd(`[perf][cliente][mount#${mountRun}] db licenses`);
         }
-        if (isPerfEnabled()) console.timeEnd(`[perf][cliente][mount#${mountRun}] db licenses`);
-      }
-      if (isPerfEnabled()) console.time(`[perf][cliente][mount#${mountRun}] batch checklist data`);
-      const [rinnoviRows, tagliandiRows] = await Promise.all([
-        fetchRinnovi(clienteKey, checklistIds),
-        fetchTagliandi(clienteKey, checklistIds),
-      ]);
-      await Promise.all([
-        loadInterventiForCliente(clienteKey, checklistIds),
-        fetchSaasContratti(clienteKey),
-      ]);
-      if (isPerfEnabled()) console.timeEnd(`[perf][cliente][mount#${mountRun}] batch checklist data`);
+        if (isPerfEnabled()) console.time(`[perf][cliente][mount#${mountRun}] batch checklist data`);
+        [rinnoviRows, tagliandiRows] = await Promise.all([
+          fetchRinnovi(clienteKey, checklistIds),
+          fetchTagliandi(clienteKey, checklistIds),
+        ]);
+        if (isPerfEnabled()) console.timeEnd(`[perf][cliente][mount#${mountRun}] batch checklist data`);
 
-      if (isPerfEnabled()) console.time(`[perf][cliente][mount#${mountRun}] db catalog_items`);
-      const { data: pianiData, error: pianiErr } = await runSingleFlight(
-        "catalog_items.select.saas_ul",
-        async () => {
-          perfCountDb("catalog_items.select.saas_ul");
-          return dbFrom("catalog_items")
-            .select("codice, descrizione")
-            .eq("attivo", true)
-            .ilike("codice", "SAAS-UL%")
-            .order("codice", { ascending: true });
-        }
-      );
-
-      if (!pianiErr) {
-        const mapped = ((pianiData || []) as any[])
-          .map((r) => {
-            const codice = String(r?.codice || "").trim().toUpperCase();
-            if (!codice) return null;
-            return {
-              codice,
-              nome: String(r?.descrizione || "").trim() || null,
-              interventi_inclusi: inferUltraInterventiInclusiFromCode(codice),
-            } as PianoUltraRow;
-          })
-          .filter(Boolean) as PianoUltraRow[];
-        setUltraPiani(mapped);
-      }
-      if (isPerfEnabled()) console.timeEnd(`[perf][cliente][mount#${mountRun}] db catalog_items`);
-
-      if (isPerfEnabled()) {
-        console.info(`[perf][cliente] ready`, {
-          mountRun,
-          counts: {
-            checklists: list.length,
-            licenze: licenzeCount,
-            tagliandi: tagliandiRows.length,
-            rinnovi: rinnoviRows.length,
-          },
-          mountDbCalls: perfRef.current.mountDbCalls,
-          mountFetchCalls: perfRef.current.mountFetchCalls,
+        void Promise.allSettled([
+          loadInterventiForCliente(clienteKey, checklistIds),
+          fetchSaasContratti(clienteKey),
+          runSingleFlight("catalog_items.select.saas_ul", async () => {
+            perfCountDb("catalog_items.select.saas_ul");
+            return dbFrom("catalog_items")
+              .select("codice, descrizione")
+              .eq("attivo", true)
+              .ilike("codice", "SAAS-UL%")
+              .order("codice", { ascending: true });
+          }).then(({ data: pianiData, error: pianiErr }) => {
+            if (pianiErr) return;
+            const mapped = ((pianiData || []) as any[])
+              .map((r) => {
+                const codice = String(r?.codice || "").trim().toUpperCase();
+                if (!codice) return null;
+                return {
+                  codice,
+                  nome: String(r?.descrizione || "").trim() || null,
+                  interventi_inclusi: inferUltraInterventiInclusiFromCode(codice),
+                } as PianoUltraRow;
+              })
+              .filter(Boolean) as PianoUltraRow[];
+            setUltraPiani(mapped);
+          }),
+        ]).catch(() => {
+          // Secondary loads must not keep the page in the initial loading state.
         });
-      }
-      setLoading(false);
-      setInitialClienteLoadDone(true);
-      if (isPerfEnabled()) {
-        console.timeEnd(`[perf][cliente][mount#${mountRun}] total`);
+
+        if (isPerfEnabled()) {
+          console.info(`[perf][cliente] ready`, {
+            mountRun,
+            counts: {
+              checklists: list.length,
+              licenze: licenzeCount,
+              tagliandi: tagliandiRows.length,
+              rinnovi: rinnoviRows.length,
+            },
+            mountDbCalls: perfRef.current.mountDbCalls,
+            mountFetchCalls: perfRef.current.mountFetchCalls,
+          });
+        }
+      } catch (err: any) {
+        if (alive) {
+          setError(err?.message || "Errore caricamento cliente");
+        }
+      } finally {
+        if (!alive) return;
+        setLoading(false);
+        setInitialClienteLoadDone(true);
+        if (isPerfEnabled()) {
+          console.timeEnd(`[perf][cliente][mount#${mountRun}] total`);
+        }
       }
     })();
 
