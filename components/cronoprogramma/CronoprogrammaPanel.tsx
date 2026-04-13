@@ -82,6 +82,97 @@ type CronoprogrammaPanelProps = {
   emptyOperativi: OperativiFields;
 };
 
+function renderPill(
+  label: string,
+  colors: { bg: string; border: string; color: string },
+  icon?: string
+) {
+  return (
+    <span
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 6,
+        borderRadius: 999,
+        border: `1px solid ${colors.border}`,
+        background: colors.bg,
+        color: colors.color,
+        padding: "4px 10px",
+        fontSize: 12,
+        fontWeight: 700,
+        whiteSpace: "nowrap",
+      }}
+    >
+      {icon ? <span aria-hidden="true">{icon}</span> : null}
+      {label}
+    </span>
+  );
+}
+
+function getActivityModeLabel(operativi: OperativiFields | null | undefined) {
+  const raw = String(operativi?.modalita_attivita || "")
+    .trim()
+    .toUpperCase();
+  return raw === "REMOTO" ? "REMOTO" : "ONSITE";
+}
+
+function getActivityKindLabel(row: TimelineRow, operativi: OperativiFields | null | undefined) {
+  const mode = getActivityModeLabel(operativi);
+  if (row.kind === "INTERVENTO" && mode === "REMOTO") return "ASSISTENZA REMOTA";
+  return String(row.kind || "ATTIVITA").toUpperCase();
+}
+
+function renderActivityKindBadge(label: string) {
+  if (label === "INSTALLAZIONE") {
+    return renderPill(label, { bg: "#dbeafe", border: "#93c5fd", color: "#1d4ed8" }, "🔵");
+  }
+  if (label === "INTERVENTO") {
+    return renderPill(label, { bg: "#dcfce7", border: "#86efac", color: "#166534" }, "🟢");
+  }
+  if (label === "ASSISTENZA REMOTA") {
+    return renderPill(label, { bg: "#f3e8ff", border: "#d8b4fe", color: "#7e22ce" }, "🟣");
+  }
+  if (label === "DISINSTALLAZIONE") {
+    return renderPill(label, { bg: "#ffedd5", border: "#fdba74", color: "#c2410c" }, "🟠");
+  }
+  return renderPill(label, { bg: "#f3f4f6", border: "#d1d5db", color: "#374151" });
+}
+
+function renderModeBadge(mode: string) {
+  return mode === "REMOTO"
+    ? renderPill("REMOTO", { bg: "#f3e8ff", border: "#d8b4fe", color: "#7e22ce" })
+    : renderPill("ONSITE", { bg: "#e0f2fe", border: "#7dd3fc", color: "#0f766e" });
+}
+
+function renderRowStatusBadge({
+  fatto,
+  overdueNotDone,
+  operativoDefinito,
+  hidden,
+}: {
+  fatto: boolean;
+  overdueNotDone: boolean;
+  operativoDefinito: boolean;
+  hidden: boolean;
+}) {
+  if (hidden) {
+    return renderPill("NASCOSTA", { bg: "#f3f4f6", border: "#d1d5db", color: "#4b5563" });
+  }
+  if (fatto) {
+    return renderPill("FATTO", { bg: "#dcfce7", border: "#86efac", color: "#166534" });
+  }
+  if (overdueNotDone) {
+    return renderPill("SCADUTA", { bg: "#ffedd5", border: "#fdba74", color: "#c2410c" });
+  }
+  if (operativoDefinito) {
+    return renderPill(
+      "OPERATIVO DEFINITO",
+      { bg: "#f0fdf4", border: "#86efac", color: "#166534" }
+    );
+  }
+  return renderPill("DA DEFINIRE", { bg: "#fef3c7", border: "#fcd34d", color: "#92400e" });
+}
+
 export default function CronoprogrammaPanel({
   fromDate,
   setFromDate,
@@ -145,6 +236,7 @@ export default function CronoprogrammaPanel({
   emptyOperativi,
 }: CronoprogrammaPanelProps) {
   const [openConflictKey, setOpenConflictKey] = useState<string | null>(null);
+  const [expandedRowKey, setExpandedRowKey] = useState<string | null>(null);
 
   return (
     <>
@@ -286,96 +378,65 @@ export default function CronoprogrammaPanel({
         </div>
       </div>
 
-      <div style={{ border: "1px solid #eee", borderRadius: 12, overflow: "hidden" }}>
+      <div style={{ border: "1px solid #eee", borderRadius: 12, background: "white", overflow: "hidden" }}>
         <div
-          ref={topScrollRef}
-          onScroll={onTopScroll}
           style={{
-            overflowX: "auto",
-            overflowY: "hidden",
-            borderBottom: "1px solid #eee",
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            gap: 12,
+            padding: "12px 14px",
             background: "#fafafa",
-            height: 16,
+            borderBottom: "1px solid #eee",
+            flexWrap: "wrap",
           }}
-          aria-label="Scrollbar orizzontale superiore cronoprogramma"
         >
-          <div style={{ width: scrollContentWidth, height: 1 }} />
-        </div>
-        <div ref={mainScrollRef} onScroll={onMainScroll} style={{ overflowX: "auto", overflowY: "hidden" }}>
-          <div style={{ position: "relative" }}>
-            <div
-              ref={scrollContentRef}
+          <div style={{ fontWeight: 700, fontSize: 13, color: "#475569" }}>
+            Vista compatta: data, tipo attività, modalità, cliente/progetto, persone, stato
+          </div>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <button
+              type="button"
+              onClick={() => toggleSort("data_prevista")}
               style={{
-                display: "grid",
-                gridTemplateColumns:
-                  "96px 96px 72px 140px 190px 180px 120px 240px 210px 240px 240px 128px 120px 240px 240px 220px 112px 104px 104px",
-                gap: 12,
-                padding: "10px 12px",
+                border: sortBy === "data_prevista" ? "1px solid #111" : "1px solid #d1d5db",
+                background: "white",
+                borderRadius: 999,
+                padding: "6px 10px",
+                cursor: "pointer",
                 fontWeight: 700,
-                background: "#fafafa",
-                borderBottom: "1px solid #eee",
-                minWidth: 3270,
-                position: "sticky",
-                top: 0,
-                zIndex: 3,
-                boxShadow: "0 1px 0 #eee",
               }}
+              title="Ordina per data prevista"
             >
-              <button
-                type="button"
-                onClick={() => toggleSort("data_prevista")}
-                style={{
-                  border: "none",
-                  background: "transparent",
-                  padding: 0,
-                  textAlign: "left",
-                  cursor: "pointer",
-                  fontWeight: 700,
-                }}
-                title="Ordina per data prevista"
-              >
-                Data inizio {sortBy === "data_prevista" ? (sortDir === "asc" ? "↑" : "↓") : ""}
-              </button>
-              <button
-                type="button"
-                onClick={() => toggleSort("data_tassativa")}
-                style={{
-                  border: "none",
-                  background: "transparent",
-                  padding: 0,
-                  textAlign: "left",
-                  cursor: "pointer",
-                  fontWeight: 700,
-                }}
-                title="Ordina per data tassativa"
-              >
-                Data fine {sortBy === "data_tassativa" ? (sortDir === "asc" ? "↑" : "↓") : ""}
-              </button>
-              <div>Durata</div>
-              <div style={{ paddingRight: 18, whiteSpace: "nowrap" }}>Evento</div>
-              <div style={{ paddingLeft: 6 }}>Cliente</div>
-              <div>Progetto</div>
-              <div>Ticket/Pf</div>
-              <div>Personale previsto / incarico</div>
-              <div>Mezzi</div>
-              <div>Descrizione attività</div>
-              <div>Indirizzo</div>
-              <div>Orario</div>
-              <div>Referente cliente</div>
-              <div>Commerciale Art Tech</div>
-              <div>Note</div>
-              <div>Fatto</div>
-              <div>Nascosta</div>
-              <div>Azioni</div>
-            </div>
-            {loading ? (
-              <div style={{ padding: 12, opacity: 0.7 }}>Caricamento...</div>
-            ) : filteredSorted.length === 0 ? (
-              <div style={{ padding: 12, opacity: 0.7 }}>Nessun risultato</div>
-            ) : (
-              filteredSorted.map((r) => {
+              Data inizio {sortBy === "data_prevista" ? (sortDir === "asc" ? "↑" : "↓") : ""}
+            </button>
+            <button
+              type="button"
+              onClick={() => toggleSort("data_tassativa")}
+              style={{
+                border: sortBy === "data_tassativa" ? "1px solid #111" : "1px solid #d1d5db",
+                background: "white",
+                borderRadius: 999,
+                padding: "6px 10px",
+                cursor: "pointer",
+                fontWeight: 700,
+              }}
+              title="Ordina per data tassativa"
+            >
+              Data fine {sortBy === "data_tassativa" ? (sortDir === "asc" ? "↑" : "↓") : ""}
+            </button>
+          </div>
+        </div>
+        {loading ? (
+          <div style={{ padding: 12, opacity: 0.7 }}>Caricamento...</div>
+        ) : filteredSorted.length === 0 ? (
+          <div style={{ padding: 12, opacity: 0.7 }}>Nessun risultato</div>
+        ) : (
+          <div style={{ display: "grid", gap: 10, padding: 12 }}>
+            {filteredSorted.map((r) => {
               const key = getRowKey(r.kind, r.row_ref_id);
               const meta = metaByKey[key];
+              const operativi = operativiDraftByKey[key] || extractOperativi(meta);
               const schedule = getRowSchedule(r, meta);
               const fatto = Boolean(meta?.fatto ?? r.fatto);
               const overdueNotDone = isTimelineRowOverdueNotDone(r, meta);
@@ -387,403 +448,399 @@ export default function CronoprogrammaPanel({
                 conflict?.conflictDetails.personale || [],
                 conflict?.conflictDetails.mezzi || []
               );
+              const modeLabel = getActivityModeLabel(operativi);
+              const kindLabel = getActivityKindLabel(r, operativi);
+              const expanded = expandedRowKey === key;
+
               return (
                 <div
                   key={r.id}
                   style={{
-                    display: "grid",
-                    gridTemplateColumns:
-                      "96px 96px 72px 140px 190px 180px 120px 240px 210px 240px 240px 128px 120px 240px 240px 220px 112px 104px 104px",
-                    gap: 12,
-                    padding: "10px 12px",
-                    borderBottom: "1px solid #f3f4f6",
-                    borderLeft: overdueNotDone ? "4px solid #f59e0b" : "4px solid transparent",
-                    alignItems: "start",
-                    opacity: hidden && showHidden ? 0.6 : 1,
-                    fontStyle: hidden && showHidden ? "italic" : "normal",
-                    background: overdueNotDone
-                      ? "#fffaf5"
-                      : operativoDefinito
-                        ? "#f0fdf4"
-                        : "white",
-                    boxShadow: "none",
-                    minWidth: 3270,
+                    border: "1px solid #e5e7eb",
+                    borderRadius: 14,
+                    overflow: "hidden",
+                    background: overdueNotDone ? "#fffaf5" : hidden ? "#fafafa" : "white",
+                    boxShadow: operativoDefinito ? "0 0 0 1px #bbf7d0 inset" : "none",
+                    opacity: hidden && showHidden ? 0.72 : 1,
                   }}
                   title={conflict?.hasConflict ? conflictTitle : undefined}
                 >
-                  <div>{schedule.data_inizio ? formatOperativiDateLabel(schedule.data_inizio) : "—"}</div>
-                  <div>{schedule.data_fine ? formatOperativiDateLabel(schedule.data_fine) : "—"}</div>
-                  <div>{schedule.durata_giorni} gg</div>
-                  <div style={{ paddingRight: 18 }}>
-                    <div style={{ whiteSpace: "nowrap" }}>{r.kind}</div>
-                    {operativoDefinito ? (
-                      <div
-                        style={{
-                          marginTop: 6,
-                          display: "inline-flex",
-                          alignItems: "center",
-                          gap: 6,
-                          borderRadius: 999,
-                          border: "1px solid #86efac",
-                          background: "#f0fdf4",
-                          color: "#166534",
-                          padding: "3px 8px",
-                          fontSize: 12,
-                          fontWeight: 700,
-                          whiteSpace: "nowrap",
-                        }}
-                      >
-                        Operativo definito
-                      </div>
-                    ) : null}
-                    {overdueNotDone ? (
-                      <div
-                        style={{
-                          marginTop: 6,
-                          display: "inline-flex",
-                          alignItems: "center",
-                          gap: 6,
-                          borderRadius: 999,
-                          border: "1px solid #fdba74",
-                          background: "#ffedd5",
-                          color: "#c2410c",
-                          padding: "3px 8px",
-                          fontSize: 12,
-                          fontWeight: 700,
-                          whiteSpace: "nowrap",
-                        }}
-                      >
-                        SCADUTA
-                      </div>
-                    ) : null}
-                  </div>
-                  <div style={{ paddingLeft: 6 }}>{r.cliente}</div>
-                  <div>
-                    {r.checklist_id ? (
-                      <Link
-                        href={`/checklists/${r.checklist_id}`}
-                        style={{ color: "#2563eb", textDecoration: "underline", fontWeight: 600 }}
-                      >
-                        {r.progetto}
-                      </Link>
-                    ) : (
-                      r.progetto
-                    )}
-                  </div>
-                  <div>{r.ticket_no || r.proforma || "—"}</div>
                   <div
-                    title={
-                      (operativiDraftByKey[key]?.personale_previsto ??
-                        extractOperativi(meta).personale_previsto) || undefined
-                    }
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => setExpandedRowKey((prev) => (prev === key ? null : key))}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        setExpandedRowKey((prev) => (prev === key ? null : key));
+                      }
+                    }}
+                    style={{
+                      padding: "12px 14px",
+                      display: "grid",
+                      gap: 10,
+                      cursor: "pointer",
+                      borderLeft: overdueNotDone ? "4px solid #f59e0b" : "4px solid transparent",
+                    }}
                   >
-                    <PersonaleMultiSelect
-                      personaleIds={operativiDraftByKey[key]?.personale_ids ?? []}
-                      legacyValue={
-                        operativiDraftByKey[key]?.personale_previsto ?? extractOperativi(meta).personale_previsto
-                      }
-                      compact
-                      onChange={({ personaleIds, personaleDisplay }) =>
-                        setOperativiDraftByKey((prev) => ({
-                          ...prev,
-                          [key]: {
-                            ...(prev[key] || emptyOperativi),
-                            personale_ids: personaleIds,
-                            personale_previsto: personaleDisplay,
-                          },
-                        }))
-                      }
-                    />
-                    {conflict?.hasConflict ? (
-                      <>
-                        <button
-                          type="button"
-                          onClick={() => setOpenConflictKey((prev) => (prev === key ? null : key))}
-                          style={{
-                            marginTop: 6,
-                            display: "inline-flex",
-                            alignItems: "center",
-                            gap: 6,
-                            borderRadius: 999,
-                            border: "1px solid #fca5a5",
-                            background: "#fff1f2",
-                            color: "#b91c1c",
-                            padding: "3px 8px",
-                            fontSize: 12,
-                            fontWeight: 700,
-                            whiteSpace: "nowrap",
-                            cursor: "pointer",
-                            appearance: "none",
-                          }}
-                        >
-                          ⚠ Conflitto
-                        </button>
-                        {openConflictKey === key ? (
-                          <div
-                            style={{
-                              marginTop: 6,
-                              border: "1px solid #fca5a5",
-                              background: "white",
-                              color: "#374151",
-                              borderRadius: 10,
-                              padding: "8px 10px",
-                              fontSize: 12,
-                              lineHeight: 1.45,
-                            }}
-                          >
-                            {conflictTitle}
-                          </div>
-                        ) : null}
-                      </>
-                    ) : null}
-                    <div style={{ marginTop: 6 }}>
-                      <SafetyComplianceBadge
-                        personaleIds={operativiDraftByKey[key]?.personale_ids ?? extractOperativi(meta).personale_ids}
-                        personaleText={
-                          operativiDraftByKey[key]?.personale_previsto ?? extractOperativi(meta).personale_previsto
-                        }
-                        showSummary={false}
-                        detailsOnClick
-                      />
-                    </div>
-                  </div>
-                  <div>
-                    <textarea
-                      value={operativiDraftByKey[key]?.mezzi ?? ""}
-                      onChange={(e) =>
-                        setOperativiDraftByKey((prev) => ({
-                          ...prev,
-                          [key]: { ...(prev[key] || emptyOperativi), mezzi: e.target.value },
-                        }))
-                      }
-                      placeholder="Mezzi"
-                      style={{ width: "100%", minHeight: 64, padding: 6, resize: "vertical" }}
-                    />
-                  </div>
-                  <div>
-                    <textarea
-                      value={operativiDraftByKey[key]?.descrizione_attivita ?? ""}
-                      onChange={(e) =>
-                        setOperativiDraftByKey((prev) => ({
-                          ...prev,
-                          [key]: { ...(prev[key] || emptyOperativi), descrizione_attivita: e.target.value },
-                        }))
-                      }
-                      placeholder="Descrizione attività"
-                      style={{ width: "100%", minHeight: 64, padding: 6, resize: "vertical" }}
-                    />
-                  </div>
-                  <div>
-                    <textarea
-                      value={operativiDraftByKey[key]?.indirizzo ?? ""}
-                      onChange={(e) =>
-                        setOperativiDraftByKey((prev) => ({
-                          ...prev,
-                          [key]: { ...(prev[key] || emptyOperativi), indirizzo: e.target.value },
-                        }))
-                      }
-                      placeholder="Indirizzo"
-                      style={{ width: "100%", minHeight: 64, padding: 6, resize: "vertical" }}
-                    />
-                  </div>
-                  <div>
-                    <input
-                      value={operativiDraftByKey[key]?.orario ?? ""}
-                      onChange={(e) =>
-                        setOperativiDraftByKey((prev) => ({
-                          ...prev,
-                          [key]: { ...(prev[key] || emptyOperativi), orario: e.target.value },
-                        }))
-                      }
-                      placeholder="Orario"
-                      style={{ width: "100%", padding: 6 }}
-                    />
-                  </div>
-                  <div>
-                    <div style={{ display: "grid", gap: 6 }}>
-                      <input
-                        value={operativiDraftByKey[key]?.referente_cliente_nome ?? ""}
-                        onChange={(e) =>
-                          setOperativiDraftByKey((prev) => ({
-                            ...prev,
-                            [key]: { ...(prev[key] || emptyOperativi), referente_cliente_nome: e.target.value },
-                          }))
-                        }
-                        placeholder="Nome referente cliente"
-                        style={{ width: "100%", padding: 6 }}
-                      />
-                      <input
-                        value={operativiDraftByKey[key]?.referente_cliente_contatto ?? ""}
-                        onChange={(e) =>
-                          setOperativiDraftByKey((prev) => ({
-                            ...prev,
-                            [key]: { ...(prev[key] || emptyOperativi), referente_cliente_contatto: e.target.value },
-                          }))
-                        }
-                        placeholder="Contatto referente cliente"
-                        style={{ width: "100%", padding: 6 }}
-                      />
-                    </div>
-                  </div>
-                  <div>
-                    <div style={{ display: "grid", gap: 6 }}>
-                      <input
-                        value={operativiDraftByKey[key]?.commerciale_art_tech_nome ?? ""}
-                        onChange={(e) =>
-                          setOperativiDraftByKey((prev) => ({
-                            ...prev,
-                            [key]: { ...(prev[key] || emptyOperativi), commerciale_art_tech_nome: e.target.value },
-                          }))
-                        }
-                        placeholder="Nome commerciale Art Tech"
-                        style={{ width: "100%", padding: 6 }}
-                      />
-                      <input
-                        value={operativiDraftByKey[key]?.commerciale_art_tech_contatto ?? ""}
-                        onChange={(e) =>
-                          setOperativiDraftByKey((prev) => ({
-                            ...prev,
-                            [key]: {
-                              ...(prev[key] || emptyOperativi),
-                              commerciale_art_tech_contatto: e.target.value,
-                            },
-                          }))
-                        }
-                        placeholder="Contatto commerciale Art Tech"
-                        style={{ width: "100%", padding: 6 }}
-                      />
-                    </div>
-                  </div>
-                  <div>
-                    <div style={{ display: "flex", gap: 6 }}>
-                      <input
-                        value={noteDraftByKey[key] || ""}
-                        onChange={(e) => setNoteDraftByKey((prev) => ({ ...prev, [key]: e.target.value }))}
-                        placeholder="Aggiungi nota..."
-                        style={{ width: "100%", padding: 6 }}
-                      />
-                      <button
-                        type="button"
-                        onClick={() => addComment(r)}
-                        disabled={savingCommentKey === key || stateLoading}
-                        style={{
-                          padding: "6px 10px",
-                          borderRadius: 8,
-                          border: "1px solid #111",
-                          background: "#111",
-                          color: "white",
-                          cursor: "pointer",
-                          whiteSpace: "nowrap",
-                          opacity: savingCommentKey === key ? 0.7 : 1,
-                        }}
-                      >
-                        Salva
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setNoteHistoryKey(key)}
-                        style={{
-                          padding: "6px 10px",
-                          borderRadius: 8,
-                          border: "1px solid #d1d5db",
-                          background: "white",
-                          cursor: "pointer",
-                          fontWeight: 700,
-                        }}
-                        title="Storico note"
-                      >
-                        +
-                      </button>
-                    </div>
-                    <div style={{ marginTop: 6, fontSize: 12, opacity: 0.9 }}>
-                      {comments[0] ? (
-                        <div
-                          style={{
-                            background: "#f9fafb",
-                            border: "1px solid #eef2f7",
-                            borderRadius: 8,
-                            padding: "6px 8px",
-                          }}
-                        >
-                          <div style={{ whiteSpace: "pre-wrap" }}>{comments[0].commento}</div>
-                          <div style={{ opacity: 0.7, marginTop: 4 }}>
-                            {(comments[0].created_by_nome || "Operatore") +
-                              " · " +
-                              (comments[0].created_at
-                                ? new Date(comments[0].created_at).toLocaleString("it-IT")
-                                : "—")}
-                          </div>
-                        </div>
-                      ) : (
-                        <span style={{ opacity: 0.7 }}>Nessuna nota</span>
-                      )}
-                    </div>
-                  </div>
-                  <div>
-                    <label style={{ display: "inline-flex", alignItems: "center", gap: 8, fontWeight: 700 }}>
-                      <input
-                        type="checkbox"
-                        checked={fatto}
-                        onChange={(e) => setFatto(r, e.target.checked)}
-                        disabled={savingFattoKey === key || stateLoading}
-                      />
-                      Fatto
-                    </label>
-                    {meta?.updated_at && (
-                      <div style={{ marginTop: 6, fontSize: 11, opacity: 0.75 }}>
-                        {meta.updated_by_nome || "Operatore"} · {new Date(meta.updated_at).toLocaleString("it-IT")}
-                      </div>
-                    )}
-                  </div>
-                  <div>
-                    <label style={{ display: "inline-flex", alignItems: "center", gap: 8, fontWeight: 700 }}>
-                      <input
-                        type="checkbox"
-                        checked={hidden}
-                        onChange={(e) => setHidden(r, e.target.checked)}
-                        disabled={savingHiddenKey === key || stateLoading}
-                      />
-                      Nascosta
-                    </label>
-                  </div>
-                  <div>
-                    <button
-                      type="button"
-                      onClick={() => saveOperativi(r)}
-                      disabled={savingOperativiKey === key || stateLoading}
+                    <div
                       style={{
-                        padding: "6px 10px",
-                        borderRadius: 8,
-                        border: "1px solid #111",
-                        background: savingOperativiKey === key ? "#f3f4f6" : "#111",
-                        color: savingOperativiKey === key ? "#111" : "white",
-                        cursor: savingOperativiKey === key ? "not-allowed" : "pointer",
-                        whiteSpace: "nowrap",
+                        display: "flex",
+                        justifyContent: "space-between",
+                        gap: 12,
+                        alignItems: "flex-start",
+                        flexWrap: "wrap",
                       }}
                     >
-                      {savingOperativiKey === key ? "..." : "Salva"}
-                    </button>
+                      <div style={{ display: "grid", gap: 8 }}>
+                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                          {renderActivityKindBadge(kindLabel)}
+                          {renderModeBadge(modeLabel)}
+                          {renderRowStatusBadge({ fatto, overdueNotDone, operativoDefinito, hidden })}
+                          {conflict?.hasConflict
+                            ? renderPill("CONFLITTO", { bg: "#fff1f2", border: "#fca5a5", color: "#b91c1c" }, "⚠")
+                            : null}
+                        </div>
+                        <div style={{ fontWeight: 800, fontSize: 16, color: "#111827" }}>
+                          {r.progetto || "Attività cronoprogramma"}
+                        </div>
+                        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", fontSize: 13, color: "#475569" }}>
+                          <span>Cliente: {r.cliente || "—"}</span>
+                          <span>Persone: {operativi.personale_previsto || "—"}</span>
+                          <span>Rif: {r.ticket_no || r.proforma || "—"}</span>
+                        </div>
+                      </div>
+                      <div style={{ display: "grid", gap: 6, justifyItems: "end", textAlign: "right" }}>
+                        <div style={{ fontWeight: 700, fontSize: 14 }}>
+                          {schedule.data_inizio ? formatOperativiDateLabel(schedule.data_inizio) : "—"}
+                        </div>
+                        <div style={{ fontSize: 12, color: "#64748b" }}>
+                          {schedule.data_fine ? `Fine ${formatOperativiDateLabel(schedule.data_fine)}` : "Fine —"}
+                        </div>
+                        <div style={{ fontSize: 12, color: "#64748b" }}>{schedule.durata_giorni} gg</div>
+                      </div>
+                    </div>
                   </div>
+
+                  {expanded ? (
+                    <div
+                      onClick={(e) => e.stopPropagation()}
+                      style={{
+                        borderTop: "1px solid #e5e7eb",
+                        background: "#f8fafc",
+                        padding: 14,
+                        display: "grid",
+                        gap: 14,
+                      }}
+                    >
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 12 }}>
+                        <label style={{ display: "grid", gap: 6 }}>
+                          <span style={{ fontSize: 12, fontWeight: 700, color: "#475569" }}>Personale previsto / incarico</span>
+                          <div
+                            title={operativi.personale_previsto || undefined}
+                            style={{ border: "1px solid #e5e7eb", borderRadius: 10, background: "white", padding: 8 }}
+                          >
+                            <PersonaleMultiSelect
+                              personaleIds={operativi.personale_ids ?? []}
+                              legacyValue={operativi.personale_previsto}
+                              compact
+                              onChange={({ personaleIds, personaleDisplay }) =>
+                                setOperativiDraftByKey((prev) => ({
+                                  ...prev,
+                                  [key]: {
+                                    ...(prev[key] || emptyOperativi),
+                                    personale_ids: personaleIds,
+                                    personale_previsto: personaleDisplay,
+                                  },
+                                }))
+                              }
+                            />
+                            {conflict?.hasConflict ? (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() => setOpenConflictKey((prev) => (prev === key ? null : key))}
+                                  style={{
+                                    marginTop: 8,
+                                    borderRadius: 999,
+                                    border: "1px solid #fca5a5",
+                                    background: "#fff1f2",
+                                    color: "#b91c1c",
+                                    padding: "4px 10px",
+                                    fontSize: 12,
+                                    fontWeight: 700,
+                                    cursor: "pointer",
+                                  }}
+                                >
+                                  ⚠ Conflitto
+                                </button>
+                                {openConflictKey === key ? (
+                                  <div
+                                    style={{
+                                      marginTop: 8,
+                                      border: "1px solid #fca5a5",
+                                      background: "white",
+                                      color: "#374151",
+                                      borderRadius: 10,
+                                      padding: "8px 10px",
+                                      fontSize: 12,
+                                      lineHeight: 1.45,
+                                    }}
+                                  >
+                                    {conflictTitle}
+                                  </div>
+                                ) : null}
+                              </>
+                            ) : null}
+                            <div style={{ marginTop: 8 }}>
+                              <SafetyComplianceBadge
+                                personaleIds={operativi.personale_ids}
+                                personaleText={operativi.personale_previsto}
+                                showSummary={false}
+                                detailsOnClick
+                              />
+                            </div>
+                          </div>
+                        </label>
+
+                        <label style={{ display: "grid", gap: 6 }}>
+                          <span style={{ fontSize: 12, fontWeight: 700, color: "#475569" }}>Mezzi</span>
+                          <textarea
+                            value={operativi.mezzi ?? ""}
+                            onChange={(e) =>
+                              setOperativiDraftByKey((prev) => ({
+                                ...prev,
+                                [key]: { ...(prev[key] || emptyOperativi), mezzi: e.target.value },
+                              }))
+                            }
+                            placeholder="Mezzi"
+                            style={{ width: "100%", minHeight: 64, padding: 8, resize: "vertical", borderRadius: 10, border: "1px solid #d1d5db" }}
+                          />
+                        </label>
+
+                        <label style={{ display: "grid", gap: 6 }}>
+                          <span style={{ fontSize: 12, fontWeight: 700, color: "#475569" }}>Descrizione attività</span>
+                          <textarea
+                            value={operativi.descrizione_attivita ?? ""}
+                            onChange={(e) =>
+                              setOperativiDraftByKey((prev) => ({
+                                ...prev,
+                                [key]: { ...(prev[key] || emptyOperativi), descrizione_attivita: e.target.value },
+                              }))
+                            }
+                            placeholder="Descrizione attività"
+                            style={{ width: "100%", minHeight: 64, padding: 8, resize: "vertical", borderRadius: 10, border: "1px solid #d1d5db" }}
+                          />
+                        </label>
+
+                        <label style={{ display: "grid", gap: 6 }}>
+                          <span style={{ fontSize: 12, fontWeight: 700, color: "#475569" }}>Indirizzo</span>
+                          <textarea
+                            value={operativi.indirizzo ?? ""}
+                            onChange={(e) =>
+                              setOperativiDraftByKey((prev) => ({
+                                ...prev,
+                                [key]: { ...(prev[key] || emptyOperativi), indirizzo: e.target.value },
+                              }))
+                            }
+                            placeholder="Indirizzo"
+                            style={{ width: "100%", minHeight: 64, padding: 8, resize: "vertical", borderRadius: 10, border: "1px solid #d1d5db" }}
+                          />
+                        </label>
+
+                        <label style={{ display: "grid", gap: 6 }}>
+                          <span style={{ fontSize: 12, fontWeight: 700, color: "#475569" }}>Orario</span>
+                          <input
+                            value={operativi.orario ?? ""}
+                            onChange={(e) =>
+                              setOperativiDraftByKey((prev) => ({
+                                ...prev,
+                                [key]: { ...(prev[key] || emptyOperativi), orario: e.target.value },
+                              }))
+                            }
+                            placeholder="Orario"
+                            style={{ width: "100%", padding: 8, borderRadius: 10, border: "1px solid #d1d5db" }}
+                          />
+                        </label>
+
+                        <div style={{ display: "grid", gap: 6 }}>
+                          <span style={{ fontSize: 12, fontWeight: 700, color: "#475569" }}>Referente cliente</span>
+                          <input
+                            value={operativi.referente_cliente_nome ?? ""}
+                            onChange={(e) =>
+                              setOperativiDraftByKey((prev) => ({
+                                ...prev,
+                                [key]: { ...(prev[key] || emptyOperativi), referente_cliente_nome: e.target.value },
+                              }))
+                            }
+                            placeholder="Nome referente cliente"
+                            style={{ width: "100%", padding: 8, borderRadius: 10, border: "1px solid #d1d5db" }}
+                          />
+                          <input
+                            value={operativi.referente_cliente_contatto ?? ""}
+                            onChange={(e) =>
+                              setOperativiDraftByKey((prev) => ({
+                                ...prev,
+                                [key]: { ...(prev[key] || emptyOperativi), referente_cliente_contatto: e.target.value },
+                              }))
+                            }
+                            placeholder="Contatto referente cliente"
+                            style={{ width: "100%", padding: 8, borderRadius: 10, border: "1px solid #d1d5db" }}
+                          />
+                        </div>
+
+                        <div style={{ display: "grid", gap: 6 }}>
+                          <span style={{ fontSize: 12, fontWeight: 700, color: "#475569" }}>Commerciale Art Tech</span>
+                          <input
+                            value={operativi.commerciale_art_tech_nome ?? ""}
+                            onChange={(e) =>
+                              setOperativiDraftByKey((prev) => ({
+                                ...prev,
+                                [key]: { ...(prev[key] || emptyOperativi), commerciale_art_tech_nome: e.target.value },
+                              }))
+                            }
+                            placeholder="Nome commerciale Art Tech"
+                            style={{ width: "100%", padding: 8, borderRadius: 10, border: "1px solid #d1d5db" }}
+                          />
+                          <input
+                            value={operativi.commerciale_art_tech_contatto ?? ""}
+                            onChange={(e) =>
+                              setOperativiDraftByKey((prev) => ({
+                                ...prev,
+                                [key]: {
+                                  ...(prev[key] || emptyOperativi),
+                                  commerciale_art_tech_contatto: e.target.value,
+                                },
+                              }))
+                            }
+                            placeholder="Contatto commerciale Art Tech"
+                            style={{ width: "100%", padding: 8, borderRadius: 10, border: "1px solid #d1d5db" }}
+                          />
+                        </div>
+                      </div>
+
+                      <div style={{ display: "grid", gap: 8 }}>
+                        <div style={{ fontSize: 12, fontWeight: 700, color: "#475569" }}>Note</div>
+                        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                          <input
+                            value={noteDraftByKey[key] || ""}
+                            onChange={(e) => setNoteDraftByKey((prev) => ({ ...prev, [key]: e.target.value }))}
+                            placeholder="Aggiungi nota..."
+                            style={{ flex: "1 1 260px", padding: 8, borderRadius: 10, border: "1px solid #d1d5db" }}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => addComment(r)}
+                            disabled={savingCommentKey === key || stateLoading}
+                            style={{
+                              padding: "8px 12px",
+                              borderRadius: 8,
+                              border: "1px solid #111",
+                              background: "#111",
+                              color: "white",
+                              cursor: "pointer",
+                              opacity: savingCommentKey === key ? 0.7 : 1,
+                            }}
+                          >
+                            Salva nota
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setNoteHistoryKey(key)}
+                            style={{
+                              padding: "8px 12px",
+                              borderRadius: 8,
+                              border: "1px solid #d1d5db",
+                              background: "white",
+                              cursor: "pointer",
+                              fontWeight: 700,
+                            }}
+                            title="Storico note"
+                          >
+                            Storico
+                          </button>
+                        </div>
+                        <div style={{ fontSize: 12, opacity: 0.9 }}>
+                          {comments[0] ? (
+                            <div
+                              style={{
+                                background: "white",
+                                border: "1px solid #eef2f7",
+                                borderRadius: 8,
+                                padding: "8px 10px",
+                              }}
+                            >
+                              <div style={{ whiteSpace: "pre-wrap" }}>{comments[0].commento}</div>
+                              <div style={{ opacity: 0.7, marginTop: 4 }}>
+                                {(comments[0].created_by_nome || "Operatore") +
+                                  " · " +
+                                  (comments[0].created_at
+                                    ? new Date(comments[0].created_at).toLocaleString("it-IT")
+                                    : "—")}
+                              </div>
+                            </div>
+                          ) : (
+                            <span style={{ opacity: 0.7 }}>Nessuna nota</span>
+                          )}
+                        </div>
+                      </div>
+
+                      <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
+                        <label style={{ display: "inline-flex", alignItems: "center", gap: 8, fontWeight: 700 }}>
+                          <input
+                            type="checkbox"
+                            checked={fatto}
+                            onChange={(e) => setFatto(r, e.target.checked)}
+                            disabled={savingFattoKey === key || stateLoading}
+                          />
+                          Fatto
+                        </label>
+                        <label style={{ display: "inline-flex", alignItems: "center", gap: 8, fontWeight: 700 }}>
+                          <input
+                            type="checkbox"
+                            checked={hidden}
+                            onChange={(e) => setHidden(r, e.target.checked)}
+                            disabled={savingHiddenKey === key || stateLoading}
+                          />
+                          Nascosta
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => saveOperativi(r)}
+                          disabled={savingOperativiKey === key || stateLoading}
+                          style={{
+                            padding: "8px 12px",
+                            borderRadius: 8,
+                            border: "1px solid #111",
+                            background: savingOperativiKey === key ? "#f3f4f6" : "#111",
+                            color: savingOperativiKey === key ? "#111" : "white",
+                            cursor: savingOperativiKey === key ? "not-allowed" : "pointer",
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          {savingOperativiKey === key ? "..." : "Salva"}
+                        </button>
+                        {r.checklist_id ? (
+                          <Link
+                            href={`/checklists/${r.checklist_id}`}
+                            style={{ color: "#2563eb", textDecoration: "underline", fontWeight: 600 }}
+                          >
+                            Apri progetto
+                          </Link>
+                        ) : null}
+                        {meta?.updated_at ? (
+                          <div style={{ fontSize: 11, opacity: 0.75 }}>
+                            {meta.updated_by_nome || "Operatore"} · {new Date(meta.updated_at).toLocaleString("it-IT")}
+                          </div>
+                        ) : null}
+                      </div>
+                    </div>
+                  ) : null}
                 </div>
               );
-              })
-            )}
+            })}
           </div>
-        </div>
-        <div
-          ref={bottomScrollRef}
-          onScroll={onBottomScroll}
-          style={{
-            overflowX: "scroll",
-            overflowY: "hidden",
-            borderTop: "1px solid #eee",
-            background: "#fafafa",
-            height: 16,
-          }}
-          aria-label="Scrollbar orizzontale cronoprogramma"
-        >
-          <div style={{ width: scrollContentWidth, height: 1 }} />
-        </div>
+        )}
       </div>
       {noteHistoryKey && (
         <div
