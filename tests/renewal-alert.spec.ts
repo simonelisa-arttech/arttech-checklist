@@ -5,6 +5,12 @@ const clientePath = process.env.E2E_CLIENTE_PATH || "/clienti/CLIENTE_E2E";
 test("Invio avviso aggiorna stato a AVVISATO (E2E seed)", async ({ page }) => {
   await page.goto(clientePath);
 
+  await expect(page.getByRole("heading", { name: "Scadenze & Rinnovi" })).toBeVisible();
+
+  const fullManagement = page.getByText("Gestione completa scadenze e rinnovi").first();
+  await expect(fullManagement).toBeVisible();
+  await fullManagement.click();
+
   const table = page.getByTestId("renewals-table");
   await expect(table).toBeVisible();
 
