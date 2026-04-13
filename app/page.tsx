@@ -63,6 +63,13 @@ type DashboardClienteCockpitRow = {
   };
 };
 
+const DASHBOARD_BADGE_COLORS = {
+  statusExpired: { border: "#fca5a5", background: "#fee2e2", color: "#b91c1c" },
+  statusDueSoon: { border: "#fcd34d", background: "#fffbeb", color: "#b45309" },
+  statusOk: { border: "#86efac", background: "#f0fdf4", color: "#166534" },
+  statusNeutral: { border: "#e2e8f0", background: "#f8fafc", color: "#64748b" },
+} as const;
+
 const EMPTY_SCADENZE_BREAKDOWN: DashboardScadenzeBreakdown = {
   garanzie: 0,
   licenze: 0,
@@ -1164,10 +1171,10 @@ export default function Page() {
             ? ("MONITORARE" as const)
             : ("STABILE" as const),
           attentionColors: hasAttention
-            ? { border: "#fdba74", background: "#fff7ed", color: "#c2410c" }
+            ? DASHBOARD_BADGE_COLORS.statusExpired
             : hasMonitoring
-            ? { border: "#93c5fd", background: "#eff6ff", color: "#1d4ed8" }
-            : { border: "#86efac", background: "#f0fdf4", color: "#166534" },
+            ? DASHBOARD_BADGE_COLORS.statusDueSoon
+            : DASHBOARD_BADGE_COLORS.statusOk,
         };
       })
       .sort((a, b) => {
@@ -2349,15 +2356,52 @@ export default function Page() {
                       <span style={{ padding: "4px 8px", borderRadius: 999, background: "#f8fafc", border: "1px solid #e2e8f0" }}>
                         {row.projectCount} progetti
                       </span>
-                      <span style={{ padding: "4px 8px", borderRadius: 999, background: "#f8fafc", border: "1px solid #e2e8f0" }}>
+                      <span
+                        style={{
+                          padding: "4px 8px",
+                          borderRadius: 999,
+                          background: DASHBOARD_BADGE_COLORS.statusNeutral.background,
+                          border: `1px solid ${DASHBOARD_BADGE_COLORS.statusNeutral.border}`,
+                          color: DASHBOARD_BADGE_COLORS.statusNeutral.color,
+                        }}
+                      >
                         {row.openActivities} attivita aperte
                       </span>
-                      <span style={{ padding: "4px 8px", borderRadius: 999, background: "#eff6ff", border: "1px solid #bfdbfe", color: "#1d4ed8" }}>
+                      <span
+                        style={{
+                          padding: "4px 8px",
+                          borderRadius: 999,
+                          background: DASHBOARD_BADGE_COLORS.statusDueSoon.background,
+                          border: `1px solid ${DASHBOARD_BADGE_COLORS.statusDueSoon.border}`,
+                          color: DASHBOARD_BADGE_COLORS.statusDueSoon.color,
+                        }}
+                      >
                         {row.imminentActivities} imminenti 7 gg
                       </span>
-                      <span style={{ padding: "4px 8px", borderRadius: 999, background: "#fffbeb", border: "1px solid #fde68a", color: "#92400e" }}>
+                      <span
+                        style={{
+                          padding: "4px 8px",
+                          borderRadius: 999,
+                          background: DASHBOARD_BADGE_COLORS.statusDueSoon.background,
+                          border: `1px solid ${DASHBOARD_BADGE_COLORS.statusDueSoon.border}`,
+                          color: DASHBOARD_BADGE_COLORS.statusDueSoon.color,
+                        }}
+                      >
                         {row.relevantDeadlines + row.overdueDeadlines} scadenze rilevanti
                       </span>
+                      {row.overdueActivities > 0 || row.overdueDeadlines > 0 ? (
+                        <span
+                          style={{
+                            padding: "4px 8px",
+                            borderRadius: 999,
+                            background: DASHBOARD_BADGE_COLORS.statusExpired.background,
+                            border: `1px solid ${DASHBOARD_BADGE_COLORS.statusExpired.border}`,
+                            color: DASHBOARD_BADGE_COLORS.statusExpired.color,
+                          }}
+                        >
+                          {row.overdueActivities + row.overdueDeadlines} criticita
+                        </span>
+                      ) : null}
                     </div>
                   </div>
                   <div style={{ display: "grid", justifyItems: "end", gap: 8 }}>

@@ -13,6 +13,17 @@ type CronoMeta = any;
 type CronoComment = any;
 type OperativiFields = any;
 
+const BADGE_COLORS = {
+  statusExpired: { bg: "#fee2e2", border: "#fca5a5", color: "#b91c1c" },
+  statusDueSoon: { bg: "#fffbeb", border: "#fcd34d", color: "#b45309" },
+  statusOk: { bg: "#dcfce7", border: "#86efac", color: "#166534" },
+  statusNeutral: { bg: "#f3f4f6", border: "#d1d5db", color: "#4b5563" },
+  activityInstall: { bg: "#dbeafe", border: "#93c5fd", color: "#1d4ed8" },
+  activityIntervento: { bg: "#dcfce7", border: "#86efac", color: "#166534" },
+  activityRemote: { bg: "#f3e8ff", border: "#d8b4fe", color: "#7e22ce" },
+  activityDisinstall: { bg: "#ffedd5", border: "#fdba74", color: "#c2410c" },
+} as const;
+
 type CronoprogrammaPanelProps = {
   fromDate: string;
   setFromDate: Dispatch<SetStateAction<string>>;
@@ -124,24 +135,24 @@ function getActivityKindLabel(row: TimelineRow, operativi: OperativiFields | nul
 
 function renderActivityKindBadge(label: string) {
   if (label === "INSTALLAZIONE") {
-    return renderPill(label, { bg: "#dbeafe", border: "#93c5fd", color: "#1d4ed8" }, "🔵");
+    return renderPill(label, BADGE_COLORS.activityInstall, "🔵");
   }
   if (label === "INTERVENTO") {
-    return renderPill(label, { bg: "#dcfce7", border: "#86efac", color: "#166534" }, "🟢");
+    return renderPill(label, BADGE_COLORS.activityIntervento, "🟢");
   }
   if (label === "ASSISTENZA REMOTA") {
-    return renderPill(label, { bg: "#f3e8ff", border: "#d8b4fe", color: "#7e22ce" }, "🟣");
+    return renderPill(label, BADGE_COLORS.activityRemote, "🟣");
   }
   if (label === "DISINSTALLAZIONE") {
-    return renderPill(label, { bg: "#ffedd5", border: "#fdba74", color: "#c2410c" }, "🟠");
+    return renderPill(label, BADGE_COLORS.activityDisinstall, "🟠");
   }
   return renderPill(label, { bg: "#f3f4f6", border: "#d1d5db", color: "#374151" });
 }
 
 function renderModeBadge(mode: string) {
   return mode === "REMOTO"
-    ? renderPill("REMOTO", { bg: "#f3e8ff", border: "#d8b4fe", color: "#7e22ce" })
-    : renderPill("ONSITE", { bg: "#e0f2fe", border: "#7dd3fc", color: "#0f766e" });
+    ? renderPill("REMOTO", BADGE_COLORS.activityRemote)
+    : renderPill("ONSITE", BADGE_COLORS.activityInstall);
 }
 
 function renderRowStatusBadge({
@@ -156,21 +167,18 @@ function renderRowStatusBadge({
   hidden: boolean;
 }) {
   if (hidden) {
-    return renderPill("NASCOSTA", { bg: "#f3f4f6", border: "#d1d5db", color: "#4b5563" });
+    return renderPill("NASCOSTA", BADGE_COLORS.statusNeutral);
   }
   if (fatto) {
-    return renderPill("FATTO", { bg: "#dcfce7", border: "#86efac", color: "#166534" });
+    return renderPill("OK", BADGE_COLORS.statusOk);
   }
   if (overdueNotDone) {
-    return renderPill("SCADUTA", { bg: "#ffedd5", border: "#fdba74", color: "#c2410c" });
+    return renderPill("SCADUTO", BADGE_COLORS.statusExpired);
   }
   if (operativoDefinito) {
-    return renderPill(
-      "OPERATIVO DEFINITO",
-      { bg: "#f0fdf4", border: "#86efac", color: "#166534" }
-    );
+    return renderPill("OK", BADGE_COLORS.statusOk);
   }
-  return renderPill("DA DEFINIRE", { bg: "#fef3c7", border: "#fcd34d", color: "#92400e" });
+  return renderPill("ATTENZIONE", BADGE_COLORS.statusDueSoon);
 }
 
 export default function CronoprogrammaPanel({
