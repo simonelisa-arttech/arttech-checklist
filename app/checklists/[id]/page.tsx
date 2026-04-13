@@ -1161,6 +1161,17 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
     { id: "section-foto-video", label: "Foto / Video" },
     { id: "section-checklist-operativa", label: "Check list operativa" },
   ] as const;
+  type LazySectionId = (typeof projectSectionLinks)[number]["id"];
+  const emptyExpandedSections = (): Record<LazySectionId, boolean> => ({
+    "section-dati-operativi": false,
+    "section-scadenze-rinnovi": false,
+    "section-servizi": false,
+    "section-licenze": false,
+    "section-sim": false,
+    "section-interventi": false,
+    "section-foto-video": false,
+    "section-checklist-operativa": false,
+  });
   const mainSectionStyle: CSSProperties = {
     marginTop: 22,
     border: "1px solid #eee",
@@ -1186,6 +1197,21 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
   const [rows, setRows] = useState<ChecklistItemRow[]>([]);
   const [originalRowIds, setOriginalRowIds] = useState<string[]>([]);
   const [tasks, setTasks] = useState<ChecklistTask[]>([]);
+  const [expandedSections, setExpandedSections] = useState<Record<LazySectionId, boolean>>(
+    emptyExpandedSections
+  );
+  const [lazyDataLoaded, setLazyDataLoaded] = useState({
+    cronoOperativi: false,
+    services: false,
+    licenze: false,
+    rinnovi: false,
+    sims: false,
+    interventi: false,
+    checklistOperativa: false,
+  });
+  const [lazySectionLoading, setLazySectionLoading] = useState<Record<LazySectionId, boolean>>(
+    emptyExpandedSections
+  );
   const [catalogItems, setCatalogItems] = useState<CatalogItem[]>([]);
   const [deviceCatalogItems, setDeviceCatalogItems] = useState<CatalogItem[]>([]);
   const [catalogLoaded, setCatalogLoaded] = useState(false);
@@ -1225,7 +1251,12 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
   const [selectedFreeSimId, setSelectedFreeSimId] = useState("");
   const [projectSimSavingKey, setProjectSimSavingKey] = useState<string | null>(null);
   const [projectSimsError, setProjectSimsError] = useState<string | null>(null);
-  const checklistIsClosed = useMemo(() => isChecklistOperativaCompletedFromTasks(tasks), [tasks]);
+  const checklistIsClosed = useMemo(() => {
+    if (lazyDataLoaded.checklistOperativa) {
+      return isChecklistOperativaCompletedFromTasks(tasks);
+    }
+    return String(checklist?.stato_progetto || "").trim().toUpperCase() === "CHIUSO";
+  }, [checklist?.stato_progetto, lazyDataLoaded.checklistOperativa, tasks]);
   const [serialControlInput, setSerialControlInput] = useState("");
   const [serialControlDeviceCode, setSerialControlDeviceCode] = useState("");
   const [serialControlDeviceDescrizione, setSerialControlDeviceDescrizione] = useState("");
@@ -1606,11 +1637,20 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
     if (descrizione) {
       setNewProjectIntervento((prev) => ({ ...prev, descrizione }));
     }
+    setProjectSectionExpanded("section-interventi", true);
     setTimeout(() => {
       const el = document.getElementById("add-intervento");
       if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
     }, 100);
   }, []);
+
+  useEffect(() => {
+    if (!id || !checklist) return;
+    (Object.keys(expandedSections) as LazySectionId[]).forEach((sectionId) => {
+      if (!expandedSections[sectionId]) return;
+      void ensureSectionDataLoaded(sectionId);
+    });
+  }, [checklist, expandedSections, id]);
 
   useEffect(() => {
     setDimensioniLocal(formData?.dimensioni ?? "");
@@ -3297,43 +3337,10 @@ function buildFormData(c: Checklist): FormData {
       return;
     }
 
-    if (isPerfEnabled()) console.time(`[perf][checklist][load#${loadSeq}] parallel datasets`);
-    perfCountFetch("GET /api/checklists/:id/tasks");
-    perfCountFetch("GET /api/checklists/:id/licenses");
-    perfCountFetch("GET /api/checklists/:id/tagliandi");
+    if (isPerfEnabled()) console.time(`[perf][checklist][load#${loadSeq}] eager datasets`);
     perfCountFetch("GET /api/checklists/:id/documents");
     perfCountFetch("POST /api/db asset_serials");
 
-    const tasksPromise = fetch(`/api/checklists/${id}/tasks`, {
-      cache: "no-store",
-      credentials: "include",
-    }).then(async (res) => {
-      const json = await res.json().catch(() => ({}));
-      return {
-        data: (json?.tasks as any[]) || [],
-        error: res.ok ? null : { message: json?.error || "Errore caricamento task" },
-      };
-    });
-    const licenzePromise = fetch(`/api/checklists/${id}/licenses`, {
-      cache: "no-store",
-      credentials: "include",
-    }).then(async (res) => {
-      const json = await res.json().catch(() => ({}));
-      return {
-        data: (json?.licenses as any[]) || [],
-        error: res.ok ? null : { message: json?.error || "Errore caricamento licenze" },
-      };
-    });
-    const tagliandiPromise = fetch(`/api/checklists/${id}/tagliandi`, {
-      cache: "no-store",
-      credentials: "include",
-    }).then(async (res) => {
-      const json = await res.json().catch(() => ({}));
-      return {
-        data: (json?.tagliandi as any[]) || [],
-        error: res.ok ? null : { message: json?.error || "Errore caricamento tagliandi" },
-      };
-    });
     const docsPromise = fetch(`/api/checklists/${id}/documents`, {
       cache: "no-store",
       credentials: "include",
@@ -3366,131 +3373,14 @@ function buildFormData(c: Checklist): FormData {
             : { message: json?.error || "Errore caricamento seriali" },
       };
     });
-    const taskDocsPromise = db<any[]>({
-      table: "checklist_task_documents",
-      op: "select",
-      select: "id, checklist_id, task_id, filename, storage_path, uploaded_at, uploaded_by_operatore",
-      filter: { checklist_id: id },
-      order: [{ col: "uploaded_at", asc: false }],
-    }).then((res) => {
-      const msg = String(res.error?.message || "").toLowerCase();
-      const missingTable =
-        msg.includes("checklist_task_documents") &&
-        (msg.includes("does not exist") ||
-          msg.includes("relation") ||
-          msg.includes("could not find the table") ||
-          msg.includes("schema cache"));
-      if (missingTable) {
-        return { data: [] as any[], error: null as any };
-      }
-      return res;
-    });
-    const rinnoviPromise = (async () => {
-      let rinnoviSelect = "id, checklist_id, item_tipo, scadenza, stato, riferimento, descrizione, note";
-      let { data: rinnoviDataRaw, error: rinnoviErr } = await db<any[]>({
-        table: "rinnovi_servizi",
-        op: "select",
-        select: rinnoviSelect,
-        filter: { checklist_id: id },
-        order: [{ col: "scadenza", asc: true }],
-        limit: 1000,
-      });
-      if (rinnoviErr && String(rinnoviErr.message || "").toLowerCase().includes("riferimento")) {
-        rinnoviSelect = "id, checklist_id, item_tipo, scadenza, stato, descrizione, note";
-        const retry = await db<any[]>({
-          table: "rinnovi_servizi",
-          op: "select",
-          select: rinnoviSelect,
-          filter: { checklist_id: id },
-          order: [{ col: "scadenza", asc: true }],
-          limit: 1000,
-        });
-        rinnoviDataRaw = (retry.data || []).map((r: any) => ({ ...r, riferimento: null }));
-        rinnoviErr = retry.error;
-      }
-      if (rinnoviErr && String(rinnoviErr.message || "").toLowerCase().includes("descrizione")) {
-        rinnoviSelect = "id, checklist_id, item_tipo, scadenza, stato, note";
-        const retry = await db<any[]>({
-          table: "rinnovi_servizi",
-          op: "select",
-          select: rinnoviSelect,
-          filter: { checklist_id: id },
-          order: [{ col: "scadenza", asc: true }],
-          limit: 1000,
-        });
-        rinnoviDataRaw = (retry.data || []).map((r: any) => ({
-          ...r,
-          riferimento: null,
-          descrizione: null,
-        }));
-        rinnoviErr = retry.error;
-      }
-      return { data: (rinnoviDataRaw || []) as ProjectRinnovoRow[], error: rinnoviErr };
-    })();
-
-    const [tasksResult, licenzeResult, tagliandiResult, docsResult, serialsResult, taskDocsResult, rinnoviResult] =
-      await Promise.all([
-        tasksPromise,
-        licenzePromise,
-        tagliandiPromise,
-        docsPromise,
-        serialsPromise,
-        taskDocsPromise,
-        rinnoviPromise,
-      ]);
-    if (isPerfEnabled()) console.timeEnd(`[perf][checklist][load#${loadSeq}] parallel datasets`);
-
-    const tasks = tasksResult.data;
-    if (tasksResult.error) {
-      setError("Errore caricamento task: " + tasksResult.error.message);
-      setLoading(false);
-      return;
-    }
-
-    const licenzeData = licenzeResult.data;
-    if (licenzeResult.error) {
-      setError("Errore caricamento licenze: " + licenzeResult.error.message);
-      setLoading(false);
-      return;
-    }
-
-    const tagliandiData = tagliandiResult.data;
-    if (tagliandiResult.error) {
-      setError("Errore caricamento tagliandi: " + tagliandiResult.error.message);
-      setLoading(false);
-      return;
-    }
-
-    const rinnoviData = rinnoviResult.data;
-    if (rinnoviResult.error) {
-      setError("Errore caricamento rinnovi: " + rinnoviResult.error.message);
-      setLoading(false);
-      return;
-    }
+    const [docsResult, serialsResult] = await Promise.all([docsPromise, serialsPromise]);
+    if (isPerfEnabled()) console.timeEnd(`[perf][checklist][load#${loadSeq}] eager datasets`);
 
     const docsData = docsResult.data;
     if (docsResult.error) {
       setError("Errore caricamento documenti: " + docsResult.error.message);
       setLoading(false);
       return;
-    }
-
-    let taskDocsData: any[] = [];
-    if (taskDocsResult.error) {
-      const msg = String(taskDocsResult.error.message || "").toLowerCase();
-      const missingTable =
-        msg.includes("checklist_task_documents") &&
-        (msg.includes("does not exist") ||
-          msg.includes("relation") ||
-          msg.includes("could not find the table") ||
-          msg.includes("schema cache"));
-      if (!missingTable) {
-        setError("Errore caricamento allegati task: " + taskDocsResult.error.message);
-        setLoading(false);
-        return;
-      }
-    } else {
-      taskDocsData = (taskDocsResult.data || []) as any[];
     }
 
     const serialsData = serialsResult.data;
@@ -3596,8 +3486,188 @@ function buildFormData(c: Checklist): FormData {
       );
     }
 
+    setChecklist(headChecklist);
+    setRows(mappedRows);
+    setOriginalRowIds((items || []).map((r) => r.id));
+    setDocuments((docsData || []) as ChecklistDocument[]);
+    setAssetSerials((serialsData || []) as AssetSerial[]);
+    setTasks([]);
+    setLicenze([]);
+    setProjectTagliandi([]);
+    setProjectRinnovi([]);
+    setTaskDocuments([]);
+    setTaskAttachmentsById(new Map());
+    setTaskCommentsById({});
+    setLastAlertByTask(new Map());
+    setContrattoUltra(null);
+    setContrattoUltraNome(null);
+    setInterventiInclusiUsati(0);
+    setProjectInterventi([]);
+    setProjectInterventoAttachmentCounts(new Map());
+    setProjectSims([]);
+    setProjectSimRechargesById({});
+    setFreeProjectSims([]);
+    setProjectSimsError(null);
+    setProjectInterventiError(null);
+    setProjectInterventiNotice(null);
+    setProjectAlertStatsMap(new Map());
+    setCronoOperativiMeta(null);
+    setCronoOperativiForm(EMPTY_CRONO_OPERATIVI);
+    setCronoDisinstallazioneMeta(null);
+    setCronoDisinstallazioneForm(EMPTY_CRONO_OPERATIVI);
+    setExpandedSections(emptyExpandedSections());
+    setLazySectionLoading(emptyExpandedSections());
+    setLazyDataLoaded({
+      cronoOperativi: false,
+      services: false,
+      licenze: false,
+      rinnovi: false,
+      sims: false,
+      interventi: false,
+      checklistOperativa: false,
+    });
+
+    const nextForm = buildFormData(headChecklist);
+    setFormData(nextForm);
+    setOriginalData(nextForm);
+    setNewProjectIntervento(
+      buildEmptyProjectInterventoForm(
+        headChecklist.proforma || "",
+        splitMagazzinoFields(
+          headChecklist.magazzino_importazione,
+          headChecklist.magazzino_drive_url
+        ).codice
+      )
+    );
+    if (isPerfEnabled()) {
+      console.info(`[perf][checklist] ready`, {
+        loadSeq,
+        counts: {
+          tasks: 0,
+          licenze: 0,
+          tagliandi: 0,
+          rinnovi_servizi: 0,
+          rinnovi: 0,
+          documents: (docsData || []).length,
+        },
+      });
+      console.timeEnd(loadLabel);
+    }
+    setLoading(false);
+  }
+
+  async function associateFreeSimToProject() {
+    if (!id || !selectedFreeSimId || selectedFreeSimId === "null") {
+      setProjectSimsError("Seleziona una SIM valida");
+      return;
+    }
+    setProjectSimSavingKey(`associate:${selectedFreeSimId}`);
+    setProjectSimsError(null);
+    try {
+      const { error } = await dbFrom("sim_cards")
+        .update({ checklist_id: id })
+        .eq("id", selectedFreeSimId);
+      if (error) throw new Error(error.message || "Errore associazione SIM al progetto");
+      setSelectedFreeSimId("");
+      await loadProjectSimsSection(id);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Errore associazione SIM al progetto";
+      const normalizedMessage = String(message || "").toLowerCase();
+      if (
+        normalizedMessage.includes("invalid input syntax for type uuid") ||
+        (normalizedMessage.includes("uuid") && normalizedMessage.includes("null"))
+      ) {
+        setProjectSimsError("Seleziona una SIM valida");
+      } else {
+        setProjectSimsError(message);
+      }
+    } finally {
+      setProjectSimSavingKey(null);
+    }
+  }
+
+  async function loadProjectLicenzeSection(checklistId: string) {
+    perfCountFetch("GET /api/checklists/:id/licenses");
+    const res = await fetch(`/api/checklists/${checklistId}/licenses`, {
+      cache: "no-store",
+      credentials: "include",
+    });
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(json?.error || "Errore caricamento licenze");
+    }
+    const nextLicenze = (json?.licenses as any[]) || [];
+    setLicenze(nextLicenze as Licenza[]);
+    setLicenzeError(null);
+    setLazyDataLoaded((prev) => ({ ...prev, licenze: true }));
+    return nextLicenze as Licenza[];
+  }
+
+  async function loadProjectRinnoviSection(checklistId: string) {
+    perfCountFetch("GET /api/checklists/:id/tagliandi");
+    const tagliandiRes = await fetch(`/api/checklists/${checklistId}/tagliandi`, {
+      cache: "no-store",
+      credentials: "include",
+    });
+    const tagliandiJson = await tagliandiRes.json().catch(() => ({}));
+    if (!tagliandiRes.ok) {
+      throw new Error(tagliandiJson?.error || "Errore caricamento tagliandi");
+    }
+
+    let rinnoviSelect = "id, checklist_id, item_tipo, scadenza, stato, riferimento, descrizione, note";
+    let { data: rinnoviDataRaw, error: rinnoviErr } = await db<any[]>({
+      table: "rinnovi_servizi",
+      op: "select",
+      select: rinnoviSelect,
+      filter: { checklist_id: checklistId },
+      order: [{ col: "scadenza", asc: true }],
+      limit: 1000,
+    });
+    if (rinnoviErr && String(rinnoviErr.message || "").toLowerCase().includes("riferimento")) {
+      rinnoviSelect = "id, checklist_id, item_tipo, scadenza, stato, descrizione, note";
+      const retry = await db<any[]>({
+        table: "rinnovi_servizi",
+        op: "select",
+        select: rinnoviSelect,
+        filter: { checklist_id: checklistId },
+        order: [{ col: "scadenza", asc: true }],
+        limit: 1000,
+      });
+      rinnoviDataRaw = (retry.data || []).map((r: any) => ({ ...r, riferimento: null }));
+      rinnoviErr = retry.error;
+    }
+    if (rinnoviErr && String(rinnoviErr.message || "").toLowerCase().includes("descrizione")) {
+      rinnoviSelect = "id, checklist_id, item_tipo, scadenza, stato, note";
+      const retry = await db<any[]>({
+        table: "rinnovi_servizi",
+        op: "select",
+        select: rinnoviSelect,
+        filter: { checklist_id: checklistId },
+        order: [{ col: "scadenza", asc: true }],
+        limit: 1000,
+      });
+      rinnoviDataRaw = (retry.data || []).map((r: any) => ({
+        ...r,
+        riferimento: null,
+        descrizione: null,
+      }));
+      rinnoviErr = retry.error;
+    }
+    if (rinnoviErr) {
+      throw new Error(rinnoviErr.message || "Errore caricamento rinnovi");
+    }
+
+    setProjectTagliandi((((tagliandiJson?.tagliandi as any[]) || []) as Tagliando[]));
+    setProjectRinnovi(((rinnoviDataRaw || []) as ProjectRinnovoRow[]));
+    setLazyDataLoaded((prev) => ({ ...prev, rinnovi: true }));
+  }
+
+  async function loadProjectServicesSection(checklistId: string, headChecklist: Checklist) {
+    const clienteKey = String(headChecklist.cliente ?? "").trim();
     let activeContratto: ContrattoRow | null = null;
     let ultraNome: string | null = null;
+    let includedUsed = 0;
+
     if (headChecklist.cliente_id || clienteKey) {
       const { data: contrattiDataRaw, error: contrattiErr } = await db<any[]>({
         table: "saas_contratti",
@@ -3635,132 +3705,75 @@ function buildFormData(c: Checklist): FormData {
       if (activeContratto?.id) {
         const { data: includedRows } = await dbFrom("saas_interventi")
           .select("id, contratto_id, incluso")
-          .eq("checklist_id", id)
+          .eq("checklist_id", checklistId)
           .eq("contratto_id", activeContratto.id)
           .eq("incluso", true)
           .limit(1000);
-        setInterventiInclusiUsati((includedRows || []).length);
-      } else {
-        setInterventiInclusiUsati(0);
+        includedUsed = (includedRows || []).length;
       }
-    }
-
-    let interventiData: InterventoRow[] = [];
-    try {
-      interventiData = await loadProjectInterventi(id);
-    } catch (e) {
-      const msg = e instanceof Error ? e.message : String(e);
-      setError("Errore caricamento interventi progetto: " + msg);
-      setLoading(false);
-      return;
     }
 
     setContrattoUltra(activeContratto);
     setContrattoUltraNome(ultraNome);
-    setProjectInterventi(interventiData);
-    await loadProjectSimsSection(id);
-    await loadInterventoRowAttachmentCounts(interventiData);
-    await fetchInterventoRowBulkLastAlert();
-    setProjectInterventiError(null);
-    setProjectInterventiNotice(null);
-    setChecklist(headChecklist);
-    setRows(mappedRows);
-    setOriginalRowIds((items || []).map((r) => r.id));
-    setTasks((tasks || []) as unknown as ChecklistTask[]);
-    await loadTaskAttachmentCounts(((tasks || []) as any[]).map((task: any) => String(task.id || "")));
-    await loadTaskComments(((tasks || []) as any[]).map((task: any) => String(task.id || "")));
-    setLicenze((licenzeData || []) as Licenza[]);
-    setProjectTagliandi((tagliandiData || []) as Tagliando[]);
-    setProjectRinnovi(rinnoviData);
-    setDocuments((docsData || []) as ChecklistDocument[]);
-    setTaskDocuments(taskDocsData as ChecklistTaskDocument[]);
-    setAssetSerials((serialsData || []) as AssetSerial[]);
+    setInterventiInclusiUsati(includedUsed);
+    setLazyDataLoaded((prev) => ({ ...prev, services: true }));
+  }
 
+  async function loadTaskLastAlerts(checklistId: string) {
     const { data: alertData, error: alertErr } = await db<any[]>({
       table: "checklist_alert_log",
       op: "select",
       select: "task_id, to_operatore_id, created_at, checklist_id",
-      filter: { checklist_id: id },
+      filter: { checklist_id: checklistId },
       order: [{ col: "created_at", asc: false }],
       limit: 1000,
     });
-    if (!alertErr) {
-      const map = new Map<string, { toOperatoreId: string; createdAt: string }>();
-      (alertData || []).forEach((r: any) => {
-        if (!map.has(r.task_id)) {
-          map.set(r.task_id, {
-            toOperatoreId: r.to_operatore_id,
-            createdAt: r.created_at,
-          });
-        }
-      });
-      setLastAlertByTask(map);
+    if (alertErr) {
+      throw new Error(alertErr.message || "Errore caricamento log alert task");
     }
 
-    const nextForm = buildFormData(headChecklist);
-    setFormData(nextForm);
-    setOriginalData(nextForm);
-    setNewProjectIntervento(
-      buildEmptyProjectInterventoForm(
-        headChecklist.proforma || "",
-        splitMagazzinoFields(
-          headChecklist.magazzino_importazione,
-          headChecklist.magazzino_drive_url
-        ).codice
-      )
-    );
-    await loadCronoOperativi(id);
-    if (isPerfEnabled()) {
-      const renewalRowsCount =
-        (headChecklist?.saas_piano ? 1 : 0) +
-        (headChecklist?.garanzia_scadenza ? 1 : 0) +
-        (licenzeData || []).length +
-        (tagliandiData || []).length +
-        (rinnoviData || []).length;
-      console.info(`[perf][checklist] ready`, {
-        loadSeq,
-        counts: {
-          tasks: (tasks || []).length,
-          licenze: (licenzeData || []).length,
-          tagliandi: (tagliandiData || []).length,
-          rinnovi_servizi: (rinnoviData || []).length,
-          rinnovi: renewalRowsCount,
-          documents: (docsData || []).length,
-        },
-      });
-      console.timeEnd(loadLabel);
-    }
-    setLoading(false);
+    const map = new Map<string, { toOperatoreId: string; createdAt: string }>();
+    (alertData || []).forEach((r: any) => {
+      if (!map.has(r.task_id)) {
+        map.set(r.task_id, {
+          toOperatoreId: r.to_operatore_id,
+          createdAt: r.created_at,
+        });
+      }
+    });
+    setLastAlertByTask(map);
   }
 
-  async function associateFreeSimToProject() {
-    if (!id || !selectedFreeSimId || selectedFreeSimId === "null") {
-      setProjectSimsError("Seleziona una SIM valida");
-      return;
+  async function loadChecklistOperativaSection(checklistId: string) {
+    perfCountFetch("GET /api/checklists/:id/tasks");
+    const tasksRes = await fetch(`/api/checklists/${checklistId}/tasks`, {
+      cache: "no-store",
+      credentials: "include",
+    });
+    const tasksJson = await tasksRes.json().catch(() => ({}));
+    if (!tasksRes.ok) {
+      throw new Error(tasksJson?.error || "Errore caricamento task");
     }
-    setProjectSimSavingKey(`associate:${selectedFreeSimId}`);
-    setProjectSimsError(null);
-    try {
-      const { error } = await dbFrom("sim_cards")
-        .update({ checklist_id: id })
-        .eq("id", selectedFreeSimId);
-      if (error) throw new Error(error.message || "Errore associazione SIM al progetto");
-      setSelectedFreeSimId("");
-      await loadProjectSimsSection(id);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : "Errore associazione SIM al progetto";
-      const normalizedMessage = String(message || "").toLowerCase();
-      if (
-        normalizedMessage.includes("invalid input syntax for type uuid") ||
-        (normalizedMessage.includes("uuid") && normalizedMessage.includes("null"))
-      ) {
-        setProjectSimsError("Seleziona una SIM valida");
-      } else {
-        setProjectSimsError(message);
-      }
-    } finally {
-      setProjectSimSavingKey(null);
+
+    const nextTasks = ((tasksJson?.tasks as any[]) || []) as ChecklistTask[];
+    setTasks(nextTasks);
+    await loadTaskAttachmentCounts(nextTasks.map((task: any) => String(task.id || "")));
+    await loadTaskComments(nextTasks.map((task: any) => String(task.id || "")));
+    await loadTaskLastAlerts(checklistId);
+    setLazyDataLoaded((prev) => ({ ...prev, checklistOperativa: true }));
+  }
+
+  async function loadProjectInterventiSection(checklistId: string, headChecklist: Checklist) {
+    if (!lazyDataLoaded.services) {
+      await loadProjectServicesSection(checklistId, headChecklist);
     }
+    const interventiData = await loadProjectInterventi(checklistId);
+    setProjectInterventi(interventiData);
+    await loadInterventoRowAttachmentCounts(interventiData);
+    await fetchInterventoRowBulkLastAlert();
+    setProjectInterventiError(null);
+    setProjectInterventiNotice(null);
+    setLazyDataLoaded((prev) => ({ ...prev, interventi: true }));
   }
 
   async function removeSimFromProject(simId: string) {
@@ -3979,6 +3992,57 @@ function buildFormData(c: Checklist): FormData {
       ? Number(formData?.impianto_quantita)
       : 1;
   const m2CalcolatiTotali = m2Calcolati == null ? null : m2Calcolati * impiantoQuantitaForm;
+
+  function renderLazySection(
+    sectionId: LazySectionId,
+    title: string,
+    content: ReactNode,
+    options?: { style?: CSSProperties; loadingLabel?: string }
+  ) {
+    const expanded = expandedSections[sectionId];
+    const loadingSection = lazySectionLoading[sectionId];
+    return (
+      <div
+        id={sectionId}
+        style={{ ...(options?.style || mainSectionStyle), scrollMarginTop: 96 }}
+      >
+        <button
+          type="button"
+          onClick={() => setProjectSectionExpanded(sectionId, !expanded)}
+          style={{
+            width: "100%",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 12,
+            border: "none",
+            background: "transparent",
+            padding: 0,
+            cursor: "pointer",
+            textAlign: "left",
+          }}
+        >
+          <span style={mainSectionTitleStyle}>{title}</span>
+          <span style={{ fontSize: 14, fontWeight: 800, color: "#475569", whiteSpace: "nowrap" }}>
+            {expanded ? "Chiudi" : "Apri"}
+          </span>
+        </button>
+        {expanded ? (
+          loadingSection ? (
+            <div style={{ marginTop: 12, fontSize: 13, opacity: 0.75 }}>
+              {options?.loadingLabel || "Caricamento sezione..."}
+            </div>
+          ) : (
+            <div style={{ marginTop: 12 }}>{content}</div>
+          )
+        ) : (
+          <div style={{ marginTop: 8, fontSize: 12, opacity: 0.65 }}>
+            Sezione chiusa. Apri per caricare i dati.
+          </div>
+        )}
+      </div>
+    );
+  }
 
   if (loading) return <div style={{ padding: 20 }}>Caricamento…</div>;
   if (error) return <div style={{ padding: 20, color: "crimson" }}>{error}</div>;
@@ -4276,6 +4340,68 @@ function buildFormData(c: Checklist): FormData {
     const node = document.getElementById(sectionId);
     if (!node) return;
     node.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  async function ensureSectionDataLoaded(sectionId: LazySectionId) {
+    if (!id || !checklist) return;
+    if (lazySectionLoading[sectionId]) return;
+    const alreadyLoaded =
+      (sectionId === "section-dati-operativi" && lazyDataLoaded.cronoOperativi) ||
+      (sectionId === "section-servizi" && lazyDataLoaded.services && lazyDataLoaded.licenze) ||
+      (sectionId === "section-licenze" && lazyDataLoaded.licenze) ||
+      (sectionId === "section-scadenze-rinnovi" && lazyDataLoaded.rinnovi && lazyDataLoaded.licenze) ||
+      (sectionId === "section-sim" && lazyDataLoaded.sims) ||
+      (sectionId === "section-interventi" && lazyDataLoaded.interventi) ||
+      (sectionId === "section-checklist-operativa" && lazyDataLoaded.checklistOperativa) ||
+      sectionId === "section-foto-video";
+    if (alreadyLoaded) return;
+
+    setLazySectionLoading((prev) => ({ ...prev, [sectionId]: true }));
+    try {
+      if (sectionId === "section-dati-operativi") {
+        await loadCronoOperativi(id);
+        setLazyDataLoaded((prev) => ({ ...prev, cronoOperativi: true }));
+      } else if (sectionId === "section-servizi") {
+        if (!lazyDataLoaded.services) await loadProjectServicesSection(id, checklist);
+        if (!lazyDataLoaded.licenze) await loadProjectLicenzeSection(id);
+      } else if (sectionId === "section-licenze") {
+        if (!lazyDataLoaded.licenze) await loadProjectLicenzeSection(id);
+      } else if (sectionId === "section-scadenze-rinnovi") {
+        if (!lazyDataLoaded.licenze) await loadProjectLicenzeSection(id);
+        if (!lazyDataLoaded.rinnovi) await loadProjectRinnoviSection(id);
+      } else if (sectionId === "section-sim") {
+        await loadProjectSimsSection(id);
+        setLazyDataLoaded((prev) => ({ ...prev, sims: true }));
+      } else if (sectionId === "section-interventi") {
+        await loadProjectInterventiSection(id, checklist);
+      } else if (sectionId === "section-checklist-operativa") {
+        await loadChecklistOperativaSection(id);
+      }
+    } catch (e: any) {
+      const message = String(e?.message || "Errore caricamento sezione");
+      if (sectionId === "section-licenze" || sectionId === "section-servizi") {
+        setLicenzeError(message);
+      } else if (sectionId === "section-scadenze-rinnovi" || sectionId === "section-interventi") {
+        setProjectInterventiError(message);
+      } else if (sectionId === "section-sim") {
+        setProjectSimsError(message);
+      } else if (sectionId === "section-dati-operativi") {
+        setCronoOperativiError(message);
+      } else if (sectionId === "section-checklist-operativa") {
+        setError(message);
+      }
+    } finally {
+      setLazySectionLoading((prev) => ({ ...prev, [sectionId]: false }));
+    }
+  }
+
+  function setProjectSectionExpanded(sectionId: LazySectionId, expanded: boolean) {
+    setExpandedSections((prev) => ({ ...prev, [sectionId]: expanded }));
+  }
+
+  function openProjectSection(sectionId: LazySectionId) {
+    setProjectSectionExpanded(sectionId, true);
+    setTimeout(() => scrollToProjectSection(sectionId), 80);
   }
 
   function getEligibleOperatori(task: ChecklistTask | null) {
@@ -6265,7 +6391,7 @@ function buildFormData(c: Checklist): FormData {
           <button
             key={section.id}
             type="button"
-            onClick={() => scrollToProjectSection(section.id)}
+            onClick={() => openProjectSection(section.id)}
             style={{
               padding: "7px 12px",
               borderRadius: 999,
@@ -7256,7 +7382,6 @@ function buildFormData(c: Checklist): FormData {
           </div>
         </div>
       </div>
-      {accessoriRicambiBlock}
       {serialUsageOpen && (
         <div
           onClick={() => setSerialUsageOpen(null)}
@@ -7316,8 +7441,9 @@ function buildFormData(c: Checklist): FormData {
           </div>
         </div>
       )}
-      <div id="section-dati-operativi" style={{ ...mainSectionStyle, scrollMarginTop: 96 }}>
-        <div style={mainSectionTitleStyle}>Dati operativi / cronoprogramma</div>
+      {renderLazySection(
+        "section-dati-operativi",
+        "Dati operativi / cronoprogramma",
         <div style={{ display: "grid", gap: 12 }}>
           {renderCronoOperativiSection(
             "BLOCCO INSTALLAZIONE",
@@ -7343,8 +7469,9 @@ function buildFormData(c: Checklist): FormData {
                 formData?.data_disinstallazione || ""
               )
             : null}
-        </div>
-      </div>
+        </div>,
+        { loadingLabel: "Caricamento dati operativi..." }
+      )}
       <RenewalsAlertModal
         open={projectRinnoviAlertOpen}
         cliente={checklist?.cliente || ""}
@@ -7368,7 +7495,9 @@ function buildFormData(c: Checklist): FormData {
         onSubmitManual={sendProjectRinnoviAlert}
         onSaveRule={saveProjectRinnoviAlertRule}
       />
-      <div id="section-scadenze-rinnovi" style={{ marginTop: 12, scrollMarginTop: 96 }}>
+      {renderLazySection(
+        "section-scadenze-rinnovi",
+        "Scadenze e rinnovi",
         <div
           style={{
             border: "1px solid #eee",
@@ -7608,11 +7737,13 @@ function buildFormData(c: Checklist): FormData {
             tagliandoModalita={TAGLIANDO_MODALITA}
             rinnovoStati={RINNOVO_STATI}
           />
-        </div>
-      </div>
-      <div id="section-servizi" style={{ ...mainSectionStyle, scrollMarginTop: 96 }}>
-        <h2 style={mainSectionTitleStyle}>Servizi</h2>
-
+        </div>,
+        { style: { marginTop: 12 }, loadingLabel: "Caricamento scadenze e rinnovi..." }
+      )}
+      {renderLazySection(
+        "section-servizi",
+        "Servizi",
+        <>
         <ServiziBox title="SERVIZI">
           <ServiceRow
             label="PLUS/PREMIUM (impianti)"
@@ -7797,8 +7928,14 @@ function buildFormData(c: Checklist): FormData {
             }
           />
         </ServiziBox>
+        </>,
+        { loadingLabel: "Caricamento servizi..." }
+      )}
 
-        <div id="section-licenze" style={{ marginTop: 12, scrollMarginTop: 96 }}>
+      {renderLazySection(
+        "section-licenze",
+        "Licenze",
+        <>
           <h2 style={mainSectionTitleStyle}>Licenze</h2>
           <div style={{ marginBottom: 10, fontSize: 12, opacity: 0.7 }}>
             Licenze dettaglio (dashboard):{" "}
@@ -8253,8 +8390,14 @@ function buildFormData(c: Checklist): FormData {
             </div>
           </div>
 
-          <div id="section-sim" style={{ marginTop: 12, scrollMarginTop: 96 }}>
-            <h2 style={mainSectionTitleStyle}>SIM</h2>
+        </>,
+        { style: { marginTop: 12 }, loadingLabel: "Caricamento licenze..." }
+      )}
+
+      {renderLazySection(
+        "section-sim",
+        "SIM",
+        <>
             <div style={{ marginBottom: 10, fontSize: 12, opacity: 0.7 }}>
               SIM collegate al progetto via <code>checklist_id</code>.
             </div>
@@ -8403,16 +8546,21 @@ function buildFormData(c: Checklist): FormData {
                 </div>
               </div>
             )}
-          </div>
+        </>,
+        { style: { marginTop: 12 }, loadingLabel: "Caricamento SIM..." }
+      )}
 
-          <div id="section-interventi" style={{ marginTop: 12, scrollMarginTop: 96 }}>
-            {projectInterventiBlock}
-          </div>
-        </div>
-      </div>
+      {renderLazySection(
+        "section-interventi",
+        "Interventi",
+        projectInterventiBlock,
+        { style: { marginTop: 12 }, loadingLabel: "Caricamento interventi..." }
+      )}
 
-      <div id="section-foto-video" style={{ ...mainSectionStyle, scrollMarginTop: 96 }}>
-        <h2 style={mainSectionTitleStyle}>Foto / Video</h2>
+      {renderLazySection(
+        "section-foto-video",
+        "Foto / Video",
+        <>
         <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 10 }}>
           Media di progetto separati dagli allegati delle task operative.
         </div>
@@ -8425,21 +8573,25 @@ function buildFormData(c: Checklist): FormData {
             storagePrefix="checklist"
           />
         </div>
-      </div>
+        </>,
+        { loadingLabel: "Apertura media progetto..." }
+      )}
 
-      {tasks.length > 0 && (
-        <div
-          id="section-checklist-operativa"
-          style={{ ...mainSectionStyle, marginTop: 24, scrollMarginTop: 96 }}
-        >
-          <h2 style={mainSectionTitleStyle}>Checklist operativa</h2>
+      {renderLazySection(
+        "section-checklist-operativa",
+        "Check list operativa",
+        <>
+          {accessoriRicambiBlock}
           {alertNotice && (
             <div style={{ marginTop: 8, marginBottom: 10, fontSize: 12, color: "#166534" }}>
               {alertNotice}
             </div>
           )}
 
-          {[0, 1, 2, 3].map((sec) => (
+          {tasks.length === 0 ? (
+            <div style={{ opacity: 0.7 }}>Nessuna task operativa collegata</div>
+          ) : (
+            [0, 1, 2, 3].map((sec) => (
             <div
               key={sec}
               style={{
@@ -8692,8 +8844,10 @@ function buildFormData(c: Checklist): FormData {
                   })()
                 ))}
             </div>
-      ))}
-        </div>
+            ))
+          )}
+        </>,
+        { style: { ...mainSectionStyle, marginTop: 24 }, loadingLabel: "Caricamento checklist operativa..." }
       )}
 
       {taskNotesTask && (
