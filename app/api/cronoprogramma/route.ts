@@ -128,6 +128,16 @@ function mapMetaRow(row: any) {
   };
 }
 
+async function loadOperatorePersonaleId(supabaseAdmin: any, operatoreId: string) {
+  const { data, error } = await supabaseAdmin
+    .from("operatori")
+    .select("personale_id")
+    .eq("id", operatoreId)
+    .maybeSingle();
+  if (error) throw new Error(error.message);
+  return data?.personale_id ? String(data.personale_id) : null;
+}
+
 export async function POST(request: Request) {
   const debug = new URL(request.url).searchParams.get("debug") === "1";
   const auth = await requireOperatore(request);
@@ -549,6 +559,104 @@ export async function POST(request: Request) {
       ok: true,
       meta: mapMetaRow(data as any),
     });
+  }
+
+  if (action === "start_timbratura") {
+    const rowKind = String(body?.row_kind || "").trim().toUpperCase();
+    const rowRefId = String(body?.row_ref_id || "").trim();
+    if (!isValidRowKind(rowKind) || !isUuidLike(rowRefId)) {
+      return NextResponse.json({ error: "row_kind/row_ref_id non validi" }, { status: 400 });
+    }
+
+    const { data: existingOpen, error: existingErr } = await supabaseAdmin
+      .from("cronoprogramma_timbrature")
+      .select("id")
+      .eq("row_kind", rowKind)
+      .eq("row_ref_id", rowRefId)
+      .eq("operatore_id", operatore.id)
+      .eq("stato", "IN_CORSO")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (existingErr) {
+      return NextResponse.json({ error: existingErr.message }, { status: 500 });
+    }
+    if (existingOpen?.id) {
+      return NextResponse.json({ error: "Timbratura già in corso per questa attività" }, { status: 409 });
+    }
+
+    let personaleId: string | null = null;
+    try {
+      personaleId = await loadOperatorePersonaleId(supabaseAdmin, operatore.id);
+    } catch (err: any) {
+      return NextResponse.json({ error: String(err?.message || "Errore caricamento personale operatore") }, { status: 500 });
+    }
+
+    const nowIso = new Date().toISOString();
+    const { error } = await supabaseAdmin.from("cronoprogramma_timbrature").insert({
+      row_kind: rowKind,
+      row_ref_id: rowRefId,
+      operatore_id: operatore.id,
+      personale_id: personaleId,
+      started_at: nowIso,
+      stato: "IN_CORSO",
+      updated_at: nowIso,
+    });
+
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+
+    return NextResponse.json({ ok: true });
+  }
+
+  if (action === "stop_timbratura") {
+    const rowKind = String(body?.row_kind || "").trim().toUpperCase();
+    const rowRefId = String(body?.row_ref_id || "").trim();
+    if (!isValidRowKind(rowKind) || !isUuidLike(rowRefId)) {
+      return NextResponse.json({ error: "row_kind/row_ref_id non validi" }, { status: 400 });
+    }
+
+    const { data: openTimbratura, error: openErr } = await supabaseAdmin
+      .from("cronoprogramma_timbrature")
+      .select("id, started_at")
+      .eq("row_kind", rowKind)
+      .eq("row_ref_id", rowRefId)
+      .eq("operatore_id", operatore.id)
+      .eq("stato", "IN_CORSO")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (openErr) {
+      return NextResponse.json({ error: openErr.message }, { status: 500 });
+    }
+    if (!openTimbratura?.id) {
+      return NextResponse.json({ error: "Nessuna timbratura aperta per questa attività" }, { status: 404 });
+    }
+
+    const now = new Date();
+    const startedAt = new Date(String(openTimbratura.started_at || ""));
+    const durationMinutes = Number.isFinite(startedAt.getTime())
+      ? Math.max(0, Math.round((now.getTime() - startedAt.getTime()) / 60000))
+      : 0;
+
+    const { error } = await supabaseAdmin
+      .from("cronoprogramma_timbrature")
+      .update({
+        ended_at: now.toISOString(),
+        stato: "COMPLETATA",
+        durata_effettiva_minuti: durationMinutes,
+        updated_at: now.toISOString(),
+      })
+      .eq("id", openTimbratura.id);
+
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+
+    return NextResponse.json({ ok: true, durata_effettiva_minuti: durationMinutes });
   }
 
   if (action === "add_comment") {
