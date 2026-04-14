@@ -7,6 +7,7 @@ import ConfigMancante from "@/components/ConfigMancante";
 import CronoprogrammaPanel from "@/components/cronoprogramma/CronoprogrammaPanel";
 import Toast from "@/components/Toast";
 import { calcM2FromDimensioni } from "@/lib/parseDimensioni";
+import { getProjectPresentation } from "@/lib/projectStatus";
 import { isSupabaseConfigured, supabase } from "@/lib/supabaseClient";
 import { dbFrom } from "@/lib/clientDbBroker";
 import { isTimelineRowOverdueNotDone } from "@/lib/cronoprogrammaStatus";
@@ -88,6 +89,22 @@ const EMPTY_DOCUMENTI_ALERT_SUMMARY: DocumentiAlertSummary = {
 
 function getProjectStatusBadge(value?: string | null) {
   const raw = String(value || "").trim().toUpperCase();
+  if (raw === "NOLEGGIO_IN_CORSO") {
+    return {
+      label: "NOLEGGIO_IN_CORSO",
+      border: "#93c5fd",
+      background: "#dbeafe",
+      color: "#1d4ed8",
+    };
+  }
+  if (raw === "IN_LAVORAZIONE" || raw === "IN_CORSO" || raw === "IN ATTESA") {
+    return {
+      label: raw === "IN_CORSO" ? "IN_LAVORAZIONE" : raw,
+      border: DASHBOARD_BADGE_COLORS.statusDueSoon.border,
+      background: DASHBOARD_BADGE_COLORS.statusDueSoon.background,
+      color: DASHBOARD_BADGE_COLORS.statusDueSoon.color,
+    };
+  }
   if (raw === "COMPLETATO" || raw === "CHIUSO") {
     return {
       label: raw,
@@ -102,14 +119,6 @@ function getProjectStatusBadge(value?: string | null) {
       border: DASHBOARD_BADGE_COLORS.statusExpired.border,
       background: DASHBOARD_BADGE_COLORS.statusExpired.background,
       color: DASHBOARD_BADGE_COLORS.statusExpired.color,
-    };
-  }
-  if (raw === "IN_CORSO" || raw === "IN ATTESA") {
-    return {
-      label: raw,
-      border: DASHBOARD_BADGE_COLORS.statusDueSoon.border,
-      background: DASHBOARD_BADGE_COLORS.statusDueSoon.background,
-      color: DASHBOARD_BADGE_COLORS.statusDueSoon.color,
     };
   }
   return {
@@ -564,6 +573,7 @@ export function DashboardCockpitPage({
   showCronoSection = true,
   showProjectsSection = false,
   enableProjectFilters = false,
+  projectsView = "compact",
   pageTitle = "AT SYSTEM",
   pageSubtitle = "Cockpit operativo",
 }: {
@@ -572,6 +582,7 @@ export function DashboardCockpitPage({
   showCronoSection?: boolean;
   showProjectsSection?: boolean;
   enableProjectFilters?: boolean;
+  projectsView?: "compact" | "extended";
   pageTitle?: string;
   pageSubtitle?: string;
 } = {}) {
@@ -2457,6 +2468,24 @@ export function DashboardCockpitPage({
                 >
                   {dashboardProjectRows.length} progetti
                 </div>
+                {projectsView === "compact" ? (
+                  <Link
+                    href="/dashboard-estesa"
+                    style={{
+                      fontSize: 12,
+                      fontWeight: 800,
+                      color: "#1d4ed8",
+                      textDecoration: "none",
+                      padding: "6px 10px",
+                      borderRadius: 999,
+                      border: "1px solid #bfdbfe",
+                      background: "#eff6ff",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    Apri dashboard estesa
+                  </Link>
+                ) : null}
                 <div
                   style={{
                     flex: 1,
@@ -2560,148 +2589,341 @@ export function DashboardCockpitPage({
                     Nessun progetto trovato con i filtri correnti
                   </div>
                 ) : null}
-                {filteredDashboardProjectRows.map((item) => {
-                  const projectStatus = getProjectStatusBadge(item.stato_progetto);
-                  const keyDate = item.data_tassativa || item.data_prevista;
-                  return (
-                    <Link
-                      key={item.id}
-                      href={`/checklists/${item.id}`}
-                      style={{
-                        display: "grid",
-                        gridTemplateColumns: "minmax(0, 1fr) auto",
-                        gap: 14,
-                        alignItems: "center",
-                        padding: "12px 14px",
-                        borderRadius: 14,
-                        border: "1px solid #e2e8f0",
-                        background: "white",
-                        color: "inherit",
-                        textDecoration: "none",
-                        boxShadow: "0 1px 2px rgba(15, 23, 42, 0.06)",
-                      }}
-                    >
-                      <div style={{ minWidth: 0 }}>
-                        <div
-                          style={{
-                            display: "flex",
-                            gap: 8,
-                            flexWrap: "wrap",
-                            alignItems: "center",
-                          }}
-                        >
-                          <span style={{ fontSize: 17, fontWeight: 800, color: "#0f172a" }}>
-                            {item.nome_checklist || "—"}
-                          </span>
-                          <span style={{ fontSize: 12, color: "#64748b" }}>{item.cliente || "—"}</span>
+                {projectsView === "extended" ? (
+                  <div
+                    style={{
+                      overflowX: "auto",
+                      borderRadius: 14,
+                      border: "1px solid #e2e8f0",
+                      background: "white",
+                      boxShadow: "0 1px 2px rgba(15, 23, 42, 0.06)",
+                    }}
+                  >
+                    <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 980 }}>
+                      <thead>
+                        <tr style={{ background: "#f8fafc" }}>
+                          {["Cliente", "Progetto", "Proforma", "PO", "Data chiave", "Stato", "Criticita", "Azioni"].map((label) => (
+                            <th
+                              key={label}
+                              style={{
+                                padding: "12px 14px",
+                                borderBottom: "1px solid #e2e8f0",
+                                textAlign: label === "Azioni" ? "right" : "left",
+                                fontSize: 12,
+                                fontWeight: 800,
+                                color: "#475569",
+                                whiteSpace: "nowrap",
+                              }}
+                            >
+                              {label}
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filteredDashboardProjectRows.map((item) => {
+                          const projectStatus = getProjectStatusBadge(item.stato_progetto);
+                          const keyDate = item.data_tassativa || item.data_prevista;
+                          return (
+                            <tr key={item.id} style={{ borderBottom: "1px solid #e2e8f0" }}>
+                              <td style={{ padding: "12px 14px", verticalAlign: "top", fontSize: 14, color: "#334155" }}>
+                                {item.cliente || "—"}
+                              </td>
+                              <td style={{ padding: "12px 14px", verticalAlign: "top" }}>
+                                <div style={{ fontSize: 15, fontWeight: 800, color: "#0f172a" }}>
+                                  {item.nome_checklist || "—"}
+                                </div>
+                                <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 6 }}>
+                                  {item.tipo_impianto ? (
+                                    <span style={{ padding: "4px 8px", borderRadius: 999, background: "#f8fafc", border: "1px solid #e2e8f0", fontSize: 12, color: "#64748b" }}>
+                                      {item.tipo_impianto}
+                                    </span>
+                                  ) : null}
+                                  {item.impianto_codice ? (
+                                    <span style={{ padding: "4px 8px", borderRadius: 999, background: "#f8fafc", border: "1px solid #e2e8f0", fontSize: 12, color: "#64748b" }}>
+                                      {item.impianto_codice}
+                                    </span>
+                                  ) : null}
+                                </div>
+                              </td>
+                              <td style={{ padding: "12px 14px", verticalAlign: "top", fontSize: 14, color: "#334155" }}>
+                                {item.proforma || "—"}
+                              </td>
+                              <td style={{ padding: "12px 14px", verticalAlign: "top", fontSize: 14, color: "#334155" }}>
+                                {item.po || "—"}
+                              </td>
+                              <td style={{ padding: "12px 14px", verticalAlign: "top", fontSize: 14, color: "#334155", whiteSpace: "nowrap" }}>
+                                {keyDate ? new Date(keyDate).toLocaleDateString("it-IT") : "—"}
+                              </td>
+                              <td style={{ padding: "12px 14px", verticalAlign: "top" }}>
+                                <span
+                                  style={{
+                                    padding: "5px 10px",
+                                    borderRadius: 999,
+                                    border: `1px solid ${projectStatus.border}`,
+                                    background: projectStatus.background,
+                                    color: projectStatus.color,
+                                    fontSize: 12,
+                                    fontWeight: 800,
+                                    whiteSpace: "nowrap",
+                                  }}
+                                >
+                                  {projectStatus.label}
+                                </span>
+                              </td>
+                              <td style={{ padding: "12px 14px", verticalAlign: "top" }}>
+                                <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                                  {item.deadlineFlags.licenza === "SCADUTA" ? (
+                                    <span style={{ padding: "4px 8px", borderRadius: 999, background: DASHBOARD_BADGE_COLORS.statusExpired.background, border: `1px solid ${DASHBOARD_BADGE_COLORS.statusExpired.border}`, color: DASHBOARD_BADGE_COLORS.statusExpired.color, fontWeight: 800, fontSize: 12 }}>
+                                      Lic scad.
+                                    </span>
+                                  ) : item.deadlineFlags.licenza === "IMMINENTE" ? (
+                                    <span style={{ padding: "4px 8px", borderRadius: 999, background: DASHBOARD_BADGE_COLORS.statusDueSoon.background, border: `1px solid ${DASHBOARD_BADGE_COLORS.statusDueSoon.border}`, color: DASHBOARD_BADGE_COLORS.statusDueSoon.color, fontWeight: 800, fontSize: 12 }}>
+                                      Lic immin.
+                                    </span>
+                                  ) : null}
+                                  {item.deadlineFlags.garanzia === "SCADUTA" ? (
+                                    <span style={{ padding: "4px 8px", borderRadius: 999, background: DASHBOARD_BADGE_COLORS.statusExpired.background, border: `1px solid ${DASHBOARD_BADGE_COLORS.statusExpired.border}`, color: DASHBOARD_BADGE_COLORS.statusExpired.color, fontWeight: 800, fontSize: 12 }}>
+                                      Gar scad.
+                                    </span>
+                                  ) : item.deadlineFlags.garanzia === "IMMINENTE" ? (
+                                    <span style={{ padding: "4px 8px", borderRadius: 999, background: DASHBOARD_BADGE_COLORS.statusDueSoon.background, border: `1px solid ${DASHBOARD_BADGE_COLORS.statusDueSoon.border}`, color: DASHBOARD_BADGE_COLORS.statusDueSoon.color, fontWeight: 800, fontSize: 12 }}>
+                                      Gar immin.
+                                    </span>
+                                  ) : null}
+                                  {item.deadlineFlags.licenza == null && item.deadlineFlags.garanzia == null ? (
+                                    <span style={{ fontSize: 12, color: "#94a3b8" }}>—</span>
+                                  ) : null}
+                                </div>
+                              </td>
+                              <td style={{ padding: "12px 14px", verticalAlign: "top", textAlign: "right" }}>
+                                <div style={{ display: "inline-flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                                  <Link
+                                    href={`/checklists/${item.id}`}
+                                    style={{
+                                      padding: "8px 12px",
+                                      borderRadius: 10,
+                                      border: "1px solid #cbd5e1",
+                                      background: "#fff",
+                                      color: "#0f172a",
+                                      textDecoration: "none",
+                                      fontSize: 12,
+                                      fontWeight: 800,
+                                      whiteSpace: "nowrap",
+                                    }}
+                                  >
+                                    Apri progetto
+                                  </Link>
+                                  <button
+                                    type="button"
+                                    onClick={() => void backupAndDeleteChecklist(item.id)}
+                                    style={{
+                                      padding: "8px 12px",
+                                      borderRadius: 10,
+                                      border: "1px solid #fca5a5",
+                                      background: "#fff1f2",
+                                      color: "#b91c1c",
+                                      fontSize: 12,
+                                      fontWeight: 800,
+                                      cursor: "pointer",
+                                      whiteSpace: "nowrap",
+                                    }}
+                                  >
+                                    Elimina progetto
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : (
+                  filteredDashboardProjectRows.map((item) => {
+                    const projectPresentation = getProjectPresentation({
+                      stato_progetto: item.stato_progetto,
+                      pct_complessivo: item.pct_complessivo,
+                      noleggio_vendita: item.noleggio_vendita,
+                      data_disinstallazione: item.data_disinstallazione,
+                    });
+                    const projectStatus = getProjectStatusBadge(projectPresentation.displayStatus);
+                    const keyDate = item.data_tassativa || item.data_prevista;
+                    return (
+                      <Link
+                        key={item.id}
+                        href={`/checklists/${item.id}`}
+                        style={{
+                          display: "grid",
+                          gridTemplateColumns: "minmax(0, 1fr) auto",
+                          gap: 14,
+                          alignItems: "center",
+                          padding: "12px 14px",
+                          borderRadius: 14,
+                          border: "1px solid #e2e8f0",
+                          background: "white",
+                          color: "inherit",
+                          textDecoration: "none",
+                          boxShadow: "0 1px 2px rgba(15, 23, 42, 0.06)",
+                        }}
+                      >
+                        <div style={{ minWidth: 0 }}>
+                          <div
+                            style={{
+                              display: "flex",
+                              gap: 8,
+                              flexWrap: "wrap",
+                              alignItems: "center",
+                            }}
+                          >
+                            <span style={{ fontSize: 17, fontWeight: 800, color: "#0f172a" }}>
+                              {item.nome_checklist || "—"}
+                            </span>
+                            <span style={{ fontSize: 12, color: "#64748b" }}>{item.cliente || "—"}</span>
+                            <span
+                              style={{
+                                padding: "4px 8px",
+                                borderRadius: 999,
+                                background:
+                                  projectPresentation.projectKind === "NOLEGGIO" ? "#eff6ff" : "#f8fafc",
+                                border:
+                                  projectPresentation.projectKind === "NOLEGGIO"
+                                    ? "1px solid #bfdbfe"
+                                    : "1px solid #e2e8f0",
+                                color:
+                                  projectPresentation.projectKind === "NOLEGGIO" ? "#1d4ed8" : "#64748b",
+                                fontSize: 11,
+                                fontWeight: 800,
+                                whiteSpace: "nowrap",
+                              }}
+                            >
+                              {projectPresentation.projectKind}
+                            </span>
+                            {projectPresentation.isNoleggioInCorso ? (
+                              <span
+                                style={{
+                                  padding: "4px 8px",
+                                  borderRadius: 999,
+                                  background: "#dbeafe",
+                                  border: "1px solid #93c5fd",
+                                  color: "#1d4ed8",
+                                  fontSize: 11,
+                                  fontWeight: 800,
+                                  whiteSpace: "nowrap",
+                                }}
+                              >
+                                NOLEGGIO_IN_CORSO
+                              </span>
+                            ) : null}
+                          </div>
+                          <div
+                            style={{
+                              display: "flex",
+                              flexWrap: "wrap",
+                              gap: 8,
+                              marginTop: 8,
+                              fontSize: 12,
+                              color: "#64748b",
+                            }}
+                          >
+                            {item.proforma ? (
+                              <span style={{ padding: "4px 8px", borderRadius: 999, background: "#f8fafc", border: "1px solid #e2e8f0" }}>
+                                Proforma: {item.proforma}
+                              </span>
+                            ) : null}
+                            {item.po ? (
+                              <span style={{ padding: "4px 8px", borderRadius: 999, background: "#f8fafc", border: "1px solid #e2e8f0" }}>
+                                PO: {item.po}
+                              </span>
+                            ) : null}
+                            <span style={{ padding: "4px 8px", borderRadius: 999, background: "#f8fafc", border: "1px solid #e2e8f0" }}>
+                              Data chiave:{" "}
+                              {keyDate ? new Date(keyDate).toLocaleDateString("it-IT") : "—"}
+                            </span>
+                            {item.tipo_impianto ? (
+                              <span style={{ padding: "4px 8px", borderRadius: 999, background: "#f8fafc", border: "1px solid #e2e8f0" }}>
+                                {item.tipo_impianto}
+                              </span>
+                            ) : null}
+                            {item.deadlineFlags.licenza === "SCADUTA" ? (
+                              <span
+                                style={{
+                                  padding: "4px 8px",
+                                  borderRadius: 999,
+                                  background: DASHBOARD_BADGE_COLORS.statusExpired.background,
+                                  border: `1px solid ${DASHBOARD_BADGE_COLORS.statusExpired.border}`,
+                                  color: DASHBOARD_BADGE_COLORS.statusExpired.color,
+                                  fontWeight: 800,
+                                }}
+                              >
+                                Lic scad.
+                              </span>
+                            ) : item.deadlineFlags.licenza === "IMMINENTE" ? (
+                              <span
+                                style={{
+                                  padding: "4px 8px",
+                                  borderRadius: 999,
+                                  background: DASHBOARD_BADGE_COLORS.statusDueSoon.background,
+                                  border: `1px solid ${DASHBOARD_BADGE_COLORS.statusDueSoon.border}`,
+                                  color: DASHBOARD_BADGE_COLORS.statusDueSoon.color,
+                                  fontWeight: 800,
+                                }}
+                              >
+                                Lic immin.
+                              </span>
+                            ) : null}
+                            {item.deadlineFlags.garanzia === "SCADUTA" ? (
+                              <span
+                                style={{
+                                  padding: "4px 8px",
+                                  borderRadius: 999,
+                                  background: DASHBOARD_BADGE_COLORS.statusExpired.background,
+                                  border: `1px solid ${DASHBOARD_BADGE_COLORS.statusExpired.border}`,
+                                  color: DASHBOARD_BADGE_COLORS.statusExpired.color,
+                                  fontWeight: 800,
+                                }}
+                              >
+                                Gar scad.
+                              </span>
+                            ) : item.deadlineFlags.garanzia === "IMMINENTE" ? (
+                              <span
+                                style={{
+                                  padding: "4px 8px",
+                                  borderRadius: 999,
+                                  background: DASHBOARD_BADGE_COLORS.statusDueSoon.background,
+                                  border: `1px solid ${DASHBOARD_BADGE_COLORS.statusDueSoon.border}`,
+                                  color: DASHBOARD_BADGE_COLORS.statusDueSoon.color,
+                                  fontWeight: 800,
+                                }}
+                              >
+                                Gar immin.
+                              </span>
+                            ) : null}
+                          </div>
                         </div>
-                        <div
-                          style={{
-                            display: "flex",
-                            flexWrap: "wrap",
-                            gap: 8,
-                            marginTop: 8,
-                            fontSize: 12,
-                            color: "#64748b",
-                          }}
-                        >
-                          {item.proforma ? (
-                            <span style={{ padding: "4px 8px", borderRadius: 999, background: "#f8fafc", border: "1px solid #e2e8f0" }}>
-                              Proforma: {item.proforma}
-                            </span>
-                          ) : null}
-                          {item.po ? (
-                            <span style={{ padding: "4px 8px", borderRadius: 999, background: "#f8fafc", border: "1px solid #e2e8f0" }}>
-                              PO: {item.po}
-                            </span>
-                          ) : null}
-                          <span style={{ padding: "4px 8px", borderRadius: 999, background: "#f8fafc", border: "1px solid #e2e8f0" }}>
-                            Data chiave:{" "}
-                            {keyDate ? new Date(keyDate).toLocaleDateString("it-IT") : "—"}
+                        <div style={{ display: "grid", justifyItems: "end", gap: 8 }}>
+                          <span
+                            style={{
+                              padding: "5px 10px",
+                              borderRadius: 999,
+                              border: `1px solid ${projectStatus.border}`,
+                              background: projectStatus.background,
+                              color: projectStatus.color,
+                              fontSize: 12,
+                              fontWeight: 800,
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            {projectStatus.label}
                           </span>
-                          {item.tipo_impianto ? (
-                            <span style={{ padding: "4px 8px", borderRadius: 999, background: "#f8fafc", border: "1px solid #e2e8f0" }}>
-                              {item.tipo_impianto}
-                            </span>
-                          ) : null}
-                          {item.deadlineFlags.licenza === "SCADUTA" ? (
-                            <span
-                              style={{
-                                padding: "4px 8px",
-                                borderRadius: 999,
-                                background: DASHBOARD_BADGE_COLORS.statusExpired.background,
-                                border: `1px solid ${DASHBOARD_BADGE_COLORS.statusExpired.border}`,
-                                color: DASHBOARD_BADGE_COLORS.statusExpired.color,
-                                fontWeight: 800,
-                              }}
-                            >
-                              Lic scad.
-                            </span>
-                          ) : item.deadlineFlags.licenza === "IMMINENTE" ? (
-                            <span
-                              style={{
-                                padding: "4px 8px",
-                                borderRadius: 999,
-                                background: DASHBOARD_BADGE_COLORS.statusDueSoon.background,
-                                border: `1px solid ${DASHBOARD_BADGE_COLORS.statusDueSoon.border}`,
-                                color: DASHBOARD_BADGE_COLORS.statusDueSoon.color,
-                                fontWeight: 800,
-                              }}
-                            >
-                              Lic immin.
-                            </span>
-                          ) : null}
-                          {item.deadlineFlags.garanzia === "SCADUTA" ? (
-                            <span
-                              style={{
-                                padding: "4px 8px",
-                                borderRadius: 999,
-                                background: DASHBOARD_BADGE_COLORS.statusExpired.background,
-                                border: `1px solid ${DASHBOARD_BADGE_COLORS.statusExpired.border}`,
-                                color: DASHBOARD_BADGE_COLORS.statusExpired.color,
-                                fontWeight: 800,
-                              }}
-                            >
-                              Gar scad.
-                            </span>
-                          ) : item.deadlineFlags.garanzia === "IMMINENTE" ? (
-                            <span
-                              style={{
-                                padding: "4px 8px",
-                                borderRadius: 999,
-                                background: DASHBOARD_BADGE_COLORS.statusDueSoon.background,
-                                border: `1px solid ${DASHBOARD_BADGE_COLORS.statusDueSoon.border}`,
-                                color: DASHBOARD_BADGE_COLORS.statusDueSoon.color,
-                                fontWeight: 800,
-                              }}
-                            >
-                              Gar immin.
-                            </span>
-                          ) : null}
+                          <span style={{ fontSize: 12, fontWeight: 700, color: "#94a3b8", whiteSpace: "nowrap" }}>
+                            Apri progetto →
+                          </span>
                         </div>
-                      </div>
-                      <div style={{ display: "grid", justifyItems: "end", gap: 8 }}>
-                        <span
-                          style={{
-                            padding: "5px 10px",
-                            borderRadius: 999,
-                            border: `1px solid ${projectStatus.border}`,
-                            background: projectStatus.background,
-                            color: projectStatus.color,
-                            fontSize: 12,
-                            fontWeight: 800,
-                            whiteSpace: "nowrap",
-                          }}
-                        >
-                          {projectStatus.label}
-                        </span>
-                        <span style={{ fontSize: 12, fontWeight: 700, color: "#94a3b8", whiteSpace: "nowrap" }}>
-                          Apri progetto →
-                        </span>
-                      </div>
-                    </Link>
-                  );
-                })}
+                      </Link>
+                    );
+                  })
+                )}
               </div>
             </div>
           ) : null}

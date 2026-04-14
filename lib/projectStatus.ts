@@ -6,6 +6,16 @@ export type RawProjectStatus =
   | "OPERATIVO"
   | "CHIUSO";
 
+export type ProjectKind = "VENDITA" | "NOLEGGIO";
+export type ProjectDisplayStatus =
+  | "IN_LAVORAZIONE"
+  | "CONSEGNATO"
+  | "NOLEGGIO_IN_CORSO"
+  | "RIENTRATO"
+  | "SOSPESO"
+  | "OPERATIVO"
+  | "CHIUSO";
+
 type TaskLike = {
   stato?: string | null;
 };
@@ -15,6 +25,24 @@ function normalizeUpper(value?: string | null) {
     .trim()
     .toUpperCase()
     .replace(/\s+/g, "_");
+}
+
+function parseLocalDay(value?: string | null): Date | null {
+  if (!value) return null;
+  const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(value);
+  if (m) {
+    const dt = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+    dt.setHours(0, 0, 0, 0);
+    return Number.isFinite(dt.getTime()) ? dt : null;
+  }
+  const dt = new Date(value);
+  if (!Number.isFinite(dt.getTime())) return null;
+  dt.setHours(0, 0, 0, 0);
+  return dt;
+}
+
+function isNoleggioValue(value?: string | null) {
+  return normalizeUpper(value) === "NOLEGGIO";
 }
 
 export function normalizeProjectStatusValue(value?: string | null): RawProjectStatus | null {
@@ -70,4 +98,43 @@ export function normalizeProjectStatusForStorage(
 
   if (raw === "CHIUSO" && !isClosed) return "OPERATIVO";
   return raw;
+}
+
+export function getProjectPresentation(input: {
+  stato_progetto?: string | null;
+  checklistCompleted?: boolean;
+  pct_complessivo?: number | null;
+  noleggio_vendita?: string | null;
+  data_disinstallazione?: string | null;
+}): {
+  effectiveStatus: RawProjectStatus | null;
+  displayStatus: ProjectDisplayStatus | null;
+  projectKind: ProjectKind;
+  isNoleggioInCorso: boolean;
+} {
+  const effectiveStatus = getEffectiveProjectStatus(input);
+  const raw = normalizeUpper(input.stato_progetto);
+  const projectKind: ProjectKind = isNoleggioValue(input.noleggio_vendita) ? "NOLEGGIO" : "VENDITA";
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const disinstallazione = parseLocalDay(input.data_disinstallazione);
+  const isNoleggioInCorso =
+    projectKind === "NOLEGGIO" &&
+    effectiveStatus !== "CHIUSO" &&
+    raw !== "ANNULLATO" &&
+    (disinstallazione == null || disinstallazione >= today) &&
+    (effectiveStatus === "CONSEGNATO" || raw === "NOLEGGIO_ATTIVO" || raw === "NOLEGGIO_IN_CORSO");
+
+  const displayStatus: ProjectDisplayStatus | null = isNoleggioInCorso
+    ? "NOLEGGIO_IN_CORSO"
+    : effectiveStatus === "IN_CORSO"
+      ? "IN_LAVORAZIONE"
+      : effectiveStatus;
+
+  return {
+    effectiveStatus,
+    displayStatus,
+    projectKind,
+    isNoleggioInCorso,
+  };
 }
