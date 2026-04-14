@@ -8,6 +8,7 @@ import {
 export type InterventoOperativiMeta = {
   data_inizio?: string | null;
   durata_giorni?: number | null;
+  durata_prevista_minuti?: number | null;
   modalita_attivita?: string | null;
   personale_previsto?: string | null;
   personale_ids?: string[] | null;
@@ -56,12 +57,30 @@ export const EMPTY_INTERVENTO_OPERATIVI: InterventoOperativiFormState = {
   commerciale_art_tech_contatto: "",
 };
 
+function trimTrailingZeros(value: number) {
+  return String(Math.round(value * 100) / 100).replace(/\.0+$/, "").replace(/(\.\d*[1-9])0+$/, "$1");
+}
+
+export function hoursInputToMinutes(value?: string | number | null) {
+  const hours = Number(String(value ?? "").replace(",", "."));
+  if (!Number.isFinite(hours) || hours < 0) return null;
+  return Math.round(hours * 60);
+}
+
+function minutesToHoursInput(value?: number | null) {
+  if (!Number.isFinite(Number(value)) || Number(value) < 0) return "";
+  return trimTrailingZeros(Number(value) / 60);
+}
+
 export function extractInterventoOperativi(
   meta?: InterventoOperativiMeta | null
 ): InterventoOperativiFormState {
   return {
     data_inizio: normalizeOperativiDate(meta?.data_inizio),
-    durata_giorni: durationToInputValue(meta?.durata_giorni),
+    durata_giorni:
+      Number.isFinite(Number(meta?.durata_prevista_minuti)) && Number(meta?.durata_prevista_minuti) >= 0
+        ? minutesToHoursInput(Number(meta?.durata_prevista_minuti))
+        : durationToInputValue(meta?.durata_giorni),
     modalita_attivita: String(meta?.modalita_attivita || ""),
     personale_previsto: String(meta?.personale_previsto || ""),
     personale_ids: Array.isArray(meta?.personale_ids)
@@ -103,6 +122,7 @@ export async function saveInterventoOperativi(
   rowRefId: string,
   form: InterventoOperativiFormState
 ) {
+  const durataPrevistaMinuti = hoursInputToMinutes(form.durata_giorni);
   const res = await fetch("/api/cronoprogramma", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -111,7 +131,19 @@ export async function saveInterventoOperativi(
       action: "set_operativi",
       row_kind: "INTERVENTO",
       row_ref_id: rowRefId,
-      ...form,
+      data_inizio: form.data_inizio,
+      durata_prevista_minuti: durataPrevistaMinuti,
+      modalita_attivita: form.modalita_attivita,
+      personale_previsto: form.personale_previsto,
+      personale_ids: form.personale_ids,
+      mezzi: form.mezzi,
+      descrizione_attivita: form.descrizione_attivita,
+      indirizzo: form.indirizzo,
+      orario: form.orario,
+      referente_cliente_nome: form.referente_cliente_nome,
+      referente_cliente_contatto: form.referente_cliente_contatto,
+      commerciale_art_tech_nome: form.commerciale_art_tech_nome,
+      commerciale_art_tech_contatto: form.commerciale_art_tech_contatto,
     }),
   });
   const data = await res.json().catch(() => ({}));

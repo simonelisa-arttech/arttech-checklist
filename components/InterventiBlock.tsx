@@ -11,7 +11,6 @@ import {
   getInterventoLifecycleStatus,
   type InterventoRow,
 } from "@/lib/interventi";
-import { computeOperativiEndDate } from "@/lib/operativiSchedule";
 
 export type InterventiChecklistOption = {
   id: string;
@@ -277,10 +276,6 @@ function renderOperativiFields(
   const showModalitaAttivita = Boolean(options?.showModalitaAttivita);
   const isRemote = form.modalitaAttivita === "REMOTO";
   const fallbackStartDate = form.dataTassativa || form.data;
-  const computedEndDate = computeOperativiEndDate(
-    form.dataInizio || fallbackStartDate,
-    form.durataGiorni
-  );
   return (
     <div style={{ marginTop: 10 }}>
       <div style={{ display: "grid", gap: 8, marginBottom: 8 }}>
@@ -312,18 +307,18 @@ function renderOperativiFields(
           ) : null}
         </div>
         <div>
-          <div style={{ fontSize: 12, marginBottom: 4 }}>Durata giorni</div>
+          <div style={{ fontSize: 12, marginBottom: 4 }}>Ore previste</div>
           <input
             type="number"
-            min={1}
-            step={1}
+            min={0}
+            step={0.5}
             value={form.durataGiorni}
             onChange={(e) => setForm({ ...form, durataGiorni: e.target.value })}
-            placeholder="1"
+            placeholder="2"
             style={{ width: "100%", padding: 8 }}
           />
           <div style={{ marginTop: 4, fontSize: 11, opacity: 0.7 }}>
-            Data fine: {computedEndDate ? new Date(computedEndDate).toLocaleDateString("it-IT") : "—"}
+            Salvato come durata prevista in minuti.
           </div>
         </div>
         <div>

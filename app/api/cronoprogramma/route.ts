@@ -13,6 +13,7 @@ type RowRef = { row_kind: RowKind; row_ref_id: string };
 type OperativiInput = {
   data_inizio?: string | null;
   durata_giorni?: string | number | null;
+  durata_prevista_minuti?: string | number | null;
   modalita_attivita?: string | null;
   personale_previsto?: string | null;
   personale_ids?: string[] | null;
@@ -59,6 +60,14 @@ function cleanModalitaAttivita(value: unknown) {
   return normalized === "ONSITE" || normalized === "REMOTO" ? normalized : null;
 }
 
+function cleanNonNegativeInteger(value: unknown) {
+  const normalized = String(value ?? "").trim().replace(",", ".");
+  if (!normalized) return null;
+  const parsed = Number(normalized);
+  if (!Number.isFinite(parsed) || parsed < 0) return null;
+  return Math.round(parsed);
+}
+
 function normalizeUpper(value: unknown) {
   return String(value || "").trim().toUpperCase();
 }
@@ -85,7 +94,12 @@ function cleanUuidArray(values: unknown) {
 function toOperativiPayload(input: OperativiInput) {
   return {
     data_inizio: normalizeOperativiDate(input?.data_inizio) || null,
-    durata_giorni: normalizeOperativiDuration(input?.durata_giorni),
+    ...(input?.durata_giorni !== undefined
+      ? { durata_giorni: normalizeOperativiDuration(input?.durata_giorni) }
+      : {}),
+    ...(input?.durata_prevista_minuti !== undefined
+      ? { durata_prevista_minuti: cleanNonNegativeInteger(input?.durata_prevista_minuti) }
+      : {}),
     modalita_attivita: cleanModalitaAttivita(input?.modalita_attivita),
     personale_previsto: cleanText(input?.personale_previsto),
     personale_ids: cleanUuidArray(input?.personale_ids),
@@ -111,6 +125,10 @@ function mapMetaRow(row: any) {
     durata_giorni:
       Number.isFinite(Number(row?.durata_giorni)) && Number(row?.durata_giorni) > 0
         ? Number(row?.durata_giorni)
+        : null,
+    durata_prevista_minuti:
+      Number.isFinite(Number(row?.durata_prevista_minuti)) && Number(row?.durata_prevista_minuti) >= 0
+        ? Number(row?.durata_prevista_minuti)
         : null,
     modalita_attivita: row?.modalita_attivita || null,
     personale_previsto: row?.personale_previsto || null,
