@@ -313,13 +313,14 @@ export default function OperatoreAttivitaPage() {
         for (const row of timbratureRes.data || []) {
           const key = `${String((row as any).row_kind || "")}:${String((row as any).row_ref_id || "")}`;
           if (!wanted.has(key)) continue;
-          if (nextTimeBudget[key]?.realeMinuti == null) {
+          const durationMinutes =
+            Number.isFinite(Number((row as any).durata_effettiva_minuti)) && Number((row as any).durata_effettiva_minuti) >= 0
+              ? Number((row as any).durata_effettiva_minuti)
+              : null;
+          if (durationMinutes != null) {
             nextTimeBudget[key] = {
               ...(nextTimeBudget[key] || { stimatoMinuti: null, realeMinuti: null }),
-              realeMinuti:
-                Number.isFinite(Number((row as any).durata_effettiva_minuti)) && Number((row as any).durata_effettiva_minuti) >= 0
-                  ? Number((row as any).durata_effettiva_minuti)
-                  : 0,
+              realeMinuti: (nextTimeBudget[key]?.realeMinuti ?? 0) + durationMinutes,
             };
           }
           if (nextTimbraturaState[key] === "NON_INIZIATA") {

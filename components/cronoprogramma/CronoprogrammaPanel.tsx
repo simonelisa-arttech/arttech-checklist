@@ -336,13 +336,15 @@ export default function CronoprogrammaPanel({
 
       for (const row of timbratureRes.data || []) {
         const key = `${String((row as any).row_kind || "")}:${String((row as any).row_ref_id || "")}`;
-        if (!wanted.has(key) || next[key]?.realeMinuti != null) continue;
+        if (!wanted.has(key)) continue;
+        const durationMinutes =
+          Number.isFinite(Number((row as any).durata_effettiva_minuti)) && Number((row as any).durata_effettiva_minuti) >= 0
+            ? Number((row as any).durata_effettiva_minuti)
+            : null;
+        if (durationMinutes == null) continue;
         next[key] = {
           ...(next[key] || { stimatoMinuti: null, realeMinuti: null }),
-          realeMinuti:
-            Number.isFinite(Number((row as any).durata_effettiva_minuti)) && Number((row as any).durata_effettiva_minuti) >= 0
-              ? Number((row as any).durata_effettiva_minuti)
-              : 0,
+          realeMinuti: (next[key]?.realeMinuti ?? 0) + durationMinutes,
         };
       }
 
