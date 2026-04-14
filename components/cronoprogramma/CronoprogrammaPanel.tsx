@@ -7,7 +7,6 @@ import PersonaleMultiSelect from "@/components/PersonaleMultiSelect";
 import SafetyComplianceBadge from "@/components/SafetyComplianceBadge";
 import { isTimelineRowOverdueNotDone } from "@/lib/cronoprogrammaStatus";
 import { formatOperativiDateLabel } from "@/lib/operativiSchedule";
-import { isSupabaseConfigured, supabase } from "@/lib/supabaseClient";
 
 type TimelineRow = any;
 type CronoMeta = any;
@@ -273,15 +272,16 @@ export default function CronoprogrammaPanel({
   const [openConflictKey, setOpenConflictKey] = useState<string | null>(null);
   const [expandedRowKey, setExpandedRowKey] = useState<string | null>(null);
   const [timbraturaStateByKey, setTimbraturaStateByKey] = useState<
-    Record<string, "NON_INIZIATA" | "IN_CORSO" | "COMPLETATA">
+    Record<string, "NON_INIZIATA" | "IN_CORSO" | "IN_PAUSA" | "COMPLETATA">
   >({});
   const [timbraturaLoadingKey, setTimbraturaLoadingKey] = useState<string | null>(null);
   const [timeBudgetByKey, setTimeBudgetByKey] = useState<Record<string, TimeBudgetSummary>>({});
 
   useEffect(() => {
     let active = true;
-    if (!isSupabaseConfigured || filteredSorted.length === 0) {
+    if (filteredSorted.length === 0) {
       setTimeBudgetByKey({});
+      setTimbraturaStateByKey({});
       return;
     }
 
@@ -289,66 +289,66 @@ export default function CronoprogrammaPanel({
       row_kind: String(row.kind || "").trim().toUpperCase(),
       row_ref_id: String(row.row_ref_id || "").trim(),
     }));
-    const rowKinds = Array.from(new Set(rows.map((row) => row.row_kind).filter(Boolean)));
-    const rowRefIds = Array.from(new Set(rows.map((row) => row.row_ref_id).filter(Boolean)));
-    const wanted = new Set(rows.map((row) => `${row.row_kind}:${row.row_ref_id}`));
 
     void (async () => {
-      const [metaRes, timbratureRes] = await Promise.all([
-        supabase
-          .from("cronoprogramma_meta")
-          .select("row_kind,row_ref_id,durata_prevista_minuti")
-          .in("row_kind", rowKinds)
-          .in("row_ref_id", rowRefIds),
-        supabase
-          .from("cronoprogramma_timbrature")
-          .select("row_kind,row_ref_id,durata_effettiva_minuti,created_at")
-          .in("row_kind", rowKinds)
-          .in("row_ref_id", rowRefIds)
-          .order("created_at", { ascending: false }),
-      ]);
-
-      if (!active) return;
-      if (metaRes.error) {
-        console.error("Errore caricamento durata prevista cronoprogramma", metaRes.error);
-      }
-      if (timbratureRes.error) {
-        console.error("Errore caricamento timbrature cronoprogramma", timbratureRes.error);
-      }
-
       const next: Record<string, TimeBudgetSummary> = {};
+      const nextTimbraturaState: Record<string, "NON_INIZIATA" | "IN_CORSO" | "IN_PAUSA" | "COMPLETATA"> = {};
       for (const row of rows) {
         const key = `${row.row_kind}:${row.row_ref_id}`;
         next[key] = { stimatoMinuti: null, realeMinuti: null };
+        nextTimbraturaState[key] = "NON_INIZIATA";
       }
 
-      for (const row of metaRes.data || []) {
-        const key = `${String((row as any).row_kind || "")}:${String((row as any).row_ref_id || "")}`;
-        if (!wanted.has(key)) continue;
-        next[key] = {
-          ...(next[key] || { stimatoMinuti: null, realeMinuti: null }),
-          stimatoMinuti:
-            Number.isFinite(Number((row as any).durata_prevista_minuti)) && Number((row as any).durata_prevista_minuti) >= 0
-              ? Number((row as any).durata_prevista_minuti)
-              : null,
-        };
-      }
+      try {
+        const res = await fetch("/api/cronoprogramma", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({
+            action: "load",
+            rows,
+          }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!active) return;
+        if (!res.ok) {
+          console.error("Errore caricamento riepilogo cronoprogramma", data);
+          setTimeBudgetByKey(next);
+          setTimbraturaStateByKey(nextTimbraturaState);
+          return;
+        }
 
-      for (const row of timbratureRes.data || []) {
-        const key = `${String((row as any).row_kind || "")}:${String((row as any).row_ref_id || "")}`;
-        if (!wanted.has(key)) continue;
-        const durationMinutes =
-          Number.isFinite(Number((row as any).durata_effettiva_minuti)) && Number((row as any).durata_effettiva_minuti) >= 0
-            ? Number((row as any).durata_effettiva_minuti)
-            : null;
-        if (durationMinutes == null) continue;
-        next[key] = {
-          ...(next[key] || { stimatoMinuti: null, realeMinuti: null }),
-          realeMinuti: (next[key]?.realeMinuti ?? 0) + durationMinutes,
-        };
+        const serverBudget = data?.time_budget && typeof data.time_budget === "object" ? data.time_budget : {};
+        for (const [key, value] of Object.entries(serverBudget)) {
+          if (!next[key]) continue;
+          const summary = value as Record<string, unknown>;
+          next[key] = {
+            stimatoMinuti:
+              Number.isFinite(Number(summary?.stimatoMinuti)) && Number(summary?.stimatoMinuti) >= 0
+                ? Number(summary?.stimatoMinuti)
+                : null,
+            realeMinuti:
+              Number.isFinite(Number(summary?.realeMinuti)) && Number(summary?.realeMinuti) >= 0
+                ? Number(summary?.realeMinuti)
+                : null,
+          };
+          const stato = String(summary?.stato || "").trim().toUpperCase();
+          nextTimbraturaState[key] =
+            stato === "IN_CORSO"
+              ? "IN_CORSO"
+              : stato === "IN_PAUSA"
+                ? "IN_PAUSA"
+                : stato === "COMPLETATA"
+                  ? "COMPLETATA"
+                  : "NON_INIZIATA";
+        }
+      } catch (error) {
+        if (!active) return;
+        console.error("Errore caricamento riepilogo cronoprogramma", error);
       }
 
       setTimeBudgetByKey(next);
+      setTimbraturaStateByKey(nextTimbraturaState);
     })();
 
     return () => {
@@ -359,7 +359,7 @@ export default function CronoprogrammaPanel({
   async function handleTimbraturaAction(
     row: TimelineRow,
     key: string,
-    action: "start_timbratura" | "stop_timbratura"
+    action: "start_timbratura" | "pause_timbratura" | "resume_timbratura" | "stop_timbratura"
   ) {
     try {
       setTimbraturaLoadingKey(key);
@@ -380,9 +380,14 @@ export default function CronoprogrammaPanel({
       }
       setTimbraturaStateByKey((prev) => ({
         ...prev,
-        [key]: action === "start_timbratura" ? "IN_CORSO" : "COMPLETATA",
+        [key]:
+          action === "start_timbratura" || action === "resume_timbratura"
+            ? "IN_CORSO"
+            : action === "pause_timbratura"
+              ? "IN_PAUSA"
+              : "COMPLETATA",
       }));
-      if (action === "start_timbratura") {
+      if (action === "start_timbratura" || action === "pause_timbratura" || action === "resume_timbratura") {
         setTimeBudgetByKey((prev) => ({
           ...prev,
           [key]: {
@@ -698,6 +703,9 @@ export default function CronoprogrammaPanel({
                           {timbraturaState === "IN_CORSO"
                             ? renderPill("IN CORSO", BADGE_COLORS.activityRemote, "⏸")
                             : null}
+                          {timbraturaState === "IN_PAUSA"
+                            ? renderPill("IN PAUSA", BADGE_COLORS.statusDueSoon, "⏸")
+                            : null}
                           {timbraturaState === "COMPLETATA"
                             ? renderPill("COMPLETATA", BADGE_COLORS.statusOk, "✓")
                             : null}
@@ -722,6 +730,52 @@ export default function CronoprogrammaPanel({
                               }}
                             >
                               ▶ Inizia
+                            </button>
+                          ) : null}
+                          {timbraturaState === "IN_CORSO" ? (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                void handleTimbraturaAction(r, key, "pause_timbratura");
+                              }}
+                              disabled={timbraturaLoading}
+                              style={{
+                                padding: "6px 10px",
+                                borderRadius: 999,
+                                border: "1px solid #fcd34d",
+                                background: "#fffbeb",
+                                color: "#b45309",
+                                fontSize: 12,
+                                fontWeight: 700,
+                                cursor: timbraturaLoading ? "wait" : "pointer",
+                                opacity: timbraturaLoading ? 0.7 : 1,
+                              }}
+                            >
+                              ⏸ Pausa
+                            </button>
+                          ) : null}
+                          {timbraturaState === "IN_PAUSA" ? (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                void handleTimbraturaAction(r, key, "resume_timbratura");
+                              }}
+                              disabled={timbraturaLoading}
+                              style={{
+                                padding: "6px 10px",
+                                borderRadius: 999,
+                                border: "1px solid #93c5fd",
+                                background: "#dbeafe",
+                                color: "#1d4ed8",
+                                fontSize: 12,
+                                fontWeight: 700,
+                                cursor: timbraturaLoading ? "wait" : "pointer",
+                                opacity: timbraturaLoading ? 0.7 : 1,
+                              }}
+                            >
+                              ▶ Riprendi
                             </button>
                           ) : null}
                           {timbraturaState === "IN_CORSO" ? (

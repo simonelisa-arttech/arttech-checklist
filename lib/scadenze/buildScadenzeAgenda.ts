@@ -425,6 +425,50 @@ function normalizeDateFilter(value?: string | null) {
   return /^\d{4}-\d{2}-\d{2}$/.test(raw) ? raw : null;
 }
 
+function getOptionalColumnError(error: any, optionalColumns: string[]) {
+  const message = String(error?.message || "").toLowerCase();
+  if (!message) return null;
+  return (
+    optionalColumns.find((column) => {
+      const normalized = column.toLowerCase();
+      return (
+        message.includes(normalized) ||
+        message.includes(`column "${normalized}"`) ||
+        message.includes(`'${normalized}'`)
+      );
+    }) || null
+  );
+}
+
+async function selectWithOptionalColumns(
+  supabase: any,
+  table: string,
+  requiredColumns: string[],
+  optionalColumns: string[]
+) {
+  let enabledOptional = [...optionalColumns];
+
+  while (true) {
+    const selectColumns = [...requiredColumns, ...enabledOptional].join(", ");
+    const res = await supabase.from(table).select(selectColumns);
+    const missingColumn = getOptionalColumnError(res.error, enabledOptional);
+    if (!res.error || !missingColumn) {
+      const rows = ((res.data as any[]) || []).map((row) => {
+        const normalized = { ...(row || {}) };
+        for (const column of optionalColumns) {
+          if (!(column in normalized)) normalized[column] = null;
+        }
+        return normalized;
+      });
+      return {
+        data: res.error ? null : rows,
+        error: res.error,
+      };
+    }
+    enabledOptional = enabledOptional.filter((column) => column !== missingColumn);
+  }
+}
+
 export async function buildScadenzeAgenda(
   supabase: any,
   filters: ScadenzeAgendaFilters = {}
@@ -444,12 +488,18 @@ export async function buildScadenzeAgenda(
         "id, cliente, cliente_id, nome_checklist, noleggio_vendita, garanzia_scadenza, garanzia_stato, saas_piano, saas_scadenza, saas_note, saas_tipo"
       ),
     fetchRinnoviRows(supabase),
-    supabase.from("tagliandi").select("id, cliente, checklist_id, scadenza, stato, note, modalita"),
-    supabase
-      .from("licenses")
-      .select(
-        "id, checklist_id, tipo, scadenza, stato, status, note, ref_univoco, telefono, intestatario, intestata_a, gestore, fornitore"
-      ),
+    selectWithOptionalColumns(
+      supabase,
+      "tagliandi",
+      ["id", "cliente", "checklist_id", "scadenza", "stato", "note"],
+      ["modalita"]
+    ),
+    selectWithOptionalColumns(
+      supabase,
+      "licenses",
+      ["id", "checklist_id", "tipo", "scadenza", "note"],
+      ["stato", "status", "ref_univoco", "telefono", "intestatario", "intestata_a", "gestore", "fornitore"]
+    ),
     supabase
       .from("sim_cards")
       .select(

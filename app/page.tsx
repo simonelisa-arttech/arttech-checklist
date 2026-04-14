@@ -1562,22 +1562,24 @@ export function DashboardCockpitPage({
           { ...EMPTY_SCADENZE_BREAKDOWN }
         );
       try {
+        const loadScadenzeSummary = async (days: (typeof scadenzePeriods)[number]) => {
+          const untilDate = new Date(today);
+          untilDate.setDate(untilDate.getDate() + days);
+          const to = toDateInputValue(untilDate);
+          const res = await fetch(`/api/scadenze?from=${from}&to=${to}`, {
+            signal: controller.signal,
+            credentials: "include",
+          });
+          const json = await res.json().catch(() => ({}));
+          if (!res.ok || typeof json?.count !== "number") {
+            throw new Error(String(json?.error || `Errore caricamento scadenze ${days} giorni`));
+          }
+          const rows = Array.isArray(json?.data) ? json.data : [];
+          return [days, { count: json.count, breakdown: buildScadenzeBreakdown(rows), overdueCount: 0 }] as const;
+        };
+
         const summaries = await Promise.all(
-          scadenzePeriods.map(async (days) => {
-            const untilDate = new Date(today);
-            untilDate.setDate(untilDate.getDate() + days);
-            const to = toDateInputValue(untilDate);
-            const res = await fetch(`/api/scadenze?from=${from}&to=${to}`, {
-              signal: controller.signal,
-              credentials: "include",
-            });
-            const json = await res.json().catch(() => ({}));
-            if (!res.ok || typeof json?.count !== "number") {
-              return [days, { count: 0, breakdown: { ...EMPTY_SCADENZE_BREAKDOWN }, overdueCount: 0 }] as const;
-            }
-            const rows = Array.isArray(json?.data) ? json.data : [];
-            return [days, { count: json.count, breakdown: buildScadenzeBreakdown(rows), overdueCount: 0 }] as const;
-          })
+          scadenzePeriods.map((days) => loadScadenzeSummary(days))
         );
         const yesterday = new Date(today);
         yesterday.setDate(yesterday.getDate() - 1);
@@ -1586,6 +1588,9 @@ export function DashboardCockpitPage({
           credentials: "include",
         });
         const overdueJson = await overdueRes.json().catch(() => ({}));
+        if (!overdueRes.ok) {
+          throw new Error(String(overdueJson?.error || "Errore caricamento scadenze scadute"));
+        }
         const overdueRows = overdueRes.ok && Array.isArray(overdueJson?.data) ? overdueJson.data : [];
         const overdueCount = overdueRows.filter((row: any) => isScadenzaNotManaged(row)).length;
         if (!isLatest()) return;
@@ -1618,11 +1623,8 @@ export function DashboardCockpitPage({
       } catch (e: any) {
         if (e?.name === "AbortError" || controller.signal.aborted) return;
         if (!isLatest()) return;
-        setScadenzeByPeriod({
-          7: { count: 0, breakdown: { ...EMPTY_SCADENZE_BREAKDOWN }, overdueCount: 0 },
-          15: { count: 0, breakdown: { ...EMPTY_SCADENZE_BREAKDOWN }, overdueCount: 0 },
-          30: { count: 0, breakdown: { ...EMPTY_SCADENZE_BREAKDOWN }, overdueCount: 0 },
-        });
+        console.error("Errore caricamento KPI scadenze", e);
+        setDashboardLoadError((prev) => prev || String(e?.message || "Errore caricamento scadenze dashboard"));
       }
 
       try {
@@ -1864,11 +1866,6 @@ export function DashboardCockpitPage({
       const message = String(e?.message || "Errore caricamento dashboard");
       console.error("Errore caricamento dashboard", e);
       setDashboardLoadError(message);
-      setScadenzeByPeriod({
-        7: { count: 0, breakdown: { ...EMPTY_SCADENZE_BREAKDOWN }, overdueCount: 0 },
-        15: { count: 0, breakdown: { ...EMPTY_SCADENZE_BREAKDOWN }, overdueCount: 0 },
-        30: { count: 0, breakdown: { ...EMPTY_SCADENZE_BREAKDOWN }, overdueCount: 0 },
-      });
       setInterventiDaChiudereSummary({ count: 0, overdue: 0 });
       setInterventiEntro7Summary({ count: 0, overdue: 0 });
       setFattureDaEmettereCount(0);

@@ -336,7 +336,7 @@ export async function POST(request: Request) {
       .filter((r) => isValidRowKind(r.row_kind) && r.row_ref_id);
 
     if (normalizedRows.length === 0) {
-      return NextResponse.json({ ok: true, meta: {}, comments: {} });
+      return NextResponse.json({ ok: true, meta: {}, comments: {}, time_budget: {} });
     }
 
     const installazioneIds = Array.from(
@@ -402,7 +402,7 @@ export async function POST(request: Request) {
     });
 
     if (normalizedRows.length === 0) {
-      return NextResponse.json({ ok: true, meta: {}, comments: {} });
+      return NextResponse.json({ ok: true, meta: {}, comments: {}, time_budget: {} });
     }
 
     const rowIds = Array.from(new Set(normalizedRows.map((r) => r.row_ref_id)));
@@ -445,6 +445,20 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: commErr.message }, { status: 500 });
     }
 
+    const { data: timbratureRows, error: timbratureErr } = await supabaseAdmin
+      .from("cronoprogramma_timbrature")
+      .select("row_kind, row_ref_id, durata_effettiva_minuti, stato")
+      .in("row_ref_id", rowIds)
+      .in("row_kind", rowKinds as any)
+      .order("created_at", { ascending: false });
+
+    if (
+      timbratureErr &&
+      !String(timbratureErr.message || "").toLowerCase().includes("cronoprogramma_timbrature")
+    ) {
+      return NextResponse.json({ error: timbratureErr.message }, { status: 500 });
+    }
+
     const metaByKey: Record<string, any> = {};
     for (const row of metaRows || []) {
       const key = rowKey(String((row as any).row_kind), String((row as any).row_ref_id));
@@ -466,10 +480,41 @@ export async function POST(request: Request) {
       });
     }
 
+    const timeBudgetByKey: Record<
+      string,
+      { stimatoMinuti: number | null; realeMinuti: number | null; stato: "NON_INIZIATA" | "IN_CORSO" | "IN_PAUSA" | "COMPLETATA" }
+    > = {};
+    for (const row of normalizedRows) {
+      const key = rowKey(row.row_kind, row.row_ref_id);
+      timeBudgetByKey[key] = {
+        stimatoMinuti: metaByKey[key]?.durata_prevista_minuti ?? null,
+        realeMinuti: null,
+        stato: "NON_INIZIATA",
+      };
+    }
+
+    for (const row of timbratureRows || []) {
+      const key = rowKey(String((row as any).row_kind), String((row as any).row_ref_id));
+      if (!wanted.has(key)) continue;
+      if (!timeBudgetByKey[key]) {
+        timeBudgetByKey[key] = { stimatoMinuti: null, realeMinuti: null, stato: "NON_INIZIATA" };
+      }
+      const current = timeBudgetByKey[key];
+      const durataEffettivaMinuti = Number((row as any).durata_effettiva_minuti);
+      if (Number.isFinite(durataEffettivaMinuti) && durataEffettivaMinuti >= 0) {
+        current.realeMinuti = (current.realeMinuti ?? 0) + durataEffettivaMinuti;
+      }
+      const stato = String((row as any).stato || "").trim().toUpperCase();
+      if (stato === "IN_CORSO") current.stato = "IN_CORSO";
+      else if (stato === "IN_PAUSA" && current.stato !== "IN_CORSO") current.stato = "IN_PAUSA";
+      else if (stato === "COMPLETATA" && current.stato === "NON_INIZIATA") current.stato = "COMPLETATA";
+    }
+
     return NextResponse.json({
       ok: true,
       meta: metaByKey,
       comments: commentsByKey,
+      time_budget: timeBudgetByKey,
     });
   }
 
