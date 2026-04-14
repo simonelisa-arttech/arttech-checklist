@@ -394,6 +394,15 @@ export default function OperatoreAttivitaPage() {
     return groupedRows.flatMap((group) => group.rows);
   }, [groupedRows]);
 
+  const summaryCounts = useMemo(() => {
+    const findCount = (key: string) => groupedRows.find((group) => group.key === key)?.rows.length || 0;
+    return {
+      inCorso: findCount("IN_CORSO"),
+      oggi: findCount("OGGI"),
+      scadute: findCount("SCADUTE"),
+    };
+  }, [groupedRows]);
+
   async function handleTimbraturaAction(
     row: TimelineRow,
     key: string,
@@ -449,29 +458,95 @@ export default function OperatoreAttivitaPage() {
 
   return (
     <div style={{ maxWidth: 1100, margin: "24px auto", padding: 16, paddingBottom: 60 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 18, flexWrap: "wrap" }}>
+      <div style={{ display: "grid", gap: 14, marginBottom: 18 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+          <div style={{ display: "grid", gap: 6 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+              <span style={{ fontSize: 13, fontWeight: 800, letterSpacing: 0.4, color: "#475569", textTransform: "uppercase" }}>
+                Operatore
+              </span>
+              {renderPill("Collaboratore operativo", BADGE_COLORS.statusNeutral)}
+            </div>
+            <div style={{ fontSize: 24, fontWeight: 900, color: "#0f172a", lineHeight: 1.1 }}>
+              {operatoreLabel || "Operatore"}
+            </div>
+          </div>
+          {personaleId ? (
+            <div
+              style={{
+                marginLeft: "auto",
+                padding: "6px 12px",
+                borderRadius: 999,
+                border: "1px solid #e2e8f0",
+                background: "#f8fafc",
+                fontSize: 12,
+                fontWeight: 700,
+                color: "#475569",
+              }}
+            >
+              Personale collegato
+            </div>
+          ) : null}
+        </div>
         <div>
           <h1 style={{ margin: 0, fontSize: 34, whiteSpace: "nowrap" }}>LE MIE ATTIVITÀ</h1>
           <div style={{ marginTop: 4, fontSize: 13, opacity: 0.72 }}>
             {operatoreLabel ? `Operatore: ${operatoreLabel}` : "Attività assegnate al collaboratore loggato"}
           </div>
         </div>
-        {personaleId ? (
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
+            gap: 10,
+          }}
+        >
           <div
             style={{
-              marginLeft: "auto",
-              padding: "6px 12px",
-              borderRadius: 999,
+              padding: "12px 14px",
+              borderRadius: 14,
               border: "1px solid #e2e8f0",
-              background: "#f8fafc",
-              fontSize: 12,
-              fontWeight: 700,
-              color: "#475569",
+              background: "#eff6ff",
+              display: "grid",
+              gap: 4,
             }}
           >
-            Personale collegato
+            <div style={{ fontSize: 12, fontWeight: 800, color: "#1d4ed8", textTransform: "uppercase", letterSpacing: 0.4 }}>
+              In corso
+            </div>
+            <div style={{ fontSize: 28, fontWeight: 900, color: "#0f172a", lineHeight: 1 }}>{summaryCounts.inCorso}</div>
           </div>
-        ) : null}
+          <div
+            style={{
+              padding: "12px 14px",
+              borderRadius: 14,
+              border: "1px solid #fde68a",
+              background: "#fffbeb",
+              display: "grid",
+              gap: 4,
+            }}
+          >
+            <div style={{ fontSize: 12, fontWeight: 800, color: "#b45309", textTransform: "uppercase", letterSpacing: 0.4 }}>
+              Oggi
+            </div>
+            <div style={{ fontSize: 28, fontWeight: 900, color: "#0f172a", lineHeight: 1 }}>{summaryCounts.oggi}</div>
+          </div>
+          <div
+            style={{
+              padding: "12px 14px",
+              borderRadius: 14,
+              border: "1px solid #fecaca",
+              background: "#fef2f2",
+              display: "grid",
+              gap: 4,
+            }}
+          >
+            <div style={{ fontSize: 12, fontWeight: 800, color: "#b91c1c", textTransform: "uppercase", letterSpacing: 0.4 }}>
+              Scadute
+            </div>
+            <div style={{ fontSize: 28, fontWeight: 900, color: "#0f172a", lineHeight: 1 }}>{summaryCounts.scadute}</div>
+          </div>
+        </div>
       </div>
 
       {error ? (
