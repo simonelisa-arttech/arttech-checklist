@@ -56,7 +56,7 @@ import {
   normalizeOperativiDate,
 } from "@/lib/operativiSchedule";
 import {
-  getEffectiveProjectStatus,
+  getProjectPresentation,
   isChecklistOperativaCompletedFromTasks,
   normalizeProjectStatusForStorage,
 } from "@/lib/projectStatus";
@@ -796,40 +796,43 @@ function getChecklistProjectStatusLabel(project: {
   data_disinstallazione?: string | null;
   checklistCompleted?: boolean;
 }) {
-  const { isNoleggioAttivo } = getChecklistNoleggioState(project);
-  const effective = getEffectiveProjectStatus({
-    stato_progetto: project.stato_progetto,
-    checklistCompleted: project.checklistCompleted,
-  });
-  if (effective === "CONSEGNATO" && isNoleggioAttivo) return "CONSEGNATO + IN_CORSO";
-  if (effective === "IN_CORSO") return "IN_LAVORAZIONE";
-  return effective || "—";
+  return (
+    getProjectPresentation({
+      stato_progetto: project.stato_progetto,
+      checklistCompleted: project.checklistCompleted,
+      noleggio_vendita: project.noleggio_vendita,
+      data_disinstallazione: project.data_disinstallazione,
+    }).displayStatus || "—"
+  );
 }
 
 function getChecklistNoleggioState(project: {
   stato_progetto?: string | null;
   noleggio_vendita?: string | null;
   data_disinstallazione?: string | null;
+  checklistCompleted?: boolean;
 }) {
-  const raw = String(project.stato_progetto || "")
-    .trim()
-    .toUpperCase()
-    .replace(/\s+/g, "_");
-  const isNoleggio = isNoleggioValue(project.noleggio_vendita);
+  const presentation = getProjectPresentation({
+    stato_progetto: project.stato_progetto,
+    checklistCompleted: project.checklistCompleted,
+    noleggio_vendita: project.noleggio_vendita,
+    data_disinstallazione: project.data_disinstallazione,
+  });
   const disinstallazione = parseLocalDay(project.data_disinstallazione);
   const today = startOfToday();
   const inSevenDays = new Date(today);
   inSevenDays.setDate(inSevenDays.getDate() + 7);
-
-  const isNoleggioAttivo =
-    raw === "CONSEGNATO" && isNoleggio && (!disinstallazione || disinstallazione >= today);
   const disinstallazioneImminente =
-    isNoleggioAttivo &&
+    presentation.isNoleggioInCorso &&
     !!disinstallazione &&
     disinstallazione >= today &&
     disinstallazione <= inSevenDays;
 
-  return { isNoleggioAttivo, disinstallazioneImminente };
+  return {
+    projectKind: presentation.projectKind,
+    isNoleggioAttivo: presentation.isNoleggioInCorso,
+    disinstallazioneImminente,
+  };
 }
 
 function getExpiryStatus(value?: string | null): "ATTIVA" | "SCADUTA" | "—" {
@@ -6561,7 +6564,17 @@ function buildFormData(c: Checklist): FormData {
             />
             <FieldRow
               label="Noleggio / Vendita / Service"
-              view={checklist.noleggio_vendita || "—"}
+              view={
+                isNoleggioValue(checklist.noleggio_vendita) ||
+                String(checklist.noleggio_vendita || "").trim().toUpperCase() === "VENDITA"
+                  ? getProjectPresentation({
+                      stato_progetto: checklist.stato_progetto,
+                      checklistCompleted: checklistIsClosed,
+                      noleggio_vendita: checklist.noleggio_vendita,
+                      data_disinstallazione: checklist.data_disinstallazione,
+                    }).projectKind
+                  : checklist.noleggio_vendita || "—"
+              }
               edit={
                 isEdit ? (
                   <select
@@ -6591,7 +6604,10 @@ function buildFormData(c: Checklist): FormData {
                       checklistCompleted: checklistIsClosed,
                     })}
                   </span>
-                  {getChecklistNoleggioState(checklist).isNoleggioAttivo ? (
+                  {getChecklistNoleggioState({
+                    ...checklist,
+                    checklistCompleted: checklistIsClosed,
+                  }).isNoleggioAttivo ? (
                     <span
                       style={{
                         display: "inline-block",
@@ -6606,7 +6622,10 @@ function buildFormData(c: Checklist): FormData {
                       NOLEGGIO ATTIVO
                     </span>
                   ) : null}
-                  {getChecklistNoleggioState(checklist).disinstallazioneImminente ? (
+                  {getChecklistNoleggioState({
+                    ...checklist,
+                    checklistCompleted: checklistIsClosed,
+                  }).disinstallazioneImminente ? (
                     <span
                       style={{
                         display: "inline-block",
@@ -6627,17 +6646,17 @@ function buildFormData(c: Checklist): FormData {
                 isEdit ? (
                   <select
                     value={
-                      String(
-                        getEffectiveProjectStatus({
+                      (() => {
+                        const presentation = getProjectPresentation({
                           stato_progetto: formData.stato_progetto,
                           checklistCompleted: checklistIsClosed,
-                        }) || ""
-                      ).trim().toUpperCase() === "IN_CORSO"
-                        ? "IN_LAVORAZIONE"
-                        : getEffectiveProjectStatus({
-                            stato_progetto: formData.stato_progetto,
-                            checklistCompleted: checklistIsClosed,
-                          }) || ""
+                          noleggio_vendita: formData.noleggio_vendita,
+                          data_disinstallazione: formData.data_disinstallazione,
+                        });
+                        if (presentation.displayStatus === "IN_LAVORAZIONE") return "IN_LAVORAZIONE";
+                        if (presentation.displayStatus === "NOLEGGIO_IN_CORSO") return "CONSEGNATO";
+                        return presentation.effectiveStatus || "";
+                      })()
                     }
                     onChange={(e) =>
                       setFormData({

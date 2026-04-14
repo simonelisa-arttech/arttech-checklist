@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import ConfigMancante from "@/components/ConfigMancante";
 import DashboardProjectsSection from "@/components/dashboard/DashboardProjectsSection";
-import { getEffectiveProjectStatus } from "@/lib/projectStatus";
+import { getProjectPresentation } from "@/lib/projectStatus";
 import { calcM2FromDimensioni } from "@/lib/parseDimensioni";
 import { isSupabaseConfigured } from "@/lib/supabaseClient";
 
@@ -155,27 +155,25 @@ function getProjectNoleggioState(project: {
   stato_progetto?: string | null;
   noleggio_vendita?: string | null;
   data_disinstallazione?: string | null;
+  pct_complessivo?: number | null;
 }) {
-  const stato = String(project.stato_progetto || "")
-    .trim()
-    .toUpperCase()
-    .replace(/\s+/g, "_");
-  const isNoleggio = String(project.noleggio_vendita || "").trim().toUpperCase() === "NOLEGGIO";
+  const presentation = getProjectPresentation(project);
   const disinstallazione = parseLocalDay(project.data_disinstallazione);
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const inSevenDays = new Date(today);
   inSevenDays.setDate(inSevenDays.getDate() + 7);
-
-  const isNoleggioAttivo =
-    stato === "CONSEGNATO" && isNoleggio && (!disinstallazione || disinstallazione >= today);
   const disinstallazioneImminente =
-    isNoleggioAttivo &&
+    presentation.isNoleggioInCorso &&
     !!disinstallazione &&
     disinstallazione >= today &&
     disinstallazione <= inSevenDays;
 
-  return { isNoleggioAttivo, disinstallazioneImminente };
+  return {
+    projectKind: presentation.projectKind,
+    isNoleggioAttivo: presentation.isNoleggioInCorso,
+    disinstallazioneImminente,
+  };
 }
 
 function normalizeProjectStatus(project: {
@@ -184,9 +182,12 @@ function normalizeProjectStatus(project: {
   data_disinstallazione?: string | null;
   pct_complessivo?: number | null;
 }): ProjectStatusFilter | null {
-  const { isNoleggioAttivo } = getProjectNoleggioState(project);
-  if (isNoleggioAttivo) return "NOLEGGIO_ATTIVO";
-  return getEffectiveProjectStatus(project);
+  const presentation = getProjectPresentation(project);
+  if (presentation.projectKind === "NOLEGGIO" && presentation.isNoleggioInCorso) {
+    return "NOLEGGIO_ATTIVO";
+  }
+  if (presentation.displayStatus === "IN_LAVORAZIONE") return "IN_CORSO";
+  return (presentation.displayStatus as ProjectStatusFilter | null) ?? null;
 }
 
 function getProjectStatusLabel(project: {
@@ -195,11 +196,7 @@ function getProjectStatusLabel(project: {
   data_disinstallazione?: string | null;
   pct_complessivo?: number | null;
 }) {
-  const { isNoleggioAttivo } = getProjectNoleggioState(project);
-  const effective = getEffectiveProjectStatus(project);
-  if (effective === "CONSEGNATO" && isNoleggioAttivo) return "CONSEGNATO + IN_CORSO";
-  if (effective === "IN_CORSO") return "IN_LAVORAZIONE";
-  return effective || "—";
+  return getProjectPresentation(project).displayStatus || "—";
 }
 
 function renderStatusBadge(value?: string | null) {
