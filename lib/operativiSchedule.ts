@@ -2,6 +2,8 @@ function pad2(value: number) {
   return String(value).padStart(2, "0");
 }
 
+export const OPERATIVI_STANDARD_DAY_MINUTES = 8 * 60;
+
 function formatIsoDayParts(year: number, month: number, day: number) {
   return `${year}-${pad2(month)}-${pad2(day)}`;
 }
@@ -36,6 +38,38 @@ export function getOperativiDurationDays(value?: string | number | null) {
 export function durationToInputValue(value?: string | number | null) {
   const normalized = normalizeOperativiDuration(value);
   return normalized == null ? "" : String(normalized);
+}
+
+function trimTrailingZeros(value: number) {
+  return String(Math.round(value * 100) / 100)
+    .replace(/\.0+$/, "")
+    .replace(/(\.\d*[1-9])0+$/, "$1");
+}
+
+export function hoursInputToMinutes(value?: string | number | null) {
+  const hours = Number(String(value ?? "").trim().replace(",", "."));
+  if (!Number.isFinite(hours) || hours < 0) return null;
+  return Math.round(hours * 60);
+}
+
+export function minutesToHoursInput(value?: number | null) {
+  if (!Number.isFinite(Number(value)) || Number(value) < 0) return "";
+  return trimTrailingZeros(Number(value) / 60);
+}
+
+export function estimatedMinutesToLegacyDays(value?: number | null) {
+  if (!Number.isFinite(Number(value)) || Number(value) <= 0) return null;
+  return Math.max(1, Math.ceil(Number(value) / OPERATIVI_STANDARD_DAY_MINUTES));
+}
+
+export function getOperativiEstimatedMinutes(value?: {
+  durata_prevista_minuti?: string | number | null;
+  durata_giorni?: string | number | null;
+} | null) {
+  const minutes = Number(value?.durata_prevista_minuti);
+  if (Number.isFinite(minutes) && minutes >= 0) return Math.round(minutes);
+  const days = normalizeOperativiDuration(value?.durata_giorni);
+  return days == null ? null : days * OPERATIVI_STANDARD_DAY_MINUTES;
 }
 
 export function computeOperativiEndDate(

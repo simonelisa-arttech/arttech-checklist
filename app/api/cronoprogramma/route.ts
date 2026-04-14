@@ -4,6 +4,8 @@ import { NextResponse } from "next/server";
 import { requireOperatore } from "@/lib/adminAuth";
 import { getEffectiveProjectStatus } from "@/lib/projectStatus";
 import {
+  estimatedMinutesToLegacyDays,
+  getOperativiEstimatedMinutes,
   normalizeOperativiDate,
   normalizeOperativiDuration,
 } from "@/lib/operativiSchedule";
@@ -92,13 +94,21 @@ function cleanUuidArray(values: unknown) {
 }
 
 function toOperativiPayload(input: OperativiInput) {
+  const durataPrevistaMinuti =
+    input?.durata_prevista_minuti !== undefined
+      ? cleanNonNegativeInteger(input?.durata_prevista_minuti)
+      : undefined;
+  const legacyDurataGiorni =
+    durataPrevistaMinuti !== undefined
+      ? estimatedMinutesToLegacyDays(durataPrevistaMinuti)
+      : input?.durata_giorni !== undefined
+        ? normalizeOperativiDuration(input?.durata_giorni)
+        : undefined;
   return {
     data_inizio: normalizeOperativiDate(input?.data_inizio) || null,
-    ...(input?.durata_giorni !== undefined
-      ? { durata_giorni: normalizeOperativiDuration(input?.durata_giorni) }
-      : {}),
-    ...(input?.durata_prevista_minuti !== undefined
-      ? { durata_prevista_minuti: cleanNonNegativeInteger(input?.durata_prevista_minuti) }
+    ...(legacyDurataGiorni !== undefined ? { durata_giorni: legacyDurataGiorni } : {}),
+    ...(durataPrevistaMinuti !== undefined
+      ? { durata_prevista_minuti: durataPrevistaMinuti }
       : {}),
     modalita_attivita: cleanModalitaAttivita(input?.modalita_attivita),
     personale_previsto: cleanText(input?.personale_previsto),
@@ -487,7 +497,7 @@ export async function POST(request: Request) {
     for (const row of normalizedRows) {
       const key = rowKey(row.row_kind, row.row_ref_id);
       timeBudgetByKey[key] = {
-        stimatoMinuti: metaByKey[key]?.durata_prevista_minuti ?? null,
+        stimatoMinuti: getOperativiEstimatedMinutes(metaByKey[key]) ?? null,
         realeMinuti: null,
         stato: "NON_INIZIATA",
       };

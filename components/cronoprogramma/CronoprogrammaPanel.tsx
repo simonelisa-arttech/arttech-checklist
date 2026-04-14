@@ -810,7 +810,9 @@ export default function CronoprogrammaPanel({
                         <div style={{ fontSize: 12, color: "#64748b" }}>
                           {schedule.data_fine ? `Fine ${formatOperativiDateLabel(schedule.data_fine)}` : "Fine —"}
                         </div>
-                        <div style={{ fontSize: 12, color: "#64748b" }}>{schedule.durata_giorni} gg</div>
+                        <div style={{ fontSize: 12, color: "#64748b" }}>
+                          Stimato {formatMinutesCompact(timeBudget.stimatoMinuti)}
+                        </div>
                       </div>
                     </div>
                   </div>

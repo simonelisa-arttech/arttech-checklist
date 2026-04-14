@@ -53,6 +53,10 @@ import {
 import {
   computeOperativiEndDate,
   durationToInputValue,
+  estimatedMinutesToLegacyDays,
+  getOperativiEstimatedMinutes,
+  hoursInputToMinutes,
+  minutesToHoursInput,
   normalizeOperativiDate,
 } from "@/lib/operativiSchedule";
 import {
@@ -431,6 +435,7 @@ type CronoOperativiMeta = {
   updated_by_nome?: string | null;
   data_inizio?: string | null;
   durata_giorni?: number | null;
+  durata_prevista_minuti?: number | null;
   personale_previsto?: string | null;
   personale_ids?: string[] | null;
   mezzi?: string | null;
@@ -768,9 +773,11 @@ const EMPTY_CRONO_OPERATIVI: CronoOperativiFormState = {
 };
 
 function extractCronoOperativi(meta?: CronoOperativiMeta | null) {
+  const stimatoMinuti = getOperativiEstimatedMinutes(meta);
   return {
     data_inizio: normalizeOperativiDate(meta?.data_inizio),
-    durata_giorni: durationToInputValue(meta?.durata_giorni),
+    durata_giorni:
+      stimatoMinuti != null ? minutesToHoursInput(stimatoMinuti) : durationToInputValue(meta?.durata_giorni),
     personale_previsto: String(meta?.personale_previsto || ""),
     personale_ids: Array.isArray(meta?.personale_ids)
       ? meta.personale_ids.map((value) => String(value || "").trim()).filter(Boolean)
@@ -3246,6 +3253,7 @@ function buildFormData(c: Checklist): FormData {
     setError(null);
     setNotice(null);
     try {
+      const durataPrevistaMinuti = hoursInputToMinutes(form.durata_giorni);
       perfCountFetch("POST /api/cronoprogramma set_operativi");
       const res = await fetch("/api/cronoprogramma", {
         method: "POST",
@@ -3255,6 +3263,8 @@ function buildFormData(c: Checklist): FormData {
           row_kind: rowKind,
           row_ref_id: id,
           ...form,
+          durata_prevista_minuti: durataPrevistaMinuti,
+          durata_giorni: estimatedMinutesToLegacyDays(durataPrevistaMinuti),
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -4200,21 +4210,27 @@ function buildFormData(c: Checklist): FormData {
           ) : null}
         </div>
         <div>
-          <div style={{ fontSize: 12, marginBottom: 4 }}>Durata giorni</div>
+          <div style={{ fontSize: 12, marginBottom: 4 }}>Ore previste</div>
           <input
             type="number"
-            min={1}
-            step={1}
+            min={0}
+            step={0.5}
             value={form.durata_giorni}
             onChange={(e) => setForm((prev) => ({ ...prev, durata_giorni: e.target.value }))}
-            placeholder="1"
+            placeholder="8"
             style={{ width: "100%", padding: 8 }}
           />
           <div style={{ marginTop: 4, fontSize: 11, opacity: 0.7 }}>
             Data fine:{" "}
-            {computeOperativiEndDate(form.data_inizio || fallbackStartDate, form.durata_giorni) ? (
+            {computeOperativiEndDate(
+              form.data_inizio || fallbackStartDate,
+              estimatedMinutesToLegacyDays(hoursInputToMinutes(form.durata_giorni))
+            ) ? (
               new Date(
-                computeOperativiEndDate(form.data_inizio || fallbackStartDate, form.durata_giorni)
+                computeOperativiEndDate(
+                  form.data_inizio || fallbackStartDate,
+                  estimatedMinutesToLegacyDays(hoursInputToMinutes(form.durata_giorni))
+                )
               ).toLocaleDateString("it-IT")
             ) : (
               "—"
