@@ -611,6 +611,132 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: true });
   }
 
+  if (action === "pause_timbratura") {
+    const rowKind = String(body?.row_kind || "").trim().toUpperCase();
+    const rowRefId = String(body?.row_ref_id || "").trim();
+    if (!isValidRowKind(rowKind) || !isUuidLike(rowRefId)) {
+      return NextResponse.json({ error: "row_kind/row_ref_id non validi" }, { status: 400 });
+    }
+
+    const { data: openTimbratura, error: openErr } = await supabaseAdmin
+      .from("cronoprogramma_timbrature")
+      .select("id")
+      .eq("row_kind", rowKind)
+      .eq("row_ref_id", rowRefId)
+      .eq("operatore_id", operatore.id)
+      .eq("stato", "IN_CORSO")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (openErr) {
+      return NextResponse.json({ error: openErr.message }, { status: 500 });
+    }
+    if (!openTimbratura?.id) {
+      return NextResponse.json({ error: "Nessuna attività in corso da mettere in pausa" }, { status: 404 });
+    }
+
+    const { data: openInterval, error: intervalErr } = await supabaseAdmin
+      .from("cronoprogramma_timbrature_intervalli")
+      .select("id, started_at")
+      .eq("timbratura_id", openTimbratura.id)
+      .is("ended_at", null)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (intervalErr) {
+      return NextResponse.json({ error: intervalErr.message }, { status: 500 });
+    }
+    if (!openInterval?.id) {
+      return NextResponse.json({ error: "Nessun intervallo attivo da mettere in pausa" }, { status: 404 });
+    }
+
+    const now = new Date();
+    const startedAt = new Date(String(openInterval.started_at || ""));
+    const durationMinutes = Number.isFinite(startedAt.getTime())
+      ? Math.max(0, Math.round((now.getTime() - startedAt.getTime()) / 60000))
+      : 0;
+
+    const { error: closeIntervalErr } = await supabaseAdmin
+      .from("cronoprogramma_timbrature_intervalli")
+      .update({
+        ended_at: now.toISOString(),
+        durata_minuti: durationMinutes,
+      })
+      .eq("id", openInterval.id);
+
+    if (closeIntervalErr) {
+      return NextResponse.json({ error: closeIntervalErr.message }, { status: 500 });
+    }
+
+    const { error: pauseErr } = await supabaseAdmin
+      .from("cronoprogramma_timbrature")
+      .update({
+        stato: "IN_PAUSA",
+        updated_at: now.toISOString(),
+      })
+      .eq("id", openTimbratura.id);
+
+    if (pauseErr) {
+      return NextResponse.json({ error: pauseErr.message }, { status: 500 });
+    }
+
+    return NextResponse.json({ ok: true });
+  }
+
+  if (action === "resume_timbratura") {
+    const rowKind = String(body?.row_kind || "").trim().toUpperCase();
+    const rowRefId = String(body?.row_ref_id || "").trim();
+    if (!isValidRowKind(rowKind) || !isUuidLike(rowRefId)) {
+      return NextResponse.json({ error: "row_kind/row_ref_id non validi" }, { status: 400 });
+    }
+
+    const { data: pausedTimbratura, error: pausedErr } = await supabaseAdmin
+      .from("cronoprogramma_timbrature")
+      .select("id")
+      .eq("row_kind", rowKind)
+      .eq("row_ref_id", rowRefId)
+      .eq("operatore_id", operatore.id)
+      .eq("stato", "IN_PAUSA")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (pausedErr) {
+      return NextResponse.json({ error: pausedErr.message }, { status: 500 });
+    }
+    if (!pausedTimbratura?.id) {
+      return NextResponse.json({ error: "Nessuna attività in pausa da riprendere" }, { status: 404 });
+    }
+
+    const nowIso = new Date().toISOString();
+    const { error: createIntervalErr } = await supabaseAdmin
+      .from("cronoprogramma_timbrature_intervalli")
+      .insert({
+        timbratura_id: pausedTimbratura.id,
+        started_at: nowIso,
+      });
+
+    if (createIntervalErr) {
+      return NextResponse.json({ error: createIntervalErr.message }, { status: 500 });
+    }
+
+    const { error: resumeErr } = await supabaseAdmin
+      .from("cronoprogramma_timbrature")
+      .update({
+        stato: "IN_CORSO",
+        updated_at: nowIso,
+      })
+      .eq("id", pausedTimbratura.id);
+
+    if (resumeErr) {
+      return NextResponse.json({ error: resumeErr.message }, { status: 500 });
+    }
+
+    return NextResponse.json({ ok: true });
+  }
+
   if (action === "stop_timbratura") {
     const rowKind = String(body?.row_kind || "").trim().toUpperCase();
     const rowRefId = String(body?.row_ref_id || "").trim();
