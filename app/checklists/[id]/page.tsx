@@ -1178,10 +1178,11 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
     borderRadius: 12,
     padding: 16,
     background: "white",
+    width: "100%",
+    boxSizing: "border-box",
   };
   const mainSectionTitleStyle: CSSProperties = {
     margin: 0,
-    marginBottom: 10,
     fontSize: 30,
     fontWeight: 900,
     letterSpacing: 0.2,
@@ -4030,7 +4031,7 @@ function buildFormData(c: Checklist): FormData {
     return (
       <div
         id={sectionId}
-        style={{ ...(options?.style || mainSectionStyle), scrollMarginTop: 96 }}
+        style={{ ...mainSectionStyle, ...(options?.style || {}), scrollMarginTop: 96 }}
       >
         <button
           type="button"
