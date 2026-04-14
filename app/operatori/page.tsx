@@ -58,6 +58,8 @@ const BADGE_COLORS = {
   statusExpired: { bg: "#fee2e2", border: "#fca5a5", color: "#b91c1c" },
   statusDueSoon: { bg: "#fffbeb", border: "#fcd34d", color: "#b45309" },
   statusOk: { bg: "#dcfce7", border: "#86efac", color: "#166534" },
+  statusInProgress: { bg: "#dbeafe", border: "#93c5fd", color: "#1d4ed8" },
+  statusNeutral: { bg: "#f8fafc", border: "#cbd5e1", color: "#475569" },
   activityInstall: { bg: "#dbeafe", border: "#93c5fd", color: "#1d4ed8" },
   activityIntervento: { bg: "#dcfce7", border: "#86efac", color: "#166534" },
   activityRemote: { bg: "#f3e8ff", border: "#d8b4fe", color: "#7e22ce" },
@@ -159,11 +161,29 @@ function getActivityDateKey(row: TimelineRow, meta?: CronoMeta | null) {
   return String(schedule.data_inizio || row.data_tassativa || row.data_prevista || "");
 }
 
+function renderMainStatusBadge(
+  activityDate: string,
+  timbraturaState: "NON_INIZIATA" | "IN_CORSO" | "COMPLETATA",
+  todayIso: string
+) {
+  if (timbraturaState === "IN_CORSO") {
+    return renderPill("IN CORSO", BADGE_COLORS.statusInProgress, "⏸");
+  }
+  if (activityDate && activityDate < todayIso) {
+    return renderPill("SCADUTA", BADGE_COLORS.statusExpired, "●");
+  }
+  if (activityDate === todayIso) {
+    return renderPill("OGGI", BADGE_COLORS.statusDueSoon, "●");
+  }
+  return renderPill("PROSSIMA", BADGE_COLORS.statusNeutral, "●");
+}
+
 export default function OperatoreAttivitaPage() {
   if (!isSupabaseConfigured) {
     return <ConfigMancante />;
   }
 
+  const todayIso = dateToOperativiIsoDay(new Date());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [operatoreLabel, setOperatoreLabel] = useState<string>("");
@@ -329,7 +349,6 @@ export default function OperatoreAttivitaPage() {
   }, []);
 
   const groupedRows = useMemo(() => {
-    const todayIso = dateToOperativiIsoDay(new Date());
     const groups = {
       IN_CORSO: [] as TimelineRow[],
       SCADUTE: [] as TimelineRow[],
@@ -369,7 +388,7 @@ export default function OperatoreAttivitaPage() {
       { key: "OGGI", title: "Oggi", rows: groups.OGGI },
       { key: "PROSSIME", title: "Prossime", rows: groups.PROSSIME },
     ].filter((group) => group.rows.length > 0);
-  }, [metaByKey, rows, timbraturaStateByKey]);
+  }, [metaByKey, rows, timbraturaStateByKey, todayIso]);
 
   const sortedRows = useMemo(() => {
     return groupedRows.flatMap((group) => group.rows);
@@ -500,6 +519,7 @@ export default function OperatoreAttivitaPage() {
                 const timbraturaLoading = timbraturaLoadingKey === key;
                 const timeBudget = timeBudgetByKey[key] || { stimatoMinuti: null, realeMinuti: null };
                 const overdue = isTimelineRowOverdueNotDone(row, meta);
+                const activityDate = getActivityDateKey(row, meta);
 
                 return (
                   <div
@@ -517,6 +537,7 @@ export default function OperatoreAttivitaPage() {
                     <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start", flexWrap: "wrap" }}>
                       <div style={{ display: "grid", gap: 8, minWidth: 0 }}>
                         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                          {renderMainStatusBadge(activityDate, timbraturaState, todayIso)}
                           {renderActivityKindBadge(kindLabel)}
                           {renderModeBadge(modeLabel)}
                           {overdue ? renderPill("SCADUTO", BADGE_COLORS.statusExpired) : renderPill("IN PROGRAMMA", BADGE_COLORS.statusOk)}
