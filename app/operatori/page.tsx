@@ -148,6 +148,16 @@ function formatMinutesCompact(value?: number | null) {
   return `${hours} h ${minutes} min`;
 }
 
+function formatMinutesTight(value?: number | null) {
+  if (!Number.isFinite(Number(value)) || Number(value) < 0) return "—";
+  const total = Math.round(Number(value));
+  const hours = Math.floor(total / 60);
+  const minutes = total % 60;
+  if (hours <= 0) return `${minutes}m`;
+  if (minutes === 0) return `${hours}h`;
+  return `${hours}h ${minutes}m`;
+}
+
 function renderBudgetBadge(stimatoMinuti: number | null, realeMinuti: number | null) {
   if (!Number.isFinite(Number(stimatoMinuti)) || stimatoMinuti == null) return null;
   const actual = Number.isFinite(Number(realeMinuti)) && realeMinuti != null ? Number(realeMinuti) : 0;
@@ -184,10 +194,16 @@ export default function OperatoreAttivitaPage() {
   }
 
   const todayIso = dateToOperativiIsoDay(new Date());
+  const currentMonthStart = new Date();
+  currentMonthStart.setDate(1);
+  currentMonthStart.setHours(0, 0, 0, 0);
+  const nextMonthStart = new Date(currentMonthStart);
+  nextMonthStart.setMonth(nextMonthStart.getMonth() + 1);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [operatoreLabel, setOperatoreLabel] = useState<string>("");
   const [personaleId, setPersonaleId] = useState<string | null>(null);
+  const [monthlyWorkedMinutes, setMonthlyWorkedMinutes] = useState<number>(0);
   const [rows, setRows] = useState<TimelineRow[]>([]);
   const [metaByKey, setMetaByKey] = useState<Record<string, CronoMeta>>({});
   const [timeBudgetByKey, setTimeBudgetByKey] = useState<Record<string, TimeBudgetSummary>>({});
@@ -268,7 +284,7 @@ export default function OperatoreAttivitaPage() {
         const rowRefIds = Array.from(new Set(assignedRows.map((row) => row.row_ref_id)));
         const wanted = new Set(assignedRows.map((row) => getRowKey(row.kind, row.row_ref_id)));
 
-        const [budgetMetaRes, timbratureRes] = await Promise.all([
+        const [budgetMetaRes, timbratureRes, monthlyTimbratureRes] = await Promise.all([
           supabase
             .from("cronoprogramma_meta")
             .select("row_kind,row_ref_id,durata_prevista_minuti")
@@ -281,6 +297,13 @@ export default function OperatoreAttivitaPage() {
             .in("row_kind", rowKinds)
             .in("row_ref_id", rowRefIds)
             .order("created_at", { ascending: false }),
+          supabase
+            .from("cronoprogramma_timbrature")
+            .select("durata_effettiva_minuti")
+            .eq("operatore_id", operatoreId)
+            .eq("stato", "COMPLETATA")
+            .gte("ended_at", currentMonthStart.toISOString())
+            .lt("ended_at", nextMonthStart.toISOString()),
         ]);
 
         if (budgetMetaRes.error) {
@@ -288,6 +311,9 @@ export default function OperatoreAttivitaPage() {
         }
         if (timbratureRes.error) {
           console.error("Errore caricamento timbrature operatore", timbratureRes.error);
+        }
+        if (monthlyTimbratureRes.error) {
+          console.error("Errore caricamento consuntivo mensile operatore", monthlyTimbratureRes.error);
         }
 
         const nextTimeBudget: Record<string, TimeBudgetSummary> = {};
@@ -330,11 +356,20 @@ export default function OperatoreAttivitaPage() {
           }
         }
 
+        const totalMonthlyMinutes = (monthlyTimbratureRes.data || []).reduce((sum, row: any) => {
+          const minutes =
+            Number.isFinite(Number(row?.durata_effettiva_minuti)) && Number(row?.durata_effettiva_minuti) >= 0
+              ? Number(row.durata_effettiva_minuti)
+              : 0;
+          return sum + minutes;
+        }, 0);
+
         if (!active) return;
         setMetaByKey(nextMeta);
         setRows(assignedRows);
         setTimeBudgetByKey(nextTimeBudget);
         setTimbraturaStateByKey(nextTimbraturaState);
+        setMonthlyWorkedMinutes(totalMonthlyMinutes);
       } catch (err: any) {
         if (!active) return;
         setError(String(err?.message || "Errore caricamento attività operatore"));
@@ -439,16 +474,19 @@ export default function OperatoreAttivitaPage() {
           },
         }));
       } else {
+        const completedMinutes =
+          Number.isFinite(Number(data?.durata_effettiva_minuti)) && Number(data?.durata_effettiva_minuti) >= 0
+            ? Number(data.durata_effettiva_minuti)
+            : 0;
         setTimeBudgetByKey((prev) => ({
           ...prev,
           [key]: {
             stimatoMinuti: prev[key]?.stimatoMinuti ?? null,
             realeMinuti:
-              Number.isFinite(Number(data?.durata_effettiva_minuti)) && Number(data?.durata_effettiva_minuti) >= 0
-                ? Number(data.durata_effettiva_minuti)
-                : prev[key]?.realeMinuti ?? 0,
+              completedMinutes + (prev[key]?.realeMinuti ?? 0),
           },
         }));
+        setMonthlyWorkedMinutes((prev) => prev + completedMinutes);
       }
     } catch (err) {
       console.error("Errore timbratura operatore", err);
@@ -546,6 +584,23 @@ export default function OperatoreAttivitaPage() {
               Scadute
             </div>
             <div style={{ fontSize: 28, fontWeight: 900, color: "#0f172a", lineHeight: 1 }}>{summaryCounts.scadute}</div>
+          </div>
+          <div
+            style={{
+              padding: "12px 14px",
+              borderRadius: 14,
+              border: "1px solid #bfdbfe",
+              background: "#f8fafc",
+              display: "grid",
+              gap: 4,
+            }}
+          >
+            <div style={{ fontSize: 12, fontWeight: 800, color: "#1e3a8a", textTransform: "uppercase", letterSpacing: 0.4 }}>
+              Tempo lavorato mese
+            </div>
+            <div style={{ fontSize: 28, fontWeight: 900, color: "#0f172a", lineHeight: 1 }}>
+              {formatMinutesTight(monthlyWorkedMinutes)}
+            </div>
           </div>
         </div>
       </div>
