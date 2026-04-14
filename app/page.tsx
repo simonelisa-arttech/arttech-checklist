@@ -555,13 +555,15 @@ export function DashboardCockpitPage({
   showClientiSection = false,
   showCronoSection = true,
   showProjectsSection = false,
-  pageLabel = "HOME",
+  pageTitle = "AT SYSTEM",
+  pageSubtitle = "Cockpit operativo",
 }: {
   showCockpitSection?: boolean;
   showClientiSection?: boolean;
   showCronoSection?: boolean;
   showProjectsSection?: boolean;
-  pageLabel?: string;
+  pageTitle?: string;
+  pageSubtitle?: string;
 } = {}) {
   if (!isSupabaseConfigured) {
     return <ConfigMancante />;
@@ -2087,8 +2089,8 @@ export function DashboardCockpitPage({
     <div style={{ maxWidth: 1100, margin: "24px auto", padding: 16, paddingBottom: 60 }}>
       <div style={{ display: "flex", alignItems: "flex-start", gap: 16, flexWrap: "wrap" }}>
         <div style={{ flexShrink: 0, minWidth: 190 }}>
-          <h1 style={{ margin: 0, fontSize: 34, whiteSpace: "nowrap" }}>AT SYSTEM</h1>
-          <div style={{ marginTop: 2, fontSize: 12, opacity: 0.7 }}>{pageLabel}</div>
+          <h1 style={{ margin: 0, fontSize: 34, whiteSpace: "nowrap" }}>{pageTitle}</h1>
+          <div style={{ marginTop: 2, fontSize: 12, opacity: 0.7 }}>{pageSubtitle}</div>
         </div>
 
         {showDebugAuth && (
@@ -2978,5 +2980,12 @@ export function DashboardCockpitPage({
 }
 
 export default function Page() {
-  return <DashboardCockpitPage pageLabel="HOME" showClientiSection={false} showCronoSection />;
+  return (
+    <DashboardCockpitPage
+      pageTitle="AT SYSTEM"
+      pageSubtitle="Cockpit operativo"
+      showClientiSection={false}
+      showCronoSection
+    />
+  );
 }
