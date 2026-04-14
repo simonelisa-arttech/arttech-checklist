@@ -245,6 +245,43 @@ export default function CronoprogrammaPanel({
 }: CronoprogrammaPanelProps) {
   const [openConflictKey, setOpenConflictKey] = useState<string | null>(null);
   const [expandedRowKey, setExpandedRowKey] = useState<string | null>(null);
+  const [timbraturaStateByKey, setTimbraturaStateByKey] = useState<
+    Record<string, "NON_INIZIATA" | "IN_CORSO" | "COMPLETATA">
+  >({});
+  const [timbraturaLoadingKey, setTimbraturaLoadingKey] = useState<string | null>(null);
+
+  async function handleTimbraturaAction(
+    row: TimelineRow,
+    key: string,
+    action: "start_timbratura" | "stop_timbratura"
+  ) {
+    try {
+      setTimbraturaLoadingKey(key);
+      const res = await fetch("/api/cronoprogramma", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          action,
+          row_kind: row.kind,
+          row_ref_id: row.row_ref_id,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        console.error("Errore timbratura cronoprogramma", data);
+        return;
+      }
+      setTimbraturaStateByKey((prev) => ({
+        ...prev,
+        [key]: action === "start_timbratura" ? "IN_CORSO" : "COMPLETATA",
+      }));
+    } catch (err) {
+      console.error("Errore timbratura cronoprogramma", err);
+    } finally {
+      setTimbraturaLoadingKey((prev) => (prev === key ? null : prev));
+    }
+  }
 
   return (
     <>
@@ -459,6 +496,8 @@ export default function CronoprogrammaPanel({
               const modeLabel = getActivityModeLabel(operativi);
               const kindLabel = getActivityKindLabel(r, operativi);
               const expanded = expandedRowKey === key;
+              const timbraturaState = timbraturaStateByKey[key] || "NON_INIZIATA";
+              const timbraturaLoading = timbraturaLoadingKey === key;
 
               return (
                 <div
@@ -522,6 +561,60 @@ export default function CronoprogrammaPanel({
                           <span>Cliente: {r.cliente || "—"}</span>
                           <span>Persone: {operativi.personale_previsto || "—"}</span>
                           <span>Rif: {r.ticket_no || r.proforma || "—"}</span>
+                        </div>
+                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                          {timbraturaState === "IN_CORSO"
+                            ? renderPill("IN CORSO", BADGE_COLORS.activityRemote, "⏸")
+                            : null}
+                          {timbraturaState === "COMPLETATA"
+                            ? renderPill("COMPLETATA", BADGE_COLORS.statusOk, "✓")
+                            : null}
+                          {timbraturaState === "NON_INIZIATA" ? (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                void handleTimbraturaAction(r, key, "start_timbratura");
+                              }}
+                              disabled={timbraturaLoading}
+                              style={{
+                                padding: "6px 10px",
+                                borderRadius: 999,
+                                border: "1px solid #86efac",
+                                background: "#f0fdf4",
+                                color: "#166534",
+                                fontSize: 12,
+                                fontWeight: 700,
+                                cursor: timbraturaLoading ? "wait" : "pointer",
+                                opacity: timbraturaLoading ? 0.7 : 1,
+                              }}
+                            >
+                              ▶ Inizia
+                            </button>
+                          ) : null}
+                          {timbraturaState === "IN_CORSO" ? (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                void handleTimbraturaAction(r, key, "stop_timbratura");
+                              }}
+                              disabled={timbraturaLoading}
+                              style={{
+                                padding: "6px 10px",
+                                borderRadius: 999,
+                                border: "1px solid #fca5a5",
+                                background: "#fee2e2",
+                                color: "#b91c1c",
+                                fontSize: 12,
+                                fontWeight: 700,
+                                cursor: timbraturaLoading ? "wait" : "pointer",
+                                opacity: timbraturaLoading ? 0.7 : 1,
+                              }}
+                            >
+                              ⏹ Termina
+                            </button>
+                          ) : null}
                         </div>
                       </div>
                       <div style={{ display: "grid", gap: 6, justifyItems: "end", textAlign: "right" }}>
