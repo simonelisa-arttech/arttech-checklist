@@ -3,5 +3,12 @@
 import { DashboardCockpitPage } from "@/app/page";
 
 export default function DashboardPage() {
-  return <DashboardCockpitPage showClientiSection={false} />;
+  return (
+    <DashboardCockpitPage
+      pageLabel="DASHBOARD"
+      showClientiSection={false}
+      showCronoSection={false}
+      showProjectsSection
+    />
+  );
 }

@@ -86,6 +86,40 @@ const EMPTY_DOCUMENTI_ALERT_SUMMARY: DocumentiAlertSummary = {
   aziende_in_scadenza: 0,
 };
 
+function getProjectStatusBadge(value?: string | null) {
+  const raw = String(value || "").trim().toUpperCase();
+  if (raw === "COMPLETATO" || raw === "CHIUSO") {
+    return {
+      label: raw,
+      border: DASHBOARD_BADGE_COLORS.statusOk.border,
+      background: DASHBOARD_BADGE_COLORS.statusOk.background,
+      color: DASHBOARD_BADGE_COLORS.statusOk.color,
+    };
+  }
+  if (raw === "BLOCCATO" || raw === "SCADUTO") {
+    return {
+      label: raw,
+      border: DASHBOARD_BADGE_COLORS.statusExpired.border,
+      background: DASHBOARD_BADGE_COLORS.statusExpired.background,
+      color: DASHBOARD_BADGE_COLORS.statusExpired.color,
+    };
+  }
+  if (raw === "IN_CORSO" || raw === "IN ATTESA") {
+    return {
+      label: raw,
+      border: DASHBOARD_BADGE_COLORS.statusDueSoon.border,
+      background: DASHBOARD_BADGE_COLORS.statusDueSoon.background,
+      color: DASHBOARD_BADGE_COLORS.statusDueSoon.color,
+    };
+  }
+  return {
+    label: raw || "—",
+    border: DASHBOARD_BADGE_COLORS.statusNeutral.border,
+    background: DASHBOARD_BADGE_COLORS.statusNeutral.background,
+    color: DASHBOARD_BADGE_COLORS.statusNeutral.color,
+  };
+}
+
 function buildScadenzeLink(days: number) {
   const from = new Date();
   const to = new Date(from);
@@ -518,12 +552,16 @@ function downloadCronoCsv(
 
 export function DashboardCockpitPage({
   showCockpitSection = true,
-  showClientiSection = true,
+  showClientiSection = false,
   showCronoSection = true,
+  showProjectsSection = false,
+  pageLabel = "HOME",
 }: {
   showCockpitSection?: boolean;
   showClientiSection?: boolean;
   showCronoSection?: boolean;
+  showProjectsSection?: boolean;
+  pageLabel?: string;
 } = {}) {
   if (!isSupabaseConfigured) {
     return <ConfigMancante />;
@@ -1193,6 +1231,22 @@ export function DashboardCockpitPage({
         return a.cliente.localeCompare(b.cliente, "it", { sensitivity: "base" });
       });
   }, [items, cronoRows, cronoMetaByKey]);
+
+  const dashboardProjectRows = useMemo(() => {
+    return [...items].sort((a, b) => {
+      const clienteCmp = String(a.cliente || "").localeCompare(String(b.cliente || ""), "it", {
+        sensitivity: "base",
+      });
+      if (clienteCmp !== 0) return clienteCmp;
+      const dateA = String(a.data_tassativa || a.data_prevista || "");
+      const dateB = String(b.data_tassativa || b.data_prevista || "");
+      const dateCmp = dateA.localeCompare(dateB);
+      if (dateCmp !== 0) return dateCmp;
+      return String(a.nome_checklist || "").localeCompare(String(b.nome_checklist || ""), "it", {
+        sensitivity: "base",
+      });
+    });
+  }, [items]);
 
   const checklistOptions = useMemo(() => {
     if (!addInterventoCliente) return [];
@@ -2034,7 +2088,7 @@ export function DashboardCockpitPage({
       <div style={{ display: "flex", alignItems: "flex-start", gap: 16, flexWrap: "wrap" }}>
         <div style={{ flexShrink: 0, minWidth: 190 }}>
           <h1 style={{ margin: 0, fontSize: 34, whiteSpace: "nowrap" }}>AT SYSTEM</h1>
-          <div style={{ marginTop: 2, fontSize: 12, opacity: 0.7 }}>HOME</div>
+          <div style={{ marginTop: 2, fontSize: 12, opacity: 0.7 }}>{pageLabel}</div>
         </div>
 
         {showDebugAuth && (
@@ -2279,6 +2333,139 @@ export function DashboardCockpitPage({
                   noleggiAttiviCount
                 )}
               </div>
+              </div>
+            </div>
+          ) : null}
+          {showProjectsSection ? (
+            <div style={{ marginTop: 24 }}>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 12,
+                  marginBottom: 14,
+                }}
+              >
+                <h2
+                  style={{
+                    margin: 0,
+                    fontSize: 22,
+                    fontWeight: 800,
+                    color: "#0f172a",
+                  }}
+                >
+                  Tutti i progetti
+                </h2>
+                <div
+                  style={{
+                    fontSize: 12,
+                    fontWeight: 700,
+                    color: "#64748b",
+                    padding: "4px 10px",
+                    borderRadius: 999,
+                    background: "#f8fafc",
+                    border: "1px solid #e2e8f0",
+                  }}
+                >
+                  {dashboardProjectRows.length} progetti
+                </div>
+                <div
+                  style={{
+                    flex: 1,
+                    height: 1,
+                    background: "#e5e7eb",
+                  }}
+                />
+              </div>
+              <div style={{ display: "grid", gap: 10 }}>
+                {dashboardProjectRows.map((item) => {
+                  const projectStatus = getProjectStatusBadge(item.stato_progetto);
+                  const keyDate = item.data_tassativa || item.data_prevista;
+                  return (
+                    <Link
+                      key={item.id}
+                      href={`/checklists/${item.id}`}
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "minmax(0, 1fr) auto",
+                        gap: 14,
+                        alignItems: "center",
+                        padding: "12px 14px",
+                        borderRadius: 14,
+                        border: "1px solid #e2e8f0",
+                        background: "white",
+                        color: "inherit",
+                        textDecoration: "none",
+                        boxShadow: "0 1px 2px rgba(15, 23, 42, 0.06)",
+                      }}
+                    >
+                      <div style={{ minWidth: 0 }}>
+                        <div
+                          style={{
+                            display: "flex",
+                            gap: 8,
+                            flexWrap: "wrap",
+                            alignItems: "center",
+                          }}
+                        >
+                          <span style={{ fontSize: 17, fontWeight: 800, color: "#0f172a" }}>
+                            {item.nome_checklist || "—"}
+                          </span>
+                          <span style={{ fontSize: 12, color: "#64748b" }}>{item.cliente || "—"}</span>
+                        </div>
+                        <div
+                          style={{
+                            display: "flex",
+                            flexWrap: "wrap",
+                            gap: 8,
+                            marginTop: 8,
+                            fontSize: 12,
+                            color: "#64748b",
+                          }}
+                        >
+                          {item.proforma ? (
+                            <span style={{ padding: "4px 8px", borderRadius: 999, background: "#f8fafc", border: "1px solid #e2e8f0" }}>
+                              Proforma: {item.proforma}
+                            </span>
+                          ) : null}
+                          {item.po ? (
+                            <span style={{ padding: "4px 8px", borderRadius: 999, background: "#f8fafc", border: "1px solid #e2e8f0" }}>
+                              PO: {item.po}
+                            </span>
+                          ) : null}
+                          <span style={{ padding: "4px 8px", borderRadius: 999, background: "#f8fafc", border: "1px solid #e2e8f0" }}>
+                            Data chiave:{" "}
+                            {keyDate ? new Date(keyDate).toLocaleDateString("it-IT") : "—"}
+                          </span>
+                          {item.tipo_impianto ? (
+                            <span style={{ padding: "4px 8px", borderRadius: 999, background: "#f8fafc", border: "1px solid #e2e8f0" }}>
+                              {item.tipo_impianto}
+                            </span>
+                          ) : null}
+                        </div>
+                      </div>
+                      <div style={{ display: "grid", justifyItems: "end", gap: 8 }}>
+                        <span
+                          style={{
+                            padding: "5px 10px",
+                            borderRadius: 999,
+                            border: `1px solid ${projectStatus.border}`,
+                            background: projectStatus.background,
+                            color: projectStatus.color,
+                            fontSize: 12,
+                            fontWeight: 800,
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          {projectStatus.label}
+                        </span>
+                        <span style={{ fontSize: 12, fontWeight: 700, color: "#94a3b8", whiteSpace: "nowrap" }}>
+                          Apri progetto →
+                        </span>
+                      </div>
+                    </Link>
+                  );
+                })}
               </div>
             </div>
           ) : null}
@@ -2791,18 +2978,5 @@ export function DashboardCockpitPage({
 }
 
 export default function Page() {
-  if (!isSupabaseConfigured) {
-    return <ConfigMancante />;
-  }
-  const router = useRouter();
-
-  useEffect(() => {
-    router.replace("/dashboard");
-  }, [router]);
-
-  return (
-    <div style={{ maxWidth: 1100, margin: "24px auto", padding: 16 }}>
-      Reindirizzamento alla dashboard...
-    </div>
-  );
+  return <DashboardCockpitPage pageLabel="HOME" showClientiSection={false} showCronoSection />;
 }

@@ -3,5 +3,12 @@
 import { DashboardCockpitPage } from "@/app/page";
 
 export default function ClientiCockpitPage() {
-  return <DashboardCockpitPage showCockpitSection={false} showCronoSection={false} />;
+  return (
+    <DashboardCockpitPage
+      pageLabel="CLIENTI"
+      showCockpitSection={false}
+      showCronoSection={false}
+      showClientiSection
+    />
+  );
 }
