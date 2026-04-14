@@ -65,6 +65,19 @@ export default function RootLayout({
                   background: "white",
                 }}
               >
+                Dashboard
+              </Link>
+              <Link
+                href="/clienti-cockpit"
+                style={{
+                  padding: "8px 12px",
+                  borderRadius: 10,
+                  border: "1px solid #ddd",
+                  textDecoration: "none",
+                  color: "inherit",
+                  background: "white",
+                }}
+              >
                 Clienti
               </Link>
               <Link

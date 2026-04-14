@@ -516,7 +516,15 @@ function downloadCronoCsv(
   URL.revokeObjectURL(url);
 }
 
-export default function Page() {
+export function DashboardCockpitPage({
+  showCockpitSection = true,
+  showClientiSection = true,
+  showCronoSection = true,
+}: {
+  showCockpitSection?: boolean;
+  showClientiSection?: boolean;
+  showCronoSection?: boolean;
+} = {}) {
   if (!isSupabaseConfigured) {
     return <ConfigMancante />;
   }
@@ -2098,17 +2106,18 @@ export default function Page() {
               {dashboardLoadError}
             </div>
           )}
-          <div
-            className="dashboard-cockpit-frame"
-            style={{
-              padding: "12px 14px",
-              borderRadius: 12,
-              border: "1px solid #f59e0b",
-              background: "#fffbeb",
-              color: "#92400e",
-            }}
-          >
-            <div className="dashboard-cockpit-inner" style={{ display: "grid", gap: 12 }}>
+          {showCockpitSection ? (
+            <div
+              className="dashboard-cockpit-frame"
+              style={{
+                padding: "12px 14px",
+                borderRadius: 12,
+                border: "1px solid #f59e0b",
+                background: "#fffbeb",
+                color: "#92400e",
+              }}
+            >
+              <div className="dashboard-cockpit-inner" style={{ display: "grid", gap: 12 }}>
               <div
                 className="dashboard-cockpit-primary-grid"
                 style={{
@@ -2270,9 +2279,11 @@ export default function Page() {
                   noleggiAttiviCount
                 )}
               </div>
-          </div>
-          </div>
-          <div style={{ marginTop: 24 }}>
+              </div>
+            </div>
+          ) : null}
+          {showClientiSection ? (
+            <div style={{ marginTop: 24 }}>
             <div
               style={{
                 display: "flex",
@@ -2426,8 +2437,10 @@ export default function Page() {
                 </Link>
               ))}
             </div>
-          </div>
-          <div style={{ marginTop: 24 }}>
+            </div>
+          ) : null}
+          {showCronoSection ? (
+            <div style={{ marginTop: 24 }}>
             <div
               style={{
                 display: "flex",
@@ -2557,7 +2570,8 @@ export default function Page() {
               hasDefinedOperativi={hasDefinedOperativi}
               emptyOperativi={EMPTY_OPERATIVI}
             />
-          </div>
+            </div>
+          ) : null}
   </div>
 )}
       {addInterventoOpen && (
@@ -2772,6 +2786,23 @@ export default function Page() {
           }
         }
       `}</style>
+    </div>
+  );
+}
+
+export default function Page() {
+  if (!isSupabaseConfigured) {
+    return <ConfigMancante />;
+  }
+  const router = useRouter();
+
+  useEffect(() => {
+    router.replace("/dashboard");
+  }, [router]);
+
+  return (
+    <div style={{ maxWidth: 1100, margin: "24px auto", padding: 16 }}>
+      Reindirizzamento alla dashboard...
     </div>
   );
 }
