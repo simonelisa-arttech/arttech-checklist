@@ -154,6 +154,11 @@ function renderBudgetBadge(stimatoMinuti: number | null, realeMinuti: number | n
   return renderPill("MOLTO FUORI", BADGE_COLORS.statusExpired, "🔴");
 }
 
+function getActivityDateKey(row: TimelineRow, meta?: CronoMeta | null) {
+  const schedule = getRowSchedule(row, meta || null);
+  return String(schedule.data_inizio || row.data_tassativa || row.data_prevista || "");
+}
+
 export default function OperatoreAttivitaPage() {
   if (!isSupabaseConfigured) {
     return <ConfigMancante />;
@@ -323,21 +328,52 @@ export default function OperatoreAttivitaPage() {
     };
   }, []);
 
-  const sortedRows = useMemo(() => {
+  const groupedRows = useMemo(() => {
     const todayIso = dateToOperativiIsoDay(new Date());
-    const list = [...rows];
-    list.sort((a, b) => {
-      const aSchedule = getRowSchedule(a, metaByKey[getRowKey(a.kind, a.row_ref_id)] || null);
-      const bSchedule = getRowSchedule(b, metaByKey[getRowKey(b.kind, b.row_ref_id)] || null);
-      const aDate = String(aSchedule.data_inizio || a.data_tassativa || a.data_prevista || "");
-      const bDate = String(bSchedule.data_inizio || b.data_tassativa || b.data_prevista || "");
-      const aBucket = aDate === todayIso ? 0 : aDate > todayIso ? 1 : 2;
-      const bBucket = bDate === todayIso ? 0 : bDate > todayIso ? 1 : 2;
-      if (aBucket !== bBucket) return aBucket - bBucket;
+    const groups = {
+      IN_CORSO: [] as TimelineRow[],
+      SCADUTE: [] as TimelineRow[],
+      OGGI: [] as TimelineRow[],
+      PROSSIME: [] as TimelineRow[],
+    };
+
+    for (const row of rows) {
+      const key = getRowKey(row.kind, row.row_ref_id);
+      const activityDate = getActivityDateKey(row, metaByKey[key] || null);
+      const timbraturaState = timbraturaStateByKey[key] || "NON_INIZIATA";
+      if (timbraturaState === "IN_CORSO") {
+        groups.IN_CORSO.push(row);
+      } else if (activityDate < todayIso) {
+        groups.SCADUTE.push(row);
+      } else if (activityDate === todayIso) {
+        groups.OGGI.push(row);
+      } else {
+        groups.PROSSIME.push(row);
+      }
+    }
+
+    const sortByDate = (a: TimelineRow, b: TimelineRow) => {
+      const aDate = getActivityDateKey(a, metaByKey[getRowKey(a.kind, a.row_ref_id)] || null);
+      const bDate = getActivityDateKey(b, metaByKey[getRowKey(b.kind, b.row_ref_id)] || null);
       return aDate.localeCompare(bDate);
-    });
-    return list;
-  }, [metaByKey, rows]);
+    };
+
+    groups.IN_CORSO.sort(sortByDate);
+    groups.SCADUTE.sort(sortByDate);
+    groups.OGGI.sort(sortByDate);
+    groups.PROSSIME.sort(sortByDate);
+
+    return [
+      { key: "IN_CORSO", title: "In corso", rows: groups.IN_CORSO },
+      { key: "SCADUTE", title: "Urgenti / scadute", rows: groups.SCADUTE },
+      { key: "OGGI", title: "Oggi", rows: groups.OGGI },
+      { key: "PROSSIME", title: "Prossime", rows: groups.PROSSIME },
+    ].filter((group) => group.rows.length > 0);
+  }, [metaByKey, rows, timbraturaStateByKey]);
+
+  const sortedRows = useMemo(() => {
+    return groupedRows.flatMap((group) => group.rows);
+  }, [groupedRows]);
 
   async function handleTimbraturaAction(
     row: TimelineRow,
@@ -429,123 +465,149 @@ export default function OperatoreAttivitaPage() {
         <div>Nessuna attività assegnata.</div>
       ) : (
         <div style={{ display: "grid", gap: 10 }}>
-          {sortedRows.map((row) => {
-            const key = getRowKey(row.kind, row.row_ref_id);
-            const meta = metaByKey[key] || null;
-            const operativi = extractOperativi(meta);
-            const schedule = getRowSchedule(row, meta);
-            const modeLabel = getActivityModeLabel(operativi);
-            const kindLabel = getActivityKindLabel(row, operativi);
-            const timbraturaState = timbraturaStateByKey[key] || "NON_INIZIATA";
-            const timbraturaLoading = timbraturaLoadingKey === key;
-            const timeBudget = timeBudgetByKey[key] || { stimatoMinuti: null, realeMinuti: null };
-            const overdue = isTimelineRowOverdueNotDone(row, meta);
-
-            return (
+          {groupedRows.map((group) => (
+            <div key={group.key} style={{ display: "grid", gap: 10 }}>
               <div
-                key={row.id}
                 style={{
-                  border: "1px solid #e5e7eb",
-                  borderRadius: 14,
-                  background: overdue ? "#fffaf5" : "white",
-                  padding: "12px 14px",
-                  display: "grid",
+                  display: "flex",
+                  alignItems: "center",
                   gap: 10,
-                  borderLeft: overdue ? "4px solid #f59e0b" : "4px solid transparent",
+                  marginTop: 4,
                 }}
               >
-                <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start", flexWrap: "wrap" }}>
-                  <div style={{ display: "grid", gap: 8, minWidth: 0 }}>
-                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-                      {renderActivityKindBadge(kindLabel)}
-                      {renderModeBadge(modeLabel)}
-                      {overdue ? renderPill("SCADUTO", BADGE_COLORS.statusExpired) : renderPill("IN PROGRAMMA", BADGE_COLORS.statusOk)}
-                    </div>
-                    <div style={{ fontWeight: 800, fontSize: 16, color: "#111827", wordBreak: "break-word" }}>
-                      {row.progetto || "Attività cronoprogramma"}
-                    </div>
-                    <div style={{ display: "flex", gap: 10, flexWrap: "wrap", fontSize: 13, color: "#475569" }}>
-                      <span>Cliente: {row.cliente || "—"}</span>
-                      <span>Data: {schedule.data_inizio ? formatOperativiDateLabel(schedule.data_inizio) : "—"}</span>
-                      <span>Rif: {row.ticket_no || row.proforma || "—"}</span>
-                    </div>
-                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", fontSize: 12, color: "#475569" }}>
-                      <span>Stimato: {formatMinutesCompact(timeBudget.stimatoMinuti)}</span>
-                      <span>Reale: {formatMinutesCompact(timeBudget.realeMinuti)}</span>
-                      {renderBudgetBadge(timeBudget.stimatoMinuti, timeBudget.realeMinuti)}
-                    </div>
-                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-                      {timbraturaState === "IN_CORSO" ? renderPill("IN CORSO", BADGE_COLORS.activityRemote, "⏸") : null}
-                      {timbraturaState === "COMPLETATA" ? renderPill("COMPLETATA", BADGE_COLORS.statusOk, "✓") : null}
-                      {timbraturaState === "NON_INIZIATA" ? (
-                        <button
-                          type="button"
-                          onClick={() => void handleTimbraturaAction(row, key, "start_timbratura")}
-                          disabled={timbraturaLoading}
-                          style={{
-                            padding: "6px 10px",
-                            borderRadius: 999,
-                            border: "1px solid #86efac",
-                            background: "#f0fdf4",
-                            color: "#166534",
-                            fontSize: 12,
-                            fontWeight: 700,
-                            cursor: timbraturaLoading ? "wait" : "pointer",
-                            opacity: timbraturaLoading ? 0.7 : 1,
-                          }}
-                        >
-                          ▶ Inizia
-                        </button>
-                      ) : null}
-                      {timbraturaState === "IN_CORSO" ? (
-                        <button
-                          type="button"
-                          onClick={() => void handleTimbraturaAction(row, key, "stop_timbratura")}
-                          disabled={timbraturaLoading}
-                          style={{
-                            padding: "6px 10px",
-                            borderRadius: 999,
-                            border: "1px solid #fca5a5",
-                            background: "#fee2e2",
-                            color: "#b91c1c",
-                            fontSize: 12,
-                            fontWeight: 700,
-                            cursor: timbraturaLoading ? "wait" : "pointer",
-                            opacity: timbraturaLoading ? 0.7 : 1,
-                          }}
-                        >
-                          ⏹ Termina
-                        </button>
-                      ) : null}
-                    </div>
-                  </div>
-                  <div style={{ display: "grid", gap: 8, justifyItems: "end", textAlign: "right" }}>
-                    <div style={{ fontSize: 12, color: "#64748b" }}>
-                      {schedule.data_fine ? `Fine ${formatOperativiDateLabel(schedule.data_fine)}` : "Fine —"}
-                    </div>
-                    {row.checklist_id ? (
-                      <Link
-                        href={`/checklists/${row.checklist_id}`}
-                        style={{
-                          display: "inline-block",
-                          padding: "6px 10px",
-                          borderRadius: 8,
-                          border: "1px solid #d1d5db",
-                          background: "white",
-                          color: "inherit",
-                          textDecoration: "none",
-                          fontWeight: 700,
-                          whiteSpace: "nowrap",
-                        }}
-                      >
-                        Apri progetto
-                      </Link>
-                    ) : null}
-                  </div>
+                <div
+                  style={{
+                    fontSize: 13,
+                    fontWeight: 800,
+                    color: "#475569",
+                    textTransform: "uppercase",
+                    letterSpacing: 0.4,
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {group.title}
                 </div>
+                <div style={{ flex: 1, height: 1, background: "#e5e7eb" }} />
               </div>
-            );
-          })}
+              {group.rows.map((row) => {
+                const key = getRowKey(row.kind, row.row_ref_id);
+                const meta = metaByKey[key] || null;
+                const operativi = extractOperativi(meta);
+                const schedule = getRowSchedule(row, meta);
+                const modeLabel = getActivityModeLabel(operativi);
+                const kindLabel = getActivityKindLabel(row, operativi);
+                const timbraturaState = timbraturaStateByKey[key] || "NON_INIZIATA";
+                const timbraturaLoading = timbraturaLoadingKey === key;
+                const timeBudget = timeBudgetByKey[key] || { stimatoMinuti: null, realeMinuti: null };
+                const overdue = isTimelineRowOverdueNotDone(row, meta);
+
+                return (
+                  <div
+                    key={row.id}
+                    style={{
+                      border: "1px solid #e5e7eb",
+                      borderRadius: 14,
+                      background: overdue ? "#fffaf5" : "white",
+                      padding: "12px 14px",
+                      display: "grid",
+                      gap: 10,
+                      borderLeft: overdue ? "4px solid #f59e0b" : "4px solid transparent",
+                    }}
+                  >
+                    <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start", flexWrap: "wrap" }}>
+                      <div style={{ display: "grid", gap: 8, minWidth: 0 }}>
+                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                          {renderActivityKindBadge(kindLabel)}
+                          {renderModeBadge(modeLabel)}
+                          {overdue ? renderPill("SCADUTO", BADGE_COLORS.statusExpired) : renderPill("IN PROGRAMMA", BADGE_COLORS.statusOk)}
+                        </div>
+                        <div style={{ fontWeight: 800, fontSize: 16, color: "#111827", wordBreak: "break-word" }}>
+                          {row.progetto || "Attività cronoprogramma"}
+                        </div>
+                        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", fontSize: 13, color: "#475569" }}>
+                          <span>Cliente: {row.cliente || "—"}</span>
+                          <span>Data: {schedule.data_inizio ? formatOperativiDateLabel(schedule.data_inizio) : "—"}</span>
+                          <span>Rif: {row.ticket_no || row.proforma || "—"}</span>
+                        </div>
+                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", fontSize: 12, color: "#475569" }}>
+                          <span>Stimato: {formatMinutesCompact(timeBudget.stimatoMinuti)}</span>
+                          <span>Reale: {formatMinutesCompact(timeBudget.realeMinuti)}</span>
+                          {renderBudgetBadge(timeBudget.stimatoMinuti, timeBudget.realeMinuti)}
+                        </div>
+                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                          {timbraturaState === "IN_CORSO" ? renderPill("IN CORSO", BADGE_COLORS.activityRemote, "⏸") : null}
+                          {timbraturaState === "COMPLETATA" ? renderPill("COMPLETATA", BADGE_COLORS.statusOk, "✓") : null}
+                          {timbraturaState === "NON_INIZIATA" ? (
+                            <button
+                              type="button"
+                              onClick={() => void handleTimbraturaAction(row, key, "start_timbratura")}
+                              disabled={timbraturaLoading}
+                              style={{
+                                padding: "6px 10px",
+                                borderRadius: 999,
+                                border: "1px solid #86efac",
+                                background: "#f0fdf4",
+                                color: "#166534",
+                                fontSize: 12,
+                                fontWeight: 700,
+                                cursor: timbraturaLoading ? "wait" : "pointer",
+                                opacity: timbraturaLoading ? 0.7 : 1,
+                              }}
+                            >
+                              ▶ Inizia
+                            </button>
+                          ) : null}
+                          {timbraturaState === "IN_CORSO" ? (
+                            <button
+                              type="button"
+                              onClick={() => void handleTimbraturaAction(row, key, "stop_timbratura")}
+                              disabled={timbraturaLoading}
+                              style={{
+                                padding: "6px 10px",
+                                borderRadius: 999,
+                                border: "1px solid #fca5a5",
+                                background: "#fee2e2",
+                                color: "#b91c1c",
+                                fontSize: 12,
+                                fontWeight: 700,
+                                cursor: timbraturaLoading ? "wait" : "pointer",
+                                opacity: timbraturaLoading ? 0.7 : 1,
+                              }}
+                            >
+                              ⏹ Termina
+                            </button>
+                          ) : null}
+                        </div>
+                      </div>
+                      <div style={{ display: "grid", gap: 8, justifyItems: "end", textAlign: "right" }}>
+                        <div style={{ fontSize: 12, color: "#64748b" }}>
+                          {schedule.data_fine ? `Fine ${formatOperativiDateLabel(schedule.data_fine)}` : "Fine —"}
+                        </div>
+                        {row.checklist_id ? (
+                          <Link
+                            href={`/checklists/${row.checklist_id}`}
+                            style={{
+                              display: "inline-block",
+                              padding: "6px 10px",
+                              borderRadius: 8,
+                              border: "1px solid #d1d5db",
+                              background: "white",
+                              color: "inherit",
+                              textDecoration: "none",
+                              fontWeight: 700,
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            Apri progetto
+                          </Link>
+                        ) : null}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          ))}
         </div>
       )}
     </div>
