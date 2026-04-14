@@ -3587,6 +3587,7 @@ function buildFormData(c: Checklist): FormData {
   }
 
   async function loadProjectLicenzeSection(checklistId: string) {
+    if (!checklistId) return [];
     perfCountFetch("GET /api/checklists/:id/licenses");
     const res = await fetch(`/api/checklists/${checklistId}/licenses`, {
       cache: "no-store",
@@ -3604,6 +3605,7 @@ function buildFormData(c: Checklist): FormData {
   }
 
   async function loadProjectRinnoviSection(checklistId: string) {
+    if (!checklistId) return;
     perfCountFetch("GET /api/checklists/:id/tagliandi");
     const tagliandiRes = await fetch(`/api/checklists/${checklistId}/tagliandi`, {
       cache: "no-store",
@@ -3863,6 +3865,12 @@ function buildFormData(c: Checklist): FormData {
   useEffect(() => {
     const checklistCliente = String(checklist?.cliente || "").trim();
     if (!checklistCliente) return;
+    const shouldLoadAlertSupport =
+      lazyDataLoaded.licenze ||
+      lazyDataLoaded.rinnovi ||
+      lazyDataLoaded.interventi ||
+      lazyDataLoaded.checklistOperativa;
+    if (!shouldLoadAlertSupport) return;
     (async () => {
       try {
         const { data, error: opErr } = await db<any[]>({
@@ -3924,12 +3932,21 @@ function buildFormData(c: Checklist): FormData {
         console.error("Errore runtime useEffect operatori/checklist", err);
       }
     })();
-  }, [checklist?.cliente]);
+  }, [
+    checklist?.cliente,
+    lazyDataLoaded.checklistOperativa,
+    lazyDataLoaded.interventi,
+    lazyDataLoaded.licenze,
+    lazyDataLoaded.rinnovi,
+  ]);
 
   useEffect(() => {
     let alive = true;
     (async () => {
       if (!id) return;
+      const shouldLoadAlertStats =
+        lazyDataLoaded.licenze || lazyDataLoaded.rinnovi || lazyDataLoaded.interventi;
+      if (!shouldLoadAlertStats) return;
       const { data, error: err } = await db<any[]>({
         table: "checklist_alert_log",
         op: "select",
@@ -3981,7 +3998,16 @@ function buildFormData(c: Checklist): FormData {
     return () => {
       alive = false;
     };
-  }, [id, alertOperatori, projectRinnovi, licenze, projectTagliandi]);
+  }, [
+    id,
+    alertOperatori,
+    lazyDataLoaded.interventi,
+    lazyDataLoaded.licenze,
+    lazyDataLoaded.rinnovi,
+    projectRinnovi,
+    licenze,
+    projectTagliandi,
+  ]);
 
   const m2Calcolati = calcM2FromDimensioni(
     formData?.dimensioni ?? null,
