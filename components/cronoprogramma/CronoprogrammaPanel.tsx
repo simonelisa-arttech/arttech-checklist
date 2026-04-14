@@ -1,17 +1,22 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import type { Dispatch, MutableRefObject, SetStateAction, UIEvent } from "react";
 import PersonaleMultiSelect from "@/components/PersonaleMultiSelect";
 import SafetyComplianceBadge from "@/components/SafetyComplianceBadge";
 import { isTimelineRowOverdueNotDone } from "@/lib/cronoprogrammaStatus";
 import { formatOperativiDateLabel } from "@/lib/operativiSchedule";
+import { isSupabaseConfigured, supabase } from "@/lib/supabaseClient";
 
 type TimelineRow = any;
 type CronoMeta = any;
 type CronoComment = any;
 type OperativiFields = any;
+type TimeBudgetSummary = {
+  stimatoMinuti: number | null;
+  realeMinuti: number | null;
+};
 
 const BADGE_COLORS = {
   statusExpired: { bg: "#fee2e2", border: "#fca5a5", color: "#b91c1c" },
@@ -181,6 +186,28 @@ function renderRowStatusBadge({
   return renderPill("ATTENZIONE", BADGE_COLORS.statusDueSoon);
 }
 
+function formatMinutesCompact(value?: number | null) {
+  if (!Number.isFinite(Number(value)) || Number(value) < 0) return "—";
+  const total = Math.round(Number(value));
+  const hours = Math.floor(total / 60);
+  const minutes = total % 60;
+  if (hours <= 0) return `${minutes} min`;
+  if (minutes === 0) return `${hours} h`;
+  return `${hours} h ${minutes} min`;
+}
+
+function renderBudgetBadge(stimatoMinuti: number | null, realeMinuti: number | null) {
+  if (!Number.isFinite(Number(stimatoMinuti)) || stimatoMinuti == null) return null;
+  const actual = Number.isFinite(Number(realeMinuti)) && realeMinuti != null ? Number(realeMinuti) : 0;
+  if (actual <= stimatoMinuti) {
+    return renderPill("IN LINEA", BADGE_COLORS.statusOk, "🟢");
+  }
+  if (actual <= stimatoMinuti * 1.3) {
+    return renderPill("FUORI STIMA", BADGE_COLORS.statusDueSoon, "🟠");
+  }
+  return renderPill("MOLTO FUORI", BADGE_COLORS.statusExpired, "🔴");
+}
+
 export default function CronoprogrammaPanel({
   fromDate,
   setFromDate,
@@ -249,6 +276,83 @@ export default function CronoprogrammaPanel({
     Record<string, "NON_INIZIATA" | "IN_CORSO" | "COMPLETATA">
   >({});
   const [timbraturaLoadingKey, setTimbraturaLoadingKey] = useState<string | null>(null);
+  const [timeBudgetByKey, setTimeBudgetByKey] = useState<Record<string, TimeBudgetSummary>>({});
+
+  useEffect(() => {
+    let active = true;
+    if (!isSupabaseConfigured || filteredSorted.length === 0) {
+      setTimeBudgetByKey({});
+      return;
+    }
+
+    const rows = filteredSorted.map((row) => ({
+      row_kind: String(row.kind || "").trim().toUpperCase(),
+      row_ref_id: String(row.row_ref_id || "").trim(),
+    }));
+    const rowKinds = Array.from(new Set(rows.map((row) => row.row_kind).filter(Boolean)));
+    const rowRefIds = Array.from(new Set(rows.map((row) => row.row_ref_id).filter(Boolean)));
+    const wanted = new Set(rows.map((row) => `${row.row_kind}:${row.row_ref_id}`));
+
+    void (async () => {
+      const [metaRes, timbratureRes] = await Promise.all([
+        supabase
+          .from("cronoprogramma_meta")
+          .select("row_kind,row_ref_id,durata_prevista_minuti")
+          .in("row_kind", rowKinds)
+          .in("row_ref_id", rowRefIds),
+        supabase
+          .from("cronoprogramma_timbrature")
+          .select("row_kind,row_ref_id,durata_effettiva_minuti,created_at")
+          .in("row_kind", rowKinds)
+          .in("row_ref_id", rowRefIds)
+          .order("created_at", { ascending: false }),
+      ]);
+
+      if (!active) return;
+      if (metaRes.error) {
+        console.error("Errore caricamento durata prevista cronoprogramma", metaRes.error);
+      }
+      if (timbratureRes.error) {
+        console.error("Errore caricamento timbrature cronoprogramma", timbratureRes.error);
+      }
+
+      const next: Record<string, TimeBudgetSummary> = {};
+      for (const row of rows) {
+        const key = `${row.row_kind}:${row.row_ref_id}`;
+        next[key] = { stimatoMinuti: null, realeMinuti: null };
+      }
+
+      for (const row of metaRes.data || []) {
+        const key = `${String((row as any).row_kind || "")}:${String((row as any).row_ref_id || "")}`;
+        if (!wanted.has(key)) continue;
+        next[key] = {
+          ...(next[key] || { stimatoMinuti: null, realeMinuti: null }),
+          stimatoMinuti:
+            Number.isFinite(Number((row as any).durata_prevista_minuti)) && Number((row as any).durata_prevista_minuti) >= 0
+              ? Number((row as any).durata_prevista_minuti)
+              : null,
+        };
+      }
+
+      for (const row of timbratureRes.data || []) {
+        const key = `${String((row as any).row_kind || "")}:${String((row as any).row_ref_id || "")}`;
+        if (!wanted.has(key) || next[key]?.realeMinuti != null) continue;
+        next[key] = {
+          ...(next[key] || { stimatoMinuti: null, realeMinuti: null }),
+          realeMinuti:
+            Number.isFinite(Number((row as any).durata_effettiva_minuti)) && Number((row as any).durata_effettiva_minuti) >= 0
+              ? Number((row as any).durata_effettiva_minuti)
+              : 0,
+        };
+      }
+
+      setTimeBudgetByKey(next);
+    })();
+
+    return () => {
+      active = false;
+    };
+  }, [filteredSorted]);
 
   async function handleTimbraturaAction(
     row: TimelineRow,
@@ -276,6 +380,26 @@ export default function CronoprogrammaPanel({
         ...prev,
         [key]: action === "start_timbratura" ? "IN_CORSO" : "COMPLETATA",
       }));
+      if (action === "start_timbratura") {
+        setTimeBudgetByKey((prev) => ({
+          ...prev,
+          [key]: {
+            stimatoMinuti: prev[key]?.stimatoMinuti ?? null,
+            realeMinuti: prev[key]?.realeMinuti ?? 0,
+          },
+        }));
+      } else {
+        setTimeBudgetByKey((prev) => ({
+          ...prev,
+          [key]: {
+            stimatoMinuti: prev[key]?.stimatoMinuti ?? null,
+            realeMinuti:
+              Number.isFinite(Number(data?.durata_effettiva_minuti)) && Number(data?.durata_effettiva_minuti) >= 0
+                ? Number(data.durata_effettiva_minuti)
+                : prev[key]?.realeMinuti ?? 0,
+          },
+        }));
+      }
     } catch (err) {
       console.error("Errore timbratura cronoprogramma", err);
     } finally {
@@ -498,6 +622,7 @@ export default function CronoprogrammaPanel({
               const expanded = expandedRowKey === key;
               const timbraturaState = timbraturaStateByKey[key] || "NON_INIZIATA";
               const timbraturaLoading = timbraturaLoadingKey === key;
+              const timeBudget = timeBudgetByKey[key] || { stimatoMinuti: null, realeMinuti: null };
 
               return (
                 <div
@@ -561,6 +686,11 @@ export default function CronoprogrammaPanel({
                           <span>Cliente: {r.cliente || "—"}</span>
                           <span>Persone: {operativi.personale_previsto || "—"}</span>
                           <span>Rif: {r.ticket_no || r.proforma || "—"}</span>
+                        </div>
+                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", fontSize: 12, color: "#475569" }}>
+                          <span>Stimato: {formatMinutesCompact(timeBudget.stimatoMinuti)}</span>
+                          <span>Reale: {formatMinutesCompact(timeBudget.realeMinuti)}</span>
+                          {renderBudgetBadge(timeBudget.stimatoMinuti, timeBudget.realeMinuti)}
                         </div>
                         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
                           {timbraturaState === "IN_CORSO"
