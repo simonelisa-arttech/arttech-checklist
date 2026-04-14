@@ -85,7 +85,7 @@ export default function ImpostazioniPage() {
             color: "inherit",
           }}
         >
-          Clienti
+          Anagrafica clienti
         </Link>
         <Link
           href="/impostazioni/operatori"
@@ -98,7 +98,7 @@ export default function ImpostazioniPage() {
             color: "inherit",
           }}
         >
-          Operatori
+          Anagrafica operatori
         </Link>
         <Link
           href="/impostazioni/aziende"

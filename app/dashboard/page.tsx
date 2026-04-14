@@ -751,7 +751,7 @@ export default function DashboardPage() {
       <div style={{ display: "flex", alignItems: "flex-start", gap: 16, flexWrap: "wrap", marginBottom: 18 }}>
         <div style={{ flexShrink: 0, minWidth: 190 }}>
           <h1 style={{ margin: 0, fontSize: 34, whiteSpace: "nowrap" }}>AT SYSTEM</h1>
-          <div style={{ marginTop: 2, fontSize: 12, opacity: 0.7 }}>DASHBOARD PROGETTI</div>
+          <div style={{ marginTop: 2, fontSize: 12, opacity: 0.7 }}>CLIENTI</div>
         </div>
       </div>
 

@@ -65,7 +65,20 @@ export default function RootLayout({
                   background: "white",
                 }}
               >
-                Dashboard
+                Clienti
+              </Link>
+              <Link
+                href="/operatori"
+                style={{
+                  padding: "8px 12px",
+                  borderRadius: 10,
+                  border: "1px solid #ddd",
+                  textDecoration: "none",
+                  color: "inherit",
+                  background: "white",
+                }}
+              >
+                Operatori
               </Link>
               <Link
                 href="/sim"

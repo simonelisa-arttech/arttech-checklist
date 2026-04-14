@@ -78,7 +78,7 @@ export default function ClientiPage() {
       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
         <div>
           <h1 style={{ margin: 0, fontSize: 34 }}>AT SYSTEM</h1>
-          <div style={{ marginTop: 2, fontSize: 12, opacity: 0.7 }}>CLIENTI</div>
+          <div style={{ marginTop: 2, fontSize: 12, opacity: 0.7 }}>ANAGRAFICA CLIENTI</div>
         </div>
       </div>
 
