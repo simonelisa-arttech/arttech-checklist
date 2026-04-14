@@ -10,6 +10,7 @@ export default function DashboardPage() {
       showClientiSection={false}
       showCronoSection={false}
       showProjectsSection
+      enableProjectFilters
     />
   );
 }

@@ -120,6 +120,14 @@ function getProjectStatusBadge(value?: string | null) {
   };
 }
 
+function classifyProjectDeadline(value: string | null | undefined, todayIso: string, upcomingIso: string) {
+  const date = String(value || "").trim().slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return null;
+  if (date < todayIso) return "SCADUTA" as const;
+  if (date <= upcomingIso) return "IMMINENTE" as const;
+  return null;
+}
+
 function buildScadenzeLink(days: number) {
   const from = new Date();
   const to = new Date(from);
@@ -555,6 +563,7 @@ export function DashboardCockpitPage({
   showClientiSection = false,
   showCronoSection = true,
   showProjectsSection = false,
+  enableProjectFilters = false,
   pageTitle = "AT SYSTEM",
   pageSubtitle = "Cockpit operativo",
 }: {
@@ -562,6 +571,7 @@ export function DashboardCockpitPage({
   showClientiSection?: boolean;
   showCronoSection?: boolean;
   showProjectsSection?: boolean;
+  enableProjectFilters?: boolean;
   pageTitle?: string;
   pageSubtitle?: string;
 } = {}) {
@@ -615,6 +625,11 @@ export function DashboardCockpitPage({
     30: { count: 0, overdue: 0 },
   });
   const [clientiMissingEmailCount, setClientiMissingEmailCount] = useState(0);
+  const [dashboardProjectSearch, setDashboardProjectSearch] = useState("");
+  const [dashboardProjectQuickFilter, setDashboardProjectQuickFilter] = useState<
+    "TUTTI" | "CRITICI" | "IMMINENTI" | "SCADUTI"
+  >("TUTTI");
+  const [dashboardProjectStatusFilter, setDashboardProjectStatusFilter] = useState("TUTTI");
   const [showMissingEmailInfo, setShowMissingEmailInfo] = useState(false);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
   const [addInterventoOpen, setAddInterventoOpen] = useState(false);
@@ -1234,8 +1249,47 @@ export function DashboardCockpitPage({
       });
   }, [items, cronoRows, cronoMetaByKey]);
 
+  const dashboardProjectStatusOptions = useMemo(() => {
+    return Array.from(
+      new Set(
+        items
+          .map((item) => String(item.stato_progetto || "").trim())
+          .filter(Boolean)
+      )
+    ).sort((a, b) => a.localeCompare(b, "it", { sensitivity: "base" }));
+  }, [items]);
+
   const dashboardProjectRows = useMemo(() => {
-    return [...items].sort((a, b) => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const todayIso = toDateInputValue(today);
+    const upcoming30 = new Date(today);
+    upcoming30.setDate(upcoming30.getDate() + 30);
+    const upcoming30Iso = toDateInputValue(upcoming30);
+
+    return [...items]
+      .map((item) => {
+        const licenzaDeadline = classifyProjectDeadline(
+          item.licenze_prossima_scadenza,
+          todayIso,
+          upcoming30Iso
+        );
+        const garanziaDeadline = classifyProjectDeadline(
+          item.garanzia_scadenza,
+          todayIso,
+          upcoming30Iso
+        );
+        return {
+          ...item,
+          deadlineFlags: {
+            licenza: licenzaDeadline,
+            garanzia: garanziaDeadline,
+            hasExpired: licenzaDeadline === "SCADUTA" || garanziaDeadline === "SCADUTA",
+            hasDueSoon: licenzaDeadline === "IMMINENTE" || garanziaDeadline === "IMMINENTE",
+          },
+        };
+      })
+      .sort((a, b) => {
       const clienteCmp = String(a.cliente || "").localeCompare(String(b.cliente || ""), "it", {
         sensitivity: "base",
       });
@@ -1244,11 +1298,46 @@ export function DashboardCockpitPage({
       const dateB = String(b.data_tassativa || b.data_prevista || "");
       const dateCmp = dateA.localeCompare(dateB);
       if (dateCmp !== 0) return dateCmp;
-      return String(a.nome_checklist || "").localeCompare(String(b.nome_checklist || ""), "it", {
-        sensitivity: "base",
+        return String(a.nome_checklist || "").localeCompare(String(b.nome_checklist || ""), "it", {
+          sensitivity: "base",
+        });
       });
-    });
   }, [items]);
+
+  const filteredDashboardProjectRows = useMemo(() => {
+    const needle = dashboardProjectSearch.trim().toLowerCase();
+    return dashboardProjectRows.filter((item) => {
+      const matchesSearch =
+        !needle ||
+        `${item.cliente || ""} ${item.nome_checklist || ""} ${item.proforma || ""} ${item.po || ""} ${item.tipo_impianto || ""} ${item.impianto_codice || ""}`
+          .toLowerCase()
+          .includes(needle);
+      if (!matchesSearch) return false;
+
+      if (
+        dashboardProjectStatusFilter !== "TUTTI" &&
+        String(item.stato_progetto || "").trim() !== dashboardProjectStatusFilter
+      ) {
+        return false;
+      }
+
+      if (dashboardProjectQuickFilter === "CRITICI" && !item.deadlineFlags.hasExpired) return false;
+      if (
+        dashboardProjectQuickFilter === "IMMINENTI" &&
+        (item.deadlineFlags.hasExpired || !item.deadlineFlags.hasDueSoon)
+      ) {
+        return false;
+      }
+      if (dashboardProjectQuickFilter === "SCADUTI" && !item.deadlineFlags.hasExpired) return false;
+
+      return true;
+    });
+  }, [
+    dashboardProjectQuickFilter,
+    dashboardProjectRows,
+    dashboardProjectSearch,
+    dashboardProjectStatusFilter,
+  ]);
 
   const checklistOptions = useMemo(() => {
     if (!addInterventoCliente) return [];
@@ -2379,8 +2468,102 @@ export function DashboardCockpitPage({
                   }}
                 />
               </div>
+              {enableProjectFilters ? (
+                <div style={{ display: "grid", gap: 10, marginBottom: 14 }}>
+                  <div
+                    style={{
+                      display: "flex",
+                      gap: 10,
+                      flexWrap: "wrap",
+                      alignItems: "center",
+                    }}
+                  >
+                    <input
+                      value={dashboardProjectSearch}
+                      onChange={(e) => setDashboardProjectSearch(e.target.value)}
+                      placeholder="Cerca cliente, progetto, proforma, PO, impianto"
+                      style={{
+                        flex: "1 1 300px",
+                        minWidth: 0,
+                        padding: "10px 12px",
+                        borderRadius: 10,
+                        border: "1px solid #cbd5e1",
+                        background: "white",
+                      }}
+                    />
+                    <select
+                      value={dashboardProjectStatusFilter}
+                      onChange={(e) => setDashboardProjectStatusFilter(e.target.value)}
+                      style={{
+                        flex: "0 1 220px",
+                        minWidth: 0,
+                        padding: "10px 12px",
+                        borderRadius: 10,
+                        border: "1px solid #cbd5e1",
+                        background: "white",
+                      }}
+                    >
+                      <option value="TUTTI">Tutti gli stati</option>
+                      {dashboardProjectStatusOptions.map((status) => (
+                        <option key={status} value={status}>
+                          {status}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                    {[
+                      { value: "TUTTI", label: "Tutti" },
+                      { value: "CRITICI", label: "Critici" },
+                      { value: "IMMINENTI", label: "Imminenti" },
+                      { value: "SCADUTI", label: "Scaduti" },
+                    ].map((option) => {
+                      const active = dashboardProjectQuickFilter === option.value;
+                      return (
+                        <button
+                          key={option.value}
+                          type="button"
+                          onClick={() =>
+                            setDashboardProjectQuickFilter(
+                              option.value as typeof dashboardProjectQuickFilter
+                            )
+                          }
+                          style={{
+                            border: "1px solid #cbd5e1",
+                            background: active ? "#dbeafe" : "#fff",
+                            color: active ? "#1d4ed8" : "#334155",
+                            borderRadius: 999,
+                            padding: "7px 11px",
+                            fontWeight: 700,
+                            cursor: "pointer",
+                          }}
+                        >
+                          {option.label}
+                        </button>
+                      );
+                    })}
+                    <span style={{ fontSize: 12, color: "#64748b" }}>
+                      {filteredDashboardProjectRows.length} risultati
+                    </span>
+                  </div>
+                </div>
+              ) : null}
               <div style={{ display: "grid", gap: 10 }}>
-                {dashboardProjectRows.map((item) => {
+                {filteredDashboardProjectRows.length === 0 ? (
+                  <div
+                    style={{
+                      padding: "12px 14px",
+                      borderRadius: 14,
+                      border: "1px solid #e2e8f0",
+                      background: "#f8fafc",
+                      color: "#64748b",
+                      fontSize: 14,
+                    }}
+                  >
+                    Nessun progetto trovato con i filtri correnti
+                  </div>
+                ) : null}
+                {filteredDashboardProjectRows.map((item) => {
                   const projectStatus = getProjectStatusBadge(item.stato_progetto);
                   const keyDate = item.data_tassativa || item.data_prevista;
                   return (
@@ -2442,6 +2625,60 @@ export function DashboardCockpitPage({
                           {item.tipo_impianto ? (
                             <span style={{ padding: "4px 8px", borderRadius: 999, background: "#f8fafc", border: "1px solid #e2e8f0" }}>
                               {item.tipo_impianto}
+                            </span>
+                          ) : null}
+                          {item.deadlineFlags.licenza === "SCADUTA" ? (
+                            <span
+                              style={{
+                                padding: "4px 8px",
+                                borderRadius: 999,
+                                background: DASHBOARD_BADGE_COLORS.statusExpired.background,
+                                border: `1px solid ${DASHBOARD_BADGE_COLORS.statusExpired.border}`,
+                                color: DASHBOARD_BADGE_COLORS.statusExpired.color,
+                                fontWeight: 800,
+                              }}
+                            >
+                              Lic scad.
+                            </span>
+                          ) : item.deadlineFlags.licenza === "IMMINENTE" ? (
+                            <span
+                              style={{
+                                padding: "4px 8px",
+                                borderRadius: 999,
+                                background: DASHBOARD_BADGE_COLORS.statusDueSoon.background,
+                                border: `1px solid ${DASHBOARD_BADGE_COLORS.statusDueSoon.border}`,
+                                color: DASHBOARD_BADGE_COLORS.statusDueSoon.color,
+                                fontWeight: 800,
+                              }}
+                            >
+                              Lic immin.
+                            </span>
+                          ) : null}
+                          {item.deadlineFlags.garanzia === "SCADUTA" ? (
+                            <span
+                              style={{
+                                padding: "4px 8px",
+                                borderRadius: 999,
+                                background: DASHBOARD_BADGE_COLORS.statusExpired.background,
+                                border: `1px solid ${DASHBOARD_BADGE_COLORS.statusExpired.border}`,
+                                color: DASHBOARD_BADGE_COLORS.statusExpired.color,
+                                fontWeight: 800,
+                              }}
+                            >
+                              Gar scad.
+                            </span>
+                          ) : item.deadlineFlags.garanzia === "IMMINENTE" ? (
+                            <span
+                              style={{
+                                padding: "4px 8px",
+                                borderRadius: 999,
+                                background: DASHBOARD_BADGE_COLORS.statusDueSoon.background,
+                                border: `1px solid ${DASHBOARD_BADGE_COLORS.statusDueSoon.border}`,
+                                color: DASHBOARD_BADGE_COLORS.statusDueSoon.color,
+                                fontWeight: 800,
+                              }}
+                            >
+                              Gar immin.
                             </span>
                           ) : null}
                         </div>
