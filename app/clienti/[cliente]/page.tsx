@@ -61,6 +61,14 @@ function startOfToday() {
   return today;
 }
 
+function normalizeCompactSearch(value?: string | null) {
+  return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
+}
+
 function stripPrefixId(value?: string | null) {
   const raw = String(value || "").trim();
   if (!raw) return "";
@@ -83,6 +91,9 @@ const ALLOWED_RINNOVO_STATI = new Set([
   "FATTURATO",
   "NON_RINNOVATO",
 ]);
+
+const PROJECTS_PREVIEW_LIMIT = 3;
+const RINNOVI_PREVIEW_LIMIT = 3;
 
 function normalizeRinnovoStatoForDb(value?: string | null) {
   const stato = String(value || "")
@@ -958,6 +969,8 @@ export default function ClientePage({
   const [error, setError] = useState<string | null>(null);
   const [authReady, setAuthReady] = useState(false);
   const [checklists, setChecklists] = useState<ChecklistRow[]>([]);
+  const [projectSearch, setProjectSearch] = useState("");
+  const [showAllProjects, setShowAllProjects] = useState(false);
   const [clienteSims, setClienteSims] = useState<ClienteSimRow[]>([]);
   const [clienteSimRechargesById, setClienteSimRechargesById] = useState<
     Record<string, ClienteSimRechargeRow[]>
@@ -987,6 +1000,12 @@ export default function ClientePage({
   const [rinnoviFilterDaAvvisare, setRinnoviFilterDaAvvisare] = useState(false);
   const [rinnoviFilterScaduti, setRinnoviFilterScaduti] = useState(false);
   const [rinnoviFilterDaFatturare, setRinnoviFilterDaFatturare] = useState(false);
+  const [rinnoviSearch, setRinnoviSearch] = useState("");
+  const [rinnoviTypeFilter, setRinnoviTypeFilter] = useState<
+    "TUTTI" | "LICENZA" | "RINNOVO" | "SIM" | "TAGLIANDO" | "SAAS" | "GARANZIA"
+  >("TUTTI");
+  const [showAllRinnovi, setShowAllRinnovi] = useState(false);
+  const [showFullRinnoviManagement, setShowFullRinnoviManagement] = useState(false);
   const [rinnoviAlertOpen, setRinnoviAlertOpen] = useState(false);
   const [rinnoviAlertStage, setRinnoviAlertStage] = useState<"stage1" | "stage2">("stage1");
   const [rinnoviAlertToOperatoreId, setRinnoviAlertToOperatoreId] = useState("");
@@ -2728,6 +2747,31 @@ export default function ClientePage({
     return Array.from(map.entries()).sort((a, b) => a[0].localeCompare(b[0]));
   }, [checklists]);
 
+  const filteredProjects = useMemo(() => {
+    const query = normalizeCompactSearch(projectSearch);
+    if (!query) return checklists;
+    return checklists.filter((project) => {
+      const haystack = normalizeCompactSearch(
+        [
+          project.nome_checklist,
+          project.proforma,
+          project.po,
+          project.tipo_impianto,
+          project.dimensioni,
+        ]
+          .filter(Boolean)
+          .join(" ")
+      );
+      return haystack.includes(query);
+    });
+  }, [checklists, projectSearch]);
+
+  const visibleProjects = useMemo(() => {
+    return showAllProjects
+      ? filteredProjects
+      : filteredProjects.slice(0, PROJECTS_PREVIEW_LIMIT);
+  }, [filteredProjects, showAllProjects]);
+
   const garanzieRows = useMemo(() => {
     let rows = checklists.filter((c) => c.garanzia_scadenza);
     if (onlyExpiredWarranty) {
@@ -2910,6 +2954,45 @@ export default function ClientePage({
     rinnoviFilterScaduti,
     rinnovi,
   ]);
+
+  const compactFilteredRinnovi = useMemo(() => {
+    const checklistMap = new Map(checklists.map((c) => [c.id, c] as const));
+    const query = normalizeCompactSearch(rinnoviSearch);
+    let rows = filteredRinnovi;
+    if (rinnoviTypeFilter !== "TUTTI") {
+      rows = rows.filter((row) => {
+        const type = String(row.item_tipo || "").trim().toUpperCase();
+        if (rinnoviTypeFilter === "SAAS") {
+          return type === "SAAS" || type === "SAAS_ULTRA";
+        }
+        return type === rinnoviTypeFilter;
+      });
+    }
+    if (!query) return rows;
+    return rows.filter((row) => {
+      const project = row.checklist_id ? checklistMap.get(row.checklist_id) : null;
+      const haystack = normalizeCompactSearch(
+        [
+          row.item_tipo,
+          row.riferimento,
+          row.descrizione,
+          row.proforma,
+          row.cod_magazzino,
+          row.scadenza,
+          project?.nome_checklist,
+        ]
+          .filter(Boolean)
+          .join(" ")
+      );
+      return haystack.includes(query);
+    });
+  }, [checklists, filteredRinnovi, rinnoviSearch, rinnoviTypeFilter]);
+
+  const visibleRinnovi = useMemo(() => {
+    return showAllRinnovi
+      ? compactFilteredRinnovi
+      : compactFilteredRinnovi.slice(0, RINNOVI_PREVIEW_LIMIT);
+  }, [compactFilteredRinnovi, showAllRinnovi]);
 
   const rinnovi30ggBreakdown = useMemo(() => {
     const now = startOfToday();
@@ -7264,6 +7347,87 @@ ${rinnovi30ggBreakdown.debugSample
 
         <div
           style={{
+            marginTop: 10,
+            display: "flex",
+            gap: 8,
+            flexWrap: "wrap",
+            alignItems: "center",
+          }}
+        >
+          <input
+            value={rinnoviSearch}
+            onChange={(e) => {
+              setRinnoviSearch(e.target.value);
+              setShowAllRinnovi(false);
+            }}
+            placeholder="Cerca riferimento, progetto, proforma, codice"
+            style={{
+              flex: "1 1 280px",
+              minWidth: 0,
+              padding: "9px 10px",
+              borderRadius: 10,
+              border: "1px solid #cbd5e1",
+              background: "#fff",
+            }}
+          />
+          {[
+            { value: "TUTTI", label: "Tutti" },
+            { value: "LICENZA", label: "Licenze" },
+            { value: "RINNOVO", label: "Rinnovi" },
+            { value: "SIM", label: "SIM" },
+            { value: "TAGLIANDO", label: "Tagliandi" },
+            { value: "SAAS", label: "SaaS" },
+            { value: "GARANZIA", label: "Garanzie" },
+          ].map((option) => {
+            const active = rinnoviTypeFilter === option.value;
+            return (
+              <button
+                key={option.value}
+                type="button"
+                onClick={() => {
+                  setRinnoviTypeFilter(option.value as typeof rinnoviTypeFilter);
+                  setShowAllRinnovi(false);
+                }}
+                style={{
+                  border: "1px solid #cbd5e1",
+                  background: active ? "#dbeafe" : "#fff",
+                  color: active ? "#1d4ed8" : "#334155",
+                  borderRadius: 999,
+                  padding: "7px 11px",
+                  fontWeight: 700,
+                  cursor: "pointer",
+                }}
+              >
+                {option.label}
+              </button>
+            );
+          })}
+          {compactFilteredRinnovi.length > RINNOVI_PREVIEW_LIMIT ? (
+            <button
+              type="button"
+              onClick={() => setShowAllRinnovi((prev) => !prev)}
+              style={{
+                border: "1px solid #cbd5e1",
+                background: showAllRinnovi ? "#e2e8f0" : "#fff",
+                color: "#0f172a",
+                borderRadius: 999,
+                padding: "8px 12px",
+                fontWeight: 700,
+                cursor: "pointer",
+              }}
+            >
+              {showAllRinnovi ? "Nascondi" : `Mostra tutti (${compactFilteredRinnovi.length})`}
+            </button>
+          ) : null}
+        </div>
+        <div style={{ marginTop: 8, fontSize: 12, color: "#64748b" }}>
+          {compactFilteredRinnovi.length === 0
+            ? "Nessuna scadenza o rinnovo trovato con i filtri correnti"
+            : `Preview compatta: ${visibleRinnovi.length} di ${compactFilteredRinnovi.length} elementi`}
+        </div>
+
+        <div
+          style={{
             display: "none",
             marginTop: 10,
             border: "1px solid #eee",
@@ -7379,11 +7543,11 @@ ${rinnovi30ggBreakdown.debugSample
           </div>
         </div>
 
-        {filteredRinnovi.length === 0 ? (
+        {compactFilteredRinnovi.length === 0 ? (
           <div style={{ marginTop: 10, opacity: 0.7 }}>Nessuna scadenza trovata</div>
         ) : (
           <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
-            {filteredRinnovi.map((row) => {
+            {visibleRinnovi.map((row) => {
               const project = checklistById.get(String(row.checklist_id || ""));
               const workflowStato = getWorkflowStato(row);
               const scadenzaBadge =
@@ -7440,69 +7604,79 @@ ${rinnovi30ggBreakdown.debugSample
           </div>
         )}
 
-        <details style={detailsStyle}>
-          <summary style={{ cursor: "pointer", fontWeight: 700 }}>Gestione completa scadenze e rinnovi</summary>
-          <div style={{ marginTop: 12 }}>
-            <RenewalsBlock
-              cliente={cliente}
-              rows={filteredRinnovi}
-              checklistById={checklistById}
-              rinnoviError={rinnoviError}
-              rinnoviNotice={rinnoviNotice}
-              setRinnoviNotice={setRinnoviNotice}
-              getWorkflowStato={getWorkflowStato}
-              actionsByTipo={ACTIONS_BY_TIPO}
-              alertStatsMap={alertStatsMap}
-              getAlertKeyForRow={getAlertKeyForRow}
-              renderScadenzaBadge={renderScadenzaBadge}
-              renderTagliandoStatoBadge={renderTagliandoStatoBadge}
-              renderAvvisatoBadge={renderAvvisatoBadge}
-              renderRinnovoStatoBadge={renderRinnovoStatoBadge}
-              renderModalitaBadge={renderModalitaBadge}
-              onSendAlert={(r) => openRinnoviAlert("stage1", false, [r])}
-              onSetDaFatturare={(r) =>
-                r.source === "tagliandi"
-                  ? markTagliandoDaFatturare(r)
-                  : r.source === "licenze"
-                  ? markLicenzaDaFatturare(r)
-                  : markRinnovoDaFatturare(r as RinnovoServizioRow)
-              }
-              onSetFatturato={(r) =>
-                r.source === "tagliandi"
-                  ? markTagliandoFatturato(r)
-                  : r.source === "licenze"
-                  ? markLicenzaFatturato(r)
-                  : markRinnovoFatturato(r as RinnovoServizioRow)
-              }
-              onSetConfermato={(r) =>
-                r.source === "tagliandi"
-                  ? markTagliandoOk(r)
-                  : r.source === "licenze"
-                  ? markLicenzaConfermata(r)
-                  : markWorkflowConfermato(r)
-              }
-              onSetNonRinnovato={(r) =>
-                r.source === "licenze"
-                  ? markLicenzaNonRinnovata(r)
-                  : r.source === "tagliandi"
-                  ? markTagliandoNonRinnovato(r)
-                  : markWorkflowNonRinnovato(r)
-              }
-              onEdit={openEditScadenza}
-              editOpen={editScadenzaOpen}
-              editForm={editScadenzaForm}
-              setEditOpen={setEditScadenzaOpen}
-              setEditForm={setEditScadenzaForm}
-              saveEdit={saveEditScadenza}
-              deleteEdit={deleteScadenzaItemFromEdit}
-              editSaving={editScadenzaSaving}
-              editError={editScadenzaErr}
-              licenzaStati={LICENZA_STATI}
-              tagliandoStati={TAGLIANDO_STATI}
-              tagliandoModalita={TAGLIANDO_MODALITA}
-              rinnovoStati={RINNOVO_STATI}
-            />
-          </div>
+        <details
+          style={detailsStyle}
+          open={showFullRinnoviManagement}
+          onToggle={(e) => setShowFullRinnoviManagement(e.currentTarget.open)}
+        >
+          <summary style={{ cursor: "pointer", fontWeight: 700 }}>
+            {showFullRinnoviManagement
+              ? "Nascondi gestione completa scadenze e rinnovi"
+              : "Apri gestione completa scadenze e rinnovi"}
+          </summary>
+          {showFullRinnoviManagement ? (
+            <div style={{ marginTop: 12 }}>
+              <RenewalsBlock
+                cliente={cliente}
+                rows={compactFilteredRinnovi}
+                checklistById={checklistById}
+                rinnoviError={rinnoviError}
+                rinnoviNotice={rinnoviNotice}
+                setRinnoviNotice={setRinnoviNotice}
+                getWorkflowStato={getWorkflowStato}
+                actionsByTipo={ACTIONS_BY_TIPO}
+                alertStatsMap={alertStatsMap}
+                getAlertKeyForRow={getAlertKeyForRow}
+                renderScadenzaBadge={renderScadenzaBadge}
+                renderTagliandoStatoBadge={renderTagliandoStatoBadge}
+                renderAvvisatoBadge={renderAvvisatoBadge}
+                renderRinnovoStatoBadge={renderRinnovoStatoBadge}
+                renderModalitaBadge={renderModalitaBadge}
+                onSendAlert={(r) => openRinnoviAlert("stage1", false, [r])}
+                onSetDaFatturare={(r) =>
+                  r.source === "tagliandi"
+                    ? markTagliandoDaFatturare(r)
+                    : r.source === "licenze"
+                    ? markLicenzaDaFatturare(r)
+                    : markRinnovoDaFatturare(r as RinnovoServizioRow)
+                }
+                onSetFatturato={(r) =>
+                  r.source === "tagliandi"
+                    ? markTagliandoFatturato(r)
+                    : r.source === "licenze"
+                    ? markLicenzaFatturato(r)
+                    : markRinnovoFatturato(r as RinnovoServizioRow)
+                }
+                onSetConfermato={(r) =>
+                  r.source === "tagliandi"
+                    ? markTagliandoOk(r)
+                    : r.source === "licenze"
+                    ? markLicenzaConfermata(r)
+                    : markWorkflowConfermato(r)
+                }
+                onSetNonRinnovato={(r) =>
+                  r.source === "licenze"
+                    ? markLicenzaNonRinnovata(r)
+                    : r.source === "tagliandi"
+                    ? markTagliandoNonRinnovato(r)
+                    : markWorkflowNonRinnovato(r)
+                }
+                onEdit={openEditScadenza}
+                editOpen={editScadenzaOpen}
+                editForm={editScadenzaForm}
+                setEditOpen={setEditScadenzaOpen}
+                setEditForm={setEditScadenzaForm}
+                saveEdit={saveEditScadenza}
+                deleteEdit={deleteScadenzaItemFromEdit}
+                editSaving={editScadenzaSaving}
+                editError={editScadenzaErr}
+                licenzaStati={LICENZA_STATI}
+                tagliandoStati={TAGLIANDO_STATI}
+                tagliandoModalita={TAGLIANDO_MODALITA}
+                rinnovoStati={RINNOVO_STATI}
+              />
+            </div>
+          ) : null}
         </details>
       </div>
 
@@ -8238,12 +8412,59 @@ ${rinnovi30ggBreakdown.debugSample
       />
 
       <div style={{ marginTop: 18 }}>
-        <h2 style={{ margin: 0 }}>PROGETTO del cliente</h2>
+        <h2 style={{ margin: 0 }}>PROGETTI</h2>
         {checklists.length === 0 ? (
           <div style={{ opacity: 0.7 }}>Nessun PROGETTO trovato</div>
         ) : (
           <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
-            {checklists.map((c) => (
+            <div
+              style={{
+                display: "flex",
+                gap: 8,
+                flexWrap: "wrap",
+                alignItems: "center",
+              }}
+            >
+              <input
+                value={projectSearch}
+                onChange={(e) => {
+                  setProjectSearch(e.target.value);
+                  setShowAllProjects(false);
+                }}
+                placeholder="Cerca progetto, proforma, PO, impianto"
+                style={{
+                  flex: "1 1 260px",
+                  minWidth: 0,
+                  padding: "9px 10px",
+                  borderRadius: 10,
+                  border: "1px solid #cbd5e1",
+                  background: "#fff",
+                }}
+              />
+              {filteredProjects.length > PROJECTS_PREVIEW_LIMIT ? (
+                <button
+                  type="button"
+                  onClick={() => setShowAllProjects((prev) => !prev)}
+                  style={{
+                    border: "1px solid #cbd5e1",
+                    background: showAllProjects ? "#e2e8f0" : "#fff",
+                    color: "#0f172a",
+                    borderRadius: 999,
+                    padding: "8px 12px",
+                    fontWeight: 700,
+                    cursor: "pointer",
+                  }}
+                >
+                  {showAllProjects ? "Nascondi" : `Mostra tutti (${filteredProjects.length})`}
+                </button>
+              ) : null}
+            </div>
+            <div style={{ fontSize: 12, color: "#64748b" }}>
+              {filteredProjects.length === 0
+                ? "Nessun progetto trovato con la ricerca corrente"
+                : `Preview compatta: ${visibleProjects.length} di ${filteredProjects.length} progetti`}
+            </div>
+            {visibleProjects.map((c) => (
               <div
                 key={c.id}
                 role="button"
