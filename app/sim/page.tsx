@@ -41,6 +41,14 @@ type ChecklistProjectRow = {
   cliente: string;
 };
 
+type RechargeModalState = {
+  simId: string;
+  numeroTelefono: string;
+  cliente: string;
+  progetto: string;
+  inAbbonamento: boolean;
+};
+
 function normalizeText(value?: string | null) {
   return String(value || "")
     .trim()
@@ -342,6 +350,7 @@ export default function SimPage() {
     Record<string, { data_ricarica: string; importo: string; billing_status: string; note: string }>
   >({});
   const [savingRechargeKey, setSavingRechargeKey] = useState<string | null>(null);
+  const [rechargeModal, setRechargeModal] = useState<RechargeModalState | null>(null);
   useEffect(() => {
     let active = true;
     (async () => {
@@ -586,6 +595,34 @@ export default function SimPage() {
     }));
   }
 
+  function openRechargeModal(row: SimCardRow, project: ChecklistProjectRow | null) {
+    const simId = String(row.id || "");
+    if (!simId || row.isNew) return;
+    setNewRechargeBySimId((prev) => ({
+      ...prev,
+      [simId]: {
+        data_ricarica: prev[simId]?.data_ricarica || formatDateOnlyValue(new Date()),
+        importo: prev[simId]?.importo || "",
+        billing_status: prev[simId]?.billing_status || "NON_FATTURARE",
+        note: prev[simId]?.note || "",
+      },
+    }));
+    setRechargeModal({
+      simId,
+      numeroTelefono: row.numero_telefono || "—",
+      cliente: project?.cliente || "—",
+      progetto: project?.nome_checklist || "SIM libera",
+      inAbbonamento: row.in_abbonamento === true,
+    });
+    setError(null);
+    setNotice(null);
+  }
+
+  function closeRechargeModal() {
+    if (savingRechargeKey) return;
+    setRechargeModal(null);
+  }
+
   function addNewSim() {
     const tempId = createTempId("sim");
     setRows((prev) => [
@@ -749,14 +786,19 @@ export default function SimPage() {
     setNotice("SIM eliminata.");
   }
 
-  async function addRecharge(row: SimCardRow) {
-    const simId = String(row.id || "");
-    if (!simId || row.isNew || row.in_abbonamento) return;
+  async function addRecharge(simId: string) {
+    const row = rows.find((item) => String(item.id || "") === simId);
+    if (!row || row.isNew || row.in_abbonamento) return;
 
     const draft = newRechargeBySimId[simId] || { data_ricarica: "", importo: "", billing_status: "", note: "" };
     const dataRicarica = draft.data_ricarica.trim();
     if (!dataRicarica) {
       setError("Data ricarica obbligatoria.");
+      return;
+    }
+    const importoValue = draft.importo.trim();
+    if (!importoValue) {
+      setError("Importo ricarica obbligatorio.");
       return;
     }
 
@@ -767,8 +809,8 @@ export default function SimPage() {
     const payload = {
       sim_id: simId,
       data_ricarica: dataRicarica,
-      importo: draft.importo.trim() ? Number(draft.importo) : null,
-      billing_status: draft.billing_status.trim() || null,
+      importo: Number(importoValue),
+      billing_status: draft.billing_status.trim() === "DA_FATTURARE" ? "DA_FATTURARE" : "NON_FATTURARE",
       note: draft.note.trim() || null,
     };
 
@@ -805,8 +847,14 @@ export default function SimPage() {
     }));
     setNewRechargeBySimId((prev) => ({
       ...prev,
-      [simId]: { data_ricarica: "", importo: "", billing_status: "", note: "" },
+      [simId]: {
+        data_ricarica: formatDateOnlyValue(new Date()),
+        importo: "",
+        billing_status: "NON_FATTURARE",
+        note: "",
+      },
     }));
+    setRechargeModal(null);
     setNotice("Ricarica salvata.");
   }
 
@@ -1028,12 +1076,6 @@ export default function SimPage() {
             const simState = getSimOperationalState(row, latestRecharge);
             const scadenzaBadge =
               simState.stato === "SCADUTO" || simState.stato === "IN_SCADENZA" ? simState : null;
-            const rechargeDraft = newRechargeBySimId[rowId] || {
-              data_ricarica: "",
-              importo: "",
-              billing_status: "",
-              note: "",
-            };
             const checklistId = String(row.checklist_id || "").trim();
             const project = checklistId ? projectByChecklistId[checklistId] : null;
             const projectLabel = !checklistId
@@ -1340,74 +1382,22 @@ export default function SimPage() {
                             ))}
                           </div>
                         )}
-                        <div
-                          style={{
-                            display: "grid",
-                            gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-                            gap: 12,
-                            alignItems: "end",
-                          }}
-                        >
-                          <label style={{ display: "grid", gap: 6, fontSize: 13, fontWeight: 600 }}>
-                            Data ricarica
-                            <input
-                              type="date"
-                              value={rechargeDraft.data_ricarica}
-                              onChange={(e) =>
-                                updateRechargeDraft(rowId, { data_ricarica: e.target.value })
-                              }
-                              style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: "1px solid #d1d5db" }}
-                            />
-                          </label>
-                          <label style={{ display: "grid", gap: 6, fontSize: 13, fontWeight: 600 }}>
-                            Importo
-                            <input
-                              type="number"
-                              step="0.01"
-                              value={rechargeDraft.importo}
-                              onChange={(e) => updateRechargeDraft(rowId, { importo: e.target.value })}
-                              style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: "1px solid #d1d5db" }}
-                            />
-                          </label>
-                          <label style={{ display: "grid", gap: 6, fontSize: 13, fontWeight: 600 }}>
-                            Stato fatturazione
-                            <select
-                              value={rechargeDraft.billing_status}
-                              onChange={(e) => updateRechargeDraft(rowId, { billing_status: e.target.value })}
-                              style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: "1px solid #d1d5db" }}
-                            >
-                              <option value="">—</option>
-                              <option value="DA_FATTURARE">DA_FATTURARE</option>
-                              <option value="FATTURATO">FATTURATO</option>
-                              <option value="NON_FATTURARE">NON_FATTURARE</option>
-                            </select>
-                          </label>
-                          <label style={{ display: "grid", gap: 6, fontSize: 13, fontWeight: 600 }}>
-                            Note
-                            <input
-                              value={rechargeDraft.note}
-                              onChange={(e) => updateRechargeDraft(rowId, { note: e.target.value })}
-                              placeholder="Note ricarica"
-                              style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: "1px solid #d1d5db" }}
-                            />
-                          </label>
+                        <div style={{ display: "flex", justifyContent: "flex-end" }}>
                           <button
                             type="button"
-                            onClick={() => addRecharge(row)}
-                            disabled={savingRechargeKey === rowId}
+                            onClick={() => openRechargeModal(row, project)}
                             style={{
-                              height: 40,
+                              height: 38,
                               padding: "0 14px",
                               borderRadius: 10,
                               border: "1px solid #0f172a",
                               background: "#0f172a",
                               color: "#fff",
                               fontWeight: 800,
-                              cursor: savingRechargeKey === rowId ? "wait" : "pointer",
-                              opacity: savingRechargeKey === rowId ? 0.8 : 1,
+                              cursor: "pointer",
                             }}
                           >
-                            {savingRechargeKey === rowId ? "Salvataggio..." : "Salva ricarica"}
+                            Aggiungi ricarica
                           </button>
                         </div>
                       </div>
@@ -1653,15 +1643,15 @@ export default function SimPage() {
                               <div style={{ fontSize: 13, color: "#6b7280" }}>Nessuna ricarica registrata.</div>
                             ) : (
                               <div style={{ display: "grid", gap: 8 }}>
-                            {rechargeRows.map((recharge) => (
-                              <div
-                                key={String(recharge.id || `${recharge.sim_id}-${recharge.data_ricarica}`)}
-                                style={{
-                                  display: "grid",
-                                  gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))",
-                                  gap: 12,
-                                  fontSize: 13,
-                                  padding: "10px 12px",
+                                {rechargeRows.map((recharge) => (
+                                  <div
+                                    key={String(recharge.id || `${recharge.sim_id}-${recharge.data_ricarica}`)}
+                                    style={{
+                                      display: "grid",
+                                      gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))",
+                                      gap: 12,
+                                      fontSize: 13,
+                                      padding: "10px 12px",
                                       borderRadius: 10,
                                       background: "#fff",
                                       border: "1px solid #e5e7eb",
@@ -1675,74 +1665,22 @@ export default function SimPage() {
                                 ))}
                               </div>
                             )}
-                            <div
-                              style={{
-                                display: "grid",
-                                gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-                                gap: 12,
-                                alignItems: "end",
-                              }}
-                            >
-                              <label style={{ display: "grid", gap: 6, fontSize: 13, fontWeight: 600 }}>
-                                Data ricarica
-                                <input
-                                  type="date"
-                                  value={rechargeDraft.data_ricarica}
-                                  onChange={(e) =>
-                                    updateRechargeDraft(rowId, { data_ricarica: e.target.value })
-                                  }
-                                  style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: "1px solid #d1d5db" }}
-                                />
-                              </label>
-                              <label style={{ display: "grid", gap: 6, fontSize: 13, fontWeight: 600 }}>
-                                Importo
-                                <input
-                                  type="number"
-                                  step="0.01"
-                                  value={rechargeDraft.importo}
-                                  onChange={(e) => updateRechargeDraft(rowId, { importo: e.target.value })}
-                                  style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: "1px solid #d1d5db" }}
-                                />
-                              </label>
-                              <label style={{ display: "grid", gap: 6, fontSize: 13, fontWeight: 600 }}>
-                                Stato fatturazione
-                                <select
-                                  value={rechargeDraft.billing_status}
-                                  onChange={(e) => updateRechargeDraft(rowId, { billing_status: e.target.value })}
-                                  style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: "1px solid #d1d5db" }}
-                                >
-                                  <option value="">—</option>
-                                  <option value="DA_FATTURARE">DA_FATTURARE</option>
-                                  <option value="FATTURATO">FATTURATO</option>
-                                  <option value="NON_FATTURARE">NON_FATTURARE</option>
-                                </select>
-                              </label>
-                              <label style={{ display: "grid", gap: 6, fontSize: 13, fontWeight: 600 }}>
-                                Note
-                                <input
-                                  value={rechargeDraft.note}
-                                  onChange={(e) => updateRechargeDraft(rowId, { note: e.target.value })}
-                                  placeholder="Note ricarica"
-                                  style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: "1px solid #d1d5db" }}
-                                />
-                              </label>
+                            <div style={{ display: "flex", justifyContent: "flex-end" }}>
                               <button
                                 type="button"
-                                onClick={() => addRecharge(row)}
-                                disabled={savingRechargeKey === rowId}
+                                onClick={() => openRechargeModal(row, project)}
                                 style={{
-                                  height: 40,
+                                  height: 38,
                                   padding: "0 14px",
                                   borderRadius: 10,
                                   border: "1px solid #0f172a",
                                   background: "#0f172a",
                                   color: "#fff",
                                   fontWeight: 800,
-                                  cursor: savingRechargeKey === rowId ? "wait" : "pointer",
-                                  opacity: savingRechargeKey === rowId ? 0.8 : 1,
+                                  cursor: "pointer",
                                 }}
                               >
-                                {savingRechargeKey === rowId ? "Salvataggio..." : "Salva ricarica"}
+                                Aggiungi ricarica
                               </button>
                             </div>
                           </div>
@@ -1756,6 +1694,204 @@ export default function SimPage() {
             })
         )}
       </div>
+
+      {rechargeModal ? (
+        <div
+          onClick={closeRechargeModal}
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(15, 23, 42, 0.45)",
+            display: "grid",
+            placeItems: "center",
+            padding: 16,
+            zIndex: 60,
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: "min(720px, 100%)",
+              maxHeight: "90vh",
+              overflowY: "auto",
+              background: "#fff",
+              borderRadius: 18,
+              border: "1px solid #e5e7eb",
+              boxShadow: "0 24px 80px rgba(15, 23, 42, 0.18)",
+              padding: 20,
+              display: "grid",
+              gap: 16,
+            }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start" }}>
+              <div style={{ display: "grid", gap: 4 }}>
+                <div style={{ fontSize: 20, fontWeight: 800 }}>Aggiungi ricarica</div>
+                <div style={{ fontSize: 13, color: "#6b7280" }}>
+                  La scadenza effettiva SIM e le scadenze cliente si riallineano automaticamente sulla ricarica piu recente.
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={closeRechargeModal}
+                disabled={savingRechargeKey === rechargeModal.simId}
+                style={{
+                  height: 36,
+                  padding: "0 12px",
+                  borderRadius: 10,
+                  border: "1px solid #d1d5db",
+                  background: "#fff",
+                  color: "#111827",
+                  fontWeight: 700,
+                  cursor: savingRechargeKey === rechargeModal.simId ? "wait" : "pointer",
+                }}
+              >
+                Chiudi
+              </button>
+            </div>
+
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
+                gap: 12,
+                padding: 14,
+                borderRadius: 12,
+                border: "1px solid #e5e7eb",
+                background: "#f8fafc",
+              }}
+            >
+              <div style={{ display: "grid", gap: 4 }}>
+                <div style={{ fontSize: 12, color: "#6b7280" }}>Numero SIM</div>
+                <div style={{ fontWeight: 700 }}>{rechargeModal.numeroTelefono}</div>
+              </div>
+              <div style={{ display: "grid", gap: 4 }}>
+                <div style={{ fontSize: 12, color: "#6b7280" }}>Cliente</div>
+                <div style={{ fontWeight: 700 }}>{rechargeModal.cliente}</div>
+              </div>
+              <div style={{ display: "grid", gap: 4 }}>
+                <div style={{ fontSize: 12, color: "#6b7280" }}>Progetto</div>
+                <div style={{ fontWeight: 700 }}>{rechargeModal.progetto}</div>
+              </div>
+            </div>
+
+            {rechargeModal.inAbbonamento ? (
+              <div
+                style={{
+                  padding: "12px 14px",
+                  borderRadius: 12,
+                  border: "1px solid #bfdbfe",
+                  background: "#eff6ff",
+                  color: "#1d4ed8",
+                  fontSize: 14,
+                  fontWeight: 700,
+                }}
+              >
+                Ricarica bloccata: questa SIM e gestita in abbonamento.
+              </div>
+            ) : null}
+
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+                gap: 12,
+                alignItems: "end",
+              }}
+            >
+              <label style={{ display: "grid", gap: 6, fontSize: 13, fontWeight: 600 }}>
+                Data ricarica
+                <input
+                  type="date"
+                  value={newRechargeBySimId[rechargeModal.simId]?.data_ricarica || ""}
+                  onChange={(e) => updateRechargeDraft(rechargeModal.simId, { data_ricarica: e.target.value })}
+                  style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: "1px solid #d1d5db" }}
+                />
+              </label>
+              <label style={{ display: "grid", gap: 6, fontSize: 13, fontWeight: 600 }}>
+                Importo
+                <input
+                  type="number"
+                  step="0.01"
+                  value={newRechargeBySimId[rechargeModal.simId]?.importo || ""}
+                  onChange={(e) => updateRechargeDraft(rechargeModal.simId, { importo: e.target.value })}
+                  style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: "1px solid #d1d5db" }}
+                />
+              </label>
+              <label
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 8,
+                  minHeight: 42,
+                  fontSize: 13,
+                  fontWeight: 600,
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={newRechargeBySimId[rechargeModal.simId]?.billing_status === "DA_FATTURARE"}
+                  onChange={(e) =>
+                    updateRechargeDraft(rechargeModal.simId, {
+                      billing_status: e.target.checked ? "DA_FATTURARE" : "NON_FATTURARE",
+                    })
+                  }
+                />
+                Fatturare
+              </label>
+              <label style={{ display: "grid", gap: 6, fontSize: 13, fontWeight: 600 }}>
+                Note
+                <input
+                  value={newRechargeBySimId[rechargeModal.simId]?.note || ""}
+                  onChange={(e) => updateRechargeDraft(rechargeModal.simId, { note: e.target.value })}
+                  placeholder="Note ricarica"
+                  style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: "1px solid #d1d5db" }}
+                />
+              </label>
+            </div>
+
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, flexWrap: "wrap" }}>
+              <button
+                type="button"
+                onClick={closeRechargeModal}
+                disabled={savingRechargeKey === rechargeModal.simId}
+                style={{
+                  height: 40,
+                  padding: "0 14px",
+                  borderRadius: 10,
+                  border: "1px solid #d1d5db",
+                  background: "#fff",
+                  color: "#111827",
+                  fontWeight: 700,
+                  cursor: savingRechargeKey === rechargeModal.simId ? "wait" : "pointer",
+                }}
+              >
+                Annulla
+              </button>
+              <button
+                type="button"
+                onClick={() => addRecharge(rechargeModal.simId)}
+                disabled={savingRechargeKey === rechargeModal.simId || rechargeModal.inAbbonamento}
+                style={{
+                  height: 40,
+                  padding: "0 14px",
+                  borderRadius: 10,
+                  border: "1px solid #0f172a",
+                  background: "#0f172a",
+                  color: "#fff",
+                  fontWeight: 800,
+                  cursor:
+                    savingRechargeKey === rechargeModal.simId || rechargeModal.inAbbonamento
+                      ? "not-allowed"
+                      : "pointer",
+                  opacity: savingRechargeKey === rechargeModal.simId || rechargeModal.inAbbonamento ? 0.7 : 1,
+                }}
+              >
+                {savingRechargeKey === rechargeModal.simId ? "Salvataggio..." : "Salva ricarica"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
