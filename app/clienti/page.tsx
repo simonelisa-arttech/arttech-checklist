@@ -22,6 +22,10 @@ export default function ClientiPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<ClienteRecord | null>(null);
   const [includeInactive, setIncludeInactive] = useState(false);
+  const [portalAccessByClienteId, setPortalAccessByClienteId] = useState<
+    Record<string, { id?: string; email: string | null; attivo: boolean }>
+  >({});
+  const [creatingPortalAccessId, setCreatingPortalAccessId] = useState<string | null>(null);
   const debounceRef = useRef<number | null>(null);
 
   useEffect(() => {
@@ -68,6 +72,49 @@ export default function ClientiPage() {
       active = false;
     };
   }, [debounced, offset, includeInactive]);
+
+  useEffect(() => {
+    let active = true;
+    const clienteIds = rows
+      .map((row) => String(row.id || "").trim())
+      .filter(Boolean);
+
+    if (clienteIds.length === 0) {
+      setPortalAccessByClienteId({});
+      return () => {
+        active = false;
+      };
+    }
+
+    void (async () => {
+      try {
+        const params = new URLSearchParams();
+        params.set("cliente_ids", clienteIds.join(","));
+        const res = await fetch(`/api/clienti/portal-access?${params.toString()}`, {
+          credentials: "include",
+        });
+        const json = await res.json().catch(() => ({}));
+        if (!active || !res.ok || !json?.ok) return;
+        const nextMap: Record<string, { id?: string; email: string | null; attivo: boolean }> = {};
+        for (const row of (json.data || []) as Array<any>) {
+          const key = String(row?.cliente_id || "").trim();
+          if (!key) continue;
+          nextMap[key] = {
+            id: row?.id ? String(row.id) : undefined,
+            email: row?.email ? String(row.email) : null,
+            attivo: row?.attivo !== false,
+          };
+        }
+        setPortalAccessByClienteId(nextMap);
+      } catch {
+        if (!active) return;
+      }
+    })();
+
+    return () => {
+      active = false;
+    };
+  }, [rows]);
 
   const countLabel = useMemo(() => {
     return loading ? "Caricamento..." : `Totale caricati: ${rows.length}`;
@@ -169,7 +216,33 @@ export default function ClientiPage() {
                 <td style={{ padding: "10px 12px", verticalAlign: "top" }}>
                   {row.attivo === false ? "Disattivo" : "Attivo"}
                 </td>
-                <td style={{ padding: "10px 12px", verticalAlign: "top", whiteSpace: "nowrap" }}>
+                <td style={{ padding: "10px 12px", verticalAlign: "top" }}>
+                  <div style={{ fontSize: 12, marginBottom: 8, lineHeight: 1.4 }}>
+                    {(() => {
+                      const portalAccess = portalAccessByClienteId[String(row.id || "")];
+                      if (portalAccess?.attivo) {
+                        return (
+                          <span style={{ color: "#166534", fontWeight: 700 }}>
+                            Accesso attivo
+                            {portalAccess.email ? ` · ${portalAccess.email}` : ""}
+                          </span>
+                        );
+                      }
+                      if (portalAccess) {
+                        return (
+                          <span style={{ color: "#92400e", fontWeight: 700 }}>
+                            Accesso presente
+                          </span>
+                        );
+                      }
+                      return (
+                        <span style={{ color: "#64748b", fontWeight: 700 }}>
+                          Accesso non creato
+                        </span>
+                      );
+                    })()}
+                  </div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
                   <button
                     type="button"
                     onClick={() => {
@@ -217,6 +290,64 @@ export default function ClientiPage() {
                   >
                     {row.attivo === false ? "Riattiva" : "Disattiva"}
                   </button>
+                  {!portalAccessByClienteId[String(row.id || "")]?.attivo ? (
+                    <button
+                      type="button"
+                      disabled={creatingPortalAccessId === String(row.id || "")}
+                      onClick={async () => {
+                        try {
+                          setCreatingPortalAccessId(String(row.id || ""));
+                          const res = await fetch("/api/clienti/portal-access", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            credentials: "include",
+                            body: JSON.stringify({ cliente_id: row.id }),
+                          });
+                          const json = await res.json().catch(() => ({}));
+                          if (!res.ok || !json?.ok) {
+                            alert(json?.error || "Errore creazione credenziali cliente");
+                            return;
+                          }
+
+                          setPortalAccessByClienteId((prev) => ({
+                            ...prev,
+                            [String(row.id || "")]: {
+                              id: json?.accesso?.id ? String(json.accesso.id) : undefined,
+                              email: String(json?.credenziali?.email || row.email || "").trim() || null,
+                              attivo: true,
+                            },
+                          }));
+
+                          alert(
+                            [
+                              "Credenziali area cliente create.",
+                              `Email: ${String(json?.credenziali?.email || row.email || "—")}`,
+                              `Password temporanea: ${String(json?.credenziali?.password_temporanea || "—")}`,
+                            ].join("\n")
+                          );
+                        } finally {
+                          setCreatingPortalAccessId(null);
+                        }
+                      }}
+                      style={{
+                        padding: "6px 10px",
+                        borderRadius: 10,
+                        border: "1px solid #0f172a",
+                        background: "#0f172a",
+                        color: "white",
+                        cursor:
+                          creatingPortalAccessId === String(row.id || "")
+                            ? "progress"
+                            : "pointer",
+                        opacity: creatingPortalAccessId === String(row.id || "") ? 0.7 : 1,
+                      }}
+                    >
+                      {creatingPortalAccessId === String(row.id || "")
+                        ? "Creazione..."
+                        : "Crea credenziali area cliente"}
+                    </button>
+                  ) : null}
+                  </div>
                 </td>
               </tr>
             ))}
