@@ -4,7 +4,11 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import ConfigMancante from "@/components/ConfigMancante";
 import DashboardProjectsSection from "@/components/dashboard/DashboardProjectsSection";
-import { getProjectPresentation } from "@/lib/projectStatus";
+import {
+  getProjectPresentation,
+  PROJECT_STATUS_FILTER_OPTIONS,
+  type ProjectFilterValue,
+} from "@/lib/projectStatus";
 import { calcM2FromDimensioni } from "@/lib/parseDimensioni";
 import { isSupabaseConfigured } from "@/lib/supabaseClient";
 
@@ -42,14 +46,6 @@ function saasLabelFromCode(code?: string | null) {
 }
 
 type SaasServiceFilter = "EVENTS" | "ULTRA" | "PREMIUM" | "PLUS";
-type ProjectStatusFilter =
-  | "IN_CORSO"
-  | "CONSEGNATO"
-  | "NOLEGGIO_ATTIVO"
-  | "RIENTRATO"
-  | "SOSPESO"
-  | "OPERATIVO"
-  | "CHIUSO";
 
 type Checklist = {
   id: string;
@@ -181,13 +177,8 @@ function normalizeProjectStatus(project: {
   noleggio_vendita?: string | null;
   data_disinstallazione?: string | null;
   pct_complessivo?: number | null;
-}): ProjectStatusFilter | null {
-  const presentation = getProjectPresentation(project);
-  if (presentation.projectKind === "NOLEGGIO" && presentation.isNoleggioInCorso) {
-    return "NOLEGGIO_ATTIVO";
-  }
-  if (presentation.displayStatus === "IN_LAVORAZIONE") return "IN_CORSO";
-  return (presentation.displayStatus as ProjectStatusFilter | null) ?? null;
+}): ProjectFilterValue | null {
+  return (getProjectPresentation(project).displayStatus as ProjectFilterValue | null) ?? null;
 }
 
 function getProjectStatusLabel(project: {
@@ -456,17 +447,13 @@ export default function DashboardEstesaPage() {
     PREMIUM: false,
     PLUS: false,
   });
-  const [projectStatusFilter, setProjectStatusFilter] = useState<
-    Record<ProjectStatusFilter, boolean>
-  >({
-    IN_CORSO: false,
-    CONSEGNATO: false,
-    NOLEGGIO_ATTIVO: false,
-    RIENTRATO: false,
-    SOSPESO: false,
-    OPERATIVO: false,
-    CHIUSO: false,
-  });
+  const projectStatusOptions = PROJECT_STATUS_FILTER_OPTIONS.compactDashboard;
+  const [projectStatusFilter, setProjectStatusFilter] = useState<Record<ProjectFilterValue, boolean>>(
+    () =>
+      Object.fromEntries(
+        projectStatusOptions.map((option) => [option.value, false])
+      ) as Record<ProjectFilterValue, boolean>
+  );
   const [sortKey, setSortKey] = useState<SortKey>("created_at");
   const [sortDir, setSortDir] = useState<SortDir>("desc");
 
@@ -510,7 +497,7 @@ export default function DashboardEstesaPage() {
         if (!matchAll) return false;
       }
       const activeStatusFilters = (
-        Object.entries(projectStatusFilter) as Array<[ProjectStatusFilter, boolean]>
+        Object.entries(projectStatusFilter) as Array<[ProjectFilterValue, boolean]>
       )
         .filter(([, enabled]) => enabled)
         .map(([key]) => key);
@@ -777,6 +764,7 @@ export default function DashboardEstesaPage() {
         setSaasServiceFilter={setSaasServiceFilter}
         projectStatusFilter={projectStatusFilter}
         setProjectStatusFilter={setProjectStatusFilter}
+        projectStatusOptions={projectStatusOptions}
         displayRows={displayRows}
         toggleSort={toggleSort}
         sortIcon={sortIcon}

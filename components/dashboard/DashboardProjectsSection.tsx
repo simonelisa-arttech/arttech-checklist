@@ -3,6 +3,7 @@
 import Link from "next/link";
 import DashboardTable from "@/app/components/DashboardTable";
 import OperativeNotesPanel from "@/components/OperativeNotesPanel";
+import type { ProjectFilterOption } from "@/lib/projectStatus";
 
 type Props = {
   loading: boolean;
@@ -13,6 +14,7 @@ type Props = {
   setSaasServiceFilter: (value: any) => void;
   projectStatusFilter: Record<string, boolean>;
   setProjectStatusFilter: (value: any) => void;
+  projectStatusOptions: readonly ProjectFilterOption[];
   displayRows: any[];
   toggleSort: (key: any) => void;
   sortIcon: (key: any) => string;
@@ -56,6 +58,7 @@ export default function DashboardProjectsSection({
   setSaasServiceFilter,
   projectStatusFilter,
   setProjectStatusFilter,
+  projectStatusOptions,
   displayRows,
   toggleSort,
   sortIcon,
@@ -190,101 +193,33 @@ export default function DashboardProjectsSection({
           <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
             <input
               type="checkbox"
-              checked={Object.values(projectStatusFilter).every(Boolean)}
+              checked={projectStatusOptions.every((option) => projectStatusFilter[option.value])}
               onChange={(e) => {
                 const checked = e.target.checked;
-                setProjectStatusFilter({
-                  IN_CORSO: checked,
-                  CONSEGNATO: checked,
-                  NOLEGGIO_ATTIVO: checked,
-                  RIENTRATO: checked,
-                  SOSPESO: checked,
-                  OPERATIVO: checked,
-                  CHIUSO: checked,
-                });
+                setProjectStatusFilter(
+                  Object.fromEntries(
+                    projectStatusOptions.map((option) => [option.value, checked])
+                  )
+                );
               }}
             />
             Tutti stati
           </label>
-          <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            <input
-              type="checkbox"
-              checked={projectStatusFilter.IN_CORSO}
-              onChange={(e) =>
-                setProjectStatusFilter((prev: any) => ({ ...prev, IN_CORSO: e.target.checked }))
-              }
-            />
-            In lavorazione
-          </label>
-          <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            <input
-              type="checkbox"
-              checked={projectStatusFilter.CONSEGNATO}
-              onChange={(e) =>
-                setProjectStatusFilter((prev: any) => ({
-                  ...prev,
-                  CONSEGNATO: e.target.checked,
-                }))
-              }
-            />
-            Consegnato
-          </label>
-          <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            <input
-              type="checkbox"
-              checked={projectStatusFilter.NOLEGGIO_ATTIVO}
-              onChange={(e) =>
-                setProjectStatusFilter((prev: any) => ({
-                  ...prev,
-                  NOLEGGIO_ATTIVO: e.target.checked,
-                }))
-              }
-            />
-            Noleggio attivo
-          </label>
-          <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            <input
-              type="checkbox"
-              checked={projectStatusFilter.RIENTRATO}
-              onChange={(e) =>
-                setProjectStatusFilter((prev: any) => ({
-                  ...prev,
-                  RIENTRATO: e.target.checked,
-                }))
-              }
-            />
-            Rientrato
-          </label>
-          <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            <input
-              type="checkbox"
-              checked={projectStatusFilter.SOSPESO}
-              onChange={(e) =>
-                setProjectStatusFilter((prev: any) => ({ ...prev, SOSPESO: e.target.checked }))
-              }
-            />
-            Sospeso
-          </label>
-          <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            <input
-              type="checkbox"
-              checked={projectStatusFilter.OPERATIVO}
-              onChange={(e) =>
-                setProjectStatusFilter((prev: any) => ({ ...prev, OPERATIVO: e.target.checked }))
-              }
-            />
-            Operativo
-          </label>
-          <label style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            <input
-              type="checkbox"
-              checked={projectStatusFilter.CHIUSO}
-              onChange={(e) =>
-                setProjectStatusFilter((prev: any) => ({ ...prev, CHIUSO: e.target.checked }))
-              }
-            />
-            Chiuso
-          </label>
+          {projectStatusOptions.map((option) => (
+            <label key={option.value} style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <input
+                type="checkbox"
+                checked={Boolean(projectStatusFilter[option.value])}
+                onChange={(e) =>
+                  setProjectStatusFilter((prev: any) => ({
+                    ...prev,
+                    [option.value]: e.target.checked,
+                  }))
+                }
+              />
+              {option.label}
+            </label>
+          ))}
         </div>
 
         <div style={{ fontSize: 12, opacity: 0.7 }}>Risultati: {displayRows.length}</div>
