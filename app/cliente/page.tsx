@@ -96,6 +96,25 @@ export default function ClientePortalPage() {
   const [progetti, setProgetti] = useState<ClienteProgetto[]>([]);
   const [scadenze, setScadenze] = useState<ClienteScadenza[]>([]);
   const [documenti, setDocumenti] = useState<ClienteDocumento[]>([]);
+  const [openingDocumentId, setOpeningDocumentId] = useState<string | null>(null);
+
+  async function openDocumento(documentId: string) {
+    try {
+      setOpeningDocumentId(documentId);
+      const res = await fetch(`/api/cliente/documenti/${encodeURIComponent(documentId)}/download`, {
+        credentials: "include",
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.url) {
+        throw new Error(String(data?.error || "Errore apertura documento"));
+      }
+      window.open(String(data.url), "_blank", "noopener,noreferrer");
+    } catch (err: any) {
+      window.alert(String(err?.message || err || "Errore apertura documento"));
+    } finally {
+      setOpeningDocumentId(null);
+    }
+  }
 
   useEffect(() => {
     let active = true;
@@ -367,6 +386,26 @@ export default function ClientePortalPage() {
                     </div>
                     <div style={{ fontSize: 13, color: "#475569" }}>
                       {documento.progetto_nome || "Progetto non specificato"}
+                    </div>
+                    <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                      <button
+                        type="button"
+                        onClick={() => openDocumento(documento.id)}
+                        disabled={openingDocumentId === documento.id}
+                        style={{
+                          padding: "7px 10px",
+                          borderRadius: 10,
+                          border: "1px solid #cbd5e1",
+                          background: openingDocumentId === documento.id ? "#f8fafc" : "white",
+                          color: "#0f172a",
+                          fontSize: 12,
+                          fontWeight: 700,
+                          cursor: openingDocumentId === documento.id ? "progress" : "pointer",
+                          opacity: openingDocumentId === documento.id ? 0.7 : 1,
+                        }}
+                      >
+                        {openingDocumentId === documento.id ? "Apro..." : "Apri"}
+                      </button>
                     </div>
                   </div>
                 ))}
