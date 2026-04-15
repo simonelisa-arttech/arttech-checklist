@@ -7,7 +7,7 @@ import ConfigMancante from "@/components/ConfigMancante";
 import CronoprogrammaPanel from "@/components/cronoprogramma/CronoprogrammaPanel";
 import Toast from "@/components/Toast";
 import { calcM2FromDimensioni } from "@/lib/parseDimensioni";
-import { getProjectPresentation } from "@/lib/projectStatus";
+import { getProjectPresentation, PROJECT_STATUS_FILTER_OPTIONS } from "@/lib/projectStatus";
 import { isSupabaseConfigured, supabase } from "@/lib/supabaseClient";
 import { dbFrom } from "@/lib/clientDbBroker";
 import { isTimelineRowOverdueNotDone } from "@/lib/cronoprogrammaStatus";
@@ -1260,15 +1260,7 @@ export function DashboardCockpitPage({
       });
   }, [items, cronoRows, cronoMetaByKey]);
 
-  const dashboardProjectStatusOptions = useMemo(() => {
-    return Array.from(
-      new Set(
-        items
-          .map((item) => String(item.stato_progetto || "").trim())
-          .filter(Boolean)
-      )
-    ).sort((a, b) => a.localeCompare(b, "it", { sensitivity: "base" }));
-  }, [items]);
+  const dashboardProjectStatusOptions = PROJECT_STATUS_FILTER_OPTIONS.compactDashboard;
 
   const dashboardProjectRows = useMemo(() => {
     const today = new Date();
@@ -1292,6 +1284,12 @@ export function DashboardCockpitPage({
         );
         return {
           ...item,
+          projectPresentation: getProjectPresentation({
+            stato_progetto: item.stato_progetto,
+            pct_complessivo: item.pct_complessivo,
+            noleggio_vendita: item.noleggio_vendita,
+            data_disinstallazione: item.data_disinstallazione,
+          }),
           deadlineFlags: {
             licenza: licenzaDeadline,
             garanzia: garanziaDeadline,
@@ -1327,7 +1325,7 @@ export function DashboardCockpitPage({
 
       if (
         dashboardProjectStatusFilter !== "TUTTI" &&
-        String(item.stato_progetto || "").trim() !== dashboardProjectStatusFilter
+        String(item.projectPresentation?.displayStatus || "").trim() !== dashboardProjectStatusFilter
       ) {
         return false;
       }
@@ -2531,8 +2529,8 @@ export function DashboardCockpitPage({
                     >
                       <option value="TUTTI">Tutti gli stati</option>
                       {dashboardProjectStatusOptions.map((status) => (
-                        <option key={status} value={status}>
-                          {status}
+                        <option key={status.value} value={status.value}>
+                          {status.label}
                         </option>
                       ))}
                     </select>

@@ -16,6 +16,31 @@ export type ProjectDisplayStatus =
   | "OPERATIVO"
   | "CHIUSO";
 
+export type ProjectFilterValue =
+  | ProjectDisplayStatus
+  | "MERCE_RIENTRATA_SENZA_DANNI"
+  | "MERCE_RIENTRATA_CON_DANNI";
+
+export type ProjectFilterOption = {
+  value: ProjectFilterValue;
+  label: string;
+  kindScope?: "ALL" | "NOLEGGIO" | "VENDITA";
+};
+
+export const PROJECT_STATUS_FILTER_OPTIONS = {
+  compactDashboard: [
+    { value: "IN_LAVORAZIONE", label: "IN_LAVORAZIONE", kindScope: "ALL" },
+    { value: "NOLEGGIO_IN_CORSO", label: "NOLEGGIO_IN_CORSO", kindScope: "NOLEGGIO" },
+    { value: "CONSEGNATO", label: "CONSEGNATO", kindScope: "ALL" },
+    { value: "MERCE_RIENTRATA_SENZA_DANNI", label: "MERCE_RIENTRATA_SENZA_DANNI", kindScope: "NOLEGGIO" },
+    { value: "MERCE_RIENTRATA_CON_DANNI", label: "MERCE_RIENTRATA_CON_DANNI", kindScope: "NOLEGGIO" },
+    { value: "RIENTRATO", label: "RIENTRATO", kindScope: "ALL" },
+    { value: "OPERATIVO", label: "OPERATIVO", kindScope: "ALL" },
+    { value: "SOSPESO", label: "SOSPESO", kindScope: "ALL" },
+    { value: "CHIUSO", label: "CHIUSO", kindScope: "ALL" },
+  ] as const satisfies readonly ProjectFilterOption[],
+} as const;
+
 type TaskLike = {
   stato?: string | null;
 };
