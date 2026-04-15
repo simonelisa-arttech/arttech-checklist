@@ -1074,6 +1074,9 @@ export default function SimPage() {
             const latestRecharge = latestRechargeBySimId[rowId] || null;
             const effectiveScadenza = getEffectiveSimScadenza(row, latestRecharge);
             const simState = getSimOperationalState(row, latestRecharge);
+            const hasRechargeToBill = rechargeRows.some(
+              (recharge) => String(recharge.billing_status || "").trim().toUpperCase() === "DA_FATTURARE"
+            );
             const scadenzaBadge =
               simState.stato === "SCADUTO" || simState.stato === "IN_SCADENZA" ? simState : null;
             const checklistId = String(row.checklist_id || "").trim();
@@ -1471,6 +1474,23 @@ export default function SimPage() {
                         >
                           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                             {renderMainSimStatusBadge(simState)}
+                            {hasRechargeToBill ? (
+                              <span
+                                style={{
+                                  display: "inline-flex",
+                                  alignItems: "center",
+                                  padding: "5px 10px",
+                                  borderRadius: 999,
+                                  fontSize: 12,
+                                  fontWeight: 800,
+                                  background: "#fef3c7",
+                                  color: "#92400e",
+                                  whiteSpace: "nowrap",
+                                }}
+                              >
+                                DA FATTURARE
+                              </span>
+                            ) : null}
                           </div>
                           <div style={{ display: "grid", gap: 4, fontSize: 13 }}>
                             <div style={{ color: "#6b7280" }}>Scadenza effettiva</div>
