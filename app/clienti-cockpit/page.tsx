@@ -10,6 +10,8 @@ export default function ClientiCockpitPage() {
       showCockpitSection={false}
       showCronoSection={false}
       showClientiSection
+      showClientiCockpit
+      enableClientFilters
     />
   );
 }

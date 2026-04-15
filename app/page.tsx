@@ -573,6 +573,8 @@ export function DashboardCockpitPage({
   showCronoSection = true,
   showProjectsSection = false,
   enableProjectFilters = false,
+  enableClientFilters = false,
+  showClientiCockpit = false,
   projectsView = "compact",
   pageTitle = "AT SYSTEM",
   pageSubtitle = "Cockpit operativo",
@@ -582,6 +584,8 @@ export function DashboardCockpitPage({
   showCronoSection?: boolean;
   showProjectsSection?: boolean;
   enableProjectFilters?: boolean;
+  enableClientFilters?: boolean;
+  showClientiCockpit?: boolean;
   projectsView?: "compact" | "extended";
   pageTitle?: string;
   pageSubtitle?: string;
@@ -635,12 +639,17 @@ export function DashboardCockpitPage({
     15: { count: 0, overdue: 0 },
     30: { count: 0, overdue: 0 },
   });
+  const [simSearchByChecklistId, setSimSearchByChecklistId] = useState<Record<string, string[]>>({});
   const [clientiMissingEmailCount, setClientiMissingEmailCount] = useState(0);
   const [dashboardProjectSearch, setDashboardProjectSearch] = useState("");
   const [dashboardProjectQuickFilter, setDashboardProjectQuickFilter] = useState<
     "TUTTI" | "CRITICI" | "IMMINENTI" | "SCADUTI"
   >("TUTTI");
   const [dashboardProjectStatusFilter, setDashboardProjectStatusFilter] = useState("TUTTI");
+  const [dashboardClientSearch, setDashboardClientSearch] = useState("");
+  const [dashboardClientQuickFilter, setDashboardClientQuickFilter] = useState<
+    "TUTTI" | "ATTENZIONE" | "MONITORARE" | "STABILE"
+  >("TUTTI");
   const [showMissingEmailInfo, setShowMissingEmailInfo] = useState(false);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
   const [addInterventoOpen, setAddInterventoOpen] = useState(false);
@@ -1318,7 +1327,7 @@ export function DashboardCockpitPage({
     return dashboardProjectRows.filter((item) => {
       const matchesSearch =
         !needle ||
-        `${item.cliente || ""} ${item.nome_checklist || ""} ${item.proforma || ""} ${item.po || ""} ${item.tipo_impianto || ""} ${item.impianto_codice || ""}`
+        `${item.cliente || ""} ${item.nome_checklist || ""} ${item.proforma || ""} ${item.po || ""} ${item.tipo_impianto || ""} ${item.impianto_codice || ""} ${(simSearchByChecklistId[item.id] || []).join(" ")}`
           .toLowerCase()
           .includes(needle);
       if (!matchesSearch) return false;
@@ -1346,7 +1355,36 @@ export function DashboardCockpitPage({
     dashboardProjectRows,
     dashboardProjectSearch,
     dashboardProjectStatusFilter,
+    simSearchByChecklistId,
   ]);
+
+  const filteredDashboardClientRows = useMemo(() => {
+    const needle = dashboardClientSearch.trim().toLowerCase();
+    return dashboardClientRows.filter((row) => {
+      const matchesSearch =
+        !needle ||
+        `${row.cliente} ${row.projectCount} ${row.openActivities} ${row.imminentActivities} ${row.relevantDeadlines} ${row.overdueDeadlines}`
+          .toLowerCase()
+          .includes(needle);
+      if (!matchesSearch) return false;
+      if (dashboardClientQuickFilter !== "TUTTI" && row.attentionLabel !== dashboardClientQuickFilter) {
+        return false;
+      }
+      return true;
+    });
+  }, [dashboardClientQuickFilter, dashboardClientRows, dashboardClientSearch]);
+
+  const dashboardClientSummary = useMemo(
+    () => ({
+      total: dashboardClientRows.length,
+      attention: dashboardClientRows.filter((row) => row.attentionLabel === "ATTENZIONE").length,
+      withOpenActivities: dashboardClientRows.filter((row) => row.openActivities > 0).length,
+      withRelevantDeadlines: dashboardClientRows.filter(
+        (row) => row.relevantDeadlines > 0 || row.overdueDeadlines > 0
+      ).length,
+    }),
+    [dashboardClientRows]
+  );
 
   const checklistOptions = useMemo(() => {
     if (!addInterventoCliente) return [];
@@ -1795,9 +1833,14 @@ export function DashboardCockpitPage({
       }
 
       try {
-        const simRes = await dbFrom("sim_cards")
-          .select("data_scadenza,attiva")
+        let simRes = await dbFrom("sim_cards")
+          .select("checklist_id,numero_telefono,data_scadenza,attiva")
           .eq("attiva", true);
+        if (simRes.error) {
+          simRes = await dbFrom("sim_cards")
+            .select("data_scadenza,attiva")
+            .eq("attiva", true);
+        }
         if (!isLatest()) return;
         if (simRes.error) {
           setSimScadenzeByPeriod({
@@ -1805,12 +1848,23 @@ export function DashboardCockpitPage({
             15: { count: 0, overdue: 0 },
             30: { count: 0, overdue: 0 },
           });
+          setSimSearchByChecklistId({});
         } else {
-          const simRows = (((simRes.data as any[]) || []) as Array<Record<string, any>>).map((row) => ({
-            data_scadenza: row.data_scadenza == null ? null : String(row.data_scadenza),
-            attiva: row.attiva !== false,
-          }));
+          const nextSimSearchByChecklistId: Record<string, string[]> = {};
+          const simRows = (((simRes.data as any[]) || []) as Array<Record<string, any>>).map((row) => {
+            const checklistId = String(row.checklist_id || "").trim();
+            const numeroTelefono = String(row.numero_telefono || "").trim();
+            if (checklistId && numeroTelefono) {
+              if (!nextSimSearchByChecklistId[checklistId]) nextSimSearchByChecklistId[checklistId] = [];
+              nextSimSearchByChecklistId[checklistId].push(numeroTelefono);
+            }
+            return {
+              data_scadenza: row.data_scadenza == null ? null : String(row.data_scadenza),
+              attiva: row.attiva !== false,
+            };
+          });
           setSimScadenzeByPeriod(buildSimScadenzeSummary(simRows));
+          setSimSearchByChecklistId(nextSimSearchByChecklistId);
         }
       } catch (e: any) {
         if (e?.name === "AbortError" || controller.signal.aborted) return;
@@ -1820,6 +1874,7 @@ export function DashboardCockpitPage({
           15: { count: 0, overdue: 0 },
           30: { count: 0, overdue: 0 },
         });
+        setSimSearchByChecklistId({});
       }
 
       let opRes: Response;
@@ -2505,7 +2560,7 @@ export function DashboardCockpitPage({
                     <input
                       value={dashboardProjectSearch}
                       onChange={(e) => setDashboardProjectSearch(e.target.value)}
-                      placeholder="Cerca cliente, progetto, proforma, PO, impianto"
+                      placeholder="Cerca cliente, progetto, proforma, PO, impianto, numero SIM"
                       style={{
                         flex: "1 1 300px",
                         minWidth: 0,
@@ -2927,6 +2982,37 @@ export function DashboardCockpitPage({
           ) : null}
           {showClientiSection ? (
             <div style={{ marginTop: 24 }}>
+            {showClientiCockpit ? (
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+                  gap: 12,
+                  marginBottom: 16,
+                }}
+              >
+                {[
+                  { label: "Totale clienti", value: dashboardClientSummary.total, colors: DASHBOARD_BADGE_COLORS.statusNeutral },
+                  { label: "Con attenzione", value: dashboardClientSummary.attention, colors: DASHBOARD_BADGE_COLORS.statusExpired },
+                  { label: "Con attività aperte", value: dashboardClientSummary.withOpenActivities, colors: DASHBOARD_BADGE_COLORS.statusDueSoon },
+                  { label: "Con scadenze rilevanti", value: dashboardClientSummary.withRelevantDeadlines, colors: DASHBOARD_BADGE_COLORS.statusDueSoon },
+                ].map((card) => (
+                  <div
+                    key={card.label}
+                    style={{
+                      borderRadius: 16,
+                      border: `1px solid ${card.colors.border}`,
+                      background: card.colors.background,
+                      padding: "14px 16px",
+                      boxShadow: "0 1px 2px rgba(15, 23, 42, 0.06)",
+                    }}
+                  >
+                    <div style={{ fontSize: 12, fontWeight: 700, color: card.colors.color }}>{card.label}</div>
+                    <div style={{ marginTop: 6, fontSize: 26, fontWeight: 800, color: "#0f172a" }}>{card.value}</div>
+                  </div>
+                ))}
+              </div>
+            ) : null}
             <div
               style={{
                 display: "flex",
@@ -2966,119 +3052,191 @@ export function DashboardCockpitPage({
                 }}
               />
             </div>
-            <div style={{ display: "grid", gap: 10 }}>
-              {dashboardClientRows.map((row) => (
-                <Link
-                  key={row.cliente}
-                  href={`/clienti/${encodeURIComponent(row.cliente)}`}
+            {enableClientFilters ? (
+              <div
+                style={{
+                  display: "flex",
+                  gap: 10,
+                  alignItems: "center",
+                  flexWrap: "wrap",
+                  marginBottom: 14,
+                }}
+              >
+                <input
+                  value={dashboardClientSearch}
+                  onChange={(e) => setDashboardClientSearch(e.target.value)}
+                  placeholder="Cerca cliente"
                   style={{
-                    display: "grid",
-                    gridTemplateColumns: "minmax(0, 1fr) auto",
-                    gap: 14,
-                    alignItems: "center",
-                    padding: "12px 14px",
+                    flex: "1 1 300px",
+                    minWidth: 0,
+                    padding: "10px 12px",
+                    borderRadius: 10,
+                    border: "1px solid #cbd5e1",
+                    background: "white",
+                  }}
+                />
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                  {[
+                    { value: "TUTTI", label: "Tutti" },
+                    { value: "ATTENZIONE", label: "Attenzione" },
+                    { value: "MONITORARE", label: "Monitorare" },
+                    { value: "STABILE", label: "Stabile" },
+                  ].map((option) => {
+                    const active = dashboardClientQuickFilter === option.value;
+                    return (
+                      <button
+                        key={option.value}
+                        type="button"
+                        onClick={() =>
+                          setDashboardClientQuickFilter(
+                            option.value as "TUTTI" | "ATTENZIONE" | "MONITORARE" | "STABILE"
+                          )
+                        }
+                        style={{
+                          padding: "8px 12px",
+                          borderRadius: 999,
+                          border: active ? "1px solid #0f172a" : "1px solid #cbd5e1",
+                          background: active ? "#0f172a" : "white",
+                          color: active ? "white" : "#0f172a",
+                          fontWeight: 700,
+                          cursor: "pointer",
+                        }}
+                      >
+                        {option.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : null}
+            <div style={{ display: "grid", gap: 10 }}>
+              {filteredDashboardClientRows.length === 0 ? (
+                <div
+                  style={{
+                    padding: "14px 16px",
                     borderRadius: 14,
                     border: "1px solid #e2e8f0",
-                    background: "white",
-                    color: "inherit",
-                    textDecoration: "none",
-                    boxShadow: "0 1px 2px rgba(15, 23, 42, 0.06)",
+                    background: "#f8fafc",
+                    color: "#64748b",
+                    fontWeight: 600,
                   }}
                 >
-                  <div style={{ minWidth: 0 }}>
-                    <div
-                      style={{
-                        fontSize: 17,
-                        fontWeight: 800,
-                        color: "#0f172a",
-                        lineHeight: 1.2,
-                        wordBreak: "break-word",
-                      }}
-                    >
-                      {row.cliente}
-                    </div>
-                    <div
-                      style={{
-                        display: "flex",
-                        flexWrap: "wrap",
-                        gap: 8,
-                        marginTop: 8,
-                        fontSize: 12,
-                        color: "#64748b",
-                      }}
-                    >
-                      <span style={{ padding: "4px 8px", borderRadius: 999, background: "#f8fafc", border: "1px solid #e2e8f0" }}>
-                        {row.projectCount} progetti
-                      </span>
-                      <span
+                  Nessun cliente trovato con i filtri attuali.
+                </div>
+              ) : (
+                filteredDashboardClientRows.map((row) => (
+                  <Link
+                    key={row.cliente}
+                    href={`/clienti/${encodeURIComponent(row.cliente)}`}
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "minmax(0, 1fr) auto",
+                      gap: 14,
+                      alignItems: "center",
+                      padding: "12px 14px",
+                      borderRadius: 14,
+                      border: "1px solid #e2e8f0",
+                      background: "white",
+                      color: "inherit",
+                      textDecoration: "none",
+                      boxShadow: "0 1px 2px rgba(15, 23, 42, 0.06)",
+                    }}
+                  >
+                    <div style={{ minWidth: 0 }}>
+                      <div
                         style={{
-                          padding: "4px 8px",
-                          borderRadius: 999,
-                          background: DASHBOARD_BADGE_COLORS.statusNeutral.background,
-                          border: `1px solid ${DASHBOARD_BADGE_COLORS.statusNeutral.border}`,
-                          color: DASHBOARD_BADGE_COLORS.statusNeutral.color,
+                          fontSize: 17,
+                          fontWeight: 800,
+                          color: "#0f172a",
+                          lineHeight: 1.2,
+                          wordBreak: "break-word",
                         }}
                       >
-                        {row.openActivities} attivita aperte
-                      </span>
-                      <span
+                        {row.cliente}
+                      </div>
+                      <div
                         style={{
-                          padding: "4px 8px",
-                          borderRadius: 999,
-                          background: DASHBOARD_BADGE_COLORS.statusDueSoon.background,
-                          border: `1px solid ${DASHBOARD_BADGE_COLORS.statusDueSoon.border}`,
-                          color: DASHBOARD_BADGE_COLORS.statusDueSoon.color,
+                          display: "flex",
+                          flexWrap: "wrap",
+                          gap: 8,
+                          marginTop: 8,
+                          fontSize: 12,
+                          color: "#64748b",
                         }}
                       >
-                        {row.imminentActivities} imminenti 7 gg
-                      </span>
-                      <span
-                        style={{
-                          padding: "4px 8px",
-                          borderRadius: 999,
-                          background: DASHBOARD_BADGE_COLORS.statusDueSoon.background,
-                          border: `1px solid ${DASHBOARD_BADGE_COLORS.statusDueSoon.border}`,
-                          color: DASHBOARD_BADGE_COLORS.statusDueSoon.color,
-                        }}
-                      >
-                        {row.relevantDeadlines + row.overdueDeadlines} scadenze rilevanti
-                      </span>
-                      {row.overdueActivities > 0 || row.overdueDeadlines > 0 ? (
+                        <span style={{ padding: "4px 8px", borderRadius: 999, background: "#f8fafc", border: "1px solid #e2e8f0" }}>
+                          {row.projectCount} progetti
+                        </span>
                         <span
                           style={{
                             padding: "4px 8px",
                             borderRadius: 999,
-                            background: DASHBOARD_BADGE_COLORS.statusExpired.background,
-                            border: `1px solid ${DASHBOARD_BADGE_COLORS.statusExpired.border}`,
-                            color: DASHBOARD_BADGE_COLORS.statusExpired.color,
+                            background: DASHBOARD_BADGE_COLORS.statusNeutral.background,
+                            border: `1px solid ${DASHBOARD_BADGE_COLORS.statusNeutral.border}`,
+                            color: DASHBOARD_BADGE_COLORS.statusNeutral.color,
                           }}
                         >
-                          {row.overdueActivities + row.overdueDeadlines} criticita
+                          {row.openActivities} attivita aperte
                         </span>
-                      ) : null}
+                        <span
+                          style={{
+                            padding: "4px 8px",
+                            borderRadius: 999,
+                            background: DASHBOARD_BADGE_COLORS.statusDueSoon.background,
+                            border: `1px solid ${DASHBOARD_BADGE_COLORS.statusDueSoon.border}`,
+                            color: DASHBOARD_BADGE_COLORS.statusDueSoon.color,
+                          }}
+                        >
+                          {row.imminentActivities} imminenti 7 gg
+                        </span>
+                        <span
+                          style={{
+                            padding: "4px 8px",
+                            borderRadius: 999,
+                            background: DASHBOARD_BADGE_COLORS.statusDueSoon.background,
+                            border: `1px solid ${DASHBOARD_BADGE_COLORS.statusDueSoon.border}`,
+                            color: DASHBOARD_BADGE_COLORS.statusDueSoon.color,
+                          }}
+                        >
+                          {row.relevantDeadlines + row.overdueDeadlines} scadenze rilevanti
+                        </span>
+                        {row.overdueActivities > 0 || row.overdueDeadlines > 0 ? (
+                          <span
+                            style={{
+                              padding: "4px 8px",
+                              borderRadius: 999,
+                              background: DASHBOARD_BADGE_COLORS.statusExpired.background,
+                              border: `1px solid ${DASHBOARD_BADGE_COLORS.statusExpired.border}`,
+                              color: DASHBOARD_BADGE_COLORS.statusExpired.color,
+                            }}
+                          >
+                            {row.overdueActivities + row.overdueDeadlines} criticita
+                          </span>
+                        ) : null}
+                      </div>
                     </div>
-                  </div>
-                  <div style={{ display: "grid", justifyItems: "end", gap: 8 }}>
-                    <span
-                      style={{
-                        padding: "5px 10px",
-                        borderRadius: 999,
-                        border: `1px solid ${row.attentionColors.border}`,
-                        background: row.attentionColors.background,
-                        color: row.attentionColors.color,
-                        fontSize: 12,
-                        fontWeight: 800,
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      {row.attentionLabel}
-                    </span>
-                    <span style={{ fontSize: 12, fontWeight: 700, color: "#94a3b8", whiteSpace: "nowrap" }}>
-                      Apri cliente →
-                    </span>
-                  </div>
-                </Link>
-              ))}
+                    <div style={{ display: "grid", justifyItems: "end", gap: 8 }}>
+                      <span
+                        style={{
+                          padding: "5px 10px",
+                          borderRadius: 999,
+                          border: `1px solid ${row.attentionColors.border}`,
+                          background: row.attentionColors.background,
+                          color: row.attentionColors.color,
+                          fontSize: 12,
+                          fontWeight: 800,
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {row.attentionLabel}
+                      </span>
+                      <span style={{ fontSize: 12, fontWeight: 700, color: "#94a3b8", whiteSpace: "nowrap" }}>
+                        Apri cliente →
+                      </span>
+                    </div>
+                  </Link>
+                ))
+              )}
             </div>
             </div>
           ) : null}
