@@ -60,6 +60,7 @@ import {
   normalizeOperativiDate,
 } from "@/lib/operativiSchedule";
 import {
+  getProjectStatusOptionsForContext,
   getProjectPresentation,
   isChecklistOperativaCompletedFromTasks,
   normalizeProjectStatusForStorage,
@@ -1268,6 +1269,19 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
     }
     return String(checklist?.stato_progetto || "").trim().toUpperCase() === "CHIUSO";
   }, [checklist?.stato_progetto, lazyDataLoaded.checklistOperativa, tasks]);
+  const projectEditStatusOptions = useMemo(
+    () =>
+      getProjectStatusOptionsForContext("projectEdit", {
+        projectKind:
+          String(formData?.noleggio_vendita || checklist?.noleggio_vendita || "")
+            .trim()
+            .toUpperCase() === "NOLEGGIO"
+            ? "NOLEGGIO"
+            : "VENDITA",
+        allowClosed: checklistIsClosed,
+      }),
+    [checklist?.noleggio_vendita, checklistIsClosed, formData?.noleggio_vendita]
+  );
   const [serialControlInput, setSerialControlInput] = useState("");
   const [serialControlDeviceCode, setSerialControlDeviceCode] = useState("");
   const [serialControlDeviceDescrizione, setSerialControlDeviceDescrizione] = useState("");
@@ -6677,17 +6691,18 @@ function buildFormData(c: Checklist): FormData {
                     onChange={(e) =>
                       setFormData({
                         ...formData,
-                        stato_progetto: e.target.value === "IN_LAVORAZIONE" ? "IN_CORSO" : e.target.value,
+                        stato_progetto:
+                          projectEditStatusOptions.find((option) => option.value === e.target.value)
+                            ?.storageValue ?? "",
                       })
                     }
                     style={{ width: "100%", padding: 10 }}
                   >
-                    <option value="IN_LAVORAZIONE">IN_LAVORAZIONE</option>
-                    <option value="CONSEGNATO">CONSEGNATO</option>
-                    <option value="RIENTRATO">RIENTRATO</option>
-                    <option value="OPERATIVO">OPERATIVO</option>
-                    {checklistIsClosed ? <option value="CHIUSO">CHIUSO</option> : null}
-                    <option value="SOSPESO">SOSPESO</option>
+                    {projectEditStatusOptions.map((option) => (
+                      <option key={option.value} value={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
                   </select>
                 ) : undefined
               }

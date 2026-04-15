@@ -25,9 +25,14 @@ export type ProjectFilterOption = {
   value: ProjectFilterValue;
   label: string;
   kindScope?: "ALL" | "NOLEGGIO" | "VENDITA";
+  storageValue?: RawProjectStatus;
+  allowWhenClosedOnly?: boolean;
 };
 
-export const PROJECT_STATUS_FILTER_OPTIONS = {
+export const PROJECT_STATUS_FILTER_OPTIONS: Record<
+  "compactDashboard" | "projectEdit",
+  readonly ProjectFilterOption[]
+> = {
   compactDashboard: [
     { value: "IN_LAVORAZIONE", label: "IN_LAVORAZIONE", kindScope: "ALL" },
     { value: "NOLEGGIO_IN_CORSO", label: "NOLEGGIO_IN_CORSO", kindScope: "NOLEGGIO" },
@@ -38,8 +43,37 @@ export const PROJECT_STATUS_FILTER_OPTIONS = {
     { value: "OPERATIVO", label: "OPERATIVO", kindScope: "ALL" },
     { value: "SOSPESO", label: "SOSPESO", kindScope: "ALL" },
     { value: "CHIUSO", label: "CHIUSO", kindScope: "ALL" },
-  ] as const satisfies readonly ProjectFilterOption[],
-} as const;
+  ],
+  projectEdit: [
+    { value: "IN_LAVORAZIONE", label: "IN_LAVORAZIONE", kindScope: "ALL", storageValue: "IN_CORSO" },
+    { value: "CONSEGNATO", label: "CONSEGNATO", kindScope: "ALL", storageValue: "CONSEGNATO" },
+    { value: "RIENTRATO", label: "RIENTRATO", kindScope: "ALL", storageValue: "RIENTRATO" },
+    { value: "OPERATIVO", label: "OPERATIVO", kindScope: "ALL", storageValue: "OPERATIVO" },
+    { value: "SOSPESO", label: "SOSPESO", kindScope: "ALL", storageValue: "SOSPESO" },
+    {
+      value: "CHIUSO",
+      label: "CHIUSO",
+      kindScope: "ALL",
+      storageValue: "CHIUSO",
+      allowWhenClosedOnly: true,
+    },
+  ],
+};
+
+export function getProjectStatusOptionsForContext(
+  context: keyof typeof PROJECT_STATUS_FILTER_OPTIONS,
+  options?: { projectKind?: ProjectKind | null; allowClosed?: boolean }
+) {
+  const projectKind = options?.projectKind ?? null;
+  const allowClosed = options?.allowClosed ?? false;
+  return PROJECT_STATUS_FILTER_OPTIONS[context].filter((option) => {
+    if (option.allowWhenClosedOnly && !allowClosed) return false;
+    if (option.kindScope && option.kindScope !== "ALL" && projectKind && option.kindScope !== projectKind) {
+      return false;
+    }
+    return true;
+  });
+}
 
 type TaskLike = {
   stato?: string | null;

@@ -11,6 +11,7 @@ import { isSupabaseConfigured, supabase } from "@/lib/supabaseClient";
 import { dbFrom } from "@/lib/clientDbBroker";
 import { calcM2FromDimensioni } from "@/lib/parseDimensioni";
 import { isMissingMagazzinoDriveColumnError, splitMagazzinoFields } from "@/lib/magazzino";
+import { getProjectStatusOptionsForContext } from "@/lib/projectStatus";
 
 type ChecklistItem = {
   codice: string;
@@ -196,6 +197,15 @@ export default function NuovaChecklistPage() {
   const [statoProgetto, setStatoProgetto] = useState("IN_CORSO");
   const [dataInstallazioneReale, setDataInstallazioneReale] = useState("");
   const [noleggioVendita, setNoleggioVendita] = useState("");
+  const projectEditStatusOptions = useMemo(
+    () =>
+      getProjectStatusOptionsForContext("projectEdit", {
+        projectKind:
+          String(noleggioVendita || "").trim().toUpperCase() === "NOLEGGIO" ? "NOLEGGIO" : "VENDITA",
+        allowClosed: false,
+      }),
+    [noleggioVendita]
+  );
   const [tipoStruttura, setTipoStruttura] = useState("");
   const [passo, setPasso] = useState("");
   const [tipoImpianto, setTipoImpianto] = useState<"INDOOR" | "OUTDOOR" | "">("");
@@ -1240,15 +1250,23 @@ export default function NuovaChecklistPage() {
           <label>
             Stato progetto<br />
             <select
-              value={statoProgetto}
-              onChange={(e) => setStatoProgetto(e.target.value)}
+              value={
+                projectEditStatusOptions.find((option) => option.storageValue === statoProgetto)?.value ||
+                statoProgetto
+              }
+              onChange={(e) =>
+                setStatoProgetto(
+                  projectEditStatusOptions.find((option) => option.value === e.target.value)?.storageValue ||
+                    ""
+                )
+              }
               style={{ width: "100%", padding: 10 }}
             >
-              <option value="IN_CORSO">IN_CORSO</option>
-              <option value="CONSEGNATO">CONSEGNATO</option>
-              <option value="RIENTRATO">RIENTRATO</option>
-              <option value="OPERATIVO">OPERATIVO</option>
-              <option value="SOSPESO">SOSPESO</option>
+              {projectEditStatusOptions.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
             </select>
           </label>
 
