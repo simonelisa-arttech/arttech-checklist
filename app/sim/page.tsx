@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import ConfigMancante from "@/components/ConfigMancante";
 import { dbFrom } from "@/lib/clientDbBroker";
 import { isSupabaseConfigured } from "@/lib/supabaseClient";
@@ -179,6 +179,71 @@ function renderScadenzaBadge(state: ReturnType<typeof getSimOperationalState> | 
   );
 }
 
+function renderMainSimStatusBadge(state: ReturnType<typeof getSimOperationalState>) {
+  const label =
+    state.stato === "SCADUTO"
+      ? "SCADUTA"
+      : state.stato === "IN_SCADENZA"
+        ? "IN_SCADENZA"
+        : state.stato === "OFF"
+          ? "OFF"
+          : "OK";
+  const background =
+    state.stato === "SCADUTO"
+      ? "#fee2e2"
+      : state.stato === "IN_SCADENZA"
+        ? "#ffedd5"
+        : state.stato === "OFF"
+          ? "#e5e7eb"
+          : "#dcfce7";
+  const color =
+    state.stato === "SCADUTO"
+      ? "#991b1b"
+      : state.stato === "IN_SCADENZA"
+        ? "#c2410c"
+        : state.stato === "OFF"
+          ? "#4b5563"
+          : "#166534";
+
+  return (
+    <span
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        padding: "5px 10px",
+        borderRadius: 999,
+        fontSize: 12,
+        fontWeight: 800,
+        background,
+        color,
+        whiteSpace: "nowrap",
+      }}
+    >
+      {label}
+    </span>
+  );
+}
+
+function renderSimKindBadge(inAbbonamento: boolean) {
+  return (
+    <span
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        padding: "4px 9px",
+        borderRadius: 999,
+        fontSize: 11,
+        fontWeight: 800,
+        background: inAbbonamento ? "#dbeafe" : "#f3f4f6",
+        color: inAbbonamento ? "#1d4ed8" : "#374151",
+        whiteSpace: "nowrap",
+      }}
+    >
+      {inAbbonamento ? "ABBONAMENTO" : "RICARICABILE"}
+    </span>
+  );
+}
+
 function renderBillingBadge(value?: string | null) {
   const raw = String(value || "").trim().toUpperCase();
   let background = "#f3f4f6";
@@ -277,12 +342,6 @@ export default function SimPage() {
     Record<string, { data_ricarica: string; importo: string; billing_status: string; note: string }>
   >({});
   const [savingRechargeKey, setSavingRechargeKey] = useState<string | null>(null);
-  const topScrollRef = useRef<HTMLDivElement | null>(null);
-  const mainScrollRef = useRef<HTMLDivElement | null>(null);
-  const scrollContentRef = useRef<HTMLDivElement | null>(null);
-  const syncingScrollRef = useRef<"top" | "main" | null>(null);
-  const [scrollContentWidth, setScrollContentWidth] = useState(0);
-
   useEffect(() => {
     let active = true;
     (async () => {
@@ -500,39 +559,6 @@ export default function SimPage() {
       return haystack.includes(query);
     });
   }, [rows, search, simStatusFilter, projectFilter, operatoreFilter, latestRechargeBillingFilter, latestRechargeBySimId, projectByChecklistId]);
-
-  useEffect(() => {
-    function syncScrollWidth() {
-      const nextWidth = scrollContentRef.current?.scrollWidth || 0;
-      setScrollContentWidth(nextWidth);
-    }
-
-    syncScrollWidth();
-    window.addEventListener("resize", syncScrollWidth);
-    return () => {
-      window.removeEventListener("resize", syncScrollWidth);
-    };
-  }, [filteredRows, loading, editingSimId, expandedSimId]);
-
-  function handleTopScroll() {
-    if (!topScrollRef.current || !mainScrollRef.current) return;
-    if (syncingScrollRef.current === "main") {
-      syncingScrollRef.current = null;
-      return;
-    }
-    syncingScrollRef.current = "top";
-    mainScrollRef.current.scrollLeft = topScrollRef.current.scrollLeft;
-  }
-
-  function handleMainScroll() {
-    if (!topScrollRef.current || !mainScrollRef.current) return;
-    if (syncingScrollRef.current === "top") {
-      syncingScrollRef.current = null;
-      return;
-    }
-    syncingScrollRef.current = "main";
-    topScrollRef.current.scrollLeft = mainScrollRef.current.scrollLeft;
-  }
 
   function createTempId(prefix: string) {
     return `${prefix}-${Math.random().toString(36).slice(2, 10)}`;
@@ -860,8 +886,7 @@ export default function SimPage() {
       <div
         style={{
           display: "grid",
-          gridTemplateColumns:
-            "minmax(240px,1.3fr) minmax(180px,0.8fr) minmax(220px,0.9fr) minmax(180px,0.8fr) minmax(220px,0.9fr)",
+          gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
           gap: 12,
           marginBottom: 18,
         }}
@@ -988,60 +1013,12 @@ export default function SimPage() {
           boxShadow: "0 10px 30px rgba(15, 23, 42, 0.05)",
         }}
       >
-        <div
-          ref={topScrollRef}
-          onScroll={handleTopScroll}
-          style={{
-            overflowX: "auto",
-            overflowY: "hidden",
-            borderBottom: "1px solid #e5e7eb",
-            background: "#f8fafc",
-          }}
-        >
-          <div style={{ width: scrollContentWidth || "100%", height: 16 }} />
-        </div>
-
-        <div
-          ref={mainScrollRef}
-          onScroll={handleMainScroll}
-          style={{ overflowX: "auto", overflowY: "hidden" }}
-        >
-          <div ref={scrollContentRef} style={{ width: "max-content", minWidth: "100%" }}>
-            <div
-              style={{
-                display: "grid",
-                gridTemplateColumns:
-                  "140px minmax(180px,1fr) 120px minmax(160px,1fr) 110px 130px minmax(220px,1fr) 130px 130px 150px 160px 150px 120px",
-                gap: 12,
-                padding: "14px 16px",
-                fontSize: 12,
-                fontWeight: 800,
-                color: "#374151",
-                background: "#f8fafc",
-                borderBottom: "1px solid #e5e7eb",
-              }}
-            >
-              <div>Numero</div>
-              <div>Intestatario</div>
-              <div>Operatore</div>
-              <div>Piano attivo</div>
-              <div>Tariffa</div>
-              <div>Scadenza</div>
-              <div>Progetto associato</div>
-              <div>Ultima ricarica</div>
-              <div>Importo ultima</div>
-              <div>Fatt. ricarica</div>
-              <div>Device installato</div>
-              <div>Fatturazione</div>
-              <div>Stato SIM</div>
-            </div>
-
-            {loading ? (
-              <div style={{ padding: 18, color: "#6b7280" }}>Caricamento...</div>
-            ) : filteredRows.length === 0 ? (
-              <div style={{ padding: 18, color: "#6b7280" }}>Nessuna SIM trovata.</div>
-            ) : (
-              filteredRows.map((row) => {
+        {loading ? (
+          <div style={{ padding: 18, color: "#6b7280" }}>Caricamento...</div>
+        ) : filteredRows.length === 0 ? (
+          <div style={{ padding: 18, color: "#6b7280" }}>Nessuna SIM trovata.</div>
+        ) : (
+          filteredRows.map((row) => {
             const rowId = String(row.id || "");
             const isEditing = editingSimId === rowId;
             const isExpanded = expandedSimId === rowId || isEditing;
@@ -1091,7 +1068,7 @@ export default function SimPage() {
                     <div
                       style={{
                         display: "grid",
-                        gridTemplateColumns: "repeat(4, minmax(160px, 1fr))",
+                        gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
                         gap: 12,
                       }}
                     >
@@ -1346,7 +1323,7 @@ export default function SimPage() {
                                 key={String(recharge.id || `${recharge.sim_id}-${recharge.data_ricarica}`)}
                                 style={{
                                   display: "grid",
-                                  gridTemplateColumns: "140px 120px 160px minmax(220px,1fr)",
+                                  gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))",
                                   gap: 12,
                                   fontSize: 13,
                                   padding: "10px 12px",
@@ -1366,7 +1343,7 @@ export default function SimPage() {
                         <div
                           style={{
                             display: "grid",
-                            gridTemplateColumns: "160px 140px 180px minmax(220px,1fr) 150px",
+                            gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
                             gap: 12,
                             alignItems: "end",
                           }}
@@ -1455,58 +1432,96 @@ export default function SimPage() {
                       }}
                       style={{
                         display: "grid",
-                        gridTemplateColumns:
-                          "140px minmax(180px,1fr) 120px minmax(160px,1fr) 110px 130px minmax(220px,1fr) 130px 130px 150px 160px 150px 120px",
                         gap: 12,
-                        alignItems: "center",
                         cursor: "pointer",
                       }}
                     >
-                      <div style={{ display: "grid", gap: 6 }}>
-                        <div style={{ fontWeight: 700 }}>{row.numero_telefono || "—"}</div>
-                        {renderScadenzaBadge(scadenzaBadge)}
-                      </div>
-                      <div>{row.intestatario || "—"}</div>
-                      <div>{row.operatore || "—"}</div>
-                      <div>{row.piano_attivo || "—"}</div>
-                      <div>
-                        {formatCurrency(row.tariffa)}
-                      </div>
-                      <div>{formatDate(effectiveScadenza)}</div>
-                      <div title={projectLabel}>{projectLabel}</div>
-                      <div>{formatDate(latestRecharge?.data_ricarica)}</div>
-                      <div>{formatCurrency(latestRecharge?.importo ?? null)}</div>
-                      <div>{renderRechargeBillingBadge(latestRecharge?.billing_status)}</div>
-                      <div>{row.device_installato || "—"}</div>
-                      <div>{renderBillingBadge(row.billing_status)}</div>
-                      <div>
-                        <span
+                      <div
+                        style={{
+                          display: "grid",
+                          gap: 10,
+                          gridTemplateColumns: "minmax(0, 1.6fr) minmax(220px, 0.9fr)",
+                          alignItems: "start",
+                        }}
+                      >
+                        <div style={{ display: "grid", gap: 8, minWidth: 0 }}>
+                          <div
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 8,
+                              flexWrap: "wrap",
+                            }}
+                          >
+                            <div style={{ fontWeight: 800, fontSize: 15 }}>{row.numero_telefono || "—"}</div>
+                            {renderSimKindBadge(row.in_abbonamento)}
+                            {renderScadenzaBadge(scadenzaBadge)}
+                          </div>
+                          <div
+                            style={{
+                              fontSize: 13,
+                              color: "#111827",
+                              fontWeight: 600,
+                              overflowWrap: "anywhere",
+                            }}
+                            title={projectLabel}
+                          >
+                            {projectLabel}
+                          </div>
+                          <div style={{ fontSize: 13, color: "#6b7280" }}>
+                            {[row.operatore || "—", row.piano_attivo || "—"].join(" · ")}
+                          </div>
+                        </div>
+                        <div
                           style={{
-                            display: "inline-flex",
-                            alignItems: "center",
-                            padding: "4px 10px",
-                            borderRadius: 999,
-                            fontSize: 12,
-                            fontWeight: 800,
-                            background:
-                              simState.stato === "SCADUTO"
-                                ? "#fee2e2"
-                                : simState.stato === "IN_SCADENZA"
-                                  ? "#ffedd5"
-                                  : simState.stato === "ATTIVA"
-                                    ? "#dcfce7"
-                                    : "#e5e7eb",
-                            color:
-                              simState.stato === "SCADUTO"
-                                ? "#991b1b"
-                                : simState.stato === "IN_SCADENZA"
-                                  ? "#c2410c"
-                                  : simState.stato === "ATTIVA"
-                                    ? "#166534"
-                                    : "#4b5563",
+                            display: "grid",
+                            gap: 8,
+                            justifyItems: "start",
                           }}
                         >
-                          {simState.stato === "OFF" ? "OFF" : simState.stato.replace("_", " ")}
+                          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                            {renderMainSimStatusBadge(simState)}
+                          </div>
+                          <div style={{ display: "grid", gap: 4, fontSize: 13 }}>
+                            <div style={{ color: "#6b7280" }}>Scadenza effettiva</div>
+                            <div style={{ fontWeight: 700 }}>{formatDate(effectiveScadenza)}</div>
+                          </div>
+                          <div style={{ display: "grid", gap: 4, fontSize: 13 }}>
+                            <div style={{ color: "#6b7280" }}>Ultima ricarica</div>
+                            <div style={{ fontWeight: 700 }}>{formatDate(latestRecharge?.data_ricarica)}</div>
+                          </div>
+                        </div>
+                      </div>
+                      <div
+                        style={{
+                          display: "grid",
+                          gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
+                          gap: 10,
+                          paddingTop: 4,
+                        }}
+                      >
+                        <div style={{ display: "grid", gap: 4, fontSize: 13 }}>
+                          <div style={{ color: "#6b7280" }}>Intestatario</div>
+                          <div>{row.intestatario || "—"}</div>
+                        </div>
+                        <div style={{ display: "grid", gap: 4, fontSize: 13 }}>
+                          <div style={{ color: "#6b7280" }}>Importo ultima</div>
+                          <div>{formatCurrency(latestRecharge?.importo ?? null)}</div>
+                        </div>
+                        <div style={{ display: "grid", gap: 4, fontSize: 13 }}>
+                          <div style={{ color: "#6b7280" }}>Fatt. ricarica</div>
+                          <div>{renderRechargeBillingBadge(latestRecharge?.billing_status)}</div>
+                        </div>
+                      </div>
+                      <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                        <span
+                          style={{
+                            fontSize: 12,
+                            color: "#6b7280",
+                            fontWeight: 700,
+                          }}
+                        >
+                          {isExpanded ? "Nascondi dettagli" : "Apri dettagli"}
                         </span>
                       </div>
                     </div>
@@ -1515,8 +1530,7 @@ export default function SimPage() {
                         <div
                           style={{
                             display: "grid",
-                            gridTemplateColumns:
-                              "repeat(8, minmax(140px, 0.8fr))",
+                            gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
                             gap: 12,
                             alignItems: "start",
                           }}
@@ -1639,15 +1653,15 @@ export default function SimPage() {
                               <div style={{ fontSize: 13, color: "#6b7280" }}>Nessuna ricarica registrata.</div>
                             ) : (
                               <div style={{ display: "grid", gap: 8 }}>
-                                {rechargeRows.map((recharge) => (
-                                  <div
-                                    key={String(recharge.id || `${recharge.sim_id}-${recharge.data_ricarica}`)}
-                                    style={{
-                                      display: "grid",
-                                      gridTemplateColumns: "140px 120px 160px minmax(220px,1fr)",
-                                      gap: 12,
-                                      fontSize: 13,
-                                      padding: "10px 12px",
+                            {rechargeRows.map((recharge) => (
+                              <div
+                                key={String(recharge.id || `${recharge.sim_id}-${recharge.data_ricarica}`)}
+                                style={{
+                                  display: "grid",
+                                  gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))",
+                                  gap: 12,
+                                  fontSize: 13,
+                                  padding: "10px 12px",
                                       borderRadius: 10,
                                       background: "#fff",
                                       border: "1px solid #e5e7eb",
@@ -1664,7 +1678,7 @@ export default function SimPage() {
                             <div
                               style={{
                                 display: "grid",
-                                gridTemplateColumns: "160px 140px 180px minmax(220px,1fr) 150px",
+                                gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
                                 gap: 12,
                                 alignItems: "end",
                               }}
@@ -1740,9 +1754,7 @@ export default function SimPage() {
               </div>
               );
             })
-            )}
-          </div>
-        </div>
+        )}
       </div>
     </div>
   );
