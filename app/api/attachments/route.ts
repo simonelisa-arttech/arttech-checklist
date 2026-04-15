@@ -28,13 +28,42 @@ export async function GET(request: Request) {
 
   const { data, error } = await supabaseAdmin
     .from("attachments")
-    .select("id, source, provider, url, title, storage_path, mime_type, size_bytes, entity_type, entity_id, created_by, created_at")
+    .select("id, source, provider, url, title, storage_path, mime_type, size_bytes, entity_type, entity_id, created_by, created_at, visibile_al_cliente")
     .eq("entity_type", entityType)
     .eq("entity_id", entityId)
     .order("created_at", { ascending: false });
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
   return NextResponse.json({ ok: true, rows: data || [] });
+}
+
+export async function PATCH(request: Request) {
+  const auth = await requireOperatore(request);
+  if (!auth.ok) return auth.response;
+  const { adminClient: supabaseAdmin } = auth;
+
+  let body: any;
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
+
+  const id = String(body?.id || "").trim();
+  if (!id) {
+    return NextResponse.json({ error: "id mancante" }, { status: 400 });
+  }
+
+  const visibileAlCliente = body?.visibile_al_cliente === true;
+  const { data, error } = await supabaseAdmin
+    .from("attachments")
+    .update({ visibile_al_cliente: visibileAlCliente })
+    .eq("id", id)
+    .select("id, source, provider, url, title, storage_path, mime_type, size_bytes, entity_type, entity_id, created_by, created_at, visibile_al_cliente")
+    .maybeSingle();
+
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  return NextResponse.json({ ok: true, row: data });
 }
 
 export async function POST(request: Request) {

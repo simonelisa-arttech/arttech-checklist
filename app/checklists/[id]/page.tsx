@@ -231,6 +231,7 @@ type ChecklistDocument = {
   storage_path: string;
   uploaded_at: string | null;
   uploaded_by_operatore: string | null;
+  visibile_al_cliente?: boolean | null;
 };
 
 function isMissingClienteScadenzeDeliveryModeColumnError(error: any) {
@@ -1164,6 +1165,7 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
   }
   const projectSectionLinks = [
     { id: "section-dati-operativi", label: "Dati operativi" },
+    { id: "section-documenti-checklist", label: "Documenti checklist" },
     { id: "section-scadenze-rinnovi", label: "Scadenze e rinnovi" },
     { id: "section-servizi", label: "Servizi" },
     { id: "section-licenze", label: "Licenze" },
@@ -1175,6 +1177,7 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
   type LazySectionId = (typeof projectSectionLinks)[number]["id"];
   const emptyExpandedSections = (): Record<LazySectionId, boolean> => ({
     "section-dati-operativi": false,
+    "section-documenti-checklist": false,
     "section-scadenze-rinnovi": false,
     "section-servizi": false,
     "section-licenze": false,
@@ -1315,6 +1318,7 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
   const [docType, setDocType] = useState("");
   const [docFile, setDocFile] = useState<File | null>(null);
   const [docError, setDocError] = useState<string | null>(null);
+  const [docVisibilitySavingId, setDocVisibilitySavingId] = useState<string | null>(null);
   const [itemsError, setItemsError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [currentOperatoreId, setCurrentOperatoreId] = useState<string>("");
@@ -4407,6 +4411,7 @@ function buildFormData(c: Checklist): FormData {
     if (lazySectionLoading[sectionId]) return;
     const alreadyLoaded =
       (sectionId === "section-dati-operativi" && lazyDataLoaded.cronoOperativi) ||
+      sectionId === "section-documenti-checklist" ||
       (sectionId === "section-servizi" && lazyDataLoaded.services && lazyDataLoaded.licenze) ||
       (sectionId === "section-licenze" && lazyDataLoaded.licenze) ||
       (sectionId === "section-scadenze-rinnovi" && lazyDataLoaded.rinnovi && lazyDataLoaded.licenze) ||
@@ -5322,6 +5327,36 @@ function buildFormData(c: Checklist): FormData {
     }
 
     setDocuments((prev) => prev.filter((d) => d.id !== doc.id));
+  }
+
+  async function toggleDocumentCustomerVisibility(doc: ChecklistDocument, visibileAlCliente: boolean) {
+    if (!id) return;
+    setDocVisibilitySavingId(doc.id);
+    setDocError(null);
+    try {
+      const res = await fetch(`/api/checklists/${id}/documents`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          document_id: doc.id,
+          visibile_al_cliente: visibileAlCliente,
+        }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json?.ok) {
+        throw new Error(String(json?.error || "Errore aggiornamento visibilita documento"));
+      }
+      setDocuments((prev) =>
+        prev.map((item) =>
+          item.id === doc.id ? { ...item, visibile_al_cliente: visibileAlCliente } : item
+        )
+      );
+    } catch (err: any) {
+      setDocError(String(err?.message || err || "Errore aggiornamento documento"));
+    } finally {
+      setDocVisibilitySavingId(null);
+    }
   }
 
   async function resolveOperatoreIdForSave() {
@@ -7572,6 +7607,161 @@ function buildFormData(c: Checklist): FormData {
         onSubmitManual={sendProjectRinnoviAlert}
         onSaveRule={saveProjectRinnoviAlertRule}
       />
+      {renderLazySection(
+        "section-documenti-checklist",
+        "Documenti checklist",
+        <>
+          <div
+            style={{
+              marginBottom: 12,
+              padding: 12,
+              border: "1px solid #eee",
+              borderRadius: 12,
+              background: "white",
+              display: "grid",
+              gridTemplateColumns: "180px 1fr auto",
+              gap: 10,
+              alignItems: "end",
+            }}
+          >
+            <label>
+              Tipo documento<br />
+              <select
+                value={docType}
+                onChange={(e) => setDocType(e.target.value)}
+                style={{ width: "100%", padding: 8 }}
+              >
+                <option value="">Seleziona tipo</option>
+                <option value="PROFORMA">PROFORMA</option>
+                <option value="CONTRATTO">CONTRATTO</option>
+                <option value="VERBALE">VERBALE</option>
+                <option value="DOCUMENTO">DOCUMENTO</option>
+              </select>
+            </label>
+            <label>
+              File<br />
+              <input
+                type="file"
+                onChange={(e) => setDocFile(e.target.files?.[0] ?? null)}
+                style={{ width: "100%", padding: 8 }}
+              />
+            </label>
+            <button
+              type="button"
+              onClick={uploadDocument}
+              style={{
+                padding: "10px 12px",
+                borderRadius: 10,
+                border: "1px solid #111",
+                background: "#111",
+                color: "white",
+                cursor: "pointer",
+              }}
+            >
+              Carica documento
+            </button>
+          </div>
+
+          {docError && (
+            <div style={{ color: "#b91c1c", fontSize: 12, marginBottom: 10 }}>{docError}</div>
+          )}
+
+          {documents.length === 0 ? (
+            <div style={{ opacity: 0.7 }}>Nessun documento checklist caricato</div>
+          ) : (
+            <div style={{ border: "1px solid #eee", borderRadius: 12, overflow: "hidden" }}>
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "2fr 140px 160px 220px 220px",
+                  padding: "10px 12px",
+                  fontWeight: 700,
+                  borderBottom: "1px solid #eee",
+                  background: "#fafafa",
+                }}
+              >
+                <div>Nome file</div>
+                <div>Tipo</div>
+                <div>Data upload</div>
+                <div>Visibilita cliente</div>
+                <div>Azioni</div>
+              </div>
+              {documents.map((d) => (
+                <div
+                  key={d.id}
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "2fr 140px 160px 220px 220px",
+                    padding: "10px 12px",
+                    borderBottom: "1px solid #f5f5f5",
+                    alignItems: "center",
+                    fontSize: 13,
+                  }}
+                >
+                  <div>{d.filename}</div>
+                  <div>{d.tipo || "—"}</div>
+                  <div>{d.uploaded_at ? new Date(d.uploaded_at).toLocaleString() : "—"}</div>
+                  <div>
+                    <label style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12 }}>
+                      <input
+                        type="checkbox"
+                        checked={d.visibile_al_cliente === true}
+                        disabled={docVisibilitySavingId === d.id}
+                        onChange={(e) => toggleDocumentCustomerVisibility(d, e.target.checked)}
+                      />
+                      Visibile al cliente
+                    </label>
+                  </div>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <button
+                      type="button"
+                      onClick={() => openDocument(d, false)}
+                      style={{
+                        padding: "6px 10px",
+                        borderRadius: 8,
+                        border: "1px solid #ddd",
+                        background: "white",
+                        cursor: "pointer",
+                      }}
+                    >
+                      Apri
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => openDocument(d, true)}
+                      style={{
+                        padding: "6px 10px",
+                        borderRadius: 8,
+                        border: "1px solid #ddd",
+                        background: "white",
+                        cursor: "pointer",
+                      }}
+                    >
+                      Scarica
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => deleteDocument(d)}
+                      style={{
+                        padding: "6px 10px",
+                        borderRadius: 8,
+                        border: "1px solid #dc2626",
+                        background: "white",
+                        color: "#dc2626",
+                        cursor: "pointer",
+                      }}
+                    >
+                      Elimina
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </>,
+        { loadingLabel: "Caricamento documenti checklist..." }
+      )}
+
       {renderLazySection(
         "section-scadenze-rinnovi",
         "Scadenze e rinnovi",

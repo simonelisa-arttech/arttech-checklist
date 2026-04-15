@@ -13,6 +13,7 @@ type AttachmentRow = {
   mime_type: string | null;
   size_bytes: number | null;
   created_at: string | null;
+  visibile_al_cliente?: boolean | null;
 };
 
 type Props = {
@@ -202,6 +203,33 @@ export default function AttachmentsPanel({
     }
   }
 
+  async function updateVisibility(row: AttachmentRow, visibileAlCliente: boolean) {
+    setSaving(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/attachments", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          id: row.id,
+          visibile_al_cliente: visibileAlCliente,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.error || "Errore aggiornamento visibilita allegato");
+      setRows((prev) =>
+        prev.map((item) =>
+          item.id === row.id ? { ...item, visibile_al_cliente: visibileAlCliente } : item
+        )
+      );
+    } catch (e: any) {
+      setError(String(e?.message || e));
+    } finally {
+      setSaving(false);
+    }
+  }
+
   const canSave = canUse && !saving;
   const iconByRow = useMemo(
     () => (r: AttachmentRow) => (r.source === "LINK" ? (r.provider === "GOOGLE_DRIVE" ? "🟢" : "🔗") : "📄"),
@@ -312,6 +340,24 @@ export default function AttachmentsPanel({
                   {r.provider ? ` · ${r.provider}` : ""}
                   {r.created_at ? ` · ${new Date(r.created_at).toLocaleString("it-IT")}` : ""}
                 </div>
+                <label
+                  style={{
+                    marginTop: 6,
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 6,
+                    fontSize: 11,
+                    color: "#475569",
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={r.visibile_al_cliente === true}
+                    disabled={saving}
+                    onChange={(e) => updateVisibility(r, e.target.checked)}
+                  />
+                  Visibile al cliente
+                </label>
               </div>
               <div style={{ display: "flex", gap: 6 }}>
                 <button type="button" onClick={() => openRow(r)} style={{ padding: "4px 8px" }}>
