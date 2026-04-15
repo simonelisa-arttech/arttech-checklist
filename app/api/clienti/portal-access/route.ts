@@ -153,3 +153,88 @@ export async function POST(request: Request) {
     },
   });
 }
+
+export async function PATCH(request: Request) {
+  const auth = await requireAdmin(request);
+  if (!auth.ok) return auth.response;
+
+  let body: { cliente_id?: string; action?: string };
+  try {
+    body = (await request.json()) as { cliente_id?: string; action?: string };
+  } catch {
+    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+  }
+
+  const clienteId = String(body?.cliente_id || "").trim();
+  const action = String(body?.action || "").trim().toLowerCase();
+  if (!clienteId) {
+    return NextResponse.json({ error: "cliente_id mancante" }, { status: 400 });
+  }
+  if (!(action === "deactivate" || action === "reset_password")) {
+    return NextResponse.json({ error: "Azione non valida" }, { status: 400 });
+  }
+
+  const { data: accesso, error: accessoErr } = await auth.adminClient
+    .from("clienti_portale_auth")
+    .select("id, cliente_id, user_id, email, attivo")
+    .eq("cliente_id", clienteId)
+    .maybeSingle();
+  if (accessoErr) {
+    return NextResponse.json({ error: accessoErr.message }, { status: 500 });
+  }
+  if (!accesso?.id) {
+    return NextResponse.json({ error: "Accesso cliente non trovato" }, { status: 404 });
+  }
+
+  if (action === "deactivate") {
+    const { data: updated, error: updateErr } = await auth.adminClient
+      .from("clienti_portale_auth")
+      .update({ attivo: false, updated_at: new Date().toISOString() })
+      .eq("id", accesso.id)
+      .select("id, cliente_id, email, attivo")
+      .maybeSingle();
+    if (updateErr) {
+      return NextResponse.json({ error: updateErr.message }, { status: 500 });
+    }
+    return NextResponse.json({
+      ok: true,
+      accesso: updated || {
+        id: accesso.id,
+        cliente_id: accesso.cliente_id,
+        email: accesso.email,
+        attivo: false,
+      },
+    });
+  }
+
+  const userId = String(accesso.user_id || "").trim();
+  const email = String(accesso.email || "").trim().toLowerCase();
+  if (!userId) {
+    return NextResponse.json({ error: "user_id mancante per l'accesso cliente" }, { status: 500 });
+  }
+  if (!isValidEmail(email)) {
+    return NextResponse.json({ error: "Email accesso cliente non valida" }, { status: 400 });
+  }
+
+  const temporaryPassword = generateTemporaryPassword();
+  const { error: resetErr } = await auth.adminClient.auth.admin.updateUserById(userId, {
+    password: temporaryPassword,
+  });
+  if (resetErr) {
+    return NextResponse.json({ error: resetErr.message }, { status: 500 });
+  }
+
+  return NextResponse.json({
+    ok: true,
+    accesso: {
+      id: accesso.id,
+      cliente_id: accesso.cliente_id,
+      email,
+      attivo: accesso.attivo !== false,
+    },
+    credenziali: {
+      email,
+      password_temporanea: temporaryPassword,
+    },
+  });
+}
