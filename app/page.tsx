@@ -50,18 +50,29 @@ type DocumentiAlertSummary = {
 
 type DashboardClienteCockpitRow = {
   cliente: string;
+  clienteId: string | null;
   projectCount: number;
   openActivities: number;
   imminentActivities: number;
   overdueActivities: number;
   relevantDeadlines: number;
   overdueDeadlines: number;
+  searchText: string;
   attentionLabel: "ATTENZIONE" | "MONITORARE" | "STABILE";
   attentionColors: {
     border: string;
     background: string;
     color: string;
   };
+};
+
+type ClienteAnagraficaRow = {
+  id: string;
+  denominazione: string | null;
+  codice_interno: string | null;
+  piva: string | null;
+  codice_fiscale: string | null;
+  attivo: boolean | null;
 };
 
 const DASHBOARD_BADGE_COLORS = {
@@ -135,6 +146,13 @@ function classifyProjectDeadline(value: string | null | undefined, todayIso: str
   if (date < todayIso) return "SCADUTA" as const;
   if (date <= upcomingIso) return "IMMINENTE" as const;
   return null;
+}
+
+function normalizeClienteSearchKey(value?: string | null) {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function buildScadenzeLink(days: number) {
@@ -595,6 +613,7 @@ export function DashboardCockpitPage({
   }
   const router = useRouter();
   const [items, setItems] = useState<Checklist[]>([]);
+  const [clientiRegistry, setClientiRegistry] = useState<ClienteAnagraficaRow[]>([]);
   const [dashboardLoadError, setDashboardLoadError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [catalogItems, setCatalogItems] = useState<CatalogItem[]>([]);
@@ -1177,22 +1196,68 @@ export function DashboardCockpitPage({
     const upcoming30Iso = toDateInputValue(upcoming30);
 
     const clientMap = new Map<string, Omit<DashboardClienteCockpitRow, "attentionLabel" | "attentionColors">>();
+    const keyByClienteId = new Map<string, string>();
+    const keyByClienteName = new Map<string, string>();
 
-    const ensureClient = (clienteValue?: string | null) => {
-      const cliente = String(clienteValue || "").trim();
-      if (!cliente) return null;
-      if (!clientMap.has(cliente)) {
-        clientMap.set(cliente, {
-          cliente,
+    for (const clienteRow of clientiRegistry) {
+      const cliente = String(clienteRow.denominazione || "").trim();
+      const clienteId = String(clienteRow.id || "").trim() || null;
+      const normalizedName = normalizeClienteSearchKey(cliente);
+      if (!cliente && !clienteId) continue;
+      const key = clienteId ? `id:${clienteId}` : `name:${normalizedName}`;
+      if (!clientMap.has(key)) {
+        clientMap.set(key, {
+          cliente: cliente || "Cliente senza denominazione",
+          clienteId,
           projectCount: 0,
           openActivities: 0,
           imminentActivities: 0,
           overdueActivities: 0,
           relevantDeadlines: 0,
           overdueDeadlines: 0,
+          searchText: [
+            cliente,
+            clienteRow.codice_interno,
+            clienteRow.piva,
+            clienteRow.codice_fiscale,
+          ]
+            .filter(Boolean)
+            .join(" "),
         });
       }
-      return clientMap.get(cliente) || null;
+      if (clienteId) keyByClienteId.set(clienteId, key);
+      if (normalizedName) keyByClienteName.set(normalizedName, key);
+    }
+
+    const ensureClient = (clienteValue?: string | null, clienteIdValue?: string | null) => {
+      const cliente = String(clienteValue || "").trim();
+      const clienteId = String(clienteIdValue || "").trim() || null;
+      const normalizedName = normalizeClienteSearchKey(cliente);
+      const existingKey =
+        (clienteId && keyByClienteId.get(clienteId)) ||
+        (normalizedName && keyByClienteName.get(normalizedName)) ||
+        null;
+      if (existingKey && clientMap.has(existingKey)) {
+        return clientMap.get(existingKey) || null;
+      }
+      if (!cliente && !clienteId) return null;
+      const dynamicKey = clienteId ? `id:${clienteId}` : `name:${normalizedName}`;
+      if (!clientMap.has(dynamicKey)) {
+        clientMap.set(dynamicKey, {
+          cliente: cliente || "Cliente senza denominazione",
+          clienteId,
+          projectCount: 0,
+          openActivities: 0,
+          imminentActivities: 0,
+          overdueActivities: 0,
+          relevantDeadlines: 0,
+          overdueDeadlines: 0,
+          searchText: cliente,
+        });
+      }
+      if (clienteId) keyByClienteId.set(clienteId, dynamicKey);
+      if (normalizedName) keyByClienteName.set(normalizedName, dynamicKey);
+      return clientMap.get(dynamicKey) || null;
     };
 
     const registerDeadline = (
@@ -1211,7 +1276,7 @@ export function DashboardCockpitPage({
     };
 
     for (const item of items) {
-      const entry = ensureClient(item.cliente);
+      const entry = ensureClient(item.cliente, item.cliente_id);
       if (!entry) continue;
       entry.projectCount += 1;
       registerDeadline(entry, item.data_tassativa || item.data_prevista);
@@ -1221,7 +1286,9 @@ export function DashboardCockpitPage({
     }
 
     for (const row of cronoRows) {
-      const entry = ensureClient(row.cliente);
+      const checklistClienteId =
+        items.find((item) => String(item.id || "") === String(row.checklist_id || ""))?.cliente_id || null;
+      const entry = ensureClient(row.cliente, checklistClienteId);
       if (!entry) continue;
       const key = getRowKey(row.kind, row.row_ref_id);
       const meta = cronoMetaByKey[key] || null;
@@ -1267,7 +1334,7 @@ export function DashboardCockpitPage({
         if (b.projectCount !== a.projectCount) return b.projectCount - a.projectCount;
         return a.cliente.localeCompare(b.cliente, "it", { sensitivity: "base" });
       });
-  }, [items, cronoRows, cronoMetaByKey]);
+  }, [clientiRegistry, items, cronoRows, cronoMetaByKey]);
 
   const dashboardProjectStatusOptions = PROJECT_STATUS_FILTER_OPTIONS.compactDashboard;
 
@@ -1363,7 +1430,7 @@ export function DashboardCockpitPage({
     return dashboardClientRows.filter((row) => {
       const matchesSearch =
         !needle ||
-        `${row.cliente} ${row.projectCount} ${row.openActivities} ${row.imminentActivities} ${row.relevantDeadlines} ${row.overdueDeadlines}`
+        `${row.searchText} ${row.projectCount} ${row.openActivities} ${row.imminentActivities} ${row.relevantDeadlines} ${row.overdueDeadlines}`
           .toLowerCase()
           .includes(needle);
       if (!matchesSearch) return false;
@@ -1587,6 +1654,24 @@ export function DashboardCockpitPage({
       });
       setItems(merged as Checklist[]);
       setCatalogItems((catalogItemsData || []) as CatalogItem[]);
+
+      try {
+        const clientiRes = await dbFrom("clienti_anagrafica")
+          .select("id,denominazione,codice_interno,piva,codice_fiscale,attivo")
+          .eq("attivo", true)
+          .order("denominazione", { ascending: true });
+        if (!isLatest()) return;
+        if (clientiRes.error) {
+          throw clientiRes.error;
+        }
+        setClientiRegistry(((clientiRes.data || []) as ClienteAnagraficaRow[]).filter((row) =>
+          String(row?.denominazione || "").trim()
+        ));
+      } catch (e: any) {
+        if (!isLatest()) return;
+        console.error("Errore caricamento clienti anagrafica", e);
+        setClientiRegistry([]);
+      }
 
       const today = new Date();
       const from = toDateInputValue(today);
