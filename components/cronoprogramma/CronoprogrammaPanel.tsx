@@ -195,16 +195,38 @@ function formatMinutesCompact(value?: number | null) {
   return `${hours} h ${minutes} min`;
 }
 
-function renderBudgetBadge(stimatoMinuti: number | null, realeMinuti: number | null) {
+function getBudgetDeltaSummary(stimatoMinuti: number | null, realeMinuti: number | null) {
   if (!Number.isFinite(Number(stimatoMinuti)) || stimatoMinuti == null) return null;
-  const actual = Number.isFinite(Number(realeMinuti)) && realeMinuti != null ? Number(realeMinuti) : 0;
-  if (actual <= stimatoMinuti) {
-    return renderPill("IN LINEA", BADGE_COLORS.statusOk, "🟢");
+  const actual = Number.isFinite(Number(realeMinuti)) && realeMinuti != null ? Math.round(Number(realeMinuti)) : 0;
+  const estimated = Math.round(Number(stimatoMinuti));
+  const deltaMinuti = actual - estimated;
+  const absoluteDelta = Math.abs(deltaMinuti);
+
+  if (absoluteDelta <= 15) {
+    return {
+      badge: renderPill("IN LINEA", BADGE_COLORS.statusOk, "🟢"),
+      deltaLabel: "In linea",
+    };
   }
-  if (actual <= stimatoMinuti * 1.3) {
-    return renderPill("FUORI STIMA", BADGE_COLORS.statusDueSoon, "🟠");
+
+  if (deltaMinuti < 0) {
+    return {
+      badge: renderPill("RISPARMIO", BADGE_COLORS.statusOk, "🟢"),
+      deltaLabel: `Risparmio: ${formatMinutesCompact(absoluteDelta)}`,
+    };
   }
-  return renderPill("MOLTO FUORI", BADGE_COLORS.statusExpired, "🔴");
+
+  if (estimated > 0 && deltaMinuti <= estimated * 0.25) {
+    return {
+      badge: renderPill("FUORI STIMA", BADGE_COLORS.statusDueSoon, "🟠"),
+      deltaLabel: `Ritardo: ${formatMinutesCompact(deltaMinuti)}`,
+    };
+  }
+
+  return {
+    badge: renderPill("FORTE RITARDO", BADGE_COLORS.statusExpired, "🔴"),
+    deltaLabel: `Ritardo: ${formatMinutesCompact(deltaMinuti)}`,
+  };
 }
 
 export default function CronoprogrammaPanel({
@@ -630,6 +652,7 @@ export default function CronoprogrammaPanel({
               const timbraturaState = timbraturaStateByKey[key] || "NON_INIZIATA";
               const timbraturaLoading = timbraturaLoadingKey === key;
               const timeBudget = timeBudgetByKey[key] || { stimatoMinuti: null, realeMinuti: null };
+              const budgetDelta = getBudgetDeltaSummary(timeBudget.stimatoMinuti, timeBudget.realeMinuti);
 
               return (
                 <div
@@ -697,7 +720,8 @@ export default function CronoprogrammaPanel({
                         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", fontSize: 12, color: "#475569" }}>
                           <span>Stimato: {formatMinutesCompact(timeBudget.stimatoMinuti)}</span>
                           <span>Reale: {formatMinutesCompact(timeBudget.realeMinuti)}</span>
-                          {renderBudgetBadge(timeBudget.stimatoMinuti, timeBudget.realeMinuti)}
+                          <span>Delta: {budgetDelta?.deltaLabel || "—"}</span>
+                          {budgetDelta?.badge || null}
                         </div>
                         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
                           {timbraturaState === "IN_CORSO"
@@ -812,6 +836,12 @@ export default function CronoprogrammaPanel({
                         </div>
                         <div style={{ fontSize: 12, color: "#64748b" }}>
                           Stimato {formatMinutesCompact(timeBudget.stimatoMinuti)}
+                        </div>
+                        <div style={{ fontSize: 12, color: "#64748b" }}>
+                          Reale {formatMinutesCompact(timeBudget.realeMinuti)}
+                        </div>
+                        <div style={{ fontSize: 12, color: "#64748b" }}>
+                          {budgetDelta ? budgetDelta.deltaLabel : "Delta —"}
                         </div>
                       </div>
                     </div>
