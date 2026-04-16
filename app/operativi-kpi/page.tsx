@@ -29,12 +29,18 @@ type PersonaleRow = {
   cognome: string | null;
 };
 
+type PersonaleInfo = {
+  id: string;
+  displayName: string;
+};
+
 type OperatoreKpiRow = {
   id: string;
   nome: string;
   stimatoMinuti: number;
   realeMinuti: number;
   deltaMinuti: number;
+  source?: "PERSONALE" | "LEGACY" | "CLIENTE";
 };
 
 type PeriodFilter = "ALL" | "7" | "30" | "90";
@@ -52,6 +58,12 @@ function formatMinutesCompact(value?: number | null) {
 
 function normalizeText(value?: string | null) {
   return String(value || "").trim();
+}
+
+function normalizeTextKey(value?: string | null) {
+  return normalizeText(value)
+    .toLowerCase()
+    .replace(/\s+/g, " ");
 }
 
 function getActivityDate(row: TimelineRow) {
@@ -148,7 +160,7 @@ export default function OperativiKpiPage() {
   const [events, setEvents] = useState<TimelineRow[]>([]);
   const [metaByKey, setMetaByKey] = useState<Record<string, CronoMeta>>({});
   const [timeBudgetByKey, setTimeBudgetByKey] = useState<Record<string, TimeBudgetSummary>>({});
-  const [personaleMap, setPersonaleMap] = useState<Record<string, string>>({});
+  const [personaleMap, setPersonaleMap] = useState<Record<string, PersonaleInfo>>({});
 
   useEffect(() => {
     let active = true;
@@ -208,7 +220,6 @@ export default function OperativiKpiPage() {
 
         const { data: personaleData, error: personaleError } = await dbFrom("personale")
           .select("id,nome,cognome")
-          .eq("attivo", true)
           .order("cognome", { ascending: true })
           .order("nome", { ascending: true });
 
@@ -217,12 +228,15 @@ export default function OperativiKpiPage() {
           throw new Error(`Errore caricamento personale: ${personaleError.message}`);
         }
 
-        const nextPersonaleMap: Record<string, string> = {};
+        const nextPersonaleMap: Record<string, PersonaleInfo> = {};
         for (const row of (((personaleData as any[]) || []) as Array<PersonaleRow & Record<string, unknown>>)) {
           const id = String(row.id || "").trim();
           if (!id) continue;
           const nome = [normalizeText(row.cognome), normalizeText(row.nome)].filter(Boolean).join(" ").trim();
-          nextPersonaleMap[id] = nome || id;
+          nextPersonaleMap[id] = {
+            id,
+            displayName: nome || id,
+          };
         }
         setEvents(events);
         setMetaByKey(nextMetaByKey);
@@ -279,15 +293,30 @@ export default function OperativiKpiPage() {
         continue;
       }
 
-      const personaleIds = Array.isArray(meta.personale_ids)
-        ? meta.personale_ids.map((value) => String(value || "").trim()).filter(Boolean)
-        : [];
+      const personaleIds = Array.from(
+        new Set(
+          (Array.isArray(meta.personale_ids) ? meta.personale_ids : [])
+            .map((value) => String(value || "").trim())
+            .filter(Boolean)
+        )
+      );
 
+      const legacyPersonalePrevisto = normalizeText(meta.personale_previsto);
       const assignees =
         personaleIds.length > 0
-          ? personaleIds.map((id) => ({ id: `personale:${id}`, nome: personaleMap[id] || id }))
-          : normalizeText(meta.personale_previsto)
-            ? [{ id: `legacy:${normalizeText(meta.personale_previsto)}`, nome: normalizeText(meta.personale_previsto) }]
+          ? personaleIds.map((id) => ({
+              id: `personale:${id}`,
+              nome: personaleMap[id]?.displayName || id,
+              source: "PERSONALE" as const,
+            }))
+          : legacyPersonalePrevisto
+            ? [
+                {
+                  id: `legacy:${normalizeTextKey(legacyPersonalePrevisto)}`,
+                  nome: `${legacyPersonalePrevisto} (assegnazione legacy)`,
+                  source: "LEGACY" as const,
+                },
+              ]
             : [];
 
       if (assignees.length === 0) continue;
@@ -302,6 +331,7 @@ export default function OperativiKpiPage() {
           stimatoMinuti: 0,
           realeMinuti: 0,
           deltaMinuti: 0,
+          source: assignee.source,
         };
         current.stimatoMinuti += shareStimato;
         current.realeMinuti += shareReale;
@@ -490,6 +520,13 @@ export default function OperativiKpiPage() {
                     <div style={{ fontWeight: 800, fontSize: 16 }}>{row.nome}</div>
                     <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
                       {renderPill(state.label, state.colors)}
+                      {row.source === "LEGACY"
+                        ? renderPill("ASSEGNAZIONE LEGACY", {
+                            bg: "#f8fafc",
+                            border: "#cbd5e1",
+                            color: "#475569",
+                          })
+                        : null}
                     </div>
                   </div>
                   <div style={{ display: "grid", gap: 6, justifyItems: "start" }}>
