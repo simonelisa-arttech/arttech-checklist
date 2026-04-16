@@ -351,6 +351,7 @@ export default function SimPage() {
   >({});
   const [savingRechargeKey, setSavingRechargeKey] = useState<string | null>(null);
   const [rechargeModal, setRechargeModal] = useState<RechargeModalState | null>(null);
+  const [billingFocusSimId, setBillingFocusSimId] = useState<string | null>(null);
   useEffect(() => {
     let active = true;
     (async () => {
@@ -569,6 +570,18 @@ export default function SimPage() {
     });
   }, [rows, search, simStatusFilter, projectFilter, operatoreFilter, latestRechargeBillingFilter, latestRechargeBySimId, projectByChecklistId]);
 
+  useEffect(() => {
+    if (!billingFocusSimId) return;
+    if (expandedSimId !== billingFocusSimId && editingSimId !== billingFocusSimId) return;
+
+    const frame = window.requestAnimationFrame(() => {
+      const target = document.getElementById(`sim-recharges-${billingFocusSimId}`);
+      target?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [billingFocusSimId, expandedSimId, editingSimId]);
+
   function createTempId(prefix: string) {
     return `${prefix}-${Math.random().toString(36).slice(2, 10)}`;
   }
@@ -621,6 +634,13 @@ export default function SimPage() {
   function closeRechargeModal() {
     if (savingRechargeKey) return;
     setRechargeModal(null);
+  }
+
+  function focusPendingBilling(rowId: string) {
+    setExpandedSimId(rowId);
+    setBillingFocusSimId(rowId);
+    setNotice(null);
+    setError(null);
   }
 
   function addNewSim() {
@@ -1349,6 +1369,7 @@ export default function SimPage() {
                     </div>
                     {!row.in_abbonamento && !row.isNew && (
                       <div
+                        id={`sim-recharges-${rowId}`}
                         style={{
                           border: "1px solid #e5e7eb",
                           borderRadius: 12,
@@ -1359,29 +1380,41 @@ export default function SimPage() {
                         }}
                       >
                         <div style={{ fontSize: 13, fontWeight: 800 }}>Ricariche</div>
+                        {billingFocusSimId === rowId ? (
+                          <div style={{ fontSize: 12, color: "#92400e", fontWeight: 700 }}>
+                            Mostrando ricariche da fatturare
+                          </div>
+                        ) : null}
                         {rechargeRows.length === 0 ? (
                           <div style={{ fontSize: 13, color: "#6b7280" }}>Nessuna ricarica registrata.</div>
                         ) : (
                           <div style={{ display: "grid", gap: 8 }}>
                             {rechargeRows.map((recharge) => (
-                              <div
-                                key={String(recharge.id || `${recharge.sim_id}-${recharge.data_ricarica}`)}
-                                style={{
-                                  display: "grid",
-                                  gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))",
-                                  gap: 12,
-                                  fontSize: 13,
-                                  padding: "10px 12px",
-                                  borderRadius: 10,
-                                  background: "#fff",
-                                  border: "1px solid #e5e7eb",
-                                }}
-                              >
-                                <div>{formatDate(recharge.data_ricarica)}</div>
-                                <div>{formatCurrency(recharge.importo)}</div>
-                                <div>{renderRechargeBillingBadge(recharge.billing_status)}</div>
-                                <div>{recharge.note || "—"}</div>
-                              </div>
+                              (() => {
+                                const isPendingBilling =
+                                  String(recharge.billing_status || "").trim().toUpperCase() === "DA_FATTURARE";
+                                const highlightPending = billingFocusSimId === rowId && isPendingBilling;
+                                return (
+                                  <div
+                                    key={String(recharge.id || `${recharge.sim_id}-${recharge.data_ricarica}`)}
+                                    style={{
+                                      display: "grid",
+                                      gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))",
+                                      gap: 12,
+                                      fontSize: 13,
+                                      padding: "10px 12px",
+                                      borderRadius: 10,
+                                      background: highlightPending ? "#fff7ed" : "#fff",
+                                      border: highlightPending ? "1px solid #fdba74" : "1px solid #e5e7eb",
+                                    }}
+                                  >
+                                    <div>{formatDate(recharge.data_ricarica)}</div>
+                                    <div>{formatCurrency(recharge.importo)}</div>
+                                    <div>{renderRechargeBillingBadge(recharge.billing_status)}</div>
+                                    <div>{recharge.note || "—"}</div>
+                                  </div>
+                                );
+                              })()
                             ))}
                           </div>
                         )}
@@ -1475,7 +1508,12 @@ export default function SimPage() {
                           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                             {renderMainSimStatusBadge(simState)}
                             {hasRechargeToBill ? (
-                              <span
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  focusPendingBilling(rowId);
+                                }}
                                 style={{
                                   display: "inline-flex",
                                   alignItems: "center",
@@ -1486,10 +1524,12 @@ export default function SimPage() {
                                   background: "#fef3c7",
                                   color: "#92400e",
                                   whiteSpace: "nowrap",
+                                  border: "1px solid #f59e0b",
+                                  cursor: "pointer",
                                 }}
                               >
                                 DA FATTURARE
-                              </span>
+                              </button>
                             ) : null}
                           </div>
                           <div style={{ display: "grid", gap: 4, fontSize: 13 }}>
@@ -1649,6 +1689,7 @@ export default function SimPage() {
                           </div>
                         ) : (
                           <div
+                            id={`sim-recharges-${rowId}`}
                             style={{
                               border: "1px solid #e5e7eb",
                               borderRadius: 12,
@@ -1659,29 +1700,41 @@ export default function SimPage() {
                             }}
                           >
                             <div style={{ fontSize: 13, fontWeight: 800 }}>Ricariche</div>
+                            {billingFocusSimId === rowId ? (
+                              <div style={{ fontSize: 12, color: "#92400e", fontWeight: 700 }}>
+                                Mostrando ricariche da fatturare
+                              </div>
+                            ) : null}
                             {rechargeRows.length === 0 ? (
                               <div style={{ fontSize: 13, color: "#6b7280" }}>Nessuna ricarica registrata.</div>
                             ) : (
                               <div style={{ display: "grid", gap: 8 }}>
                                 {rechargeRows.map((recharge) => (
-                                  <div
-                                    key={String(recharge.id || `${recharge.sim_id}-${recharge.data_ricarica}`)}
-                                    style={{
-                                      display: "grid",
-                                      gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))",
-                                      gap: 12,
-                                      fontSize: 13,
-                                      padding: "10px 12px",
-                                      borderRadius: 10,
-                                      background: "#fff",
-                                      border: "1px solid #e5e7eb",
-                                    }}
-                                  >
-                                    <div>{formatDate(recharge.data_ricarica)}</div>
-                                    <div>{formatCurrency(recharge.importo)}</div>
-                                    <div>{renderRechargeBillingBadge(recharge.billing_status)}</div>
-                                    <div>{recharge.note || "—"}</div>
-                                  </div>
+                                  (() => {
+                                    const isPendingBilling =
+                                      String(recharge.billing_status || "").trim().toUpperCase() === "DA_FATTURARE";
+                                    const highlightPending = billingFocusSimId === rowId && isPendingBilling;
+                                    return (
+                                      <div
+                                        key={String(recharge.id || `${recharge.sim_id}-${recharge.data_ricarica}`)}
+                                        style={{
+                                          display: "grid",
+                                          gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))",
+                                          gap: 12,
+                                          fontSize: 13,
+                                          padding: "10px 12px",
+                                          borderRadius: 10,
+                                          background: highlightPending ? "#fff7ed" : "#fff",
+                                          border: highlightPending ? "1px solid #fdba74" : "1px solid #e5e7eb",
+                                        }}
+                                      >
+                                        <div>{formatDate(recharge.data_ricarica)}</div>
+                                        <div>{formatCurrency(recharge.importo)}</div>
+                                        <div>{renderRechargeBillingBadge(recharge.billing_status)}</div>
+                                        <div>{recharge.note || "—"}</div>
+                                      </div>
+                                    );
+                                  })()
                                 ))}
                               </div>
                             )}
