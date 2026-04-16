@@ -94,6 +94,19 @@ export default function RootLayout({
                 Operatori
               </Link>
               <Link
+                href="/operativi-kpi"
+                style={{
+                  padding: "8px 12px",
+                  borderRadius: 10,
+                  border: "1px solid #ddd",
+                  textDecoration: "none",
+                  color: "inherit",
+                  background: "white",
+                }}
+              >
+                KPI Operativi
+              </Link>
+              <Link
                 href="/sim"
                 style={{
                   padding: "8px 12px",
