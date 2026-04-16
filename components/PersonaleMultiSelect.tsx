@@ -8,6 +8,14 @@ import {
   resolvePersonaleSelection,
   type PersonaleSelectionOption,
 } from "@/lib/personaleAssignments";
+import {
+  evaluateSafetyCompliance,
+  type SafetyAziendaDocumentoRow,
+  type SafetyAziendaRow,
+  type SafetyDataset,
+  type SafetyPersonaleDocumentoRow,
+  type SafetyPersonaleRow,
+} from "@/lib/safetyCompliance";
 
 type ChangePayload = {
   personaleIds: string[];
@@ -26,6 +34,8 @@ type Props = {
 
 let personaleOptionsCache: PersonaleSelectionOption[] | null = null;
 let personaleOptionsPromise: Promise<PersonaleSelectionOption[]> | null = null;
+let safetyDatasetCache: SafetyDataset | null = null;
+let safetyDatasetPromise: Promise<SafetyDataset> | null = null;
 
 async function loadPersonaleOptions() {
   if (personaleOptionsCache) return personaleOptionsCache;
@@ -79,6 +89,78 @@ async function loadPersonaleOptions() {
   }
 }
 
+async function loadSafetyDataset() {
+  if (safetyDatasetCache) return safetyDatasetCache;
+  if (safetyDatasetPromise) return safetyDatasetPromise;
+
+  safetyDatasetPromise = (async () => {
+    const [aziendeRes, personaleRes, personaleDocsRes, aziendeDocsRes] = await Promise.all([
+      dbFrom("aziende")
+        .select("id,ragione_sociale,tipo,attiva")
+        .eq("attiva", true)
+        .order("ragione_sociale", { ascending: true }),
+      dbFrom("personale")
+        .select("id,nome,cognome,azienda_id,tipo,attivo")
+        .eq("attivo", true)
+        .order("cognome", { ascending: true })
+        .order("nome", { ascending: true }),
+      dbFrom("personale_documenti")
+        .select("id,personale_id,tipo_documento,data_scadenza")
+        .order("data_scadenza", { ascending: true }),
+      dbFrom("aziende_documenti")
+        .select("id,azienda_id,tipo_documento,data_scadenza")
+        .order("data_scadenza", { ascending: true }),
+    ]);
+
+    if (aziendeRes.error) throw new Error(aziendeRes.error.message);
+    if (personaleRes.error) throw new Error(personaleRes.error.message);
+    if (personaleDocsRes.error) throw new Error(personaleDocsRes.error.message);
+    if (aziendeDocsRes.error) throw new Error(aziendeDocsRes.error.message);
+
+    const dataset: SafetyDataset = {
+      aziende: (((aziendeRes.data as any[]) || []) as SafetyAziendaRow[]).map((row) => ({
+        id: String(row.id || ""),
+        ragione_sociale: String(row.ragione_sociale || ""),
+        tipo: row.tipo ?? null,
+        attiva: row.attiva ?? true,
+      })),
+      personale: (((personaleRes.data as any[]) || []) as SafetyPersonaleRow[]).map((row) => ({
+        id: String(row.id || ""),
+        nome: String(row.nome || ""),
+        cognome: String(row.cognome || ""),
+        azienda_id: row.azienda_id ? String(row.azienda_id) : null,
+        tipo: row.tipo ?? null,
+        attivo: row.attivo ?? true,
+      })),
+      personaleDocumenti: (((personaleDocsRes.data as any[]) || []) as SafetyPersonaleDocumentoRow[]).map(
+        (row) => ({
+          id: String(row.id || ""),
+          personale_id: String(row.personale_id || ""),
+          tipo_documento: String(row.tipo_documento || ""),
+          data_scadenza: row.data_scadenza ? String(row.data_scadenza) : null,
+        })
+      ),
+      aziendeDocumenti: (((aziendeDocsRes.data as any[]) || []) as SafetyAziendaDocumentoRow[]).map(
+        (row) => ({
+          id: String(row.id || ""),
+          azienda_id: String(row.azienda_id || ""),
+          tipo_documento: String(row.tipo_documento || ""),
+          data_scadenza: row.data_scadenza ? String(row.data_scadenza) : null,
+        })
+      ),
+    };
+
+    safetyDatasetCache = dataset;
+    return dataset;
+  })();
+
+  try {
+    return await safetyDatasetPromise;
+  } finally {
+    safetyDatasetPromise = null;
+  }
+}
+
 export default function PersonaleMultiSelect({
   personaleIds,
   legacyValue,
@@ -89,21 +171,24 @@ export default function PersonaleMultiSelect({
 }: Props) {
   const [options, setOptions] = useState<PersonaleSelectionOption[]>(personaleOptionsCache || []);
   const [error, setError] = useState<string | null>(null);
+  const [selectionError, setSelectionError] = useState<string | null>(null);
+  const [safetyDataset, setSafetyDataset] = useState<SafetyDataset | null>(safetyDatasetCache);
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const containerRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     let active = true;
-    if (personaleOptionsCache) return;
-    loadPersonaleOptions()
-      .then((rows) => {
+    if (personaleOptionsCache && safetyDatasetCache) return;
+    Promise.all([loadPersonaleOptions(), loadSafetyDataset()])
+      .then(([rows, dataset]) => {
         if (!active) return;
         setOptions(rows);
+        setSafetyDataset(dataset);
       })
       .catch((err: any) => {
         if (!active) return;
-        setError(String(err?.message || "Errore caricamento personale"));
+        setError(String(err?.message || "Errore caricamento personale e conformità safety"));
       });
     return () => {
       active = false;
@@ -152,6 +237,19 @@ export default function PersonaleMultiSelect({
     return options.filter((option) => option.search.includes(needle));
   }, [options, query]);
 
+  const safetyByPersonaleId = useMemo(() => {
+    const next = new Map<string, { blocked: boolean; summary: string }>();
+    if (!safetyDataset) return next;
+    for (const option of options) {
+      const compliance = evaluateSafetyCompliance({ personaleIds: [option.id] }, safetyDataset);
+      next.set(option.id, {
+        blocked: compliance.status === "NON_CONFORME",
+        summary: compliance.summary || compliance.label,
+      });
+    }
+    return next;
+  }, [options, safetyDataset]);
+
   function emit(nextSelectedIds: string[], unresolvedLegacyTokens = resolved.unresolvedLegacyTokens) {
     onChange({
       personaleIds: nextSelectedIds,
@@ -163,6 +261,13 @@ export default function PersonaleMultiSelect({
 
   function toggleOption(optionId: string) {
     if (disabled) return;
+    const currentlySelected = resolved.selectedIds.includes(optionId);
+    const safety = safetyByPersonaleId.get(optionId);
+    if (!currentlySelected && safety?.blocked) {
+      setSelectionError("Impossibile assegnare: documentazione non conforme.");
+      return;
+    }
+    setSelectionError(null);
     const nextIds = resolved.selectedIds.includes(optionId)
       ? resolved.selectedIds.filter((id) => id !== optionId)
       : [...resolved.selectedIds, optionId];
@@ -204,7 +309,9 @@ export default function PersonaleMultiSelect({
 
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 8 }}>
         {!compact
-          ? selectedOptions.map((option) => (
+          ? selectedOptions.map((option) => {
+              const blocked = Boolean(safetyByPersonaleId.get(option.id)?.blocked);
+              return (
               <span
                 key={option.id}
                 style={{
@@ -213,15 +320,17 @@ export default function PersonaleMultiSelect({
                   gap: 6,
                   borderRadius: 999,
                   padding: "4px 10px",
-                  background: "#eff6ff",
-                  color: "#1d4ed8",
+                  background: blocked ? "#fff1f2" : "#eff6ff",
+                  color: blocked ? "#b91c1c" : "#1d4ed8",
+                  border: blocked ? "1px solid #fca5a5" : "1px solid transparent",
                   fontSize: 12,
                   fontWeight: 700,
                 }}
               >
                 {option.display}
               </span>
-            ))
+              );
+            })
           : null}
         {resolved.unresolvedLegacyTokens.map((token) => (
           <button
@@ -247,6 +356,11 @@ export default function PersonaleMultiSelect({
         ))}
       </div>
 
+      {selectionError ? (
+        <div style={{ marginTop: 6, fontSize: 12, color: "#b91c1c", fontWeight: 600 }}>
+          {selectionError}
+        </div>
+      ) : null}
       {error ? <div style={{ marginTop: 6, fontSize: 12, color: "#b91c1c" }}>{error}</div> : null}
 
       {open ? (
@@ -277,6 +391,8 @@ export default function PersonaleMultiSelect({
             ) : (
               filteredOptions.map((option) => {
                 const checked = resolved.selectedIds.includes(option.id);
+                const safety = safetyByPersonaleId.get(option.id);
+                const blocked = Boolean(safety?.blocked);
                 return (
                   <label
                     key={option.id}
@@ -286,13 +402,16 @@ export default function PersonaleMultiSelect({
                       gap: 8,
                       padding: "8px 6px",
                       borderRadius: 8,
-                      cursor: "pointer",
-                      background: checked ? "#eff6ff" : "white",
+                      cursor: blocked && !checked ? "not-allowed" : "pointer",
+                      background: blocked ? "#fff1f2" : checked ? "#eff6ff" : "white",
+                      border: blocked ? "1px solid #fca5a5" : "1px solid transparent",
+                      opacity: blocked && !checked ? 0.95 : 1,
                     }}
                   >
                     <input
                       type="checkbox"
                       checked={checked}
+                      disabled={blocked && !checked}
                       onChange={() => toggleOption(option.id)}
                     />
                     <span>
@@ -300,6 +419,11 @@ export default function PersonaleMultiSelect({
                       {option.display !== option.label ? (
                         <span style={{ display: "block", fontSize: 12, color: "#6b7280" }}>
                           {option.display.replace(`${option.label} · `, "")}
+                        </span>
+                      ) : null}
+                      {blocked ? (
+                        <span style={{ display: "block", fontSize: 12, color: "#b91c1c", fontWeight: 600 }}>
+                          Impossibile assegnare: documentazione non conforme
                         </span>
                       ) : null}
                     </span>
