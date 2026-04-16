@@ -107,6 +107,19 @@ export default function RootLayout({
                 SIM
               </Link>
               <Link
+                href="/fatturazione"
+                style={{
+                  padding: "8px 12px",
+                  borderRadius: 10,
+                  border: "1px solid #ddd",
+                  textDecoration: "none",
+                  color: "inherit",
+                  background: "white",
+                }}
+              >
+                Fatturazione
+              </Link>
+              <Link
                 href="/cronoprogramma"
                 style={{
                   padding: "8px 12px",
