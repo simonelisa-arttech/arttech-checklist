@@ -317,9 +317,6 @@ function renderOperativiFields(
             placeholder="2"
             style={{ width: "100%", padding: 8 }}
           />
-          <div style={{ marginTop: 4, fontSize: 11, opacity: 0.7 }}>
-            Salvato come durata prevista in minuti.
-          </div>
         </div>
         <div>
           <div
