@@ -8,6 +8,8 @@ import { isSupabaseConfigured } from "@/lib/supabaseClient";
 type TimelineRow = {
   kind: "INSTALLAZIONE" | "DISINSTALLAZIONE" | "INTERVENTO";
   row_ref_id: string;
+  data_prevista?: string | null;
+  data_tassativa?: string | null;
 };
 
 type TimeBudgetSummary = {
@@ -34,6 +36,8 @@ type OperatoreKpiRow = {
   deltaMinuti: number;
 };
 
+type PeriodFilter = "ALL" | "7" | "30" | "90";
+
 function formatMinutesCompact(value?: number | null) {
   if (!Number.isFinite(Number(value)) || Number(value) < 0) return "—";
   const total = Math.round(Number(value));
@@ -46,6 +50,29 @@ function formatMinutesCompact(value?: number | null) {
 
 function normalizeText(value?: string | null) {
   return String(value || "").trim();
+}
+
+function getActivityDate(row: TimelineRow) {
+  const rawValue = normalizeText(row.data_tassativa) || normalizeText(row.data_prevista);
+  if (!rawValue) return null;
+  const dateValue = new Date(rawValue);
+  if (Number.isNaN(dateValue.getTime())) return null;
+  dateValue.setHours(0, 0, 0, 0);
+  return dateValue;
+}
+
+function isWithinSelectedPeriod(row: TimelineRow, period: PeriodFilter) {
+  if (period === "ALL") return true;
+  const activityDate = getActivityDate(row);
+  if (!activityDate) return false;
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const days = Number(period);
+  const startDate = new Date(today);
+  startDate.setDate(today.getDate() - (days - 1));
+
+  return activityDate >= startDate && activityDate <= today;
 }
 
 function getDeltaState(stimatoMinuti: number, realeMinuti: number) {
@@ -114,7 +141,11 @@ export default function OperativiKpiPage() {
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [rows, setRows] = useState<OperatoreKpiRow[]>([]);
+  const [periodFilter, setPeriodFilter] = useState<PeriodFilter>("ALL");
+  const [events, setEvents] = useState<TimelineRow[]>([]);
+  const [metaByKey, setMetaByKey] = useState<Record<string, CronoMeta>>({});
+  const [timeBudgetByKey, setTimeBudgetByKey] = useState<Record<string, TimeBudgetSummary>>({});
+  const [personaleMap, setPersonaleMap] = useState<Record<string, string>>({});
 
   useEffect(() => {
     let active = true;
@@ -142,7 +173,10 @@ export default function OperativiKpiPage() {
         if (!active) return;
 
         if (events.length === 0) {
-          setRows([]);
+          setEvents([]);
+          setMetaByKey({});
+          setTimeBudgetByKey({});
+          setPersonaleMap({});
           setLoading(false);
           return;
         }
@@ -166,8 +200,8 @@ export default function OperativiKpiPage() {
           throw new Error(String(stateData?.error || "Errore caricamento KPI operativi"));
         }
 
-        const metaByKey = (stateData?.meta || {}) as Record<string, CronoMeta>;
-        const timeBudgetByKey = (stateData?.time_budget || {}) as Record<string, TimeBudgetSummary>;
+        const nextMetaByKey = (stateData?.meta || {}) as Record<string, CronoMeta>;
+        const nextTimeBudgetByKey = (stateData?.time_budget || {}) as Record<string, TimeBudgetSummary>;
 
         const { data: personaleData, error: personaleError } = await dbFrom("personale")
           .select("id,nome,cognome")
@@ -180,71 +214,24 @@ export default function OperativiKpiPage() {
           throw new Error(`Errore caricamento personale: ${personaleError.message}`);
         }
 
-        const personaleMap: Record<string, string> = {};
+        const nextPersonaleMap: Record<string, string> = {};
         for (const row of (((personaleData as any[]) || []) as Array<PersonaleRow & Record<string, unknown>>)) {
           const id = String(row.id || "").trim();
           if (!id) continue;
           const nome = [normalizeText(row.cognome), normalizeText(row.nome)].filter(Boolean).join(" ").trim();
-          personaleMap[id] = nome || id;
+          nextPersonaleMap[id] = nome || id;
         }
-
-        const aggregate = new Map<string, OperatoreKpiRow>();
-
-        for (const row of loadRows) {
-          const key = `${row.row_kind}:${row.row_ref_id}`;
-          const meta = metaByKey[key] || {};
-          const budget = timeBudgetByKey[key] || { stimatoMinuti: 0, realeMinuti: 0 };
-          const stimato = Number.isFinite(Number(budget.stimatoMinuti)) ? Math.round(Number(budget.stimatoMinuti)) : 0;
-          const reale = Number.isFinite(Number(budget.realeMinuti)) ? Math.round(Number(budget.realeMinuti)) : 0;
-
-          const personaleIds = Array.isArray(meta.personale_ids)
-            ? meta.personale_ids.map((value) => String(value || "").trim()).filter(Boolean)
-            : [];
-
-          const assignees =
-            personaleIds.length > 0
-              ? personaleIds.map((id) => ({ id: `personale:${id}`, nome: personaleMap[id] || id }))
-              : normalizeText(meta.personale_previsto)
-                ? [{ id: `legacy:${normalizeText(meta.personale_previsto)}`, nome: normalizeText(meta.personale_previsto) }]
-                : [];
-
-          if (assignees.length === 0) continue;
-
-          const shareStimato = stimato / assignees.length;
-          const shareReale = reale / assignees.length;
-
-          for (const assignee of assignees) {
-            const current = aggregate.get(assignee.id) || {
-              id: assignee.id,
-              nome: assignee.nome,
-              stimatoMinuti: 0,
-              realeMinuti: 0,
-              deltaMinuti: 0,
-            };
-            current.stimatoMinuti += shareStimato;
-            current.realeMinuti += shareReale;
-            current.deltaMinuti = current.realeMinuti - current.stimatoMinuti;
-            aggregate.set(assignee.id, current);
-          }
-        }
-
-        const nextRows = Array.from(aggregate.values())
-          .map((row) => ({
-            ...row,
-            stimatoMinuti: Math.round(row.stimatoMinuti),
-            realeMinuti: Math.round(row.realeMinuti),
-            deltaMinuti: Math.round(row.deltaMinuti),
-          }))
-          .sort((a, b) => {
-            if (b.deltaMinuti !== a.deltaMinuti) return b.deltaMinuti - a.deltaMinuti;
-            return a.nome.localeCompare(b.nome, "it", { sensitivity: "base" });
-          });
-
-        setRows(nextRows);
+        setEvents(events);
+        setMetaByKey(nextMetaByKey);
+        setTimeBudgetByKey(nextTimeBudgetByKey);
+        setPersonaleMap(nextPersonaleMap);
       } catch (err: any) {
         if (!active) return;
         setError(String(err?.message || "Errore caricamento KPI operativi"));
-        setRows([]);
+        setEvents([]);
+        setMetaByKey({});
+        setTimeBudgetByKey({});
+        setPersonaleMap({});
       } finally {
         if (active) setLoading(false);
       }
@@ -254,6 +241,63 @@ export default function OperativiKpiPage() {
       active = false;
     };
   }, []);
+
+  const rows = useMemo(() => {
+    const aggregate = new Map<string, OperatoreKpiRow>();
+    const filteredEvents = events.filter((row) => isWithinSelectedPeriod(row, periodFilter));
+
+    for (const event of filteredEvents) {
+      const key = `${String(event.kind || "").trim().toUpperCase()}:${String(event.row_ref_id || "").trim()}`;
+      if (!key || key === ":") continue;
+
+      const meta = metaByKey[key] || {};
+      const budget = timeBudgetByKey[key] || { stimatoMinuti: 0, realeMinuti: 0 };
+      const stimato = Number.isFinite(Number(budget.stimatoMinuti)) ? Math.round(Number(budget.stimatoMinuti)) : 0;
+      const reale = Number.isFinite(Number(budget.realeMinuti)) ? Math.round(Number(budget.realeMinuti)) : 0;
+
+      const personaleIds = Array.isArray(meta.personale_ids)
+        ? meta.personale_ids.map((value) => String(value || "").trim()).filter(Boolean)
+        : [];
+
+      const assignees =
+        personaleIds.length > 0
+          ? personaleIds.map((id) => ({ id: `personale:${id}`, nome: personaleMap[id] || id }))
+          : normalizeText(meta.personale_previsto)
+            ? [{ id: `legacy:${normalizeText(meta.personale_previsto)}`, nome: normalizeText(meta.personale_previsto) }]
+            : [];
+
+      if (assignees.length === 0) continue;
+
+      const shareStimato = stimato / assignees.length;
+      const shareReale = reale / assignees.length;
+
+      for (const assignee of assignees) {
+        const current = aggregate.get(assignee.id) || {
+          id: assignee.id,
+          nome: assignee.nome,
+          stimatoMinuti: 0,
+          realeMinuti: 0,
+          deltaMinuti: 0,
+        };
+        current.stimatoMinuti += shareStimato;
+        current.realeMinuti += shareReale;
+        current.deltaMinuti = current.realeMinuti - current.stimatoMinuti;
+        aggregate.set(assignee.id, current);
+      }
+    }
+
+    return Array.from(aggregate.values())
+      .map((row) => ({
+        ...row,
+        stimatoMinuti: Math.round(row.stimatoMinuti),
+        realeMinuti: Math.round(row.realeMinuti),
+        deltaMinuti: Math.round(row.deltaMinuti),
+      }))
+      .sort((a, b) => {
+        if (b.deltaMinuti !== a.deltaMinuti) return b.deltaMinuti - a.deltaMinuti;
+        return a.nome.localeCompare(b.nome, "it", { sensitivity: "base" });
+      });
+  }, [events, metaByKey, periodFilter, personaleMap, timeBudgetByKey]);
 
   const totalStimato = useMemo(
     () => rows.reduce((sum, row) => sum + row.stimatoMinuti, 0),
@@ -273,6 +317,37 @@ export default function OperativiKpiPage() {
         <div style={{ fontSize: 14, color: "#6b7280" }}>
           Vista sintetica dei tempi stimati e reali aggregati per operatore.
         </div>
+      </div>
+
+      <div
+        style={{
+          marginBottom: 18,
+          display: "flex",
+          flexWrap: "wrap",
+          gap: 10,
+          alignItems: "center",
+        }}
+      >
+        <label style={{ display: "grid", gap: 6, minWidth: 220 }}>
+          <span style={{ fontSize: 12, fontWeight: 700, color: "#475569" }}>Periodo analisi</span>
+          <select
+            value={periodFilter}
+            onChange={(event) => setPeriodFilter(event.target.value as PeriodFilter)}
+            style={{
+              border: "1px solid #d1d5db",
+              borderRadius: 10,
+              padding: "10px 12px",
+              background: "#fff",
+              fontSize: 14,
+              color: "#111827",
+            }}
+          >
+            <option value="ALL">Tutto</option>
+            <option value="7">Ultimi 7 giorni</option>
+            <option value="30">Ultimi 30 giorni</option>
+            <option value="90">Ultimi 90 giorni</option>
+          </select>
+        </label>
       </div>
 
       <div
