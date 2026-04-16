@@ -86,14 +86,75 @@ export async function PATCH(request: Request) {
   if (!auth.ok) return auth.response;
   const supabase = auth.adminClient;
 
-  let body: OperatorePayload;
+  let body: any;
   try {
-    body = (await request.json()) as OperatorePayload;
+    body = await request.json();
   } catch {
     return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
   }
-  if (!body.id) {
+
+  if (!body?.id) {
     return NextResponse.json({ error: "Missing id" }, { status: 400 });
+  }
+
+  const isMinimalPersonaleLinkUpdate =
+    Object.prototype.hasOwnProperty.call(body, "personale_id") &&
+    !Object.prototype.hasOwnProperty.call(body, "alert_tasks") &&
+    !Object.prototype.hasOwnProperty.call(body, "nome") &&
+    !Object.prototype.hasOwnProperty.call(body, "ruolo") &&
+    !Object.prototype.hasOwnProperty.call(body, "email");
+
+  if (isMinimalPersonaleLinkUpdate) {
+    const targetOperatorId = String(body.id || "").trim();
+    if (!targetOperatorId) {
+      return NextResponse.json({ error: "Missing id" }, { status: 400 });
+    }
+    if (auth.operatore.id !== targetOperatorId) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+    const personaleId = String(body.personale_id || "").trim();
+    if (!personaleId) {
+      return NextResponse.json({ error: "Missing personale_id" }, { status: 400 });
+    }
+
+    const { data: personaleRow, error: personaleErr } = await supabase
+      .from("personale")
+      .select("id,attivo")
+      .eq("id", personaleId)
+      .eq("attivo", true)
+      .maybeSingle();
+    if (personaleErr) {
+      return NextResponse.json({ error: personaleErr.message }, { status: 500 });
+    }
+    if (!personaleRow?.id) {
+      return NextResponse.json({ error: "Personale non trovato o non attivo" }, { status: 400 });
+    }
+
+    const { data: existingLink, error: existingErr } = await supabase
+      .from("operatori")
+      .select("id,nome")
+      .eq("personale_id", personaleId)
+      .neq("id", targetOperatorId)
+      .limit(1)
+      .maybeSingle();
+    if (existingErr) {
+      return NextResponse.json({ error: existingErr.message }, { status: 500 });
+    }
+    if (existingLink?.id) {
+      return NextResponse.json(
+        { error: "Questo personale risulta già collegato a un altro operatore" },
+        { status: 409 }
+      );
+    }
+
+    const { error } = await supabase
+      .from("operatori")
+      .update({ personale_id: personaleId })
+      .eq("id", targetOperatorId);
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+    return NextResponse.json({ ok: true, personale_id: personaleId });
   }
 
   const payload: any = { ...body };
