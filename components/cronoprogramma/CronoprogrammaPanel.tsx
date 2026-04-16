@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import type { Dispatch, MutableRefObject, SetStateAction, UIEvent } from "react";
 import PersonaleMultiSelect from "@/components/PersonaleMultiSelect";
@@ -26,6 +26,8 @@ type StructuredReport = {
   materiali: string;
   note_finali: string;
 };
+
+type OutcomeFilter = "TUTTI" | "COMPLETATO" | "PARZIALE" | "NON_COMPLETATO";
 
 const BADGE_COLORS = {
   statusExpired: { bg: "#fee2e2", border: "#fca5a5", color: "#b91c1c" },
@@ -376,6 +378,7 @@ export default function CronoprogrammaPanel({
   const [timbraturaLoadingKey, setTimbraturaLoadingKey] = useState<string | null>(null);
   const [timeBudgetByKey, setTimeBudgetByKey] = useState<Record<string, TimeBudgetSummary>>({});
   const [liveNowMs, setLiveNowMs] = useState(() => Date.now());
+  const [outcomeFilter, setOutcomeFilter] = useState<OutcomeFilter>("TUTTI");
 
   useEffect(() => {
     let active = true;
@@ -467,6 +470,17 @@ export default function CronoprogrammaPanel({
     }, 1000);
     return () => window.clearInterval(timer);
   }, [timbraturaStateByKey]);
+
+  const outcomeFilteredRows = useMemo(() => {
+    if (outcomeFilter === "TUTTI") return filteredSorted;
+    return filteredSorted.filter((row) => {
+      const key = getRowKey(String(row.kind || "").trim().toUpperCase() as any, String(row.row_ref_id || "").trim());
+      const comments = commentsByKey[key] || [];
+      const latestReport = comments.find((comment) => Boolean(parseStructuredReport(comment)));
+      const report = latestReport ? parseStructuredReport(latestReport) : null;
+      return report?.esito === outcomeFilter;
+    });
+  }, [commentsByKey, filteredSorted, getRowKey, outcomeFilter]);
 
   async function handleTimbraturaAction(
     row: TimelineRow,
@@ -636,6 +650,19 @@ export default function CronoprogrammaPanel({
               style={{ width: "100%", padding: 8, marginTop: 4 }}
             />
           </label>
+          <label style={{ minWidth: 180 }}>
+            Esito finale
+            <select
+              value={outcomeFilter}
+              onChange={(e) => setOutcomeFilter(e.target.value as OutcomeFilter)}
+              style={{ width: "100%", padding: 8, marginTop: 4 }}
+            >
+              <option value="TUTTI">Tutti</option>
+              <option value="COMPLETATO">Completato</option>
+              <option value="PARZIALE">Parziale</option>
+              <option value="NON_COMPLETATO">Non completato</option>
+            </select>
+          </label>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
             {[7, 15, 30].map((days) => {
               const active = quickRangeDays === days;
@@ -669,7 +696,7 @@ export default function CronoprogrammaPanel({
           </label>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 12, marginLeft: "auto" }}>
-          <div style={{ fontSize: 13, opacity: 0.8, whiteSpace: "nowrap" }}>Risultati: {filteredSorted.length}</div>
+          <div style={{ fontSize: 13, opacity: 0.8, whiteSpace: "nowrap" }}>Risultati: {outcomeFilteredRows.length}</div>
         <button
           type="button"
           onClick={onExportCsv}
@@ -737,11 +764,11 @@ export default function CronoprogrammaPanel({
         </div>
         {loading ? (
           <div style={{ padding: 12, opacity: 0.7 }}>Caricamento...</div>
-        ) : filteredSorted.length === 0 ? (
+        ) : outcomeFilteredRows.length === 0 ? (
           <div style={{ padding: 12, opacity: 0.7 }}>Nessun risultato</div>
         ) : (
           <div style={{ display: "grid", gap: 10, padding: 12 }}>
-            {filteredSorted.map((r) => {
+            {outcomeFilteredRows.map((r: TimelineRow) => {
               const key = getRowKey(r.kind, r.row_ref_id);
               const meta = metaByKey[key];
               const operativi = operativiDraftByKey[key] || extractOperativi(meta);
