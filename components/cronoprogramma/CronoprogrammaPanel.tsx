@@ -641,6 +641,8 @@ export default function CronoprogrammaPanel({
               const hidden = Boolean(meta?.hidden);
               const operativoDefinito = hasDefinedOperativi(meta);
               const comments = commentsByKey[key] || [];
+              const noteDraft = String(noteDraftByKey[key] || "");
+              const canSaveNote = noteDraft.trim().length > 0 && savingCommentKey !== key && !stateLoading;
               const conflict = conflictByKey[key];
               const conflictTitle = buildConflictTooltip(
                 conflict?.conflictDetails.personale || [],
@@ -1081,7 +1083,7 @@ export default function CronoprogrammaPanel({
                         <div style={{ fontSize: 12, fontWeight: 700, color: "#475569" }}>Note</div>
                         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                           <input
-                            value={noteDraftByKey[key] || ""}
+                            value={noteDraft}
                             onChange={(e) => setNoteDraftByKey((prev) => ({ ...prev, [key]: e.target.value }))}
                             placeholder="Aggiungi nota..."
                             style={{ flex: "1 1 260px", padding: 8, borderRadius: 10, border: "1px solid #d1d5db" }}
@@ -1089,18 +1091,18 @@ export default function CronoprogrammaPanel({
                           <button
                             type="button"
                             onClick={() => addComment(r)}
-                            disabled={savingCommentKey === key || stateLoading}
+                            disabled={!canSaveNote}
                             style={{
                               padding: "8px 12px",
                               borderRadius: 8,
                               border: "1px solid #111",
-                              background: "#111",
-                              color: "white",
-                              cursor: "pointer",
+                              background: canSaveNote ? "#111" : "#e5e7eb",
+                              color: canSaveNote ? "white" : "#6b7280",
+                              cursor: canSaveNote ? "pointer" : "not-allowed",
                               opacity: savingCommentKey === key ? 0.7 : 1,
                             }}
                           >
-                            Salva nota
+                            {savingCommentKey === key ? "Salvo..." : "Salva nota"}
                           </button>
                           <button
                             type="button"
@@ -1136,6 +1138,11 @@ export default function CronoprogrammaPanel({
                                     ? new Date(comments[0].created_at).toLocaleString("it-IT")
                                     : "—")}
                               </div>
+                              {comments.length > 1 ? (
+                                <div style={{ opacity: 0.7, marginTop: 4 }}>
+                                  {comments.length} note nello storico
+                                </div>
+                              ) : null}
                             </div>
                           ) : (
                             <span style={{ opacity: 0.7 }}>Nessuna nota</span>

@@ -878,10 +878,13 @@ export async function POST(request: Request) {
         created_by_operatore: operatore.id,
       })
       .select("id, row_kind, row_ref_id, commento, created_at, created_by_operatore, operatore:created_by_operatore(nome)")
-      .maybeSingle();
+      .single();
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+    if (!(data as any)?.id) {
+      return NextResponse.json({ error: "Commento non salvato" }, { status: 500 });
     }
 
     return NextResponse.json({

@@ -64,6 +64,14 @@ type CronoComment = {
   created_by_nome: string | null;
 };
 
+function sortCommentsNewestFirst(comments: CronoComment[]) {
+  return [...comments].sort((a, b) => {
+    const aTime = a.created_at ? new Date(a.created_at).getTime() : 0;
+    const bTime = b.created_at ? new Date(b.created_at).getTime() : 0;
+    return bTime - aTime;
+  });
+}
+
 type OperativiFields = {
   data_inizio: string;
   durata_giorni: string;
@@ -348,7 +356,12 @@ export default function CronoprogrammaPage() {
         }
         return next;
       });
-      setCommentsByKey((data?.comments as Record<string, CronoComment[]>) || {});
+      const nextComments = ((data?.comments as Record<string, CronoComment[]>) || {});
+      const sortedComments: Record<string, CronoComment[]> = {};
+      for (const [key, comments] of Object.entries(nextComments)) {
+        sortedComments[key] = sortCommentsNewestFirst((comments || []).filter(Boolean));
+      }
+      setCommentsByKey(sortedComments);
     } finally {
       setStateLoading(false);
     }
@@ -421,6 +434,7 @@ export default function CronoprogrammaPage() {
       const res = await fetch("/api/cronoprogramma", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({
           action: "add_comment",
           row_kind: row.kind,
@@ -433,10 +447,14 @@ export default function CronoprogrammaPage() {
         setStateError(data?.error || "Errore salvataggio commento");
         return;
       }
+      if (!data?.comment?.id) {
+        setStateError("Errore salvataggio commento");
+        return;
+      }
       setNoteDraftByKey((prev) => ({ ...prev, [key]: "" }));
       setCommentsByKey((prev) => ({
         ...prev,
-        [key]: [data?.comment, ...(prev[key] || [])].filter(Boolean),
+        [key]: sortCommentsNewestFirst([data?.comment, ...(prev[key] || [])].filter(Boolean)),
       }));
     } finally {
       setSavingCommentKey(null);
@@ -483,6 +501,7 @@ export default function CronoprogrammaPage() {
       const res = await fetch("/api/cronoprogramma", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({
           action: "delete_comment",
           comment_id: safeId,
@@ -496,7 +515,7 @@ export default function CronoprogrammaPage() {
       const key = getRowKey(row.kind, row.row_ref_id);
       setCommentsByKey((prev) => ({
         ...prev,
-        [key]: (prev[key] || []).filter((c) => c.id !== safeId),
+        [key]: sortCommentsNewestFirst((prev[key] || []).filter((c) => c.id !== safeId)),
       }));
     } finally {
       setDeletingCommentId(null);
