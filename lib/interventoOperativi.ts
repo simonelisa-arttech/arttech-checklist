@@ -1,7 +1,8 @@
 "use client";
 
 import {
-  durationToInputValue,
+  getOperativiEstimatedMinutes,
+  minutesToHoursInput,
   normalizeOperativiDate,
 } from "@/lib/operativiSchedule";
 
@@ -67,20 +68,13 @@ export function hoursInputToMinutes(value?: string | number | null) {
   return Math.round(hours * 60);
 }
 
-function minutesToHoursInput(value?: number | null) {
-  if (!Number.isFinite(Number(value)) || Number(value) < 0) return "";
-  return trimTrailingZeros(Number(value) / 60);
-}
-
 export function extractInterventoOperativi(
   meta?: InterventoOperativiMeta | null
 ): InterventoOperativiFormState {
+  const stimatoMinuti = getOperativiEstimatedMinutes(meta);
   return {
     data_inizio: normalizeOperativiDate(meta?.data_inizio),
-    durata_giorni:
-      Number.isFinite(Number(meta?.durata_prevista_minuti)) && Number(meta?.durata_prevista_minuti) >= 0
-        ? minutesToHoursInput(Number(meta?.durata_prevista_minuti))
-        : durationToInputValue(meta?.durata_giorni),
+    durata_giorni: stimatoMinuti != null ? minutesToHoursInput(stimatoMinuti) : "",
     modalita_attivita: String(meta?.modalita_attivita || ""),
     personale_previsto: String(meta?.personale_previsto || ""),
     personale_ids: Array.isArray(meta?.personale_ids)

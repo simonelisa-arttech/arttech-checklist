@@ -830,6 +830,39 @@ export default function CronoprogrammaPanel({
                     >
                       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 12 }}>
                         <label style={{ display: "grid", gap: 6 }}>
+                          <span style={{ fontSize: 12, fontWeight: 700, color: "#475569" }}>Data inizio</span>
+                          <input
+                            type="date"
+                            value={operativi.data_inizio ?? ""}
+                            onChange={(e) =>
+                              setOperativiDraftByKey((prev) => ({
+                                ...prev,
+                                [key]: { ...(prev[key] || emptyOperativi), data_inizio: e.target.value },
+                              }))
+                            }
+                            style={{ width: "100%", padding: 8, borderRadius: 10, border: "1px solid #d1d5db" }}
+                          />
+                        </label>
+
+                        <label style={{ display: "grid", gap: 6 }}>
+                          <span style={{ fontSize: 12, fontWeight: 700, color: "#475569" }}>Ore previste</span>
+                          <input
+                            type="number"
+                            min={0}
+                            step={0.5}
+                            value={operativi.durata_giorni ?? ""}
+                            onChange={(e) =>
+                              setOperativiDraftByKey((prev) => ({
+                                ...prev,
+                                [key]: { ...(prev[key] || emptyOperativi), durata_giorni: e.target.value },
+                              }))
+                            }
+                            placeholder="8"
+                            style={{ width: "100%", padding: 8, borderRadius: 10, border: "1px solid #d1d5db" }}
+                          />
+                        </label>
+
+                        <label style={{ display: "grid", gap: 6 }}>
                           <span style={{ fontSize: 12, fontWeight: 700, color: "#475569" }}>Personale previsto / incarico</span>
                           <div
                             title={operativi.personale_previsto || undefined}

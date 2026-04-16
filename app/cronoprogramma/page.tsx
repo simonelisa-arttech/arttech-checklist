@@ -9,7 +9,10 @@ import { isTimelineRowOverdueNotDone } from "@/lib/cronoprogrammaStatus";
 import {
   buildOperativiSchedule,
   dateToOperativiIsoDay,
-  durationToInputValue,
+  estimatedMinutesToLegacyDays,
+  getOperativiEstimatedMinutes,
+  hoursInputToMinutes,
+  minutesToHoursInput,
   normalizeOperativiDate,
 } from "@/lib/operativiSchedule";
 import { checkOperativiConflicts } from "@/lib/operativiConflicts";
@@ -39,6 +42,7 @@ type CronoMeta = {
   updated_by_nome: string | null;
   data_inizio?: string | null;
   durata_giorni?: number | null;
+  durata_prevista_minuti?: number | null;
   modalita_attivita?: string | null;
   personale_previsto?: string | null;
   personale_ids?: string[] | null;
@@ -93,9 +97,10 @@ const EMPTY_OPERATIVI: OperativiFields = {
 };
 
 function extractOperativi(meta?: CronoMeta | null): OperativiFields {
+  const stimatoMinuti = getOperativiEstimatedMinutes(meta);
   return {
     data_inizio: normalizeOperativiDate(meta?.data_inizio),
-    durata_giorni: durationToInputValue(meta?.durata_giorni),
+    durata_giorni: stimatoMinuti != null ? minutesToHoursInput(stimatoMinuti) : "",
     modalita_attivita: String(meta?.modalita_attivita || ""),
     personale_previsto: String(meta?.personale_previsto || ""),
     personale_ids: Array.isArray(meta?.personale_ids)
@@ -114,14 +119,19 @@ function extractOperativi(meta?: CronoMeta | null): OperativiFields {
 
 type OperativiScheduleLike = {
   data_inizio?: string | null;
+  durata_prevista_minuti?: string | number | null;
   durata_giorni?: string | number | null;
 };
 
 function getRowSchedule(row: TimelineRow, value?: OperativiScheduleLike | null) {
+  const durataGiorni =
+    typeof value?.durata_giorni === "string"
+      ? estimatedMinutesToLegacyDays(hoursInputToMinutes(value?.durata_giorni))
+      : estimatedMinutesToLegacyDays(getOperativiEstimatedMinutes(value));
   return buildOperativiSchedule(
     value?.data_inizio ?? null,
     row.data_tassativa || row.data_prevista,
-    value?.durata_giorni ?? null
+    durataGiorni ?? null
   );
 }
 
@@ -436,6 +446,7 @@ export default function CronoprogrammaPage() {
   async function saveOperativi(row: TimelineRow) {
     const key = getRowKey(row.kind, row.row_ref_id);
     const draft = operativiDraftByKey[key] || EMPTY_OPERATIVI;
+    const durataPrevistaMinuti = hoursInputToMinutes(draft.durata_giorni);
     setSavingOperativiKey(key);
     setStateError(null);
     try {
@@ -447,6 +458,8 @@ export default function CronoprogrammaPage() {
           row_kind: row.kind,
           row_ref_id: row.row_ref_id,
           ...draft,
+          durata_prevista_minuti: durataPrevistaMinuti,
+          durata_giorni: estimatedMinutesToLegacyDays(durataPrevistaMinuti),
         }),
       });
       const data = await res.json().catch(() => ({}));
