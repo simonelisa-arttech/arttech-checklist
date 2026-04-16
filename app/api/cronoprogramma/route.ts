@@ -457,7 +457,7 @@ export async function POST(request: Request) {
 
     const { data: timbratureRows, error: timbratureErr } = await supabaseAdmin
       .from("cronoprogramma_timbrature")
-      .select("row_kind, row_ref_id, durata_effettiva_minuti, stato")
+      .select("id, row_kind, row_ref_id, durata_effettiva_minuti, stato, started_at")
       .in("row_ref_id", rowIds)
       .in("row_kind", rowKinds as any)
       .order("created_at", { ascending: false });
@@ -490,9 +490,45 @@ export async function POST(request: Request) {
       });
     }
 
+    const timbraturaIds = (timbratureRows || [])
+      .map((row) => String((row as any).id || "").trim())
+      .filter(Boolean);
+
+    let intervalRows: any[] = [];
+    if (timbraturaIds.length > 0) {
+      const intervalRes = await supabaseAdmin
+        .from("cronoprogramma_timbrature_intervalli")
+        .select("timbratura_id, started_at, ended_at, durata_minuti")
+        .in("timbratura_id", timbraturaIds);
+
+      if (
+        intervalRes.error &&
+        !String(intervalRes.error.message || "")
+          .toLowerCase()
+          .includes("cronoprogramma_timbrature_intervalli")
+      ) {
+        return NextResponse.json({ error: intervalRes.error.message }, { status: 500 });
+      }
+
+      intervalRows = intervalRes.data || [];
+    }
+
+    const intervalsByTimbraturaId: Record<string, any[]> = {};
+    for (const row of intervalRows) {
+      const timbraturaId = String((row as any).timbratura_id || "").trim();
+      if (!timbraturaId) continue;
+      if (!intervalsByTimbraturaId[timbraturaId]) intervalsByTimbraturaId[timbraturaId] = [];
+      intervalsByTimbraturaId[timbraturaId].push(row);
+    }
+
     const timeBudgetByKey: Record<
       string,
-      { stimatoMinuti: number | null; realeMinuti: number | null; stato: "NON_INIZIATA" | "IN_CORSO" | "IN_PAUSA" | "COMPLETATA" }
+      {
+        stimatoMinuti: number | null;
+        realeMinuti: number | null;
+        stato: "NON_INIZIATA" | "IN_CORSO" | "IN_PAUSA" | "COMPLETATA";
+        liveStartedAt: string[];
+      }
     > = {};
     for (const row of normalizedRows) {
       const key = rowKey(row.row_kind, row.row_ref_id);
@@ -500,6 +536,7 @@ export async function POST(request: Request) {
         stimatoMinuti: getOperativiEstimatedMinutes(metaByKey[key]) ?? null,
         realeMinuti: null,
         stato: "NON_INIZIATA",
+        liveStartedAt: [],
       };
     }
 
@@ -507,12 +544,43 @@ export async function POST(request: Request) {
       const key = rowKey(String((row as any).row_kind), String((row as any).row_ref_id));
       if (!wanted.has(key)) continue;
       if (!timeBudgetByKey[key]) {
-        timeBudgetByKey[key] = { stimatoMinuti: null, realeMinuti: null, stato: "NON_INIZIATA" };
+        timeBudgetByKey[key] = {
+          stimatoMinuti: null,
+          realeMinuti: null,
+          stato: "NON_INIZIATA",
+          liveStartedAt: [],
+        };
       }
       const current = timeBudgetByKey[key];
+      const timbraturaId = String((row as any).id || "").trim();
+      const intervals = intervalsByTimbraturaId[timbraturaId] || [];
+      let closedMinutes = 0;
+      let hasIntervalData = false;
+
+      for (const interval of intervals) {
+        const durationMinutes = Number((interval as any).durata_minuti);
+        const endedAt = String((interval as any).ended_at || "").trim();
+        const startedAt = String((interval as any).started_at || "").trim();
+        if (Number.isFinite(durationMinutes) && durationMinutes >= 0 && endedAt) {
+          hasIntervalData = true;
+          closedMinutes += durationMinutes;
+        } else if (!endedAt && startedAt) {
+          hasIntervalData = true;
+          current.liveStartedAt.push(startedAt);
+        }
+      }
+
       const durataEffettivaMinuti = Number((row as any).durata_effettiva_minuti);
-      if (Number.isFinite(durataEffettivaMinuti) && durataEffettivaMinuti >= 0) {
+      if (hasIntervalData) {
+        current.realeMinuti = (current.realeMinuti ?? 0) + closedMinutes;
+      } else if (Number.isFinite(durataEffettivaMinuti) && durataEffettivaMinuti >= 0) {
         current.realeMinuti = (current.realeMinuti ?? 0) + durataEffettivaMinuti;
+      } else {
+        const startedAt = String((row as any).started_at || "").trim();
+        const stato = String((row as any).stato || "").trim().toUpperCase();
+        if (stato === "IN_CORSO" && startedAt) {
+          current.liveStartedAt.push(startedAt);
+        }
       }
       const stato = String((row as any).stato || "").trim().toUpperCase();
       if (stato === "IN_CORSO") current.stato = "IN_CORSO";

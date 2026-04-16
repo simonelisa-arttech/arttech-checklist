@@ -15,6 +15,7 @@ type OperativiFields = any;
 type TimeBudgetSummary = {
   stimatoMinuti: number | null;
   realeMinuti: number | null;
+  liveStartedAt?: string[];
 };
 
 const BADGE_COLORS = {
@@ -195,6 +196,32 @@ function formatMinutesCompact(value?: number | null) {
   return `${hours} h ${minutes} min`;
 }
 
+function getLiveElapsedMs(startedAtList: string[] | undefined, nowMs: number) {
+  return (startedAtList || []).reduce((sum, value) => {
+    const parsed = new Date(String(value || "")).getTime();
+    if (!Number.isFinite(parsed) || parsed <= 0 || parsed > nowMs) return sum;
+    return sum + Math.max(0, nowMs - parsed);
+  }, 0);
+}
+
+function getDisplayedActualMinutes(summary: TimeBudgetSummary, nowMs: number) {
+  const baseMinutes =
+    Number.isFinite(Number(summary.realeMinuti)) && summary.realeMinuti != null
+      ? Number(summary.realeMinuti)
+      : 0;
+  const liveMinutes = Math.round(getLiveElapsedMs(summary.liveStartedAt, nowMs) / 60000);
+  return baseMinutes + liveMinutes;
+}
+
+function formatLiveElapsed(ms: number) {
+  if (!Number.isFinite(ms) || ms <= 0) return "00:00:00";
+  const totalSeconds = Math.max(0, Math.floor(ms / 1000));
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  return [hours, minutes, seconds].map((value) => String(value).padStart(2, "0")).join(":");
+}
+
 function getBudgetDeltaSummary(stimatoMinuti: number | null, realeMinuti: number | null) {
   if (!Number.isFinite(Number(stimatoMinuti)) || stimatoMinuti == null) return null;
   const actual = Number.isFinite(Number(realeMinuti)) && realeMinuti != null ? Math.round(Number(realeMinuti)) : 0;
@@ -298,6 +325,7 @@ export default function CronoprogrammaPanel({
   >({});
   const [timbraturaLoadingKey, setTimbraturaLoadingKey] = useState<string | null>(null);
   const [timeBudgetByKey, setTimeBudgetByKey] = useState<Record<string, TimeBudgetSummary>>({});
+  const [liveNowMs, setLiveNowMs] = useState(() => Date.now());
 
   useEffect(() => {
     let active = true;
@@ -317,7 +345,7 @@ export default function CronoprogrammaPanel({
       const nextTimbraturaState: Record<string, "NON_INIZIATA" | "IN_CORSO" | "IN_PAUSA" | "COMPLETATA"> = {};
       for (const row of rows) {
         const key = `${row.row_kind}:${row.row_ref_id}`;
-        next[key] = { stimatoMinuti: null, realeMinuti: null };
+        next[key] = { stimatoMinuti: null, realeMinuti: null, liveStartedAt: [] };
         nextTimbraturaState[key] = "NON_INIZIATA";
       }
 
@@ -353,6 +381,9 @@ export default function CronoprogrammaPanel({
               Number.isFinite(Number(summary?.realeMinuti)) && Number(summary?.realeMinuti) >= 0
                 ? Number(summary?.realeMinuti)
                 : null,
+            liveStartedAt: Array.isArray(summary?.liveStartedAt)
+              ? summary.liveStartedAt.map((value) => String(value || "").trim()).filter(Boolean)
+              : [],
           };
           const stato = String(summary?.stato || "").trim().toUpperCase();
           nextTimbraturaState[key] =
@@ -377,6 +408,15 @@ export default function CronoprogrammaPanel({
       active = false;
     };
   }, [filteredSorted]);
+
+  useEffect(() => {
+    const hasLive = Object.values(timbraturaStateByKey).some((state) => state === "IN_CORSO");
+    if (!hasLive) return;
+    const timer = window.setInterval(() => {
+      setLiveNowMs(Date.now());
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [timbraturaStateByKey]);
 
   async function handleTimbraturaAction(
     row: TimelineRow,
@@ -410,24 +450,44 @@ export default function CronoprogrammaPanel({
               : "COMPLETATA",
       }));
       if (action === "start_timbratura" || action === "pause_timbratura" || action === "resume_timbratura") {
-        setTimeBudgetByKey((prev) => ({
-          ...prev,
-          [key]: {
-            stimatoMinuti: prev[key]?.stimatoMinuti ?? null,
-            realeMinuti: prev[key]?.realeMinuti ?? 0,
-          },
-        }));
+        setTimeBudgetByKey((prev) => {
+          const current = prev[key] || { stimatoMinuti: null, realeMinuti: 0, liveStartedAt: [] };
+          const nowMs = Date.now();
+          const currentLiveMs = getLiveElapsedMs(current.liveStartedAt, nowMs);
+          const currentClosedMinutes =
+            Number.isFinite(Number(current.realeMinuti)) && current.realeMinuti != null ? Number(current.realeMinuti) : 0;
+          return {
+            ...prev,
+            [key]: {
+              stimatoMinuti: current.stimatoMinuti ?? null,
+              realeMinuti:
+                action === "pause_timbratura"
+                  ? currentClosedMinutes + Math.round(currentLiveMs / 60000)
+                  : currentClosedMinutes,
+              liveStartedAt:
+                action === "pause_timbratura"
+                  ? []
+                  : [
+                      ...(action === "resume_timbratura" || action === "start_timbratura"
+                        ? [new Date(nowMs).toISOString()]
+                        : current.liveStartedAt || []),
+                    ],
+            },
+          };
+        });
       } else {
-        setTimeBudgetByKey((prev) => ({
-          ...prev,
-          [key]: {
-            stimatoMinuti: prev[key]?.stimatoMinuti ?? null,
-            realeMinuti:
-              Number.isFinite(Number(data?.durata_effettiva_minuti)) && Number(data?.durata_effettiva_minuti) >= 0
-                ? Number(data.durata_effettiva_minuti)
-                : prev[key]?.realeMinuti ?? 0,
-          },
-        }));
+        setTimeBudgetByKey((prev) => {
+          const current = prev[key] || { stimatoMinuti: null, realeMinuti: 0, liveStartedAt: [] };
+          const nowMs = Date.now();
+          return {
+            ...prev,
+            [key]: {
+              stimatoMinuti: current.stimatoMinuti ?? null,
+              realeMinuti: getDisplayedActualMinutes(current, nowMs),
+              liveStartedAt: [],
+            },
+          };
+        });
       }
     } catch (err) {
       console.error("Errore timbratura cronoprogramma", err);
@@ -654,7 +714,9 @@ export default function CronoprogrammaPanel({
               const timbraturaState = timbraturaStateByKey[key] || "NON_INIZIATA";
               const timbraturaLoading = timbraturaLoadingKey === key;
               const timeBudget = timeBudgetByKey[key] || { stimatoMinuti: null, realeMinuti: null };
-              const budgetDelta = getBudgetDeltaSummary(timeBudget.stimatoMinuti, timeBudget.realeMinuti);
+              const displayedActualMinutes = getDisplayedActualMinutes(timeBudget, liveNowMs);
+              const liveElapsedMs = getLiveElapsedMs(timeBudget.liveStartedAt, liveNowMs);
+              const budgetDelta = getBudgetDeltaSummary(timeBudget.stimatoMinuti, displayedActualMinutes);
 
               return (
                 <div
@@ -721,7 +783,7 @@ export default function CronoprogrammaPanel({
                         </div>
                         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", fontSize: 12, color: "#475569" }}>
                           <span>Stimato: {formatMinutesCompact(timeBudget.stimatoMinuti)}</span>
-                          <span>Reale: {formatMinutesCompact(timeBudget.realeMinuti)}</span>
+                          <span>Reale: {formatMinutesCompact(displayedActualMinutes)}</span>
                           <span>Delta: {budgetDelta?.deltaLabel || "—"}</span>
                           {budgetDelta?.badge || null}
                         </div>
@@ -734,6 +796,12 @@ export default function CronoprogrammaPanel({
                             : null}
                           {timbraturaState === "COMPLETATA"
                             ? renderPill("COMPLETATA", BADGE_COLORS.statusOk, "✓")
+                            : null}
+                          {timbraturaState === "IN_CORSO"
+                            ? renderPill(`LIVE ${formatLiveElapsed(liveElapsedMs)}`, BADGE_COLORS.activityRemote, "⏱")
+                            : null}
+                          {timbraturaState === "IN_PAUSA"
+                            ? renderPill(`Accumulato ${formatMinutesCompact(displayedActualMinutes)}`, BADGE_COLORS.statusDueSoon, "⏱")
                             : null}
                           {timbraturaState === "NON_INIZIATA" ? (
                             <button
@@ -840,7 +908,7 @@ export default function CronoprogrammaPanel({
                           Stimato {formatMinutesCompact(timeBudget.stimatoMinuti)}
                         </div>
                         <div style={{ fontSize: 12, color: "#64748b" }}>
-                          Reale {formatMinutesCompact(timeBudget.realeMinuti)}
+                          Reale {formatMinutesCompact(displayedActualMinutes)}
                         </div>
                         <div style={{ fontSize: 12, color: "#64748b" }}>
                           {budgetDelta ? budgetDelta.deltaLabel : "Delta —"}

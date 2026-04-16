@@ -52,6 +52,7 @@ type OperativiFields = {
 type TimeBudgetSummary = {
   stimatoMinuti: number | null;
   realeMinuti: number | null;
+  liveStartedAt?: string[];
 };
 
 const BADGE_COLORS = {
@@ -158,6 +159,32 @@ function formatMinutesTight(value?: number | null) {
   return `${hours}h ${minutes}m`;
 }
 
+function getLiveElapsedMs(startedAtList: string[] | undefined, nowMs: number) {
+  return (startedAtList || []).reduce((sum, value) => {
+    const parsed = new Date(String(value || "")).getTime();
+    if (!Number.isFinite(parsed) || parsed <= 0 || parsed > nowMs) return sum;
+    return sum + Math.max(0, nowMs - parsed);
+  }, 0);
+}
+
+function getDisplayedActualMinutes(summary: TimeBudgetSummary, nowMs: number) {
+  const baseMinutes =
+    Number.isFinite(Number(summary.realeMinuti)) && summary.realeMinuti != null
+      ? Number(summary.realeMinuti)
+      : 0;
+  const liveMinutes = Math.round(getLiveElapsedMs(summary.liveStartedAt, nowMs) / 60000);
+  return baseMinutes + liveMinutes;
+}
+
+function formatLiveElapsed(ms: number) {
+  if (!Number.isFinite(ms) || ms <= 0) return "00:00:00";
+  const totalSeconds = Math.max(0, Math.floor(ms / 1000));
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = totalSeconds % 60;
+  return [hours, minutes, seconds].map((value) => String(value).padStart(2, "0")).join(":");
+}
+
 function renderBudgetBadge(stimatoMinuti: number | null, realeMinuti: number | null) {
   if (!Number.isFinite(Number(stimatoMinuti)) || stimatoMinuti == null) return null;
   const actual = Number.isFinite(Number(realeMinuti)) && realeMinuti != null ? Number(realeMinuti) : 0;
@@ -173,11 +200,14 @@ function getActivityDateKey(row: TimelineRow, meta?: CronoMeta | null) {
 
 function renderMainStatusBadge(
   activityDate: string,
-  timbraturaState: "NON_INIZIATA" | "IN_CORSO" | "COMPLETATA",
+  timbraturaState: "NON_INIZIATA" | "IN_CORSO" | "IN_PAUSA" | "COMPLETATA",
   todayIso: string
 ) {
   if (timbraturaState === "IN_CORSO") {
     return renderPill("IN CORSO", BADGE_COLORS.statusInProgress, "⏸");
+  }
+  if (timbraturaState === "IN_PAUSA") {
+    return renderPill("IN PAUSA", BADGE_COLORS.statusDueSoon, "⏸");
   }
   if (activityDate && activityDate < todayIso) {
     return renderPill("SCADUTA", BADGE_COLORS.statusExpired, "●");
@@ -208,9 +238,10 @@ export default function OperatoreAttivitaPage() {
   const [metaByKey, setMetaByKey] = useState<Record<string, CronoMeta>>({});
   const [timeBudgetByKey, setTimeBudgetByKey] = useState<Record<string, TimeBudgetSummary>>({});
   const [timbraturaStateByKey, setTimbraturaStateByKey] = useState<
-    Record<string, "NON_INIZIATA" | "IN_CORSO" | "COMPLETATA">
+    Record<string, "NON_INIZIATA" | "IN_CORSO" | "IN_PAUSA" | "COMPLETATA">
   >({});
   const [timbraturaLoadingKey, setTimbraturaLoadingKey] = useState<string | null>(null);
+  const [liveNowMs, setLiveNowMs] = useState(() => Date.now());
 
   useEffect(() => {
     let active = true;
@@ -228,16 +259,22 @@ export default function OperatoreAttivitaPage() {
 
         const operatoreId = String(meData.operatore.id);
         setOperatoreLabel(String(meData.operatore.nome || "Operatore"));
+        const personaleIdFromAuth =
+          String(meData?.operatore?.personale_id || "").trim() || null;
 
-        const { data: operatoreRow, error: operatoreErr } = await dbFrom("operatori")
-          .select("id,nome,personale_id")
-          .eq("id", operatoreId)
-          .maybeSingle();
-        if (operatoreErr) throw new Error(operatoreErr.message);
-
-        const linkedPersonaleId = String((operatoreRow as any)?.personale_id || "").trim() || null;
+        let linkedPersonaleId = personaleIdFromAuth;
         if (!linkedPersonaleId) {
-          throw new Error("Operatore non collegato a personale.");
+          const { data: operatoreRow, error: operatoreErr } = await dbFrom("operatori")
+            .select("id,nome,personale_id")
+            .eq("id", operatoreId)
+            .maybeSingle();
+          if (operatoreErr) throw new Error(operatoreErr.message);
+          linkedPersonaleId = String((operatoreRow as any)?.personale_id || "").trim() || null;
+        }
+        if (!linkedPersonaleId) {
+          throw new Error(
+            "Operatore non collegato a personale. Verifica il campo personale_id nell'anagrafica operatori."
+          );
         }
         if (!active) return;
         setPersonaleId(linkedPersonaleId);
@@ -280,23 +317,7 @@ export default function OperatoreAttivitaPage() {
           return ids.includes(linkedPersonaleId);
         });
 
-        const rowKinds = Array.from(new Set(assignedRows.map((row) => row.kind)));
-        const rowRefIds = Array.from(new Set(assignedRows.map((row) => row.row_ref_id)));
-        const wanted = new Set(assignedRows.map((row) => getRowKey(row.kind, row.row_ref_id)));
-
-        const [budgetMetaRes, timbratureRes, monthlyTimbratureRes] = await Promise.all([
-          supabase
-            .from("cronoprogramma_meta")
-            .select("row_kind,row_ref_id,durata_prevista_minuti")
-            .in("row_kind", rowKinds)
-            .in("row_ref_id", rowRefIds),
-          supabase
-            .from("cronoprogramma_timbrature")
-            .select("row_kind,row_ref_id,durata_effettiva_minuti,stato,created_at")
-            .eq("operatore_id", operatoreId)
-            .in("row_kind", rowKinds)
-            .in("row_ref_id", rowRefIds)
-            .order("created_at", { ascending: false }),
+        const [monthlyTimbratureRes] = await Promise.all([
           supabase
             .from("cronoprogramma_timbrature")
             .select("durata_effettiva_minuti")
@@ -306,54 +327,45 @@ export default function OperatoreAttivitaPage() {
             .lt("ended_at", nextMonthStart.toISOString()),
         ]);
 
-        if (budgetMetaRes.error) {
-          console.error("Errore caricamento durata prevista operatore", budgetMetaRes.error);
-        }
-        if (timbratureRes.error) {
-          console.error("Errore caricamento timbrature operatore", timbratureRes.error);
-        }
         if (monthlyTimbratureRes.error) {
           console.error("Errore caricamento consuntivo mensile operatore", monthlyTimbratureRes.error);
         }
 
         const nextTimeBudget: Record<string, TimeBudgetSummary> = {};
-        const nextTimbraturaState: Record<string, "NON_INIZIATA" | "IN_CORSO" | "COMPLETATA"> = {};
+        const nextTimbraturaState: Record<string, "NON_INIZIATA" | "IN_CORSO" | "IN_PAUSA" | "COMPLETATA"> = {};
         for (const row of assignedRows) {
           const key = getRowKey(row.kind, row.row_ref_id);
-          nextTimeBudget[key] = { stimatoMinuti: null, realeMinuti: null };
+          nextTimeBudget[key] = { stimatoMinuti: null, realeMinuti: null, liveStartedAt: [] };
           nextTimbraturaState[key] = "NON_INIZIATA";
         }
 
-        for (const row of budgetMetaRes.data || []) {
-          const key = `${String((row as any).row_kind || "")}:${String((row as any).row_ref_id || "")}`;
-          if (!wanted.has(key)) continue;
+        const serverBudget =
+          loadData?.time_budget && typeof loadData.time_budget === "object" ? loadData.time_budget : {};
+        for (const [key, value] of Object.entries(serverBudget)) {
+          if (!nextTimeBudget[key]) continue;
+          const summary = value as Record<string, unknown>;
           nextTimeBudget[key] = {
-            ...(nextTimeBudget[key] || { stimatoMinuti: null, realeMinuti: null }),
             stimatoMinuti:
-              Number.isFinite(Number((row as any).durata_prevista_minuti)) && Number((row as any).durata_prevista_minuti) >= 0
-                ? Number((row as any).durata_prevista_minuti)
+              Number.isFinite(Number(summary?.stimatoMinuti)) && Number(summary?.stimatoMinuti) >= 0
+                ? Number(summary?.stimatoMinuti)
                 : null,
+            realeMinuti:
+              Number.isFinite(Number(summary?.realeMinuti)) && Number(summary?.realeMinuti) >= 0
+                ? Number(summary?.realeMinuti)
+                : null,
+            liveStartedAt: Array.isArray(summary?.liveStartedAt)
+              ? summary.liveStartedAt.map((item) => String(item || "").trim()).filter(Boolean)
+              : [],
           };
-        }
-
-        for (const row of timbratureRes.data || []) {
-          const key = `${String((row as any).row_kind || "")}:${String((row as any).row_ref_id || "")}`;
-          if (!wanted.has(key)) continue;
-          const durationMinutes =
-            Number.isFinite(Number((row as any).durata_effettiva_minuti)) && Number((row as any).durata_effettiva_minuti) >= 0
-              ? Number((row as any).durata_effettiva_minuti)
-              : null;
-          if (durationMinutes != null) {
-            nextTimeBudget[key] = {
-              ...(nextTimeBudget[key] || { stimatoMinuti: null, realeMinuti: null }),
-              realeMinuti: (nextTimeBudget[key]?.realeMinuti ?? 0) + durationMinutes,
-            };
-          }
-          if (nextTimbraturaState[key] === "NON_INIZIATA") {
-            const stato = String((row as any).stato || "").trim().toUpperCase();
-            nextTimbraturaState[key] =
-              stato === "IN_CORSO" ? "IN_CORSO" : stato === "COMPLETATA" ? "COMPLETATA" : "NON_INIZIATA";
-          }
+          const stato = String(summary?.stato || "").trim().toUpperCase();
+          nextTimbraturaState[key] =
+            stato === "IN_CORSO"
+              ? "IN_CORSO"
+              : stato === "IN_PAUSA"
+                ? "IN_PAUSA"
+                : stato === "COMPLETATA"
+                  ? "COMPLETATA"
+                  : "NON_INIZIATA";
         }
 
         const totalMonthlyMinutes = (monthlyTimbratureRes.data || []).reduce((sum, row: any) => {
@@ -383,6 +395,15 @@ export default function OperatoreAttivitaPage() {
       active = false;
     };
   }, []);
+
+  useEffect(() => {
+    const hasLive = Object.values(timbraturaStateByKey).some((state) => state === "IN_CORSO");
+    if (!hasLive) return;
+    const timer = window.setInterval(() => {
+      setLiveNowMs(Date.now());
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [timbraturaStateByKey]);
 
   const groupedRows = useMemo(() => {
     const groups = {
@@ -442,7 +463,7 @@ export default function OperatoreAttivitaPage() {
   async function handleTimbraturaAction(
     row: TimelineRow,
     key: string,
-    action: "start_timbratura" | "stop_timbratura"
+    action: "start_timbratura" | "pause_timbratura" | "resume_timbratura" | "stop_timbratura"
   ) {
     try {
       setTimbraturaLoadingKey(key);
@@ -463,29 +484,56 @@ export default function OperatoreAttivitaPage() {
       }
       setTimbraturaStateByKey((prev) => ({
         ...prev,
-        [key]: action === "start_timbratura" ? "IN_CORSO" : "COMPLETATA",
+        [key]:
+          action === "start_timbratura" || action === "resume_timbratura"
+            ? "IN_CORSO"
+            : action === "pause_timbratura"
+              ? "IN_PAUSA"
+              : "COMPLETATA",
       }));
-      if (action === "start_timbratura") {
-        setTimeBudgetByKey((prev) => ({
-          ...prev,
-          [key]: {
-            stimatoMinuti: prev[key]?.stimatoMinuti ?? null,
-            realeMinuti: prev[key]?.realeMinuti ?? 0,
-          },
-        }));
+      if (action === "start_timbratura" || action === "pause_timbratura" || action === "resume_timbratura") {
+        setTimeBudgetByKey((prev) => {
+          const current = prev[key] || { stimatoMinuti: null, realeMinuti: 0, liveStartedAt: [] };
+          const nowMs = Date.now();
+          const currentLiveMs = getLiveElapsedMs(current.liveStartedAt, nowMs);
+          const currentClosedMinutes =
+            Number.isFinite(Number(current.realeMinuti)) && current.realeMinuti != null ? Number(current.realeMinuti) : 0;
+          return {
+            ...prev,
+            [key]: {
+              stimatoMinuti: current.stimatoMinuti ?? null,
+              realeMinuti:
+                action === "pause_timbratura"
+                  ? currentClosedMinutes + Math.round(currentLiveMs / 60000)
+                  : currentClosedMinutes,
+              liveStartedAt:
+                action === "pause_timbratura"
+                  ? []
+                  : [
+                      ...(action === "resume_timbratura" || action === "start_timbratura"
+                        ? [new Date(nowMs).toISOString()]
+                        : current.liveStartedAt || []),
+                    ],
+            },
+          };
+        });
       } else {
         const completedMinutes =
           Number.isFinite(Number(data?.durata_effettiva_minuti)) && Number(data?.durata_effettiva_minuti) >= 0
             ? Number(data.durata_effettiva_minuti)
             : 0;
-        setTimeBudgetByKey((prev) => ({
-          ...prev,
-          [key]: {
-            stimatoMinuti: prev[key]?.stimatoMinuti ?? null,
-            realeMinuti:
-              completedMinutes + (prev[key]?.realeMinuti ?? 0),
-          },
-        }));
+        setTimeBudgetByKey((prev) => {
+          const current = prev[key] || { stimatoMinuti: null, realeMinuti: 0, liveStartedAt: [] };
+          const nowMs = Date.now();
+          return {
+            ...prev,
+            [key]: {
+              stimatoMinuti: current.stimatoMinuti ?? null,
+              realeMinuti: getDisplayedActualMinutes(current, nowMs),
+              liveStartedAt: [],
+            },
+          };
+        });
         setMonthlyWorkedMinutes((prev) => prev + completedMinutes);
       }
     } catch (err) {
@@ -496,47 +544,23 @@ export default function OperatoreAttivitaPage() {
   }
 
   return (
-    <div style={{ maxWidth: 1100, margin: "24px auto", padding: 16, paddingBottom: 60 }}>
+    <div style={{ maxWidth: 760, margin: "20px auto", padding: 16, paddingBottom: 72 }}>
       <div style={{ display: "grid", gap: 14, marginBottom: 18 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-          <div style={{ display: "grid", gap: 6 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-              <span style={{ fontSize: 13, fontWeight: 800, letterSpacing: 0.4, color: "#475569", textTransform: "uppercase" }}>
-                Operatore
-              </span>
-              {renderPill("Collaboratore operativo", BADGE_COLORS.statusNeutral)}
-            </div>
-            <div style={{ fontSize: 24, fontWeight: 900, color: "#0f172a", lineHeight: 1.1 }}>
-              {operatoreLabel || "Operatore"}
-            </div>
-          </div>
-          {personaleId ? (
-            <div
-              style={{
-                marginLeft: "auto",
-                padding: "6px 12px",
-                borderRadius: 999,
-                border: "1px solid #e2e8f0",
-                background: "#f8fafc",
-                fontSize: 12,
-                fontWeight: 700,
-                color: "#475569",
-              }}
-            >
-              Personale collegato
-            </div>
-          ) : null}
-        </div>
         <div>
-          <h1 style={{ margin: 0, fontSize: 34, whiteSpace: "nowrap" }}>LE MIE ATTIVITÀ</h1>
-          <div style={{ marginTop: 4, fontSize: 13, opacity: 0.72 }}>
-            {operatoreLabel ? `Operatore: ${operatoreLabel}` : "Attività assegnate al collaboratore loggato"}
+          <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: 0.4, color: "#475569", textTransform: "uppercase", marginBottom: 6 }}>
+            Operatore
+          </div>
+          <div style={{ fontSize: 28, fontWeight: 900, color: "#0f172a", lineHeight: 1.05 }}>
+            {operatoreLabel || "Operatore"}
+          </div>
+          <div style={{ marginTop: 6, fontSize: 13, color: "#64748b" }}>
+            Attività assegnate, timbrature e note operative essenziali.
           </div>
         </div>
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
+            gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))",
             gap: 10,
           }}
         >
@@ -649,8 +673,22 @@ export default function OperatoreAttivitaPage() {
                 const timbraturaState = timbraturaStateByKey[key] || "NON_INIZIATA";
                 const timbraturaLoading = timbraturaLoadingKey === key;
                 const timeBudget = timeBudgetByKey[key] || { stimatoMinuti: null, realeMinuti: null };
+                const displayedActualMinutes = getDisplayedActualMinutes(timeBudget, liveNowMs);
+                const liveElapsedMs = getLiveElapsedMs(timeBudget.liveStartedAt, liveNowMs);
                 const overdue = isTimelineRowOverdueNotDone(row, meta);
                 const activityDate = getActivityDateKey(row, meta);
+                const deltaMinuti =
+                  timeBudget.stimatoMinuti != null
+                    ? displayedActualMinutes - timeBudget.stimatoMinuti
+                    : null;
+                const deltaLabel =
+                  deltaMinuti == null
+                    ? "Delta: —"
+                    : Math.abs(deltaMinuti) <= 15
+                      ? "Delta: In linea"
+                      : deltaMinuti < 0
+                        ? `Risparmio: ${formatMinutesCompact(Math.abs(deltaMinuti))}`
+                        : `Ritardo: ${formatMinutesCompact(deltaMinuti)}`;
 
                 return (
                   <div
@@ -665,43 +703,50 @@ export default function OperatoreAttivitaPage() {
                       borderLeft: overdue ? "4px solid #f59e0b" : "4px solid transparent",
                     }}
                   >
-                    <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start", flexWrap: "wrap" }}>
+                    <div style={{ display: "grid", gap: 12 }}>
                       <div style={{ display: "grid", gap: 8, minWidth: 0 }}>
                         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
                           {renderMainStatusBadge(activityDate, timbraturaState, todayIso)}
                           {renderActivityKindBadge(kindLabel)}
                           {renderModeBadge(modeLabel)}
-                          {overdue ? renderPill("SCADUTO", BADGE_COLORS.statusExpired) : renderPill("IN PROGRAMMA", BADGE_COLORS.statusOk)}
                         </div>
                         <div style={{ fontWeight: 800, fontSize: 16, color: "#111827", wordBreak: "break-word" }}>
                           {row.progetto || "Attività cronoprogramma"}
                         </div>
-                        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", fontSize: 13, color: "#475569" }}>
-                          <span>Cliente: {row.cliente || "—"}</span>
+                        <div style={{ display: "grid", gap: 4, fontSize: 13, color: "#475569" }}>
+                          <span>Cliente / progetto: {row.cliente || "—"}</span>
                           <span>Data: {schedule.data_inizio ? formatOperativiDateLabel(schedule.data_inizio) : "—"}</span>
-                          <span>Rif: {row.ticket_no || row.proforma || "—"}</span>
                         </div>
-                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", fontSize: 12, color: "#475569" }}>
-                          <span>Stimato: {formatMinutesCompact(timeBudget.stimatoMinuti)}</span>
-                          <span>Reale: {formatMinutesCompact(timeBudget.realeMinuti)}</span>
-                          {renderBudgetBadge(timeBudget.stimatoMinuti, timeBudget.realeMinuti)}
+                        <div style={{ display: "grid", gap: 6 }}>
+                          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", fontSize: 12, color: "#475569" }}>
+                            <span>Stimato: {formatMinutesCompact(timeBudget.stimatoMinuti)}</span>
+                            <span>Reale: {formatMinutesCompact(displayedActualMinutes)}</span>
+                          </div>
+                          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", fontSize: 12, color: "#475569" }}>
+                            <span>{deltaLabel}</span>
+                            {timeBudget.stimatoMinuti != null ? renderBudgetBadge(timeBudget.stimatoMinuti, displayedActualMinutes) : null}
+                          </div>
                         </div>
-                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-                          {timbraturaState === "IN_CORSO" ? renderPill("IN CORSO", BADGE_COLORS.activityRemote, "⏸") : null}
-                          {timbraturaState === "COMPLETATA" ? renderPill("COMPLETATA", BADGE_COLORS.statusOk, "✓") : null}
+                        <div
+                          style={{
+                            display: "grid",
+                            gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))",
+                            gap: 8,
+                          }}
+                        >
                           {timbraturaState === "NON_INIZIATA" ? (
                             <button
                               type="button"
                               onClick={() => void handleTimbraturaAction(row, key, "start_timbratura")}
                               disabled={timbraturaLoading}
                               style={{
-                                padding: "6px 10px",
-                                borderRadius: 999,
+                                padding: "12px 14px",
+                                borderRadius: 12,
                                 border: "1px solid #86efac",
                                 background: "#f0fdf4",
                                 color: "#166534",
-                                fontSize: 12,
-                                fontWeight: 700,
+                                fontSize: 14,
+                                fontWeight: 800,
                                 cursor: timbraturaLoading ? "wait" : "pointer",
                                 opacity: timbraturaLoading ? 0.7 : 1,
                               }}
@@ -712,16 +757,56 @@ export default function OperatoreAttivitaPage() {
                           {timbraturaState === "IN_CORSO" ? (
                             <button
                               type="button"
+                              onClick={() => void handleTimbraturaAction(row, key, "pause_timbratura")}
+                              disabled={timbraturaLoading}
+                              style={{
+                                padding: "12px 14px",
+                                borderRadius: 12,
+                                border: "1px solid #fcd34d",
+                                background: "#fffbeb",
+                                color: "#b45309",
+                                fontSize: 14,
+                                fontWeight: 800,
+                                cursor: timbraturaLoading ? "wait" : "pointer",
+                                opacity: timbraturaLoading ? 0.7 : 1,
+                              }}
+                            >
+                              ⏸ Pausa
+                            </button>
+                          ) : null}
+                          {timbraturaState === "IN_PAUSA" ? (
+                            <button
+                              type="button"
+                              onClick={() => void handleTimbraturaAction(row, key, "resume_timbratura")}
+                              disabled={timbraturaLoading}
+                              style={{
+                                padding: "12px 14px",
+                                borderRadius: 12,
+                                border: "1px solid #93c5fd",
+                                background: "#dbeafe",
+                                color: "#1d4ed8",
+                                fontSize: 14,
+                                fontWeight: 800,
+                                cursor: timbraturaLoading ? "wait" : "pointer",
+                                opacity: timbraturaLoading ? 0.7 : 1,
+                              }}
+                            >
+                              ▶ Riprendi
+                            </button>
+                          ) : null}
+                          {timbraturaState === "IN_CORSO" ? (
+                            <button
+                              type="button"
                               onClick={() => void handleTimbraturaAction(row, key, "stop_timbratura")}
                               disabled={timbraturaLoading}
                               style={{
-                                padding: "6px 10px",
-                                borderRadius: 999,
+                                padding: "12px 14px",
+                                borderRadius: 12,
                                 border: "1px solid #fca5a5",
                                 background: "#fee2e2",
                                 color: "#b91c1c",
-                                fontSize: 12,
-                                fontWeight: 700,
+                                fontSize: 14,
+                                fontWeight: 800,
                                 cursor: timbraturaLoading ? "wait" : "pointer",
                                 opacity: timbraturaLoading ? 0.7 : 1,
                               }}
@@ -729,30 +814,36 @@ export default function OperatoreAttivitaPage() {
                               ⏹ Termina
                             </button>
                           ) : null}
+                          {row.checklist_id ? (
+                            <Link
+                              href={`/checklists/${row.checklist_id}`}
+                              style={{
+                                display: "inline-flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                padding: "12px 14px",
+                                borderRadius: 12,
+                                border: "1px solid #d1d5db",
+                                background: "white",
+                                color: "inherit",
+                                textDecoration: "none",
+                                fontSize: 14,
+                                fontWeight: 800,
+                              }}
+                            >
+                              Note / report
+                            </Link>
+                          ) : null}
                         </div>
-                      </div>
-                      <div style={{ display: "grid", gap: 8, justifyItems: "end", textAlign: "right" }}>
-                        <div style={{ fontSize: 12, color: "#64748b" }}>
-                          {schedule.data_fine ? `Fine ${formatOperativiDateLabel(schedule.data_fine)}` : "Fine —"}
+                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", fontSize: 12, color: "#64748b" }}>
+                          {timbraturaState === "IN_CORSO" ? renderPill("IN CORSO", BADGE_COLORS.activityRemote, "⏸") : null}
+                          {timbraturaState === "IN_PAUSA" ? renderPill("IN PAUSA", BADGE_COLORS.statusDueSoon, "⏸") : null}
+                          {timbraturaState === "COMPLETATA" ? renderPill("COMPLETATA", BADGE_COLORS.statusOk, "✓") : null}
+                          {timbraturaState === "IN_CORSO" ? renderPill(`LIVE ${formatLiveElapsed(liveElapsedMs)}`, BADGE_COLORS.activityRemote, "⏱") : null}
+                          {timbraturaState === "IN_PAUSA" ? renderPill(`Accumulato ${formatMinutesCompact(displayedActualMinutes)}`, BADGE_COLORS.statusDueSoon, "⏱") : null}
+                          {schedule.data_fine ? <span>Fine {formatOperativiDateLabel(schedule.data_fine)}</span> : null}
+                          {overdue ? renderPill("Urgente", BADGE_COLORS.statusExpired) : null}
                         </div>
-                        {row.checklist_id ? (
-                          <Link
-                            href={`/checklists/${row.checklist_id}`}
-                            style={{
-                              display: "inline-block",
-                              padding: "6px 10px",
-                              borderRadius: 8,
-                              border: "1px solid #d1d5db",
-                              background: "white",
-                              color: "inherit",
-                              textDecoration: "none",
-                              fontWeight: 700,
-                              whiteSpace: "nowrap",
-                            }}
-                          >
-                            Apri progetto
-                          </Link>
-                        ) : null}
                       </div>
                     </div>
                   </div>
