@@ -18,6 +18,15 @@ type TimeBudgetSummary = {
   liveStartedAt?: string[];
 };
 
+const REPORT_COMMENT_PREFIX = "__REPORT__:";
+
+type StructuredReport = {
+  esito: "COMPLETATO" | "PARZIALE" | "NON_COMPLETATO";
+  problemi: string;
+  materiali: string;
+  note_finali: string;
+};
+
 const BADGE_COLORS = {
   statusExpired: { bg: "#fee2e2", border: "#fca5a5", color: "#b91c1c" },
   statusDueSoon: { bg: "#fffbeb", border: "#fcd34d", color: "#b45309" },
@@ -220,6 +229,47 @@ function formatLiveElapsed(ms: number) {
   const minutes = Math.floor((totalSeconds % 3600) / 60);
   const seconds = totalSeconds % 60;
   return [hours, minutes, seconds].map((value) => String(value).padStart(2, "0")).join(":");
+}
+
+function parseStructuredReport(comment: CronoComment | null | undefined): StructuredReport | null {
+  const raw = String(comment?.commento || "");
+  if (!raw.startsWith(REPORT_COMMENT_PREFIX)) return null;
+  try {
+    const parsed = JSON.parse(raw.slice(REPORT_COMMENT_PREFIX.length));
+    const esito = String(parsed?.esito || "").trim().toUpperCase();
+    if (esito !== "COMPLETATO" && esito !== "PARZIALE" && esito !== "NON_COMPLETATO") return null;
+    return {
+      esito,
+      problemi: String(parsed?.problemi || "").trim(),
+      materiali: String(parsed?.materiali || "").trim(),
+      note_finali: String(parsed?.note_finali || "").trim(),
+    };
+  } catch {
+    return null;
+  }
+}
+
+function renderStructuredReportBlock(comment: CronoComment, report: StructuredReport) {
+  return (
+    <div style={{ display: "grid", gap: 6 }}>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+        {renderPill(`ESITO ${report.esito.replaceAll("_", " ")}`, report.esito === "COMPLETATO"
+          ? BADGE_COLORS.statusOk
+          : report.esito === "PARZIALE"
+            ? BADGE_COLORS.statusDueSoon
+            : BADGE_COLORS.statusExpired)}
+        {renderPill("REPORT ATTIVITÀ", BADGE_COLORS.statusNeutral)}
+      </div>
+      {report.problemi ? <div><strong>Problemi:</strong> <span style={{ whiteSpace: "pre-wrap" }}>{report.problemi}</span></div> : null}
+      {report.materiali ? <div><strong>Materiali:</strong> <span style={{ whiteSpace: "pre-wrap" }}>{report.materiali}</span></div> : null}
+      {report.note_finali ? <div><strong>Note finali:</strong> <span style={{ whiteSpace: "pre-wrap" }}>{report.note_finali}</span></div> : null}
+      <div style={{ marginTop: 2, fontSize: 12, opacity: 0.7 }}>
+        {(comment.created_by_nome || "Operatore") +
+          " · " +
+          (comment.created_at ? new Date(comment.created_at).toLocaleString("it-IT") : "—")}
+      </div>
+    </div>
+  );
 }
 
 function getBudgetDeltaSummary(stimatoMinuti: number | null, realeMinuti: number | null) {
@@ -701,6 +751,8 @@ export default function CronoprogrammaPanel({
               const hidden = Boolean(meta?.hidden);
               const operativoDefinito = hasDefinedOperativi(meta);
               const comments = commentsByKey[key] || [];
+              const latestReportComment = comments.find((comment) => Boolean(parseStructuredReport(comment))) || null;
+              const latestReport = latestReportComment ? parseStructuredReport(latestReportComment) : null;
               const noteDraft = String(noteDraftByKey[key] || "");
               const canSaveNote = noteDraft.trim().length > 0 && savingCommentKey !== key && !stateLoading;
               const conflict = conflictByKey[key];
@@ -802,6 +854,16 @@ export default function CronoprogrammaPanel({
                             : null}
                           {timbraturaState === "IN_PAUSA"
                             ? renderPill(`Accumulato ${formatMinutesCompact(displayedActualMinutes)}`, BADGE_COLORS.statusDueSoon, "⏱")
+                            : null}
+                          {latestReport
+                            ? renderPill(
+                                `Esito ${latestReport.esito.replaceAll("_", " ")}`,
+                                latestReport.esito === "COMPLETATO"
+                                  ? BADGE_COLORS.statusOk
+                                  : latestReport.esito === "PARZIALE"
+                                    ? BADGE_COLORS.statusDueSoon
+                                    : BADGE_COLORS.statusExpired
+                              )
                             : null}
                           {timbraturaState === "NON_INIZIATA" ? (
                             <button
@@ -1148,6 +1210,21 @@ export default function CronoprogrammaPanel({
                       </div>
 
                       <div style={{ display: "grid", gap: 8 }}>
+                        {latestReport && latestReportComment ? (
+                          <div style={{ display: "grid", gap: 6 }}>
+                            <div style={{ fontSize: 12, fontWeight: 700, color: "#475569" }}>Report intervento</div>
+                            <div
+                              style={{
+                                background: "white",
+                                border: "1px solid #eef2f7",
+                                borderRadius: 8,
+                                padding: "8px 10px",
+                              }}
+                            >
+                              {renderStructuredReportBlock(latestReportComment, latestReport)}
+                            </div>
+                          </div>
+                        ) : null}
                         <div style={{ fontSize: 12, fontWeight: 700, color: "#475569" }}>Note</div>
                         <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                           <input
@@ -1198,14 +1275,20 @@ export default function CronoprogrammaPanel({
                                 padding: "8px 10px",
                               }}
                             >
-                              <div style={{ whiteSpace: "pre-wrap" }}>{comments[0].commento}</div>
-                              <div style={{ opacity: 0.7, marginTop: 4 }}>
-                                {(comments[0].created_by_nome || "Operatore") +
-                                  " · " +
-                                  (comments[0].created_at
-                                    ? new Date(comments[0].created_at).toLocaleString("it-IT")
-                                    : "—")}
-                              </div>
+                              {parseStructuredReport(comments[0])
+                                ? renderStructuredReportBlock(comments[0], parseStructuredReport(comments[0]) as StructuredReport)
+                                : (
+                                  <>
+                                    <div style={{ whiteSpace: "pre-wrap" }}>{comments[0].commento}</div>
+                                    <div style={{ opacity: 0.7, marginTop: 4 }}>
+                                      {(comments[0].created_by_nome || "Operatore") +
+                                        " · " +
+                                        (comments[0].created_at
+                                          ? new Date(comments[0].created_at).toLocaleString("it-IT")
+                                          : "—")}
+                                    </div>
+                                  </>
+                                )}
                               {comments.length > 1 ? (
                                 <div style={{ opacity: 0.7, marginTop: 4 }}>
                                   {comments.length} note nello storico
@@ -1328,17 +1411,24 @@ export default function CronoprogrammaPanel({
               ) : (
                 (commentsByKey[noteHistoryKey] || []).map((c) => {
                   const row = rowByKey[noteHistoryKey];
+                  const structuredReport = parseStructuredReport(c);
                   return (
                     <div
                       key={c.id}
                       style={{ border: "1px solid #eef2f7", borderRadius: 8, padding: "8px 10px", background: "#f9fafb" }}
                     >
-                      <div style={{ whiteSpace: "pre-wrap" }}>{c.commento}</div>
-                      <div style={{ marginTop: 4, fontSize: 12, opacity: 0.7 }}>
-                        {(c.created_by_nome || "Operatore") +
-                          " · " +
-                          (c.created_at ? new Date(c.created_at).toLocaleString("it-IT") : "—")}
-                      </div>
+                      {structuredReport ? (
+                        renderStructuredReportBlock(c, structuredReport)
+                      ) : (
+                        <>
+                          <div style={{ whiteSpace: "pre-wrap" }}>{c.commento}</div>
+                          <div style={{ marginTop: 4, fontSize: 12, opacity: 0.7 }}>
+                            {(c.created_by_nome || "Operatore") +
+                              " · " +
+                              (c.created_at ? new Date(c.created_at).toLocaleString("it-IT") : "—")}
+                          </div>
+                        </>
+                      )}
                       <div style={{ marginTop: 6 }}>
                         <button
                           type="button"

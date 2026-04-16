@@ -29,6 +29,8 @@ type OperativiInput = {
   commerciale_art_tech_contatto?: string | null;
 };
 const CUTOFF = "2026-01-01";
+const REPORT_COMMENT_PREFIX = "__REPORT__:";
+const REPORT_OUTCOME_VALUES = new Set(["COMPLETATO", "PARZIALE", "NON_COMPLETATO"]);
 
 function rowKey(rowKind: string, rowRefId: string) {
   return `${rowKind}:${rowRefId}`;
@@ -921,6 +923,39 @@ export async function POST(request: Request) {
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+
+    const rawReport = body?.report && typeof body.report === "object" ? body.report : null;
+    if (rawReport) {
+      const esito = String((rawReport as any).esito || "").trim().toUpperCase();
+      const problemi = String((rawReport as any).problemi || "").trim();
+      const materiali = String((rawReport as any).materiali || "").trim();
+      const noteFinali = String((rawReport as any).note_finali || "").trim();
+      const hasReportContent = Boolean(esito || problemi || materiali || noteFinali);
+
+      if (hasReportContent) {
+        if (!REPORT_OUTCOME_VALUES.has(esito)) {
+          return NextResponse.json({ error: "Esito report non valido" }, { status: 400 });
+        }
+
+        const reportComment = `${REPORT_COMMENT_PREFIX}${JSON.stringify({
+          esito,
+          problemi,
+          materiali,
+          note_finali: noteFinali,
+        })}`;
+
+        const { error: reportErr } = await supabaseAdmin.from("cronoprogramma_comments").insert({
+          row_kind: rowKind,
+          row_ref_id: rowRefId,
+          commento: reportComment,
+          created_by_operatore: operatore.id,
+        });
+
+        if (reportErr) {
+          return NextResponse.json({ error: reportErr.message }, { status: 500 });
+        }
+      }
     }
 
     return NextResponse.json({ ok: true, durata_effettiva_minuti: durationMinutes });

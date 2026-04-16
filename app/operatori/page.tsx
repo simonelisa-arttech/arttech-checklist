@@ -55,6 +55,13 @@ type TimeBudgetSummary = {
   liveStartedAt?: string[];
 };
 
+type StopReportDraft = {
+  esito: "COMPLETATO" | "PARZIALE" | "NON_COMPLETATO" | "";
+  problemi: string;
+  materiali: string;
+  note_finali: string;
+};
+
 const BADGE_COLORS = {
   statusExpired: { bg: "#fee2e2", border: "#fca5a5", color: "#b91c1c" },
   statusDueSoon: { bg: "#fffbeb", border: "#fcd34d", color: "#b45309" },
@@ -66,6 +73,13 @@ const BADGE_COLORS = {
   activityRemote: { bg: "#f3e8ff", border: "#d8b4fe", color: "#7e22ce" },
   activityDisinstall: { bg: "#ffedd5", border: "#fdba74", color: "#c2410c" },
 } as const;
+
+const EMPTY_STOP_REPORT: StopReportDraft = {
+  esito: "COMPLETATO",
+  problemi: "",
+  materiali: "",
+  note_finali: "",
+};
 
 function renderPill(
   label: string,
@@ -242,6 +256,9 @@ export default function OperatoreAttivitaPage() {
   >({});
   const [timbraturaLoadingKey, setTimbraturaLoadingKey] = useState<string | null>(null);
   const [liveNowMs, setLiveNowMs] = useState(() => Date.now());
+  const [stopReportRowKey, setStopReportRowKey] = useState<string | null>(null);
+  const [stopReportDraftByKey, setStopReportDraftByKey] = useState<Record<string, StopReportDraft>>({});
+  const [stopReportError, setStopReportError] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -450,6 +467,12 @@ export default function OperatoreAttivitaPage() {
   const sortedRows = useMemo(() => {
     return groupedRows.flatMap((group) => group.rows);
   }, [groupedRows]);
+  const stopReportRow = stopReportRowKey
+    ? rows.find((row) => getRowKey(row.kind, row.row_ref_id) === stopReportRowKey) || null
+    : null;
+  const stopReportDraft = stopReportRowKey
+    ? stopReportDraftByKey[stopReportRowKey] || EMPTY_STOP_REPORT
+    : EMPTY_STOP_REPORT;
 
   const summaryCounts = useMemo(() => {
     const findCount = (key: string) => groupedRows.find((group) => group.key === key)?.rows.length || 0;
@@ -463,7 +486,8 @@ export default function OperatoreAttivitaPage() {
   async function handleTimbraturaAction(
     row: TimelineRow,
     key: string,
-    action: "start_timbratura" | "pause_timbratura" | "resume_timbratura" | "stop_timbratura"
+    action: "start_timbratura" | "pause_timbratura" | "resume_timbratura" | "stop_timbratura",
+    extraPayload?: Record<string, unknown>
   ) {
     try {
       setTimbraturaLoadingKey(key);
@@ -475,12 +499,14 @@ export default function OperatoreAttivitaPage() {
           action,
           row_kind: row.kind,
           row_ref_id: row.row_ref_id,
+          ...(extraPayload || {}),
         }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         console.error("Errore timbratura operatore", data);
-        return;
+        setStopReportError(String(data?.error || "Errore salvataggio report attività"));
+        return false;
       }
       setTimbraturaStateByKey((prev) => ({
         ...prev,
@@ -536,11 +562,48 @@ export default function OperatoreAttivitaPage() {
         });
         setMonthlyWorkedMinutes((prev) => prev + completedMinutes);
       }
+      return true;
     } catch (err) {
       console.error("Errore timbratura operatore", err);
+      setStopReportError("Errore salvataggio report attività");
+      return false;
     } finally {
       setTimbraturaLoadingKey((prev) => (prev === key ? null : prev));
     }
+  }
+
+  function openStopReport(row: TimelineRow) {
+    const key = getRowKey(row.kind, row.row_ref_id);
+    setStopReportError(null);
+    setStopReportDraftByKey((prev) => ({
+      ...prev,
+      [key]: prev[key] || { ...EMPTY_STOP_REPORT },
+    }));
+    setStopReportRowKey(key);
+  }
+
+  async function submitStopReport(row: TimelineRow) {
+    const key = getRowKey(row.kind, row.row_ref_id);
+    const draft = stopReportDraftByKey[key] || EMPTY_STOP_REPORT;
+    if (!draft.esito) {
+      setStopReportError("Seleziona un esito prima di terminare l'attività.");
+      return;
+    }
+    const ok = await handleTimbraturaAction(row, key, "stop_timbratura", {
+      report: {
+        esito: draft.esito,
+        problemi: draft.problemi,
+        materiali: draft.materiali,
+        note_finali: draft.note_finali,
+      },
+    });
+    if (!ok) return;
+    setStopReportDraftByKey((prev) => ({
+      ...prev,
+      [key]: { ...EMPTY_STOP_REPORT },
+    }));
+    setStopReportError(null);
+    setStopReportRowKey(null);
   }
 
   return (
@@ -797,7 +860,7 @@ export default function OperatoreAttivitaPage() {
                           {timbraturaState === "IN_CORSO" ? (
                             <button
                               type="button"
-                              onClick={() => void handleTimbraturaAction(row, key, "stop_timbratura")}
+                              onClick={() => openStopReport(row)}
                               disabled={timbraturaLoading}
                               style={{
                                 padding: "12px 14px",
@@ -853,6 +916,174 @@ export default function OperatoreAttivitaPage() {
           ))}
         </div>
       )}
+      {stopReportRow && stopReportRowKey ? (
+        <div
+          onClick={() => {
+            if (timbraturaLoadingKey !== stopReportRowKey) {
+              setStopReportError(null);
+              setStopReportRowKey(null);
+            }
+          }}
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(15,23,42,0.38)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 16,
+            zIndex: 1500,
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: "min(560px, 96vw)",
+              background: "white",
+              borderRadius: 18,
+              border: "1px solid #e5e7eb",
+              padding: 16,
+              display: "grid",
+              gap: 12,
+              boxShadow: "0 24px 48px rgba(15, 23, 42, 0.18)",
+            }}
+          >
+            <div style={{ display: "grid", gap: 4 }}>
+              <div style={{ fontSize: 12, fontWeight: 800, color: "#64748b", textTransform: "uppercase", letterSpacing: 0.4 }}>
+                Chiusura attività
+              </div>
+              <div style={{ fontSize: 18, fontWeight: 900, color: "#0f172a" }}>
+                {stopReportRow.progetto || "Attività"}
+              </div>
+              <div style={{ fontSize: 13, color: "#64748b" }}>
+                {stopReportRow.cliente || "Cliente non assegnato"} · {stopReportRow.kind}
+              </div>
+            </div>
+
+            <div style={{ display: "grid", gap: 10 }}>
+              <label style={{ display: "grid", gap: 6 }}>
+                <span style={{ fontSize: 12, fontWeight: 700, color: "#475569" }}>Esito</span>
+                <select
+                  value={stopReportDraft.esito}
+                  onChange={(e) =>
+                    setStopReportDraftByKey((prev) => ({
+                      ...prev,
+                      [stopReportRowKey]: {
+                        ...(prev[stopReportRowKey] || EMPTY_STOP_REPORT),
+                        esito: e.target.value as StopReportDraft["esito"],
+                      },
+                    }))
+                  }
+                  style={{ width: "100%", padding: 10, borderRadius: 12, border: "1px solid #d1d5db" }}
+                >
+                  <option value="COMPLETATO">COMPLETATO</option>
+                  <option value="PARZIALE">PARZIALE</option>
+                  <option value="NON_COMPLETATO">NON_COMPLETATO</option>
+                </select>
+              </label>
+
+              <label style={{ display: "grid", gap: 6 }}>
+                <span style={{ fontSize: 12, fontWeight: 700, color: "#475569" }}>Problemi</span>
+                <textarea
+                  value={stopReportDraft.problemi}
+                  onChange={(e) =>
+                    setStopReportDraftByKey((prev) => ({
+                      ...prev,
+                      [stopReportRowKey]: {
+                        ...(prev[stopReportRowKey] || EMPTY_STOP_REPORT),
+                        problemi: e.target.value,
+                      },
+                    }))
+                  }
+                  rows={3}
+                  placeholder="Problemi riscontrati"
+                  style={{ width: "100%", padding: 10, borderRadius: 12, border: "1px solid #d1d5db", resize: "vertical" }}
+                />
+              </label>
+
+              <label style={{ display: "grid", gap: 6 }}>
+                <span style={{ fontSize: 12, fontWeight: 700, color: "#475569" }}>Materiali utilizzati</span>
+                <textarea
+                  value={stopReportDraft.materiali}
+                  onChange={(e) =>
+                    setStopReportDraftByKey((prev) => ({
+                      ...prev,
+                      [stopReportRowKey]: {
+                        ...(prev[stopReportRowKey] || EMPTY_STOP_REPORT),
+                        materiali: e.target.value,
+                      },
+                    }))
+                  }
+                  rows={3}
+                  placeholder="Materiali utilizzati"
+                  style={{ width: "100%", padding: 10, borderRadius: 12, border: "1px solid #d1d5db", resize: "vertical" }}
+                />
+              </label>
+
+              <label style={{ display: "grid", gap: 6 }}>
+                <span style={{ fontSize: 12, fontWeight: 700, color: "#475569" }}>Note finali</span>
+                <textarea
+                  value={stopReportDraft.note_finali}
+                  onChange={(e) =>
+                    setStopReportDraftByKey((prev) => ({
+                      ...prev,
+                      [stopReportRowKey]: {
+                        ...(prev[stopReportRowKey] || EMPTY_STOP_REPORT),
+                        note_finali: e.target.value,
+                      },
+                    }))
+                  }
+                  rows={3}
+                  placeholder="Note finali"
+                  style={{ width: "100%", padding: 10, borderRadius: 12, border: "1px solid #d1d5db", resize: "vertical" }}
+                />
+              </label>
+            </div>
+
+            {stopReportError ? <div style={{ fontSize: 13, color: "#b91c1c" }}>{stopReportError}</div> : null}
+
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 8 }}>
+              <button
+                type="button"
+                onClick={() => {
+                  setStopReportError(null);
+                  setStopReportRowKey(null);
+                }}
+                disabled={timbraturaLoadingKey === stopReportRowKey}
+                style={{
+                  padding: "12px 14px",
+                  borderRadius: 12,
+                  border: "1px solid #d1d5db",
+                  background: "white",
+                  fontSize: 14,
+                  fontWeight: 800,
+                  cursor: timbraturaLoadingKey === stopReportRowKey ? "wait" : "pointer",
+                }}
+              >
+                Annulla
+              </button>
+              <button
+                type="button"
+                onClick={() => void submitStopReport(stopReportRow)}
+                disabled={timbraturaLoadingKey === stopReportRowKey}
+                style={{
+                  padding: "12px 14px",
+                  borderRadius: 12,
+                  border: "1px solid #111827",
+                  background: "#111827",
+                  color: "white",
+                  fontSize: 14,
+                  fontWeight: 800,
+                  cursor: timbraturaLoadingKey === stopReportRowKey ? "wait" : "pointer",
+                  opacity: timbraturaLoadingKey === stopReportRowKey ? 0.7 : 1,
+                }}
+              >
+                {timbraturaLoadingKey === stopReportRowKey ? "Salvo..." : "Salva e termina"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
