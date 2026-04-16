@@ -940,7 +940,7 @@ function AziendePageContent() {
             color: "inherit",
           }}
         >
-          Personale
+          Elenco personale
         </Link>
         <Link
           href="/impostazioni"
@@ -1203,6 +1203,22 @@ function AziendePageContent() {
                       {azienda.isNew ? "Salva l'azienda per abilitare i documenti." : `${docRows.length} documenti collegati`}
                     </div>
                     <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                      {!azienda.isNew && aziendaId ? (
+                        <Link
+                          href={`/impostazioni/personale?azienda_id=${encodeURIComponent(aziendaId)}`}
+                          style={{
+                            padding: "8px 12px",
+                            borderRadius: 10,
+                            border: "1px solid #d1d5db",
+                            background: "white",
+                            textDecoration: "none",
+                            color: "#2563eb",
+                            fontWeight: 700,
+                          }}
+                        >
+                          Vedi personale
+                        </Link>
+                      ) : null}
                       <button
                         type="button"
                         onClick={() => saveAzienda(azienda)}

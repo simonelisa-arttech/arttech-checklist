@@ -14,6 +14,8 @@ type AziendaOption = {
   ragione_sociale: string;
 };
 
+type PersonaleViewMode = "PER_AZIENDA" | "ELENCO_COMPLETO";
+
 type PersonaleRow = {
   id?: string;
   nome: string;
@@ -285,6 +287,10 @@ function PersonalePageContent() {
   const searchParams = useSearchParams();
   const handledManageIntentRef = useRef<string | null>(null);
   const isScadenzeFilterActive = String(searchParams.get("filter") || "").trim().toLowerCase() === "scadenze";
+  const [viewMode, setViewMode] = useState<PersonaleViewMode>("PER_AZIENDA");
+  const [aziendaFilter, setAziendaFilter] = useState("");
+  const [tipoFilter, setTipoFilter] = useState<"TUTTI" | "INTERNO" | "ESTERNO">("TUTTI");
+  const [attivoFilter, setAttivoFilter] = useState<"ATTIVI" | "TUTTI" | "NON_ATTIVI">("ATTIVI");
 
   async function loadData() {
     setLoading(true);
@@ -528,15 +534,57 @@ function PersonalePageContent() {
   const filteredPersone = useMemo(() => {
     const query = normalizeText(search);
     return persone.filter((persona) => {
+      const aziendaNome = companyById.get(persona.azienda_id) || "";
       const matchesSearch =
-        !query || normalizeText(`${persona.nome} ${persona.cognome}`).includes(query);
+        !query ||
+        normalizeText(
+          `${persona.nome} ${persona.cognome} ${persona.email} ${persona.telefono} ${aziendaNome}`
+        ).includes(query);
       if (!matchesSearch) return false;
+      if (aziendaFilter && String(persona.azienda_id || "") !== aziendaFilter) return false;
+      if (tipoFilter !== "TUTTI" && persona.tipo !== tipoFilter) return false;
+      if (attivoFilter === "ATTIVI" && !persona.attivo) return false;
+      if (attivoFilter === "NON_ATTIVI" && persona.attivo) return false;
       if (!isScadenzeFilterActive) return true;
       const personId = String(persona.id || "");
       const docRows = docsByPersonale.get(personId) || [];
       return docRows.some((doc) => getDocumentoBadgeState(doc) !== null);
     });
-  }, [persone, search, isScadenzeFilterActive, docsByPersonale]);
+  }, [persone, search, companyById, aziendaFilter, tipoFilter, attivoFilter, isScadenzeFilterActive, docsByPersonale]);
+
+  const visiblePersone = useMemo(() => {
+    const rows = [...filteredPersone];
+    if (viewMode === "PER_AZIENDA") {
+      rows.sort((a, b) => {
+        const companyA = companyById.get(a.azienda_id) || "Senza azienda";
+        const companyB = companyById.get(b.azienda_id) || "Senza azienda";
+        const companyCmp = companyA.localeCompare(companyB, "it", { sensitivity: "base" });
+        if (companyCmp !== 0) return companyCmp;
+        const cognomeCmp = String(a.cognome || "").localeCompare(String(b.cognome || ""), "it", {
+          sensitivity: "base",
+        });
+        if (cognomeCmp !== 0) return cognomeCmp;
+        return String(a.nome || "").localeCompare(String(b.nome || ""), "it", { sensitivity: "base" });
+      });
+      return rows;
+    }
+    rows.sort((a, b) => {
+      const cognomeCmp = String(a.cognome || "").localeCompare(String(b.cognome || ""), "it", {
+        sensitivity: "base",
+      });
+      if (cognomeCmp !== 0) return cognomeCmp;
+      return String(a.nome || "").localeCompare(String(b.nome || ""), "it", { sensitivity: "base" });
+    });
+    return rows;
+  }, [filteredPersone, viewMode, companyById]);
+
+  useEffect(() => {
+    const companyId = String(searchParams.get("azienda_id") || "").trim();
+    if (companyId) {
+      setAziendaFilter(companyId);
+      setViewMode("PER_AZIENDA");
+    }
+  }, [searchParams]);
 
   useEffect(() => {
     if (loading) return;
@@ -868,7 +916,7 @@ function PersonalePageContent() {
         <div>
           <h1 style={{ margin: 0, fontSize: 30 }}>Personale</h1>
           <div style={{ marginTop: 4, fontSize: 12, opacity: 0.75 }}>
-            Personale interno/esterno con collegamento azienda e documenti sicurezza.
+            Personale interno/esterno organizzato per azienda, con elenco completo disponibile on demand.
           </div>
         </div>
         <Link
@@ -918,10 +966,84 @@ function PersonalePageContent() {
         >
           + Nuova persona
         </button>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          {([
+            { value: "PER_AZIENDA" as const, label: "Per azienda" },
+            { value: "ELENCO_COMPLETO" as const, label: "Elenco completo" },
+          ]).map((option) => {
+            const active = viewMode === option.value;
+            return (
+              <button
+                key={option.value}
+                type="button"
+                onClick={() => setViewMode(option.value)}
+                style={{
+                  padding: "8px 12px",
+                  borderRadius: 999,
+                  border: active ? "1px solid #111" : "1px solid #d1d5db",
+                  background: active ? "#111" : "white",
+                  color: active ? "white" : "#111",
+                  cursor: "pointer",
+                  fontWeight: 700,
+                }}
+              >
+                {option.label}
+              </button>
+            );
+          })}
+        </div>
+        <select
+          value={aziendaFilter}
+          onChange={(e) => setAziendaFilter(e.target.value)}
+          style={{
+            minWidth: 220,
+            padding: "8px 10px",
+            borderRadius: 10,
+            border: "1px solid #d1d5db",
+            background: "white",
+          }}
+        >
+          <option value="">Tutte le aziende</option>
+          {aziende.map((azienda) => (
+            <option key={azienda.id} value={azienda.id}>
+              {azienda.ragione_sociale}
+            </option>
+          ))}
+        </select>
+        <select
+          value={tipoFilter}
+          onChange={(e) => setTipoFilter(e.target.value as "TUTTI" | "INTERNO" | "ESTERNO")}
+          style={{
+            minWidth: 150,
+            padding: "8px 10px",
+            borderRadius: 10,
+            border: "1px solid #d1d5db",
+            background: "white",
+          }}
+        >
+          <option value="TUTTI">Tutti i tipi</option>
+          <option value="INTERNO">INTERNO</option>
+          <option value="ESTERNO">ESTERNO</option>
+        </select>
+        <select
+          value={attivoFilter}
+          onChange={(e) => setAttivoFilter(e.target.value as "ATTIVI" | "TUTTI" | "NON_ATTIVI")}
+          style={{
+            minWidth: 150,
+            padding: "8px 10px",
+            borderRadius: 10,
+            border: "1px solid #d1d5db",
+            background: "white",
+          }}
+        >
+          <option value="ATTIVI">Solo attivi</option>
+          <option value="TUTTI">Tutti</option>
+          <option value="NON_ATTIVI">Solo non attivi</option>
+        </select>
         <input
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          placeholder="Cerca nome o cognome"
+          placeholder="Cerca nome, cognome, email, telefono o azienda"
           style={{
             marginLeft: "auto",
             minWidth: 240,
@@ -958,8 +1080,14 @@ function PersonalePageContent() {
               {persone.length === 0 ? "Nessuna persona configurata." : "Nessun risultato per la ricerca."}
             </div>
           ) : (
-            filteredPersone.map((persona) => {
+            visiblePersone.map((persona, index) => {
               const personId = String(persona.id || "");
+              const companyLabel = companyById.get(persona.azienda_id) || "Senza azienda";
+              const previousCompanyLabel =
+                viewMode === "PER_AZIENDA" && index > 0
+                  ? companyById.get(visiblePersone[index - 1]?.azienda_id) || "Senza azienda"
+                  : null;
+              const showCompanyHeader = viewMode === "PER_AZIENDA" && companyLabel !== previousCompanyLabel;
               const allDocRows = docsByPersonale.get(personId) || [];
               const docRows = isScadenzeFilterActive
                 ? allDocRows.filter((doc) => getDocumentoBadgeState(doc) !== null)
@@ -973,27 +1101,51 @@ function PersonalePageContent() {
               }
               const isExpanded = expandedPersonId === personId;
               return (
-                <div
-                  key={persona.id}
-                  id={personId ? `personale-${personId}` : undefined}
-                  style={{
-                    border: "1px solid #e5e7eb",
-                    borderRadius: 14,
-                    background: "white",
-                    padding: 16,
-                    display: "grid",
-                    gap: 14,
-                  }}
-                >
+                <div key={persona.id} style={{ display: "grid", gap: 10 }}>
+                  {showCompanyHeader ? (
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 10,
+                        padding: "10px 12px",
+                        borderRadius: 12,
+                        border: "1px solid #e2e8f0",
+                        background: "#f8fafc",
+                      }}
+                    >
+                      <div style={{ fontSize: 17, fontWeight: 800, color: "#0f172a" }}>{companyLabel}</div>
+                      <div style={{ flex: 1, height: 1, background: "#e2e8f0" }} />
+                      {persona.azienda_id ? (
+                        <Link
+                          href={`/impostazioni/aziende#azienda-${encodeURIComponent(persona.azienda_id)}`}
+                          style={{ fontSize: 13, fontWeight: 700, color: "#2563eb", textDecoration: "none" }}
+                        >
+                          Apri azienda →
+                        </Link>
+                      ) : null}
+                    </div>
+                  ) : null}
                   <div
+                    id={personId ? `personale-${personId}` : undefined}
                     style={{
+                      border: "1px solid #e5e7eb",
+                      borderRadius: 14,
+                      background: "white",
+                      padding: 16,
                       display: "grid",
-                      gap: 12,
-                      gridTemplateColumns:
-                        "minmax(150px, 1fr) minmax(150px, 1fr) minmax(200px, 1.4fr) 170px 160px 200px minmax(220px, 1.2fr) 100px",
-                      alignItems: "end",
+                      gap: 14,
                     }}
                   >
+                    <div
+                      style={{
+                        display: "grid",
+                        gap: 12,
+                        gridTemplateColumns:
+                          "minmax(150px, 1fr) minmax(150px, 1fr) minmax(200px, 1.4fr) 170px 160px 200px minmax(220px, 1.2fr) 100px",
+                        alignItems: "end",
+                      }}
+                    >
                     <label style={{ display: "block", fontSize: 12 }}>
                       Nome
                       <input
@@ -1725,11 +1877,12 @@ function PersonalePageContent() {
                         );
                         })()}
                       </div>
-                    </>
-                  ) : null}
-                </div>
-              );
-            })
+	                    </>
+	                  ) : null}
+	                </div>
+	              </div>
+	              );
+	            })
           )}
         </div>
       )}
