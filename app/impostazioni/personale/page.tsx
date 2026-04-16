@@ -281,6 +281,7 @@ function PersonalePageContent() {
   const [documentCatalogRows, setDocumentCatalogRows] = useState<DocumentCatalogEntryRow[]>([]);
   const [search, setSearch] = useState("");
   const [expandedPersonId, setExpandedPersonId] = useState<string | null>(null);
+  const [expandedCompanyId, setExpandedCompanyId] = useState<string | null>(null);
   const [editingDocumentoId, setEditingDocumentoId] = useState<string | null>(null);
   const [documentFileById, setDocumentFileById] = useState<Record<string, File | null>>({});
   const [documentRowErrorById, setDocumentRowErrorById] = useState<Record<string, string | null>>({});
@@ -578,11 +579,64 @@ function PersonalePageContent() {
     return rows;
   }, [filteredPersone, viewMode, companyById]);
 
+  const groupedPersoneByCompany = useMemo(() => {
+    const groups = new Map<
+      string,
+      {
+        companyId: string;
+        companyLabel: string;
+        persone: PersonaleRow[];
+        peopleCount: number;
+        scadutiCount: number;
+        inScadenzaCount: number;
+        criticitaCount: number;
+      }
+    >();
+
+    for (const persona of visiblePersone) {
+      const companyId = String(persona.azienda_id || "");
+      const companyLabel = companyById.get(companyId) || "Senza azienda";
+      const existing = groups.get(companyId) || {
+        companyId,
+        companyLabel,
+        persone: [],
+        peopleCount: 0,
+        scadutiCount: 0,
+        inScadenzaCount: 0,
+        criticitaCount: 0,
+      };
+      existing.persone.push(persona);
+      existing.peopleCount += 1;
+
+      const personId = String(persona.id || "");
+      const personDocs = docsByPersonale.get(personId) || [];
+      let personHasCritical = false;
+      for (const doc of personDocs) {
+        const badgeState = getDocumentoBadgeState(doc);
+        if (badgeState === "SCADUTO") {
+          existing.scadutiCount += 1;
+          personHasCritical = true;
+        }
+        if (badgeState === "IN_SCADENZA") {
+          existing.inScadenzaCount += 1;
+          personHasCritical = true;
+        }
+      }
+      if (personHasCritical) existing.criticitaCount += 1;
+      groups.set(companyId, existing);
+    }
+
+    return Array.from(groups.values()).sort((a, b) =>
+      a.companyLabel.localeCompare(b.companyLabel, "it", { sensitivity: "base" })
+    );
+  }, [visiblePersone, companyById, docsByPersonale]);
+
   useEffect(() => {
     const companyId = String(searchParams.get("azienda_id") || "").trim();
     if (companyId) {
       setAziendaFilter(companyId);
       setViewMode("PER_AZIENDA");
+      setExpandedCompanyId(companyId);
     }
   }, [searchParams]);
 
@@ -909,6 +963,780 @@ function PersonalePageContent() {
     setSavingKey(null);
   }
 
+  function renderPersonCard(persona: PersonaleRow) {
+    const personId = String(persona.id || "");
+    const allDocRows = docsByPersonale.get(personId) || [];
+    const docRows = isScadenzeFilterActive
+      ? allDocRows.filter((doc) => getDocumentoBadgeState(doc) !== null)
+      : allDocRows;
+    let scadutiCount = 0;
+    let inScadenzaCount = 0;
+    for (const doc of allDocRows) {
+      const badgeState = getDocumentoBadgeState(doc);
+      if (badgeState === "SCADUTO") scadutiCount += 1;
+      if (badgeState === "IN_SCADENZA") inScadenzaCount += 1;
+    }
+    const isExpanded = expandedPersonId === personId;
+
+    return (
+      <div
+        key={persona.id}
+        id={personId ? `personale-${personId}` : undefined}
+        style={{
+          border: "1px solid #e5e7eb",
+          borderRadius: 14,
+          background: "white",
+          padding: 16,
+          display: "grid",
+          gap: 14,
+        }}
+      >
+        <div
+          style={{
+            display: "grid",
+            gap: 12,
+            gridTemplateColumns:
+              "minmax(150px, 1fr) minmax(150px, 1fr) minmax(200px, 1.4fr) 170px 160px 200px minmax(220px, 1.2fr) 100px",
+            alignItems: "end",
+          }}
+        >
+        <label style={{ display: "block", fontSize: 12 }}>
+          Nome
+          <input
+            value={persona.nome}
+            onChange={(e) => updatePersona(persona.id, { nome: e.target.value })}
+            style={{ width: "100%", padding: 8, marginTop: 6 }}
+          />
+        </label>
+        <label style={{ display: "block", fontSize: 12 }}>
+          Cognome
+          <input
+            value={persona.cognome}
+            onChange={(e) => updatePersona(persona.id, { cognome: e.target.value })}
+            style={{ width: "100%", padding: 8, marginTop: 6 }}
+          />
+        </label>
+        <label style={{ display: "block", fontSize: 12 }}>
+          Azienda
+          <select
+            value={persona.azienda_id}
+            onChange={(e) => updatePersona(persona.id, { azienda_id: e.target.value })}
+            style={{ width: "100%", padding: 8, marginTop: 6 }}
+          >
+            <option value="">— Nessuna azienda —</option>
+            {aziende.map((azienda) => (
+              <option key={azienda.id} value={azienda.id}>
+                {azienda.ragione_sociale}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label style={{ display: "block", fontSize: 12 }}>
+          Tipo
+          <select
+            value={persona.tipo}
+            onChange={(e) =>
+              updatePersona(persona.id, {
+                tipo: e.target.value === "INTERNO" ? "INTERNO" : "ESTERNO",
+              })
+            }
+            style={{ width: "100%", padding: 8, marginTop: 6 }}
+          >
+            {PERSONALE_TIPO_OPTIONS.map((tipo) => (
+              <option key={tipo} value={tipo}>
+                {tipo}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label style={{ display: "block", fontSize: 12 }}>
+          Telefono
+          <input
+            value={persona.telefono}
+            onChange={(e) => updatePersona(persona.id, { telefono: e.target.value })}
+            style={{ width: "100%", padding: 8, marginTop: 6 }}
+          />
+        </label>
+        <label style={{ display: "block", fontSize: 12 }}>
+          Email
+          <input
+            value={persona.email}
+            onChange={(e) => updatePersona(persona.id, { email: e.target.value })}
+            style={{ width: "100%", padding: 8, marginTop: 6 }}
+          />
+        </label>
+        <label style={{ display: "block", fontSize: 12 }}>
+          Email avvisi aggiuntiva
+          <input
+            value={persona.email_secondarie}
+            onChange={(e) => updatePersona(persona.id, { email_secondarie: e.target.value })}
+            style={{ width: "100%", padding: 8, marginTop: 6 }}
+          />
+        </label>
+        <label
+          style={{
+            display: "inline-flex",
+            gap: 8,
+            alignItems: "center",
+            justifySelf: "start",
+            alignSelf: "center",
+            fontSize: 12,
+            marginTop: 24,
+          }}
+        >
+          <input
+            type="checkbox"
+            checked={persona.attivo}
+            onChange={(e) => updatePersona(persona.id, { attivo: e.target.checked })}
+          />
+          Attivo
+        </label>
+      </div>
+
+      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "space-between" }}>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+          <div style={{ fontSize: 13, color: "#4b5563" }}>
+            {persona.isNew
+              ? "Salva la persona per abilitare i documenti."
+              : `${companyById.get(persona.azienda_id) || "Nessuna azienda"} · ${docRows.length} documenti`}
+          </div>
+          {!persona.isNew && scadutiCount > 0 ? (
+            <span
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                padding: "4px 10px",
+                borderRadius: 999,
+                fontSize: 12,
+                fontWeight: 800,
+                background: "#fee2e2",
+                color: "#991b1b",
+                border: "1px solid #fecaca",
+                whiteSpace: "nowrap",
+              }}
+            >
+              SCADUTI: {scadutiCount}
+            </span>
+          ) : null}
+          {!persona.isNew && inScadenzaCount > 0 ? (
+            <span
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                padding: "4px 10px",
+                borderRadius: 999,
+                fontSize: 12,
+                fontWeight: 800,
+                background: "#ffedd5",
+                color: "#c2410c",
+                border: "1px solid #fdba74",
+                whiteSpace: "nowrap",
+              }}
+            >
+              IN SCADENZA: {inScadenzaCount}
+            </span>
+          ) : null}
+        </div>
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          {isExpanded ? (
+            <button
+              type="button"
+              onClick={() => addDocumentoPersona(persona)}
+              disabled={persona.isNew}
+              style={{
+                padding: "8px 12px",
+                borderRadius: 10,
+                border: "1px solid #d1d5db",
+                background: "white",
+                cursor: persona.isNew ? "not-allowed" : "pointer",
+                opacity: persona.isNew ? 0.7 : 1,
+              }}
+            >
+              + Documento persona
+            </button>
+          ) : null}
+          <button
+            type="button"
+            onClick={() => savePersona(persona)}
+            disabled={savingKey === `personale:${persona.id || "new"}`}
+            style={{
+              padding: "8px 12px",
+              borderRadius: 10,
+              border: "1px solid #111",
+              background: "#111",
+              color: "white",
+              cursor: "pointer",
+              opacity: savingKey === `personale:${persona.id || "new"}` ? 0.7 : 1,
+            }}
+          >
+            {savingKey === `personale:${persona.id || "new"}` ? "Salvataggio..." : "Salva persona"}
+          </button>
+          <button
+            type="button"
+            onClick={() =>
+              setExpandedPersonId((prev) => (prev === personId ? null : personId))
+            }
+            style={{
+              padding: "8px 12px",
+              borderRadius: 10,
+              border: "1px solid #d1d5db",
+              background: "white",
+              cursor: "pointer",
+            }}
+          >
+            Elenco
+          </button>
+          <button
+            type="button"
+            onClick={() => deletePersona(persona)}
+            style={{
+              padding: "8px 12px",
+              borderRadius: 10,
+              border: "1px solid #ddd",
+              background: "white",
+              cursor: "pointer",
+            }}
+          >
+            Elimina
+          </button>
+        </div>
+      </div>
+
+      {isExpanded ? (
+        <>
+          <div style={{ display: "grid", gap: 10 }}>
+            {(() => {
+              const missingStandardRows = requiredExpectedDocumentRows.filter(
+                (item) =>
+                  !docRows.some(
+                    (doc) => normalizeText(getDocumentoDisplayNome(doc)) === normalizeText(item.label)
+                  )
+              ).map((item) => ({
+                key: `missing:${item.key}`,
+                label: item.label,
+                doc: null as PersonaleDocumentoRow | null,
+                required: true,
+              }));
+
+              const unifiedRows = [
+                ...docRows.map((doc) => ({
+                  key: `doc:${String(doc.id || "")}`,
+                  label: getDocumentoDisplayNome(doc),
+                  doc,
+                  required: false,
+                })),
+                ...missingStandardRows,
+              ];
+
+              return unifiedRows.length === 0 ? (
+              <div
+                style={{
+                  fontSize: 13,
+                  color: "#6b7280",
+                  border: "1px dashed #d1d5db",
+                  borderRadius: 12,
+                  padding: 12,
+                }}
+              >
+                Nessun documento personale registrato.
+              </div>
+            ) : (
+              unifiedRows.map((entry) => {
+                const doc = entry.doc;
+                const rowId = String(doc?.id || entry.key);
+                const isEditing = doc ? doc.isNew || editingDocumentoId === doc.id : false;
+                const hasFileUrl = doc
+                  ? isHttpUrl(doc.file_url.trim()) || isStorageDocumentUrl(doc.file_url.trim())
+                  : false;
+                const rowError = documentRowErrorById[rowId];
+                const selectedFile = documentFileById[rowId];
+                const documentCatalogEntry = getDocumentCatalogEntryForDocumento(doc);
+                const displayNome = getDocumentoDisplayNome(doc);
+                const displayMeta = getDocumentoDisplayMeta(doc);
+                const derivedScadenza = doc ? getDerivedDocumentoScadenza(doc) : "";
+                const effectiveScadenza = doc ? getEffectiveDocumentoScadenza(doc) : "";
+                const hasDerivedScadenza =
+                  Boolean(doc) &&
+                  documentCatalogEntry?.has_scadenza !== false &&
+                  Boolean(derivedScadenza);
+                const badgeState = getDocumentoListBadgeState(doc);
+                const badgeStyle = getDocumentoListBadgeStyle(badgeState);
+
+                if (!doc) {
+                  return (
+                    <div
+                      key={entry.key}
+                      style={{
+                        display: "grid",
+                        gap: 10,
+                        border: "1px solid #e5e7eb",
+                        borderRadius: 12,
+                        padding: 12,
+                        background: "#fcfcfd",
+                      }}
+                    >
+                      <div
+                        style={{
+                          display: "grid",
+                          gap: 10,
+                          gridTemplateColumns:
+                            "minmax(220px, 1.3fr) minmax(140px, 0.8fr) minmax(150px, 0.8fr) auto",
+                          alignItems: "center",
+                        }}
+                      >
+                        <div style={{ display: "grid", gap: 6 }}>
+                          <div style={{ fontSize: 12, color: "#6b7280" }}>Tipo documento</div>
+                          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                            <span style={{ fontWeight: 600 }}>{entry.label}</span>
+                            {entry.required ? (
+                              <span style={{ fontSize: 11, color: "#6b7280" }}>minimo</span>
+                            ) : null}
+                          </div>
+                        </div>
+                        <div style={{ display: "grid", gap: 6 }}>
+                          <div style={{ fontSize: 12, color: "#6b7280" }}>Scadenza</div>
+                          <div>—</div>
+                        </div>
+                        <div style={{ display: "grid", gap: 6 }}>
+                          <div style={{ fontSize: 12, color: "#6b7280" }}>Stato</div>
+                          <div>
+                            <span
+                              style={{
+                                display: "inline-flex",
+                                alignItems: "center",
+                                padding: "2px 8px",
+                                borderRadius: 999,
+                                fontSize: 11,
+                                fontWeight: 700,
+                                ...badgeStyle,
+                              }}
+                            >
+                              {badgeState}
+                            </span>
+                          </div>
+                        </div>
+                        <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, flexWrap: "wrap" }} />
+                      </div>
+                    </div>
+                  );
+                }
+
+                const docTypeChoices =
+                  displayNome !== "—" && !documentTypeOptions.includes(displayNome)
+                    ? [displayNome, ...documentTypeOptions]
+                    : documentTypeOptions;
+                return (
+                  <div
+                    key={doc.id}
+                    style={{
+                      display: "grid",
+                      gap: 10,
+                      border:
+                        badgeState === "SCADUTO"
+                          ? "1px solid #fecaca"
+                          : badgeState === "IN SCADENZA"
+                            ? "1px solid #fdba74"
+                            : "1px solid #f1f5f9",
+                      borderRadius: 12,
+                      padding: 12,
+                      background:
+                        badgeState === "SCADUTO"
+                          ? "#fff7f7"
+                          : badgeState === "IN SCADENZA"
+                            ? "#fffaf5"
+                            : "#fcfcfd",
+                    }}
+                  >
+                    {isEditing ? (
+                      <div
+                        style={{
+                          display: "grid",
+                          gap: 10,
+                          gridTemplateColumns:
+                            "minmax(180px, 1fr) minmax(130px, 0.75fr) minmax(130px, 0.75fr) minmax(110px, 0.65fr) minmax(180px, 0.95fr) minmax(230px, 1.15fr) minmax(220px, 1.1fr) minmax(240px, 1fr)",
+                          alignItems: "start",
+                        }}
+                      >
+                        <label style={{ display: "grid", gap: 6, fontSize: 12 }}>
+                          <span style={{ color: "#6b7280" }}>Tipo documento</span>
+                          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                            <select
+                              value={displayNome === "—" ? "" : displayNome}
+                              onChange={(e) => {
+                                const selectedLabel = e.target.value;
+                                const selectedCatalog = documentCatalogRows.find(
+                                  (row) => String(row.nome || "").trim() === selectedLabel
+                                );
+                                updateDocumento(doc.id, {
+                                  tipo_documento: selectedLabel,
+                                  document_catalog_id: selectedCatalog?.id || "",
+                                });
+                              }}
+                              style={{ width: "100%", padding: 8 }}
+                            >
+                              <option value="">— Seleziona —</option>
+                            {docTypeChoices.map((option) => (
+                              <option key={option} value={option}>
+                                {option}
+                              </option>
+                            ))}
+                          </select>
+                            <span
+                              style={{
+                                display: "inline-flex",
+                                alignItems: "center",
+                                padding: "2px 8px",
+                                borderRadius: 999,
+                                fontSize: 11,
+                                fontWeight: 700,
+                                ...badgeStyle,
+                              }}
+                            >
+                              {badgeState}
+                            </span>
+                            {displayMeta ? (
+                              <span style={{ fontSize: 11, color: "#6b7280" }}>{displayMeta}</span>
+                            ) : null}
+                          </div>
+                        </label>
+                        <label style={{ display: "grid", gap: 6, fontSize: 12 }}>
+                          <span style={{ color: "#6b7280" }}>Data rilascio</span>
+                          <input
+                            type="date"
+                            value={doc.data_rilascio}
+                            onChange={(e) => updateDocumento(doc.id, { data_rilascio: e.target.value })}
+                            style={{ width: "100%", padding: 8 }}
+                          />
+                        </label>
+                        <label style={{ display: "grid", gap: 6, fontSize: 12 }}>
+                          <span style={{ color: "#6b7280" }}>Data scadenza</span>
+                          {documentCatalogEntry?.has_scadenza === false ? (
+                            <div
+                              style={{
+                                minHeight: 38,
+                                display: "flex",
+                                alignItems: "center",
+                                padding: "0 8px",
+                                borderRadius: 8,
+                                border: "1px solid #e5e7eb",
+                                background: "#f9fafb",
+                                color: "#6b7280",
+                              }}
+                            >
+                              Nessuna scadenza prevista
+                            </div>
+                          ) : (
+                            <>
+                              <input
+                                type="date"
+                                value={doc.scadenza_override_manuale ? doc.data_scadenza : effectiveScadenza}
+                                onChange={(e) =>
+                                  updateDocumento(doc.id, { data_scadenza: e.target.value })
+                                }
+                                readOnly={!doc.scadenza_override_manuale && hasDerivedScadenza}
+                                disabled={!doc.scadenza_override_manuale && hasDerivedScadenza}
+                                style={{
+                                  width: "100%",
+                                  padding: 8,
+                                  background:
+                                    !doc.scadenza_override_manuale && hasDerivedScadenza
+                                      ? "#f9fafb"
+                                      : "white",
+                                }}
+                              />
+                              {!doc.scadenza_override_manuale && hasDerivedScadenza ? (
+                                <span style={{ color: "#6b7280" }}>
+                                  Derivata dal catalogo e dalla data rilascio
+                                </span>
+                              ) : null}
+                            </>
+                          )}
+                        </label>
+                        <label
+                          style={{
+                            display: "inline-flex",
+                            gap: 8,
+                            alignItems: "center",
+                            alignSelf: "center",
+                            fontSize: 12,
+                            marginTop: 24,
+                          }}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={doc.scadenza_override_manuale}
+                            disabled={documentCatalogEntry?.has_scadenza === false}
+                            onChange={(e) =>
+                              updateDocumento(doc.id, {
+                                scadenza_override_manuale: e.target.checked,
+                              })
+                            }
+                          />
+                          Scadenza manuale
+                        </label>
+                        <label style={{ display: "grid", gap: 6, fontSize: 12 }}>
+                          <span style={{ color: "#6b7280" }}>Preavviso</span>
+                          <input
+                            type="number"
+                            min={0}
+                            step={1}
+                            value={doc.giorni_preavviso}
+                            onChange={(e) => updateDocumento(doc.id, { giorni_preavviso: e.target.value })}
+                            placeholder="giorni"
+                            style={{ width: "100%", padding: 8 }}
+                          />
+                        </label>
+                        <div style={{ display: "grid", gap: 6, fontSize: 12 }}>
+                          <div style={{ color: "#6b7280" }}>Alert</div>
+                          <div style={{ display: "grid", gap: 6 }}>
+                            <select
+                              value={doc.alert_frequenza}
+                              onChange={(e) => updateDocumento(doc.id, { alert_frequenza: e.target.value })}
+                              style={{ width: "100%", padding: 8 }}
+                            >
+                              <option value="">Frequenza —</option>
+                              <option value="ONCE">ONCE</option>
+                              <option value="DAILY">DAILY</option>
+                              <option value="WEEKLY">WEEKLY</option>
+                            </select>
+                            <select
+                              value={doc.alert_stato}
+                              onChange={(e) => updateDocumento(doc.id, { alert_stato: e.target.value })}
+                              style={{ width: "100%", padding: 8 }}
+                            >
+                              <option value="">Stato —</option>
+                              <option value="ATTIVO">ATTIVO</option>
+                              <option value="SOSPESO">SOSPESO</option>
+                              <option value="COMPLETATO">COMPLETATO</option>
+                            </select>
+                          </div>
+                        </div>
+                        <div style={{ display: "grid", gap: 6, fontSize: 12 }}>
+                          <div style={{ color: "#6b7280" }}>File / link</div>
+                          <input
+                              value={doc.file_url}
+                              onChange={(e) => updateDocumento(doc.id, { file_url: e.target.value })}
+                              style={{ width: "100%", padding: 8 }}
+                            placeholder="URL file"
+                          />
+                          <input
+                            type="file"
+                            onChange={(e) =>
+                              setDocumentFileById((prev) => ({
+                                ...prev,
+                                [rowId]: e.target.files?.[0] || null,
+                              }))
+                            }
+                            style={{ width: "100%" }}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => uploadDocumentoFile(doc)}
+                            disabled={savingKey === `personale-doc-upload:${rowId}`}
+                            style={{
+                              padding: "8px 12px",
+                              borderRadius: 10,
+                              border: "1px solid #d1d5db",
+                              background: "white",
+                              cursor: "pointer",
+                              opacity: savingKey === `personale-doc-upload:${rowId}` ? 0.7 : 1,
+                            }}
+                          >
+                            {savingKey === `personale-doc-upload:${rowId}` ? "Caricamento..." : "Carica file"}
+                          </button>
+                          <div style={{ fontSize: 12, color: "#6b7280" }}>
+                            {selectedFile?.name || (hasFileUrl ? "File già associato" : "Nessun file selezionato")}
+                          </div>
+                        </div>
+                        <label style={{ display: "grid", gap: 6, fontSize: 12 }}>
+                          <span style={{ color: "#6b7280" }}>Note</span>
+                          <textarea
+                            value={doc.note}
+                            onChange={(e) => updateDocumento(doc.id, { note: e.target.value })}
+                            rows={4}
+                            style={{ width: "100%", padding: 8, resize: "vertical" }}
+                          />
+                        </label>
+                        <div style={{ display: "grid", gap: 8, alignContent: "start" }}>
+                          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                            {!doc.isNew ? (
+                              <button
+                                type="button"
+                                onClick={() => setEditingDocumentoId(null)}
+                                style={{
+                                  padding: "8px 12px",
+                                  borderRadius: 10,
+                                  border: "1px solid #d1d5db",
+                                  background: "white",
+                                  cursor: "pointer",
+                                }}
+                              >
+                                Annulla
+                              </button>
+                            ) : null}
+                            <button
+                              type="button"
+                              onClick={() => saveDocumento(doc)}
+                              disabled={savingKey === `personale-doc:${doc.id || "new"}`}
+                              style={{
+                                padding: "8px 12px",
+                                borderRadius: 10,
+                                border: "1px solid #111",
+                                background: "#111",
+                                color: "white",
+                                cursor: "pointer",
+                                opacity: savingKey === `personale-doc:${doc.id || "new"}` ? 0.7 : 1,
+                              }}
+                            >
+                              {savingKey === `personale-doc:${doc.id || "new"}` ? "Salvataggio..." : "Salva documento"}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => deleteDocumento(doc)}
+                              style={{
+                                padding: "8px 12px",
+                                borderRadius: 10,
+                                border: "1px solid #ddd",
+                                background: "white",
+                                cursor: "pointer",
+                              }}
+                            >
+                              Elimina
+                            </button>
+                          </div>
+                          {rowError ? <div style={{ fontSize: 12, color: "#b91c1c" }}>{rowError}</div> : null}
+                        </div>
+                      </div>
+                    ) : (
+                      <div
+                        style={{
+                          display: "grid",
+                          gap: 10,
+                          gridTemplateColumns:
+                            "minmax(220px, 1.2fr) minmax(140px, 0.8fr) minmax(150px, 0.8fr) minmax(180px, 0.9fr) minmax(220px, 1fr) minmax(220px, 1.1fr) auto",
+                          alignItems: "start",
+                        }}
+                      >
+                        <div style={{ display: "grid", gap: 6 }}>
+                          <div style={{ fontSize: 12, color: "#6b7280" }}>Tipo documento</div>
+                          <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                            <span style={{ fontWeight: 600 }}>{displayNome}</span>
+                            {displayMeta ? (
+                              <span style={{ fontSize: 11, color: "#6b7280" }}>{displayMeta}</span>
+                            ) : null}
+                          </div>
+                        </div>
+                        <div style={{ display: "grid", gap: 6 }}>
+                          <div style={{ fontSize: 12, color: "#6b7280" }}>Scadenza</div>
+                          <div>{formatDocumentoDate(effectiveScadenza)}</div>
+                        </div>
+                        <div style={{ display: "grid", gap: 6 }}>
+                          <div style={{ fontSize: 12, color: "#6b7280" }}>Stato</div>
+                          <div>
+                            <span
+                              style={{
+                                display: "inline-flex",
+                                alignItems: "center",
+                                padding: "2px 8px",
+                                borderRadius: 999,
+                                fontSize: 11,
+                                fontWeight: 700,
+                                ...badgeStyle,
+                              }}
+                            >
+                              {badgeState}
+                            </span>
+                          </div>
+                        </div>
+                        <div style={{ display: "grid", gap: 6 }}>
+                          <div style={{ fontSize: 12, color: "#6b7280" }}>Alert</div>
+                          <div>{[doc.alert_frequenza || "—", doc.alert_stato || "—"].join(" / ")}</div>
+                        </div>
+                        <div style={{ display: "grid", gap: 6 }}>
+                          <div style={{ fontSize: 12, color: "#6b7280" }}>File / link</div>
+                          <div
+                            style={{
+                              whiteSpace: "nowrap",
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                            }}
+                            title={doc.file_url || undefined}
+                          >
+                            {doc.file_url || "—"}
+                          </div>
+                        </div>
+                        <div style={{ display: "grid", gap: 6 }}>
+                          <div style={{ fontSize: 12, color: "#6b7280" }}>Note</div>
+                          <div
+                            style={{
+                              whiteSpace: "pre-wrap",
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                            }}
+                          >
+                            {doc.note || "—"}
+                          </div>
+                        </div>
+                        <div style={{ display: "grid", gap: 8, justifyItems: "end" }}>
+                          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
+                            <button
+                              type="button"
+                              onClick={() => setEditingDocumentoId(doc.id || null)}
+                              style={{
+                                padding: "8px 12px",
+                                borderRadius: 10,
+                                border: "1px solid #d1d5db",
+                                background: "white",
+                                cursor: "pointer",
+                              }}
+                            >
+                              Gestisci
+                            </button>
+                            {hasFileUrl ? (
+                              <button
+                                type="button"
+                                onClick={() => void openDocumentoFile(doc)}
+                                style={{
+                                  padding: "8px 12px",
+                                  borderRadius: 10,
+                                  border: "1px solid #d1d5db",
+                                  background: "white",
+                                  cursor: "pointer",
+                                }}
+                              >
+                                Apri
+                              </button>
+                            ) : null}
+                            <button
+                              type="button"
+                              onClick={() => deleteDocumento(doc)}
+                              style={{
+                                padding: "8px 12px",
+                                borderRadius: 10,
+                                border: "1px solid #ddd",
+                                background: "white",
+                                cursor: "pointer",
+                              }}
+                            >
+                              Elimina
+                            </button>
+                          </div>
+                          {rowError ? <div style={{ fontSize: 12, color: "#b91c1c" }}>{rowError}</div> : null}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })
+            );
+            })()}
+          </div>
+          </>
+        ) : null}
+      </div>
+    );
+  }
+
 
   return (
     <div style={{ maxWidth: 1180, margin: "24px auto", padding: 16, paddingBottom: 56 }}>
@@ -1080,173 +1908,39 @@ function PersonalePageContent() {
               {persone.length === 0 ? "Nessuna persona configurata." : "Nessun risultato per la ricerca."}
             </div>
           ) : (
-            visiblePersone.map((persona, index) => {
-              const personId = String(persona.id || "");
-              const companyLabel = companyById.get(persona.azienda_id) || "Senza azienda";
-              const previousCompanyLabel =
-                viewMode === "PER_AZIENDA" && index > 0
-                  ? companyById.get(visiblePersone[index - 1]?.azienda_id) || "Senza azienda"
-                  : null;
-              const showCompanyHeader = viewMode === "PER_AZIENDA" && companyLabel !== previousCompanyLabel;
-              const allDocRows = docsByPersonale.get(personId) || [];
-              const docRows = isScadenzeFilterActive
-                ? allDocRows.filter((doc) => getDocumentoBadgeState(doc) !== null)
-                : allDocRows;
-              let scadutiCount = 0;
-              let inScadenzaCount = 0;
-              for (const doc of allDocRows) {
-                const badgeState = getDocumentoBadgeState(doc);
-                if (badgeState === "SCADUTO") scadutiCount += 1;
-                if (badgeState === "IN_SCADENZA") inScadenzaCount += 1;
-              }
-              const isExpanded = expandedPersonId === personId;
-              return (
-                <div key={persona.id} style={{ display: "grid", gap: 10 }}>
-                  {showCompanyHeader ? (
-                    <div
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 10,
-                        padding: "10px 12px",
-                        borderRadius: 12,
-                        border: "1px solid #e2e8f0",
-                        background: "#f8fafc",
-                      }}
-                    >
-                      <div style={{ fontSize: 17, fontWeight: 800, color: "#0f172a" }}>{companyLabel}</div>
-                      <div style={{ flex: 1, height: 1, background: "#e2e8f0" }} />
-                      {persona.azienda_id ? (
-                        <Link
-                          href={`/impostazioni/aziende#azienda-${encodeURIComponent(persona.azienda_id)}`}
-                          style={{ fontSize: 13, fontWeight: 700, color: "#2563eb", textDecoration: "none" }}
-                        >
-                          Apri azienda →
-                        </Link>
-                      ) : null}
-                    </div>
-                  ) : null}
-                  <div
-                    id={personId ? `personale-${personId}` : undefined}
-                    style={{
-                      border: "1px solid #e5e7eb",
-                      borderRadius: 14,
-                      background: "white",
-                      padding: 16,
-                      display: "grid",
-                      gap: 14,
-                    }}
-                  >
-                    <div
+            viewMode === "PER_AZIENDA" ? (
+              groupedPersoneByCompany.map((group) => {
+                const isExpanded = expandedCompanyId === group.companyId;
+                const hasCritical = group.scadutiCount > 0 || group.inScadenzaCount > 0;
+                return (
+                  <div key={group.companyId || group.companyLabel} style={{ display: "grid", gap: 10 }}>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setExpandedCompanyId((prev) => (prev === group.companyId ? null : group.companyId))
+                      }
                       style={{
                         display: "grid",
-                        gap: 12,
-                        gridTemplateColumns:
-                          "minmax(150px, 1fr) minmax(150px, 1fr) minmax(200px, 1.4fr) 170px 160px 200px minmax(220px, 1.2fr) 100px",
-                        alignItems: "end",
+                        gap: 10,
+                        width: "100%",
+                        textAlign: "left",
+                        padding: "14px 16px",
+                        borderRadius: 14,
+                        border: hasCritical ? "1px solid #fdba74" : "1px solid #e2e8f0",
+                        background: hasCritical ? "#fffaf5" : "#f8fafc",
+                        cursor: "pointer",
                       }}
                     >
-                    <label style={{ display: "block", fontSize: 12 }}>
-                      Nome
-                      <input
-                        value={persona.nome}
-                        onChange={(e) => updatePersona(persona.id, { nome: e.target.value })}
-                        style={{ width: "100%", padding: 8, marginTop: 6 }}
-                      />
-                    </label>
-                    <label style={{ display: "block", fontSize: 12 }}>
-                      Cognome
-                      <input
-                        value={persona.cognome}
-                        onChange={(e) => updatePersona(persona.id, { cognome: e.target.value })}
-                        style={{ width: "100%", padding: 8, marginTop: 6 }}
-                      />
-                    </label>
-                    <label style={{ display: "block", fontSize: 12 }}>
-                      Azienda
-                      <select
-                        value={persona.azienda_id}
-                        onChange={(e) => updatePersona(persona.id, { azienda_id: e.target.value })}
-                        style={{ width: "100%", padding: 8, marginTop: 6 }}
-                      >
-                        <option value="">— Nessuna azienda —</option>
-                        {aziende.map((azienda) => (
-                          <option key={azienda.id} value={azienda.id}>
-                            {azienda.ragione_sociale}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                    <label style={{ display: "block", fontSize: 12 }}>
-                      Tipo
-                      <select
-                        value={persona.tipo}
-                        onChange={(e) =>
-                          updatePersona(persona.id, {
-                            tipo: e.target.value === "INTERNO" ? "INTERNO" : "ESTERNO",
-                          })
-                        }
-                        style={{ width: "100%", padding: 8, marginTop: 6 }}
-                      >
-                        {PERSONALE_TIPO_OPTIONS.map((tipo) => (
-                          <option key={tipo} value={tipo}>
-                            {tipo}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                    <label style={{ display: "block", fontSize: 12 }}>
-                      Telefono
-                      <input
-                        value={persona.telefono}
-                        onChange={(e) => updatePersona(persona.id, { telefono: e.target.value })}
-                        style={{ width: "100%", padding: 8, marginTop: 6 }}
-                      />
-                    </label>
-                    <label style={{ display: "block", fontSize: 12 }}>
-                      Email
-                      <input
-                        value={persona.email}
-                        onChange={(e) => updatePersona(persona.id, { email: e.target.value })}
-                        style={{ width: "100%", padding: 8, marginTop: 6 }}
-                      />
-                    </label>
-                    <label style={{ display: "block", fontSize: 12 }}>
-                      Email avvisi aggiuntiva
-                      <input
-                        value={persona.email_secondarie}
-                        onChange={(e) => updatePersona(persona.id, { email_secondarie: e.target.value })}
-                        style={{ width: "100%", padding: 8, marginTop: 6 }}
-                      />
-                    </label>
-                    <label
-                      style={{
-                        display: "inline-flex",
-                        gap: 8,
-                        alignItems: "center",
-                        justifySelf: "start",
-                        alignSelf: "center",
-                        fontSize: 12,
-                        marginTop: 24,
-                      }}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={persona.attivo}
-                        onChange={(e) => updatePersona(persona.id, { attivo: e.target.checked })}
-                      />
-                      Attivo
-                    </label>
-                  </div>
-
-                  <div style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "space-between" }}>
-                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-                      <div style={{ fontSize: 13, color: "#4b5563" }}>
-                        {persona.isNew
-                          ? "Salva la persona per abilitare i documenti."
-                          : `${companyById.get(persona.azienda_id) || "Nessuna azienda"} · ${docRows.length} documenti`}
+                      <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+                        <div style={{ fontSize: 17, fontWeight: 800, color: "#0f172a" }}>
+                          {group.companyLabel}
+                        </div>
+                        <div style={{ flex: 1, height: 1, background: "#e2e8f0", minWidth: 40 }} />
+                        <span style={{ fontSize: 13, fontWeight: 700, color: "#475569" }}>
+                          {isExpanded ? "Nascondi" : "Vedi personale"}
+                        </span>
                       </div>
-                      {!persona.isNew && scadutiCount > 0 ? (
+                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
                         <span
                           style={{
                             display: "inline-flex",
@@ -1255,634 +1949,87 @@ function PersonalePageContent() {
                             borderRadius: 999,
                             fontSize: 12,
                             fontWeight: 800,
-                            background: "#fee2e2",
-                            color: "#991b1b",
-                            border: "1px solid #fecaca",
-                            whiteSpace: "nowrap",
+                            background: "#e0f2fe",
+                            color: "#075985",
+                            border: "1px solid #bae6fd",
                           }}
                         >
-                          SCADUTI: {scadutiCount}
+                          Persone: {group.peopleCount}
                         </span>
-                      ) : null}
-                      {!persona.isNew && inScadenzaCount > 0 ? (
-                        <span
-                          style={{
-                            display: "inline-flex",
-                            alignItems: "center",
-                            padding: "4px 10px",
-                            borderRadius: 999,
-                            fontSize: 12,
-                            fontWeight: 800,
-                            background: "#ffedd5",
-                            color: "#c2410c",
-                            border: "1px solid #fdba74",
-                            whiteSpace: "nowrap",
-                          }}
-                        >
-                          IN SCADENZA: {inScadenzaCount}
-                        </span>
-                      ) : null}
-                    </div>
-                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                      {isExpanded ? (
-                        <button
-                          type="button"
-                          onClick={() => addDocumentoPersona(persona)}
-                          disabled={persona.isNew}
-                          style={{
-                            padding: "8px 12px",
-                            borderRadius: 10,
-                            border: "1px solid #d1d5db",
-                            background: "white",
-                            cursor: persona.isNew ? "not-allowed" : "pointer",
-                            opacity: persona.isNew ? 0.7 : 1,
-                          }}
-                        >
-                          + Documento persona
-                        </button>
-                      ) : null}
-                      <button
-                        type="button"
-                        onClick={() => savePersona(persona)}
-                        disabled={savingKey === `personale:${persona.id || "new"}`}
-                        style={{
-                          padding: "8px 12px",
-                          borderRadius: 10,
-                          border: "1px solid #111",
-                          background: "#111",
-                          color: "white",
-                          cursor: "pointer",
-                          opacity: savingKey === `personale:${persona.id || "new"}` ? 0.7 : 1,
-                        }}
-                      >
-                        {savingKey === `personale:${persona.id || "new"}` ? "Salvataggio..." : "Salva persona"}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() =>
-                          setExpandedPersonId((prev) => (prev === personId ? null : personId))
-                        }
-                        style={{
-                          padding: "8px 12px",
-                          borderRadius: 10,
-                          border: "1px solid #d1d5db",
-                          background: "white",
-                          cursor: "pointer",
-                        }}
-                      >
-                        Elenco
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => deletePersona(persona)}
-                        style={{
-                          padding: "8px 12px",
-                          borderRadius: 10,
-                          border: "1px solid #ddd",
-                          background: "white",
-                          cursor: "pointer",
-                        }}
-                      >
-                        Elimina
-                      </button>
-                    </div>
-                  </div>
-
-                  {isExpanded ? (
-                    <>
-                      <div style={{ display: "grid", gap: 10 }}>
-                        {(() => {
-                          const missingStandardRows = requiredExpectedDocumentRows.filter(
-                            (item) =>
-                              !docRows.some(
-                                (doc) => normalizeText(getDocumentoDisplayNome(doc)) === normalizeText(item.label)
-                              )
-                          ).map((item) => ({
-                            key: `missing:${item.key}`,
-                            label: item.label,
-                            doc: null as PersonaleDocumentoRow | null,
-                            required: true,
-                          }));
-
-                          const unifiedRows = [
-                            ...docRows.map((doc) => ({
-                              key: `doc:${String(doc.id || "")}`,
-                              label: getDocumentoDisplayNome(doc),
-                              doc,
-                              required: false,
-                            })),
-                            ...missingStandardRows,
-                          ];
-
-                          return unifiedRows.length === 0 ? (
-                          <div
+                        {group.scadutiCount > 0 ? (
+                          <span
                             style={{
-                              fontSize: 13,
-                              color: "#6b7280",
-                              border: "1px dashed #d1d5db",
-                              borderRadius: 12,
-                              padding: 12,
+                              display: "inline-flex",
+                              alignItems: "center",
+                              padding: "4px 10px",
+                              borderRadius: 999,
+                              fontSize: 12,
+                              fontWeight: 800,
+                              background: "#fee2e2",
+                              color: "#991b1b",
+                              border: "1px solid #fecaca",
                             }}
                           >
-                            Nessun documento personale registrato.
-                          </div>
-                        ) : (
-                          unifiedRows.map((entry) => {
-                            const doc = entry.doc;
-                            const rowId = String(doc?.id || entry.key);
-                            const isEditing = doc ? doc.isNew || editingDocumentoId === doc.id : false;
-                            const hasFileUrl = doc
-                              ? isHttpUrl(doc.file_url.trim()) || isStorageDocumentUrl(doc.file_url.trim())
-                              : false;
-                            const rowError = documentRowErrorById[rowId];
-                            const selectedFile = documentFileById[rowId];
-                            const documentCatalogEntry = getDocumentCatalogEntryForDocumento(doc);
-                            const displayNome = getDocumentoDisplayNome(doc);
-                            const displayMeta = getDocumentoDisplayMeta(doc);
-                            const derivedScadenza = doc ? getDerivedDocumentoScadenza(doc) : "";
-                            const effectiveScadenza = doc ? getEffectiveDocumentoScadenza(doc) : "";
-                            const hasDerivedScadenza =
-                              Boolean(doc) &&
-                              documentCatalogEntry?.has_scadenza !== false &&
-                              Boolean(derivedScadenza);
-                            const badgeState = getDocumentoListBadgeState(doc);
-                            const badgeStyle = getDocumentoListBadgeStyle(badgeState);
-
-                            if (!doc) {
-                              return (
-                                <div
-                                  key={entry.key}
-                                  style={{
-                                    display: "grid",
-                                    gap: 10,
-                                    border: "1px solid #e5e7eb",
-                                    borderRadius: 12,
-                                    padding: 12,
-                                    background: "#fcfcfd",
-                                  }}
-                                >
-                                  <div
-                                    style={{
-                                      display: "grid",
-                                      gap: 10,
-                                      gridTemplateColumns:
-                                        "minmax(220px, 1.3fr) minmax(140px, 0.8fr) minmax(150px, 0.8fr) auto",
-                                      alignItems: "center",
-                                    }}
-                                  >
-                                    <div style={{ display: "grid", gap: 6 }}>
-                                      <div style={{ fontSize: 12, color: "#6b7280" }}>Tipo documento</div>
-                                      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                                        <span style={{ fontWeight: 600 }}>{entry.label}</span>
-                                        {entry.required ? (
-                                          <span style={{ fontSize: 11, color: "#6b7280" }}>minimo</span>
-                                        ) : null}
-                                      </div>
-                                    </div>
-                                    <div style={{ display: "grid", gap: 6 }}>
-                                      <div style={{ fontSize: 12, color: "#6b7280" }}>Scadenza</div>
-                                      <div>—</div>
-                                    </div>
-                                    <div style={{ display: "grid", gap: 6 }}>
-                                      <div style={{ fontSize: 12, color: "#6b7280" }}>Stato</div>
-                                      <div>
-                                        <span
-                                          style={{
-                                            display: "inline-flex",
-                                            alignItems: "center",
-                                            padding: "2px 8px",
-                                            borderRadius: 999,
-                                            fontSize: 11,
-                                            fontWeight: 700,
-                                            ...badgeStyle,
-                                          }}
-                                        >
-                                          {badgeState}
-                                        </span>
-                                      </div>
-                                    </div>
-                                    <div style={{ display: "flex", justifyContent: "flex-end", gap: 8, flexWrap: "wrap" }} />
-                                  </div>
-                                </div>
-                              );
-                            }
-
-                            const docTypeChoices =
-                              displayNome !== "—" && !documentTypeOptions.includes(displayNome)
-                                ? [displayNome, ...documentTypeOptions]
-                                : documentTypeOptions;
-                            return (
-                              <div
-                                key={doc.id}
-                                style={{
-                                  display: "grid",
-                                  gap: 10,
-                                  border:
-                                    badgeState === "SCADUTO"
-                                      ? "1px solid #fecaca"
-                                      : badgeState === "IN SCADENZA"
-                                        ? "1px solid #fdba74"
-                                        : "1px solid #f1f5f9",
-                                  borderRadius: 12,
-                                  padding: 12,
-                                  background:
-                                    badgeState === "SCADUTO"
-                                      ? "#fff7f7"
-                                      : badgeState === "IN SCADENZA"
-                                        ? "#fffaf5"
-                                        : "#fcfcfd",
-                                }}
-                              >
-                                {isEditing ? (
-                                  <div
-                                    style={{
-                                      display: "grid",
-                                      gap: 10,
-                                      gridTemplateColumns:
-                                        "minmax(180px, 1fr) minmax(130px, 0.75fr) minmax(130px, 0.75fr) minmax(110px, 0.65fr) minmax(180px, 0.95fr) minmax(230px, 1.15fr) minmax(220px, 1.1fr) minmax(240px, 1fr)",
-                                      alignItems: "start",
-                                    }}
-                                  >
-                                    <label style={{ display: "grid", gap: 6, fontSize: 12 }}>
-                                      <span style={{ color: "#6b7280" }}>Tipo documento</span>
-                                      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                                        <select
-                                          value={displayNome === "—" ? "" : displayNome}
-                                          onChange={(e) => {
-                                            const selectedLabel = e.target.value;
-                                            const selectedCatalog = documentCatalogRows.find(
-                                              (row) => String(row.nome || "").trim() === selectedLabel
-                                            );
-                                            updateDocumento(doc.id, {
-                                              tipo_documento: selectedLabel,
-                                              document_catalog_id: selectedCatalog?.id || "",
-                                            });
-                                          }}
-                                          style={{ width: "100%", padding: 8 }}
-                                        >
-                                          <option value="">— Seleziona —</option>
-                                        {docTypeChoices.map((option) => (
-                                          <option key={option} value={option}>
-                                            {option}
-                                          </option>
-                                        ))}
-                                      </select>
-                                        <span
-                                          style={{
-                                            display: "inline-flex",
-                                            alignItems: "center",
-                                            padding: "2px 8px",
-                                            borderRadius: 999,
-                                            fontSize: 11,
-                                            fontWeight: 700,
-                                            ...badgeStyle,
-                                          }}
-                                        >
-                                          {badgeState}
-                                        </span>
-                                        {displayMeta ? (
-                                          <span style={{ fontSize: 11, color: "#6b7280" }}>{displayMeta}</span>
-                                        ) : null}
-                                      </div>
-                                    </label>
-                                    <label style={{ display: "grid", gap: 6, fontSize: 12 }}>
-                                      <span style={{ color: "#6b7280" }}>Data rilascio</span>
-                                      <input
-                                        type="date"
-                                        value={doc.data_rilascio}
-                                        onChange={(e) => updateDocumento(doc.id, { data_rilascio: e.target.value })}
-                                        style={{ width: "100%", padding: 8 }}
-                                      />
-                                    </label>
-                                    <label style={{ display: "grid", gap: 6, fontSize: 12 }}>
-                                      <span style={{ color: "#6b7280" }}>Data scadenza</span>
-                                      {documentCatalogEntry?.has_scadenza === false ? (
-                                        <div
-                                          style={{
-                                            minHeight: 38,
-                                            display: "flex",
-                                            alignItems: "center",
-                                            padding: "0 8px",
-                                            borderRadius: 8,
-                                            border: "1px solid #e5e7eb",
-                                            background: "#f9fafb",
-                                            color: "#6b7280",
-                                          }}
-                                        >
-                                          Nessuna scadenza prevista
-                                        </div>
-                                      ) : (
-                                        <>
-                                          <input
-                                            type="date"
-                                            value={doc.scadenza_override_manuale ? doc.data_scadenza : effectiveScadenza}
-                                            onChange={(e) =>
-                                              updateDocumento(doc.id, { data_scadenza: e.target.value })
-                                            }
-                                            readOnly={!doc.scadenza_override_manuale && hasDerivedScadenza}
-                                            disabled={!doc.scadenza_override_manuale && hasDerivedScadenza}
-                                            style={{
-                                              width: "100%",
-                                              padding: 8,
-                                              background:
-                                                !doc.scadenza_override_manuale && hasDerivedScadenza
-                                                  ? "#f9fafb"
-                                                  : "white",
-                                            }}
-                                          />
-                                          {!doc.scadenza_override_manuale && hasDerivedScadenza ? (
-                                            <span style={{ color: "#6b7280" }}>
-                                              Derivata dal catalogo e dalla data rilascio
-                                            </span>
-                                          ) : null}
-                                        </>
-                                      )}
-                                    </label>
-                                    <label
-                                      style={{
-                                        display: "inline-flex",
-                                        gap: 8,
-                                        alignItems: "center",
-                                        alignSelf: "center",
-                                        fontSize: 12,
-                                        marginTop: 24,
-                                      }}
-                                    >
-                                      <input
-                                        type="checkbox"
-                                        checked={doc.scadenza_override_manuale}
-                                        disabled={documentCatalogEntry?.has_scadenza === false}
-                                        onChange={(e) =>
-                                          updateDocumento(doc.id, {
-                                            scadenza_override_manuale: e.target.checked,
-                                          })
-                                        }
-                                      />
-                                      Scadenza manuale
-                                    </label>
-                                    <label style={{ display: "grid", gap: 6, fontSize: 12 }}>
-                                      <span style={{ color: "#6b7280" }}>Preavviso</span>
-                                      <input
-                                        type="number"
-                                        min={0}
-                                        step={1}
-                                        value={doc.giorni_preavviso}
-                                        onChange={(e) => updateDocumento(doc.id, { giorni_preavviso: e.target.value })}
-                                        placeholder="giorni"
-                                        style={{ width: "100%", padding: 8 }}
-                                      />
-                                    </label>
-                                    <div style={{ display: "grid", gap: 6, fontSize: 12 }}>
-                                      <div style={{ color: "#6b7280" }}>Alert</div>
-                                      <div style={{ display: "grid", gap: 6 }}>
-                                        <select
-                                          value={doc.alert_frequenza}
-                                          onChange={(e) => updateDocumento(doc.id, { alert_frequenza: e.target.value })}
-                                          style={{ width: "100%", padding: 8 }}
-                                        >
-                                          <option value="">Frequenza —</option>
-                                          <option value="ONCE">ONCE</option>
-                                          <option value="DAILY">DAILY</option>
-                                          <option value="WEEKLY">WEEKLY</option>
-                                        </select>
-                                        <select
-                                          value={doc.alert_stato}
-                                          onChange={(e) => updateDocumento(doc.id, { alert_stato: e.target.value })}
-                                          style={{ width: "100%", padding: 8 }}
-                                        >
-                                          <option value="">Stato —</option>
-                                          <option value="ATTIVO">ATTIVO</option>
-                                          <option value="SOSPESO">SOSPESO</option>
-                                          <option value="COMPLETATO">COMPLETATO</option>
-                                        </select>
-                                      </div>
-                                    </div>
-                                    <div style={{ display: "grid", gap: 6, fontSize: 12 }}>
-                                      <div style={{ color: "#6b7280" }}>File / link</div>
-                                      <input
-                                          value={doc.file_url}
-                                          onChange={(e) => updateDocumento(doc.id, { file_url: e.target.value })}
-                                          style={{ width: "100%", padding: 8 }}
-                                        placeholder="URL file"
-                                      />
-                                      <input
-                                        type="file"
-                                        onChange={(e) =>
-                                          setDocumentFileById((prev) => ({
-                                            ...prev,
-                                            [rowId]: e.target.files?.[0] || null,
-                                          }))
-                                        }
-                                        style={{ width: "100%" }}
-                                      />
-                                      <button
-                                        type="button"
-                                        onClick={() => uploadDocumentoFile(doc)}
-                                        disabled={savingKey === `personale-doc-upload:${rowId}`}
-                                        style={{
-                                          padding: "8px 12px",
-                                          borderRadius: 10,
-                                          border: "1px solid #d1d5db",
-                                          background: "white",
-                                          cursor: "pointer",
-                                          opacity: savingKey === `personale-doc-upload:${rowId}` ? 0.7 : 1,
-                                        }}
-                                      >
-                                        {savingKey === `personale-doc-upload:${rowId}` ? "Caricamento..." : "Carica file"}
-                                      </button>
-                                      <div style={{ fontSize: 12, color: "#6b7280" }}>
-                                        {selectedFile?.name || (hasFileUrl ? "File già associato" : "Nessun file selezionato")}
-                                      </div>
-                                    </div>
-                                    <label style={{ display: "grid", gap: 6, fontSize: 12 }}>
-                                      <span style={{ color: "#6b7280" }}>Note</span>
-                                      <textarea
-                                        value={doc.note}
-                                        onChange={(e) => updateDocumento(doc.id, { note: e.target.value })}
-                                        rows={4}
-                                        style={{ width: "100%", padding: 8, resize: "vertical" }}
-                                      />
-                                    </label>
-                                    <div style={{ display: "grid", gap: 8, alignContent: "start" }}>
-                                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                                        {!doc.isNew ? (
-                                          <button
-                                            type="button"
-                                            onClick={() => setEditingDocumentoId(null)}
-                                            style={{
-                                              padding: "8px 12px",
-                                              borderRadius: 10,
-                                              border: "1px solid #d1d5db",
-                                              background: "white",
-                                              cursor: "pointer",
-                                            }}
-                                          >
-                                            Annulla
-                                          </button>
-                                        ) : null}
-                                        <button
-                                          type="button"
-                                          onClick={() => saveDocumento(doc)}
-                                          disabled={savingKey === `personale-doc:${doc.id || "new"}`}
-                                          style={{
-                                            padding: "8px 12px",
-                                            borderRadius: 10,
-                                            border: "1px solid #111",
-                                            background: "#111",
-                                            color: "white",
-                                            cursor: "pointer",
-                                            opacity: savingKey === `personale-doc:${doc.id || "new"}` ? 0.7 : 1,
-                                          }}
-                                        >
-                                          {savingKey === `personale-doc:${doc.id || "new"}` ? "Salvataggio..." : "Salva documento"}
-                                        </button>
-                                        <button
-                                          type="button"
-                                          onClick={() => deleteDocumento(doc)}
-                                          style={{
-                                            padding: "8px 12px",
-                                            borderRadius: 10,
-                                            border: "1px solid #ddd",
-                                            background: "white",
-                                            cursor: "pointer",
-                                          }}
-                                        >
-                                          Elimina
-                                        </button>
-                                      </div>
-                                      {rowError ? <div style={{ fontSize: 12, color: "#b91c1c" }}>{rowError}</div> : null}
-                                    </div>
-                                  </div>
-                                ) : (
-                                  <div
-                                    style={{
-                                      display: "grid",
-                                      gap: 10,
-                                      gridTemplateColumns:
-                                        "minmax(220px, 1.2fr) minmax(140px, 0.8fr) minmax(150px, 0.8fr) minmax(180px, 0.9fr) minmax(220px, 1fr) minmax(220px, 1.1fr) auto",
-                                      alignItems: "start",
-                                    }}
-                                  >
-                                    <div style={{ display: "grid", gap: 6 }}>
-                                      <div style={{ fontSize: 12, color: "#6b7280" }}>Tipo documento</div>
-                                      <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                                        <span style={{ fontWeight: 600 }}>{displayNome}</span>
-                                        {displayMeta ? (
-                                          <span style={{ fontSize: 11, color: "#6b7280" }}>{displayMeta}</span>
-                                        ) : null}
-                                      </div>
-                                    </div>
-                                    <div style={{ display: "grid", gap: 6 }}>
-                                      <div style={{ fontSize: 12, color: "#6b7280" }}>Scadenza</div>
-                                      <div>{formatDocumentoDate(effectiveScadenza)}</div>
-                                    </div>
-                                    <div style={{ display: "grid", gap: 6 }}>
-                                      <div style={{ fontSize: 12, color: "#6b7280" }}>Stato</div>
-                                      <div>
-                                        <span
-                                          style={{
-                                            display: "inline-flex",
-                                            alignItems: "center",
-                                            padding: "2px 8px",
-                                            borderRadius: 999,
-                                            fontSize: 11,
-                                            fontWeight: 700,
-                                            ...badgeStyle,
-                                          }}
-                                        >
-                                          {badgeState}
-                                        </span>
-                                      </div>
-                                    </div>
-                                    <div style={{ display: "grid", gap: 6 }}>
-                                      <div style={{ fontSize: 12, color: "#6b7280" }}>Alert</div>
-                                      <div>{[doc.alert_frequenza || "—", doc.alert_stato || "—"].join(" / ")}</div>
-                                    </div>
-                                    <div style={{ display: "grid", gap: 6 }}>
-                                      <div style={{ fontSize: 12, color: "#6b7280" }}>File / link</div>
-                                      <div
-                                        style={{
-                                          whiteSpace: "nowrap",
-                                          overflow: "hidden",
-                                          textOverflow: "ellipsis",
-                                        }}
-                                        title={doc.file_url || undefined}
-                                      >
-                                        {doc.file_url || "—"}
-                                      </div>
-                                    </div>
-                                    <div style={{ display: "grid", gap: 6 }}>
-                                      <div style={{ fontSize: 12, color: "#6b7280" }}>Note</div>
-                                      <div
-                                        style={{
-                                          whiteSpace: "pre-wrap",
-                                          overflow: "hidden",
-                                          textOverflow: "ellipsis",
-                                        }}
-                                      >
-                                        {doc.note || "—"}
-                                      </div>
-                                    </div>
-                                    <div style={{ display: "grid", gap: 8, justifyItems: "end" }}>
-                                      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
-                                        <button
-                                          type="button"
-                                          onClick={() => setEditingDocumentoId(doc.id || null)}
-                                          style={{
-                                            padding: "8px 12px",
-                                            borderRadius: 10,
-                                            border: "1px solid #d1d5db",
-                                            background: "white",
-                                            cursor: "pointer",
-                                          }}
-                                        >
-                                          Gestisci
-                                        </button>
-                                        {hasFileUrl ? (
-                                          <button
-                                            type="button"
-                                            onClick={() => void openDocumentoFile(doc)}
-                                            style={{
-                                              padding: "8px 12px",
-                                              borderRadius: 10,
-                                              border: "1px solid #d1d5db",
-                                              background: "white",
-                                              cursor: "pointer",
-                                            }}
-                                          >
-                                            Apri
-                                          </button>
-                                        ) : null}
-                                        <button
-                                          type="button"
-                                          onClick={() => deleteDocumento(doc)}
-                                          style={{
-                                            padding: "8px 12px",
-                                            borderRadius: 10,
-                                            border: "1px solid #ddd",
-                                            background: "white",
-                                            cursor: "pointer",
-                                          }}
-                                        >
-                                          Elimina
-                                        </button>
-                                      </div>
-                                      {rowError ? <div style={{ fontSize: 12, color: "#b91c1c" }}>{rowError}</div> : null}
-                                    </div>
-                                  </div>
-                                )}
-                              </div>
-                            );
-                          })
-                        );
-                        })()}
+                            Scaduti: {group.scadutiCount}
+                          </span>
+                        ) : null}
+                        {group.inScadenzaCount > 0 ? (
+                          <span
+                            style={{
+                              display: "inline-flex",
+                              alignItems: "center",
+                              padding: "4px 10px",
+                              borderRadius: 999,
+                              fontSize: 12,
+                              fontWeight: 800,
+                              background: "#ffedd5",
+                              color: "#c2410c",
+                              border: "1px solid #fdba74",
+                            }}
+                          >
+                            In scadenza: {group.inScadenzaCount}
+                          </span>
+                        ) : null}
+                        {group.criticitaCount > 0 ? (
+                          <span
+                            style={{
+                              display: "inline-flex",
+                              alignItems: "center",
+                              padding: "4px 10px",
+                              borderRadius: 999,
+                              fontSize: 12,
+                              fontWeight: 800,
+                              background: "#fff7ed",
+                              color: "#9a3412",
+                              border: "1px solid #fdba74",
+                            }}
+                          >
+                            Criticità personale: {group.criticitaCount}
+                          </span>
+                        ) : null}
+                        {group.companyId ? (
+                          <Link
+                            href={`/impostazioni/aziende#azienda-${encodeURIComponent(group.companyId)}`}
+                            onClick={(e) => e.stopPropagation()}
+                            style={{ fontSize: 13, fontWeight: 700, color: "#2563eb", textDecoration: "none" }}
+                          >
+                            Apri azienda →
+                          </Link>
+                        ) : null}
                       </div>
-	                    </>
-	                  ) : null}
-	                </div>
-	              </div>
-	              );
-	            })
+                    </button>
+
+                    {isExpanded ? (
+                      <div style={{ display: "grid", gap: 10 }}>
+                        {group.persone.map((persona) => renderPersonCard(persona))}
+                      </div>
+                    ) : null}
+                  </div>
+                );
+              })
+            ) : (
+              visiblePersone.map((persona) => renderPersonCard(persona))
+            )
           )}
         </div>
       )}
