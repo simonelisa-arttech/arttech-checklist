@@ -10,6 +10,7 @@ type TimelineRow = {
   row_ref_id: string;
   data_prevista?: string | null;
   data_tassativa?: string | null;
+  cliente?: string | null;
 };
 
 type TimeBudgetSummary = {
@@ -37,6 +38,7 @@ type OperatoreKpiRow = {
 };
 
 type PeriodFilter = "ALL" | "7" | "30" | "90";
+type KpiViewMode = "OPERATORE" | "CLIENTE";
 
 function formatMinutesCompact(value?: number | null) {
   if (!Number.isFinite(Number(value)) || Number(value) < 0) return "—";
@@ -142,6 +144,7 @@ export default function OperativiKpiPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [periodFilter, setPeriodFilter] = useState<PeriodFilter>("ALL");
+  const [viewMode, setViewMode] = useState<KpiViewMode>("OPERATORE");
   const [events, setEvents] = useState<TimelineRow[]>([]);
   const [metaByKey, setMetaByKey] = useState<Record<string, CronoMeta>>({});
   const [timeBudgetByKey, setTimeBudgetByKey] = useState<Record<string, TimeBudgetSummary>>({});
@@ -242,9 +245,13 @@ export default function OperativiKpiPage() {
     };
   }, []);
 
+  const filteredEvents = useMemo(
+    () => events.filter((row) => isWithinSelectedPeriod(row, periodFilter)),
+    [events, periodFilter]
+  );
+
   const rows = useMemo(() => {
     const aggregate = new Map<string, OperatoreKpiRow>();
-    const filteredEvents = events.filter((row) => isWithinSelectedPeriod(row, periodFilter));
 
     for (const event of filteredEvents) {
       const key = `${String(event.kind || "").trim().toUpperCase()}:${String(event.row_ref_id || "").trim()}`;
@@ -254,6 +261,23 @@ export default function OperativiKpiPage() {
       const budget = timeBudgetByKey[key] || { stimatoMinuti: 0, realeMinuti: 0 };
       const stimato = Number.isFinite(Number(budget.stimatoMinuti)) ? Math.round(Number(budget.stimatoMinuti)) : 0;
       const reale = Number.isFinite(Number(budget.realeMinuti)) ? Math.round(Number(budget.realeMinuti)) : 0;
+
+      if (viewMode === "CLIENTE") {
+        const cliente = normalizeText(event.cliente) || "Cliente non assegnato";
+        const clienteId = `cliente:${cliente.toLowerCase()}`;
+        const current = aggregate.get(clienteId) || {
+          id: clienteId,
+          nome: cliente,
+          stimatoMinuti: 0,
+          realeMinuti: 0,
+          deltaMinuti: 0,
+        };
+        current.stimatoMinuti += stimato;
+        current.realeMinuti += reale;
+        current.deltaMinuti = current.realeMinuti - current.stimatoMinuti;
+        aggregate.set(clienteId, current);
+        continue;
+      }
 
       const personaleIds = Array.isArray(meta.personale_ids)
         ? meta.personale_ids.map((value) => String(value || "").trim()).filter(Boolean)
@@ -297,7 +321,7 @@ export default function OperativiKpiPage() {
         if (b.deltaMinuti !== a.deltaMinuti) return b.deltaMinuti - a.deltaMinuti;
         return a.nome.localeCompare(b.nome, "it", { sensitivity: "base" });
       });
-  }, [events, metaByKey, periodFilter, personaleMap, timeBudgetByKey]);
+  }, [filteredEvents, metaByKey, personaleMap, timeBudgetByKey, viewMode]);
 
   const totalStimato = useMemo(
     () => rows.reduce((sum, row) => sum + row.stimatoMinuti, 0),
@@ -315,7 +339,9 @@ export default function OperativiKpiPage() {
       <div style={{ display: "grid", gap: 6, marginBottom: 20 }}>
         <h1 style={{ margin: 0, fontSize: 32 }}>KPI Operativi</h1>
         <div style={{ fontSize: 14, color: "#6b7280" }}>
-          Vista sintetica dei tempi stimati e reali aggregati per operatore.
+          {viewMode === "OPERATORE"
+            ? "Vista sintetica dei tempi stimati e reali aggregati per operatore."
+            : "Vista sintetica dei tempi stimati e reali aggregati per cliente."}
         </div>
       </div>
 
@@ -328,6 +354,36 @@ export default function OperativiKpiPage() {
           alignItems: "center",
         }}
       >
+        <div style={{ display: "grid", gap: 6 }}>
+          <span style={{ fontSize: 12, fontWeight: 700, color: "#475569" }}>Vista</span>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            {([
+              { value: "OPERATORE" as const, label: "Per operatore" },
+              { value: "CLIENTE" as const, label: "Per cliente" },
+            ]).map((option) => {
+              const active = viewMode === option.value;
+              return (
+                <button
+                  key={option.value}
+                  type="button"
+                  onClick={() => setViewMode(option.value)}
+                  style={{
+                    border: active ? "1px solid #2563eb" : "1px solid #d1d5db",
+                    background: active ? "#eff6ff" : "#fff",
+                    color: active ? "#1d4ed8" : "#111827",
+                    borderRadius: 999,
+                    padding: "9px 12px",
+                    fontSize: 13,
+                    fontWeight: 700,
+                    cursor: "pointer",
+                  }}
+                >
+                  {option.label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
         <label style={{ display: "grid", gap: 6, minWidth: 220 }}>
           <span style={{ fontSize: 12, fontWeight: 700, color: "#475569" }}>Periodo analisi</span>
           <select
@@ -403,7 +459,11 @@ export default function OperativiKpiPage() {
         {loading ? (
           <div style={{ padding: 18, color: "#6b7280" }}>Caricamento...</div>
         ) : rows.length === 0 ? (
-          <div style={{ padding: 18, color: "#6b7280" }}>Nessun KPI operatore disponibile.</div>
+          <div style={{ padding: 18, color: "#6b7280" }}>
+            {viewMode === "OPERATORE"
+              ? "Nessun KPI operatore disponibile."
+              : "Nessun KPI cliente disponibile."}
+          </div>
         ) : (
           rows.map((row) => {
             const state = getDeltaState(row.stimatoMinuti, row.realeMinuti);
