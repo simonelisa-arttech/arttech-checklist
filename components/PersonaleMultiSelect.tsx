@@ -172,6 +172,7 @@ export default function PersonaleMultiSelect({
   const [options, setOptions] = useState<PersonaleSelectionOption[]>(personaleOptionsCache || []);
   const [error, setError] = useState<string | null>(null);
   const [selectionError, setSelectionError] = useState<string | null>(null);
+  const [overrideSelectionIds, setOverrideSelectionIds] = useState<string[]>([]);
   const [safetyDataset, setSafetyDataset] = useState<SafetyDataset | null>(safetyDatasetCache);
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -250,6 +251,17 @@ export default function PersonaleMultiSelect({
     return next;
   }, [options, safetyDataset]);
 
+  const hasNonCompliantPersonnel = useMemo(
+    () =>
+      resolved.selectedIds.some((id) => Boolean(safetyByPersonaleId.get(id)?.blocked)) ||
+      overrideSelectionIds.some((id) => resolved.selectedIds.includes(id)),
+    [overrideSelectionIds, resolved.selectedIds, safetyByPersonaleId]
+  );
+
+  useEffect(() => {
+    setOverrideSelectionIds((prev) => prev.filter((id) => resolved.selectedIds.includes(id)));
+  }, [resolved.selectedIds]);
+
   function emit(nextSelectedIds: string[], unresolvedLegacyTokens = resolved.unresolvedLegacyTokens) {
     onChange({
       personaleIds: nextSelectedIds,
@@ -264,10 +276,21 @@ export default function PersonaleMultiSelect({
     const currentlySelected = resolved.selectedIds.includes(optionId);
     const safety = safetyByPersonaleId.get(optionId);
     if (!currentlySelected && safety?.blocked) {
-      setSelectionError("Impossibile assegnare: documentazione non conforme.");
-      return;
+      const confirmed = window.confirm(
+        "Il personale ha documentazione non conforme. Vuoi procedere?"
+      );
+      if (!confirmed) {
+        setSelectionError("Selezione annullata: documentazione non conforme.");
+        return;
+      }
+      setOverrideSelectionIds((prev) => (prev.includes(optionId) ? prev : [...prev, optionId]));
+      setSelectionError("Override attivo: personale con documentazione non conforme selezionato.");
+    } else if (currentlySelected) {
+      setOverrideSelectionIds((prev) => prev.filter((id) => id !== optionId));
+      setSelectionError(null);
+    } else {
+      setSelectionError(null);
     }
-    setSelectionError(null);
     const nextIds = resolved.selectedIds.includes(optionId)
       ? resolved.selectedIds.filter((id) => id !== optionId)
       : [...resolved.selectedIds, optionId];
@@ -328,6 +351,23 @@ export default function PersonaleMultiSelect({
                 }}
               >
                 {option.display}
+                {blocked ? (
+                  <span
+                    style={{
+                      display: "inline-flex",
+                      alignItems: "center",
+                      padding: "2px 6px",
+                      borderRadius: 999,
+                      background: "#b91c1c",
+                      color: "white",
+                      fontSize: 10,
+                      fontWeight: 800,
+                      textTransform: "uppercase",
+                    }}
+                  >
+                    Non conforme
+                  </span>
+                ) : null}
               </span>
               );
             })
@@ -359,6 +399,11 @@ export default function PersonaleMultiSelect({
       {selectionError ? (
         <div style={{ marginTop: 6, fontSize: 12, color: "#b91c1c", fontWeight: 600 }}>
           {selectionError}
+        </div>
+      ) : null}
+      {hasNonCompliantPersonnel ? (
+        <div style={{ marginTop: 6, fontSize: 12, color: "#b91c1c", fontWeight: 600 }}>
+          Override attivo: presente personale non conforme nella selezione.
         </div>
       ) : null}
       {error ? <div style={{ marginTop: 6, fontSize: 12, color: "#b91c1c" }}>{error}</div> : null}
@@ -402,20 +447,38 @@ export default function PersonaleMultiSelect({
                       gap: 8,
                       padding: "8px 6px",
                       borderRadius: 8,
-                      cursor: blocked && !checked ? "not-allowed" : "pointer",
+                      cursor: "pointer",
                       background: blocked ? "#fff1f2" : checked ? "#eff6ff" : "white",
                       border: blocked ? "1px solid #fca5a5" : "1px solid transparent",
-                      opacity: blocked && !checked ? 0.95 : 1,
+                      opacity: 1,
                     }}
                   >
                     <input
                       type="checkbox"
                       checked={checked}
-                      disabled={blocked && !checked}
                       onChange={() => toggleOption(option.id)}
                     />
                     <span>
-                      <span style={{ display: "block", fontWeight: 700 }}>{option.label}</span>
+                      <span style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", fontWeight: 700 }}>
+                        <span>{option.label}</span>
+                        {blocked ? (
+                          <span
+                            style={{
+                              display: "inline-flex",
+                              alignItems: "center",
+                              padding: "2px 6px",
+                              borderRadius: 999,
+                              background: "#b91c1c",
+                              color: "white",
+                              fontSize: 10,
+                              fontWeight: 800,
+                              textTransform: "uppercase",
+                            }}
+                          >
+                            Non conforme
+                          </span>
+                        ) : null}
+                      </span>
                       {option.display !== option.label ? (
                         <span style={{ display: "block", fontSize: 12, color: "#6b7280" }}>
                           {option.display.replace(`${option.label} · `, "")}
@@ -423,7 +486,7 @@ export default function PersonaleMultiSelect({
                       ) : null}
                       {blocked ? (
                         <span style={{ display: "block", fontSize: 12, color: "#b91c1c", fontWeight: 600 }}>
-                          Impossibile assegnare: documentazione non conforme
+                          Documentazione non conforme. Selezione consentita solo con conferma esplicita.
                         </span>
                       ) : null}
                     </span>
