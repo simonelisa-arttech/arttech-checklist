@@ -59,6 +59,11 @@ type StopReportDraft = {
   problemi: string;
   materiali: string;
   note_finali: string;
+  parziale_cosa_fatto: string;
+  parziale_cosa_manca: string;
+  parziale_serve_altro_intervento: boolean;
+  non_completato_motivo: "" | "Cliente assente" | "Materiale mancante" | "Problema tecnico" | "Altro";
+  non_completato_note: string;
 };
 
 type CronoComment = {
@@ -102,7 +107,67 @@ const EMPTY_STOP_REPORT: StopReportDraft = {
   problemi: "",
   materiali: "",
   note_finali: "",
+  parziale_cosa_fatto: "",
+  parziale_cosa_manca: "",
+  parziale_serve_altro_intervento: false,
+  non_completato_motivo: "",
+  non_completato_note: "",
 };
+
+function getStopReportValidationMessage(draft: StopReportDraft) {
+  if (!draft.esito) return "Seleziona un esito prima di terminare l'attività.";
+  if (draft.esito === "PARZIALE") {
+    if (!draft.parziale_cosa_fatto.trim() || !draft.parziale_cosa_manca.trim()) {
+      return "Compila i campi obbligatori per continuare.";
+    }
+  }
+  if (draft.esito === "NON_COMPLETATO") {
+    if (!draft.non_completato_motivo || !draft.non_completato_note.trim()) {
+      return "Compila i campi obbligatori per continuare.";
+    }
+  }
+  return null;
+}
+
+function buildGuidedStopReportPayload(draft: StopReportDraft) {
+  if (draft.esito === "PARZIALE") {
+    const guidedNoteSections = [
+      `Cosa è stato fatto:\n${draft.parziale_cosa_fatto.trim()}`,
+      `Cosa manca:\n${draft.parziale_cosa_manca.trim()}`,
+      `Serve altro intervento: ${draft.parziale_serve_altro_intervento ? "SI" : "NO"}`,
+      draft.note_finali.trim() ? `Note finali:\n${draft.note_finali.trim()}` : "",
+    ].filter(Boolean);
+
+    return {
+      esito: draft.esito,
+      problemi: draft.problemi,
+      materiali: draft.materiali,
+      note_finali: guidedNoteSections.join("\n\n"),
+    };
+  }
+
+  if (draft.esito === "NON_COMPLETATO") {
+    const guidedNoteSections = [
+      `Motivo: ${draft.non_completato_motivo}`,
+      `Note:\n${draft.non_completato_note.trim()}`,
+      draft.note_finali.trim() ? `Note finali:\n${draft.note_finali.trim()}` : "",
+    ].filter(Boolean);
+
+    return {
+      esito: draft.esito,
+      problemi: draft.problemi,
+      materiali: draft.materiali,
+      note_finali: guidedNoteSections.join("\n\n"),
+    };
+  }
+
+  return {
+    esito: draft.esito,
+    problemi: draft.problemi,
+    materiali: draft.materiali,
+    note_finali: draft.note_finali,
+  };
+}
 
 function renderPill(
   label: string,
@@ -773,17 +838,14 @@ export default function OperatoreAttivitaPage() {
   async function submitStopReport(row: TimelineRow) {
     const key = getRowKey(row.kind, row.row_ref_id);
     const draft = stopReportDraftByKey[key] || EMPTY_STOP_REPORT;
-    if (!draft.esito) {
-      setStopReportError("Seleziona un esito prima di terminare l'attività.");
+    const validationMessage = getStopReportValidationMessage(draft);
+    if (validationMessage) {
+      setStopReportError(validationMessage);
       return;
     }
+    const reportPayload = buildGuidedStopReportPayload(draft);
     const ok = await handleTimbraturaAction(row, key, "stop_timbratura", {
-      report: {
-        esito: draft.esito,
-        problemi: draft.problemi,
-        materiali: draft.materiali,
-        note_finali: draft.note_finali,
-      },
+      report: reportPayload,
     });
     if (!ok) return;
     setStopReportDraftByKey((prev) => ({
@@ -1110,11 +1172,13 @@ export default function OperatoreAttivitaPage() {
                 const noteDraft = String(noteDraftByKey[key] || "");
                 const canSaveNote = noteDraft.trim().length > 0 && savingCommentKey !== key;
                 const stopReportDraft = stopReportDraftByKey[key] || EMPTY_STOP_REPORT;
+                const timbraturaState = timbraturaStateByKey[key] || "NON_INIZIATA";
+                const timbraturaLoading = timbraturaLoadingKey === key;
+                const stopReportValidationMessage = getStopReportValidationMessage(stopReportDraft);
+                const canSubmitStopReport = !stopReportValidationMessage && !timbraturaLoading;
                 const showNotesPanel = notePanelKey === key;
                 const modeLabel = getActivityModeLabel(operativi);
                 const kindLabel = getActivityKindLabel(row, operativi);
-                const timbraturaState = timbraturaStateByKey[key] || "NON_INIZIATA";
-                const timbraturaLoading = timbraturaLoadingKey === key;
                 const timeBudget = timeBudgetByKey[key] || { stimatoMinuti: null, realeMinuti: null };
                 const displayedActualMinutes = getDisplayedActualMinutes(timeBudget, liveNowMs);
                 const liveElapsedMs = getLiveElapsedMs(timeBudget.liveStartedAt, liveNowMs);
@@ -1432,20 +1496,125 @@ export default function OperatoreAttivitaPage() {
                                     style={{ width: "100%", padding: 10, borderRadius: 12, border: "1px solid #d1d5db", resize: "vertical" }}
                                   />
                                 </label>
+                                {stopReportDraft.esito === "PARZIALE" ? (
+                                  <>
+                                    <label style={{ display: "grid", gap: 6 }}>
+                                      <span style={{ fontSize: 12, fontWeight: 700, color: "#475569" }}>Cosa è stato fatto</span>
+                                      <textarea
+                                        value={stopReportDraft.parziale_cosa_fatto}
+                                        onChange={(e) =>
+                                          setStopReportDraftByKey((prev) => ({
+                                            ...prev,
+                                            [key]: {
+                                              ...(prev[key] || EMPTY_STOP_REPORT),
+                                              parziale_cosa_fatto: e.target.value,
+                                            },
+                                          }))
+                                        }
+                                        rows={3}
+                                        placeholder="Campo obbligatorio"
+                                        style={{ width: "100%", padding: 10, borderRadius: 12, border: "1px solid #d1d5db", resize: "vertical" }}
+                                      />
+                                    </label>
+                                    <label style={{ display: "grid", gap: 6 }}>
+                                      <span style={{ fontSize: 12, fontWeight: 700, color: "#475569" }}>Cosa manca</span>
+                                      <textarea
+                                        value={stopReportDraft.parziale_cosa_manca}
+                                        onChange={(e) =>
+                                          setStopReportDraftByKey((prev) => ({
+                                            ...prev,
+                                            [key]: {
+                                              ...(prev[key] || EMPTY_STOP_REPORT),
+                                              parziale_cosa_manca: e.target.value,
+                                            },
+                                          }))
+                                        }
+                                        rows={3}
+                                        placeholder="Campo obbligatorio"
+                                        style={{ width: "100%", padding: 10, borderRadius: 12, border: "1px solid #d1d5db", resize: "vertical" }}
+                                      />
+                                    </label>
+                                    <label style={{ display: "inline-flex", alignItems: "center", gap: 8, fontSize: 13, fontWeight: 700, color: "#475569" }}>
+                                      <input
+                                        type="checkbox"
+                                        checked={stopReportDraft.parziale_serve_altro_intervento}
+                                        onChange={(e) =>
+                                          setStopReportDraftByKey((prev) => ({
+                                            ...prev,
+                                            [key]: {
+                                              ...(prev[key] || EMPTY_STOP_REPORT),
+                                              parziale_serve_altro_intervento: e.target.checked,
+                                            },
+                                          }))
+                                        }
+                                      />
+                                      Serve altro intervento?
+                                    </label>
+                                  </>
+                                ) : null}
+                                {stopReportDraft.esito === "NON_COMPLETATO" ? (
+                                  <>
+                                    <label style={{ display: "grid", gap: 6 }}>
+                                      <span style={{ fontSize: 12, fontWeight: 700, color: "#475569" }}>Motivo</span>
+                                      <select
+                                        value={stopReportDraft.non_completato_motivo}
+                                        onChange={(e) =>
+                                          setStopReportDraftByKey((prev) => ({
+                                            ...prev,
+                                            [key]: {
+                                              ...(prev[key] || EMPTY_STOP_REPORT),
+                                              non_completato_motivo: e.target.value as StopReportDraft["non_completato_motivo"],
+                                            },
+                                          }))
+                                        }
+                                        style={{ width: "100%", padding: 10, borderRadius: 12, border: "1px solid #d1d5db" }}
+                                      >
+                                        <option value="">Seleziona motivo</option>
+                                        <option value="Cliente assente">Cliente assente</option>
+                                        <option value="Materiale mancante">Materiale mancante</option>
+                                        <option value="Problema tecnico">Problema tecnico</option>
+                                        <option value="Altro">Altro</option>
+                                      </select>
+                                    </label>
+                                    <label style={{ display: "grid", gap: 6 }}>
+                                      <span style={{ fontSize: 12, fontWeight: 700, color: "#475569" }}>Note</span>
+                                      <textarea
+                                        value={stopReportDraft.non_completato_note}
+                                        onChange={(e) =>
+                                          setStopReportDraftByKey((prev) => ({
+                                            ...prev,
+                                            [key]: {
+                                              ...(prev[key] || EMPTY_STOP_REPORT),
+                                              non_completato_note: e.target.value,
+                                            },
+                                          }))
+                                        }
+                                        rows={3}
+                                        placeholder="Campo obbligatorio"
+                                        style={{ width: "100%", padding: 10, borderRadius: 12, border: "1px solid #d1d5db", resize: "vertical" }}
+                                      />
+                                    </label>
+                                  </>
+                                ) : null}
+                                {stopReportValidationMessage && stopReportDraft.esito !== "COMPLETATO" ? (
+                                  <div style={{ fontSize: 13, color: "#b45309" }}>
+                                    {stopReportValidationMessage}
+                                  </div>
+                                ) : null}
                                 <div style={{ display: "flex", justifyContent: "flex-end" }}>
                                   <button
                                     type="button"
                                     onClick={() => void submitStopReport(row)}
-                                    disabled={timbraturaLoading}
+                                    disabled={!canSubmitStopReport}
                                     style={{
                                       padding: "12px 14px",
                                       borderRadius: 12,
                                       border: "1px solid #111827",
-                                      background: "#111827",
-                                      color: "white",
+                                      background: canSubmitStopReport ? "#111827" : "#e5e7eb",
+                                      color: canSubmitStopReport ? "white" : "#6b7280",
                                       fontSize: 14,
                                       fontWeight: 800,
-                                      cursor: timbraturaLoading ? "wait" : "pointer",
+                                      cursor: canSubmitStopReport ? "pointer" : "not-allowed",
                                       opacity: timbraturaLoading ? 0.7 : 1,
                                     }}
                                   >
