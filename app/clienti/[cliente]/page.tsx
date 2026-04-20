@@ -2027,13 +2027,13 @@ export default function ClientePage({
           if (isPerfEnabled()) console.timeEnd(`[perf][cliente][mount#${mountRun}] db licenses`);
         }
         if (isPerfEnabled()) console.time(`[perf][cliente][mount#${mountRun}] batch checklist data`);
-        [rinnoviRows, tagliandiRows] = await Promise.all([
-          fetchRinnovi(clienteKey, checklistIds),
-          fetchTagliandi(clienteKey, checklistIds),
-        ]);
+        rinnoviRows = await fetchRinnovi(clienteKey, checklistIds);
         if (isPerfEnabled()) console.timeEnd(`[perf][cliente][mount#${mountRun}] batch checklist data`);
 
         void Promise.allSettled([
+          fetchTagliandi(clienteKey, checklistIds).then((rows) => {
+            tagliandiRows = rows;
+          }),
           loadInterventiForCliente(clienteKey, checklistIds),
           fetchSaasContratti(clienteKey),
           runSingleFlight("catalog_items.select.saas_ul", async () => {
@@ -4271,19 +4271,47 @@ export default function ClientePage({
       .trim()
       .toLowerCase()}:${checklistIdsKey(checklistIds)}`;
     return runSingleFlight(loadKey, async () => {
-      perfCountDb("tagliandi.select");
-      const base = dbFrom("tagliandi").select("*");
-      const q =
-        checklistIds.length > 0
-          ? base.in("checklist_id", checklistIds)
-          : base.eq("cliente", clienteKey);
-      const { data, error } = await q.order("scadenza", { ascending: true });
-      if (error) {
-        setRinnoviError("Errore caricamento tagliandi: " + error.message);
+      if (checklistIds.length === 0) {
+        setTagliandi([]);
         return [] as TagliandoRow[];
       }
-      const rows = (data || []) as TagliandoRow[];
+
+      perfCountFetch("GET /api/checklists/[id]/tagliandi");
+      const responses = await Promise.all(
+        Array.from(new Set(checklistIds)).map(async (checklistId) => {
+          const controller = new AbortController();
+          const timeout = setTimeout(() => controller.abort(), 8000);
+          let res: Response;
+          try {
+            res = await fetch(`/api/checklists/${encodeURIComponent(checklistId)}/tagliandi`, {
+              cache: "no-store",
+              credentials: "include",
+              signal: controller.signal,
+            });
+          } finally {
+            clearTimeout(timeout);
+          }
+          const json = await res.json().catch(() => ({} as any));
+          if (!res.ok) {
+            throw new Error(String(json?.error || "Errore caricamento tagliandi"));
+          }
+          return Array.isArray(json?.tagliandi) ? (json.tagliandi as TagliandoRow[]) : [];
+        })
+      ).catch((error) => {
+        setRinnoviError(
+          normalizeClienteSectionError(
+            "Errore caricamento tagliandi",
+            error?.name === "AbortError" ? "timeout caricamento tagliandi" : error?.message
+          )
+        );
+        return [] as TagliandoRow[];
+      });
+
+      const rows = responses
+        .flat()
+        .sort((a, b) => String(a?.scadenza || "").localeCompare(String(b?.scadenza || "")));
       setTagliandi(rows);
+      setRinnoviError(null);
       return rows;
     });
   }
