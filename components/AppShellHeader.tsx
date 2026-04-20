@@ -14,6 +14,17 @@ const navLinkStyle: CSSProperties = {
   background: "white",
 };
 
+const operatorMenuLinkStyle: CSSProperties = {
+  padding: "8px 10px",
+  borderRadius: 10,
+  border: "1px solid #e5e7eb",
+  textDecoration: "none",
+  color: "#0f172a",
+  background: "white",
+  fontSize: 13,
+  fontWeight: 700,
+};
+
 export default function AppShellHeader() {
   const pathname = usePathname();
   const operatorMode = pathname === "/operatori";
@@ -74,7 +85,64 @@ export default function AppShellHeader() {
           </nav>
         )}
       </div>
-      <div style={{ marginLeft: "auto" }}>
+      <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>
+        {operatorMode ? (
+          <details style={{ position: "relative" }}>
+            <summary
+              style={{
+                listStyle: "none",
+                cursor: "pointer",
+                padding: "8px 12px",
+                borderRadius: 10,
+                border: "1px solid #d1d5db",
+                background: "white",
+                fontSize: 13,
+                fontWeight: 800,
+                color: "#0f172a",
+              }}
+            >
+              Menu
+            </summary>
+            <div
+              style={{
+                position: "absolute",
+                right: 0,
+                top: "calc(100% + 8px)",
+                minWidth: 190,
+                padding: 10,
+                borderRadius: 14,
+                border: "1px solid #e5e7eb",
+                background: "white",
+                boxShadow: "0 18px 36px rgba(15,23,42,0.14)",
+                display: "grid",
+                gap: 8,
+                zIndex: 20,
+              }}
+            >
+              <Link href="/dashboard" style={operatorMenuLinkStyle}>
+                Dashboard
+              </Link>
+              <Link href="/clienti-cockpit" style={operatorMenuLinkStyle}>
+                Clienti
+              </Link>
+              <Link href="/operativi-kpi" style={operatorMenuLinkStyle}>
+                KPI Operativi
+              </Link>
+              <Link href="/sim" style={operatorMenuLinkStyle}>
+                SIM
+              </Link>
+              <Link href="/fatturazione" style={operatorMenuLinkStyle}>
+                Fatturazione
+              </Link>
+              <Link href="/cronoprogramma" style={operatorMenuLinkStyle}>
+                Cronoprogramma
+              </Link>
+              <Link href="/impostazioni" style={operatorMenuLinkStyle}>
+                Impostazioni
+              </Link>
+            </div>
+          </details>
+        ) : null}
         <LogoutButton />
       </div>
     </header>
