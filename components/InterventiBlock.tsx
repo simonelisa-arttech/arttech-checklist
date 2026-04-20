@@ -63,6 +63,24 @@ export type PendingInterventoLink = {
   url: string;
 };
 
+type ClienteReferente = {
+  id: string;
+  cliente_id: string;
+  nome: string;
+  telefono: string | null;
+  email: string | null;
+  ruolo: string | null;
+  indirizzo_preferito?: string | null;
+  attivo?: boolean | null;
+};
+
+type ChecklistReferentiContext = {
+  clienteId: string | null;
+  indirizzoProgetto: string | null;
+  referenti: ClienteReferente[];
+  loading: boolean;
+};
+
 type Props = {
   checklists: InterventiChecklistOption[];
   interventi: InterventoRow[];
@@ -271,11 +289,16 @@ function renderOperativiFields(
   setForm: (value: InterventoFormState) => void,
   options?: {
     showModalitaAttivita?: boolean;
+    referentiContext?: ChecklistReferentiContext;
+    selectedReferenteId?: string;
+    onSelectReferente?: (value: string) => void;
   }
 ) {
   const showModalitaAttivita = Boolean(options?.showModalitaAttivita);
   const isRemote = form.modalitaAttivita === "REMOTO";
   const fallbackStartDate = form.dataTassativa || form.data;
+  const referentiContext = options?.referentiContext;
+  const referenti = referentiContext?.referenti || [];
   return (
     <div style={{ marginTop: 10 }}>
       <div style={{ display: "grid", gap: 8, marginBottom: 8 }}>
@@ -413,6 +436,37 @@ function renderOperativiFields(
                 Inserisci il contatto cliente da coinvolgere durante l’assistenza remota.
               </div>
             ) : null}
+            {options?.onSelectReferente ? (
+              <div style={{ marginBottom: 8 }}>
+                <select
+                  value={options.selectedReferenteId || ""}
+                  onChange={(e) => options.onSelectReferente?.(e.target.value)}
+                  disabled={!form.checklistId || referentiContext?.loading}
+                  style={{ width: "100%", padding: 8 }}
+                >
+                  <option value="">
+                    {!form.checklistId
+                      ? "Seleziona prima il progetto"
+                      : referentiContext?.loading
+                      ? "Caricamento referenti..."
+                      : referenti.length === 0
+                      ? "Nessun referente registrato"
+                      : "Seleziona referente cliente"}
+                  </option>
+                  {referenti.map((referente) => (
+                    <option key={referente.id} value={referente.id}>
+                      {[
+                        referente.nome || "—",
+                        referente.ruolo || null,
+                        referente.telefono || referente.email || null,
+                      ]
+                        .filter(Boolean)
+                        .join(" · ")}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            ) : null}
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
             <input
               value={form.referenteClienteNome}
@@ -533,6 +587,11 @@ export default function InterventiBlock({
   const [topScrollbarWidth, setTopScrollbarWidth] = useState(1410);
   const [newLinkTitle, setNewLinkTitle] = useState("");
   const [newLinkUrl, setNewLinkUrl] = useState("");
+  const [newReferenteId, setNewReferenteId] = useState("");
+  const [editReferenteId, setEditReferenteId] = useState("");
+  const [referentiContextByChecklistId, setReferentiContextByChecklistId] = useState<
+    Record<string, ChecklistReferentiContext>
+  >({});
   const editInterventoEsitoFatturazione = String(
     editIntervento.esitoFatturazione || editIntervento.fatturazioneStato || ""
   ).toUpperCase();
@@ -557,6 +616,100 @@ export default function InterventiBlock({
 
   function removePendingLink(index: number) {
     setNewInterventoLinks(newInterventoLinks.filter((_, current) => current !== index));
+  }
+
+  async function ensureReferentiContext(checklistId: string) {
+    const normalizedChecklistId = String(checklistId || "").trim();
+    if (!normalizedChecklistId) return;
+
+    const existing = referentiContextByChecklistId[normalizedChecklistId];
+    if (existing?.loading || existing) return;
+
+    setReferentiContextByChecklistId((prev) => ({
+      ...prev,
+      [normalizedChecklistId]: {
+        clienteId: null,
+        indirizzoProgetto: null,
+        referenti: [],
+        loading: true,
+      },
+    }));
+
+    try {
+      const checklistRes = await fetch(`/api/checklists/${encodeURIComponent(normalizedChecklistId)}`, {
+        cache: "no-store",
+        credentials: "include",
+      });
+      const checklistJson = await checklistRes.json().catch(() => ({} as any));
+      if (!checklistRes.ok || checklistJson?.ok === false) {
+        throw new Error(String(checklistJson?.error || "Errore caricamento progetto"));
+      }
+      const checklistData = (checklistJson?.data || {}) as any;
+      const clienteId = String(checklistData?.cliente_id || "").trim() || null;
+      const indirizzoProgetto = String(checklistData?.impianto_indirizzo || "").trim() || null;
+
+      let referenti: ClienteReferente[] = [];
+      if (clienteId) {
+        const referentiRes = await fetch(`/api/clienti/${encodeURIComponent(clienteId)}/referenti`, {
+          cache: "no-store",
+          credentials: "include",
+        });
+        const referentiJson = await referentiRes.json().catch(() => ({} as any));
+        if (!referentiRes.ok || referentiJson?.ok === false) {
+          throw new Error(String(referentiJson?.error || "Errore caricamento referenti cliente"));
+        }
+        referenti = ((referentiJson?.referenti || []) as ClienteReferente[]).filter(
+          (item) => item?.attivo !== false
+        );
+      }
+
+      setReferentiContextByChecklistId((prev) => ({
+        ...prev,
+        [normalizedChecklistId]: {
+          clienteId,
+          indirizzoProgetto,
+          referenti,
+          loading: false,
+        },
+      }));
+    } catch {
+      setReferentiContextByChecklistId((prev) => ({
+        ...prev,
+        [normalizedChecklistId]: {
+          clienteId: null,
+          indirizzoProgetto: null,
+          referenti: [],
+          loading: false,
+        },
+      }));
+    }
+  }
+
+  function applyReferenteSelection(
+    form: InterventoFormState,
+    setForm: (value: InterventoFormState) => void,
+    checklistId: string,
+    referenteId: string,
+    setSelectedReferenteId: (value: string) => void
+  ) {
+    setSelectedReferenteId(referenteId);
+    if (!referenteId) return;
+
+    const context = referentiContextByChecklistId[String(checklistId || "").trim()];
+    const referente = context?.referenti?.find((item) => item.id === referenteId);
+    if (!referente) return;
+
+    const contatto = String(referente.telefono || "").trim() || String(referente.email || "").trim();
+    const indirizzo =
+      String(context?.indirizzoProgetto || "").trim() ||
+      String(referente.indirizzo_preferito || "").trim();
+
+    setForm({
+      ...form,
+      referenteClienteNome: referente.nome || form.referenteClienteNome,
+      referenteClienteContatto: contatto || form.referenteClienteContatto,
+      indirizzo: indirizzo || form.indirizzo,
+    });
   }
 
   useEffect(() => {
@@ -589,6 +742,24 @@ export default function InterventiBlock({
       else window.removeEventListener("resize", syncWidth);
     };
   }, [interventi, expandedInterventoId, editInterventoId]);
+
+  useEffect(() => {
+    const checklistId = String(newIntervento.checklistId || "").trim();
+    if (!checklistId) {
+      setNewReferenteId("");
+      return;
+    }
+    void ensureReferentiContext(checklistId);
+  }, [newIntervento.checklistId]);
+
+  useEffect(() => {
+    const checklistId = String(editIntervento.checklistId || "").trim();
+    if (!checklistId) {
+      setEditReferenteId("");
+      return;
+    }
+    void ensureReferentiContext(checklistId);
+  }, [editIntervento.checklistId]);
 
   function syncHorizontalScroll(source: "top" | "bottom") {
     const topEl = topScrollbarRef.current;
@@ -816,7 +987,24 @@ export default function InterventiBlock({
             </label>
           </div>
 
-          {renderOperativiFields(newIntervento, setNewIntervento)}
+          {renderOperativiFields(newIntervento, setNewIntervento, {
+            referentiContext:
+              referentiContextByChecklistId[String(newIntervento.checklistId || "").trim()] || {
+                clienteId: null,
+                indirizzoProgetto: null,
+                referenti: [],
+                loading: false,
+              },
+            selectedReferenteId: newReferenteId,
+            onSelectReferente: (referenteId) =>
+              applyReferenteSelection(
+                newIntervento,
+                setNewIntervento,
+                newIntervento.checklistId,
+                referenteId,
+                setNewReferenteId
+              ),
+          })}
 
           <div style={{ marginTop: 10 }}>
             <label>
@@ -1395,6 +1583,22 @@ export default function InterventiBlock({
                         </div>
                         {renderOperativiFields(editIntervento, setEditIntervento, {
                           showModalitaAttivita: true,
+                          referentiContext:
+                            referentiContextByChecklistId[String(editIntervento.checklistId || "").trim()] || {
+                              clienteId: null,
+                              indirizzoProgetto: null,
+                              referenti: [],
+                              loading: false,
+                            },
+                          selectedReferenteId: editReferenteId,
+                          onSelectReferente: (referenteId) =>
+                            applyReferenteSelection(
+                              editIntervento,
+                              setEditIntervento,
+                              editIntervento.checklistId,
+                              referenteId,
+                              setEditReferenteId
+                            ),
                         })}
                         <div style={{ marginTop: 10 }}>
                           <AttachmentsPanel
