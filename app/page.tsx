@@ -69,6 +69,7 @@ type DashboardClienteCockpitRow = {
 type ClienteAnagraficaRow = {
   id: string;
   denominazione: string | null;
+  denominazione_norm: string | null;
   codice_interno: string | null;
   piva: string | null;
   codice_fiscale: string | null;
@@ -150,7 +151,10 @@ function classifyProjectDeadline(value: string | null | undefined, todayIso: str
 
 function normalizeClienteSearchKey(value?: string | null) {
   return String(value || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
     .toLowerCase()
+    .replace(/[.,]/g, "")
     .replace(/\s+/g, " ")
     .trim();
 }
@@ -1251,6 +1255,7 @@ export function DashboardCockpitPage({
           overdueDeadlines: 0,
           searchText: [
             cliente,
+            clienteRow.denominazione_norm,
             clienteRow.codice_interno,
             clienteRow.piva,
             clienteRow.codice_fiscale,
@@ -1460,13 +1465,13 @@ export function DashboardCockpitPage({
   ]);
 
   const filteredDashboardClientRows = useMemo(() => {
-    const needle = dashboardClientSearch.trim().toLowerCase();
+    const needle = normalizeClienteSearchKey(dashboardClientSearch);
     return dashboardClientRows.filter((row) => {
       const matchesSearch =
         !needle ||
-        `${row.searchText} ${row.projectCount} ${row.openActivities} ${row.imminentActivities} ${row.relevantDeadlines} ${row.overdueDeadlines}`
-          .toLowerCase()
-          .includes(needle);
+        normalizeClienteSearchKey(
+          `${row.searchText} ${row.projectCount} ${row.openActivities} ${row.imminentActivities} ${row.relevantDeadlines} ${row.overdueDeadlines}`
+        ).includes(needle);
       if (!matchesSearch) return false;
       if (dashboardClientQuickFilter !== "TUTTI" && row.attentionLabel !== dashboardClientQuickFilter) {
         return false;
@@ -1691,7 +1696,7 @@ export function DashboardCockpitPage({
 
       try {
         const clientiRes = await dbFrom("clienti_anagrafica")
-          .select("id,denominazione,codice_interno,piva,codice_fiscale,attivo")
+          .select("id,denominazione,denominazione_norm,codice_interno,piva,codice_fiscale,attivo")
           .eq("attivo", true)
           .order("denominazione", { ascending: true });
         if (!isLatest()) return;
