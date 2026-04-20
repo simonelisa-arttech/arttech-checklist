@@ -16,16 +16,6 @@ const SAAS_PIANI = [
   { code: "SAAS-PL", label: "CARE PLUS (ASSISTENZA BASE)" },
   { code: "SAAS-PR", label: "CARE PREMIUM (ASSISTENZA AVANZATA + MONITORAGGIO)" },
   { code: "SAAS-UL", label: "CARE ULTRA (ASSISTENZA PRIORITARIA / H24 SE PREVISTA)" },
-  { code: "SAAS-PR4", label: "CARE PREMIUM (ASSISTENZA AVANZATA / H4)" },
-  { code: "SAAS-PR8", label: "CARE PREMIUM (ASSISTENZA AVANZATA / H8)" },
-  { code: "SAAS-PR12", label: "CARE PREMIUM (ASSISTENZA AVANZATA / H12)" },
-  { code: "SAAS-PR24", label: "CARE PREMIUM (ASSISTENZA AVANZATA / H24)" },
-  { code: "SAAS-PR36", label: "CARE PREMIUM (ASSISTENZA AVANZATA / H36)" },
-  { code: "SAAS-UL4", label: "CARE ULTRA (ASSISTENZA PRIORITARIA)" },
-  { code: "SAAS-UL8", label: "CARE ULTRA (ASSISTENZA PRIORITARIA)" },
-  { code: "SAAS-UL12", label: "CARE ULTRA (ASSISTENZA PRIORITARIA)" },
-  { code: "SAAS-UL24", label: "CARE ULTRA (ASSISTENZA PRIORITARIA)" },
-  { code: "SAAS-UL36", label: "CARE ULTRA (ASSISTENZA PRIORITARIA)" },
   { code: "SAAS-EVTF", label: "ART TECH EVENT (assistenza remota durante eventi)" },
   { code: "SAAS-EVTO", label: "ART TECH EVENT (assistenza onsite durante eventi)" },
   { code: "SAAS-MON", label: "MONITORAGGIO REMOTO & ALERT" },
@@ -41,7 +31,16 @@ const SAAS_PIANI = [
 
 function saasLabelFromCode(code?: string | null) {
   if (!code) return "";
-  const found = SAAS_PIANI.find((p) => p.code === code);
+  const normalized = String(code).trim().toUpperCase();
+  const premiumMatch = normalized.match(/^SAAS-PR(\d+)$/);
+  if (premiumMatch) {
+    return `CARE PREMIUM (ASSISTENZA AVANZATA / H${premiumMatch[1]})`;
+  }
+  const ultraMatch = normalized.match(/^SAAS-UL(\d+)$/);
+  if (ultraMatch) {
+    return `CARE ULTRA (ASSISTENZA PRIORITARIA / H${ultraMatch[1]})`;
+  }
+  const found = SAAS_PIANI.find((p) => p.code === normalized);
   return found ? found.label : "";
 }
 

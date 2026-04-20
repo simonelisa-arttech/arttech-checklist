@@ -234,6 +234,20 @@ type ChecklistDocument = {
   visibile_al_cliente?: boolean | null;
 };
 
+type ClienteReferente = {
+  id: string;
+  cliente_id: string;
+  nome: string;
+  telefono: string | null;
+  email: string | null;
+  ruolo: string | null;
+  note: string | null;
+  attivo: boolean | null;
+  indirizzo_preferito?: string | null;
+  created_at: string | null;
+  updated_at: string | null;
+};
+
 function isMissingClienteScadenzeDeliveryModeColumnError(error: any) {
   return String(error?.message || "").toLowerCase().includes("scadenze_delivery_mode");
 }
@@ -1047,21 +1061,19 @@ function getNextLicenzaScadenza(licenze: Array<{ scadenza?: string | null }>) {
 
 function saasLabelFromCode(code?: string | null) {
   const raw = (code || "").trim().toUpperCase();
+  const premiumMatch = raw.match(/^SAAS-PR(\d+)$/);
+  if (premiumMatch) {
+    return `CARE PREMIUM (H${premiumMatch[1]})`;
+  }
+  const ultraMatch = raw.match(/^SAAS-UL(\d+)$/);
+  if (ultraMatch) {
+    return `CARE ULTRA (H${ultraMatch[1]})`;
+  }
   const map: Record<string, string> = {
     "SAAS-PL": "CARE PLUS",
     "SAAS-PR": "CARE PREMIUM",
     "SAAS-UL": "CARE ULTRA",
     "SAAS-UL-ILL": "CARE ULTRA (illimitato)",
-    "SAAS-PR4": "CARE PREMIUM (H4)",
-    "SAAS-PR8": "CARE PREMIUM (H8)",
-    "SAAS-PR12": "CARE PREMIUM (H12)",
-    "SAAS-PR24": "CARE PREMIUM (H24)",
-    "SAAS-PR36": "CARE PREMIUM (H36)",
-    "SAAS-UL4": "CARE ULTRA",
-    "SAAS-UL8": "CARE ULTRA",
-    "SAAS-UL12": "CARE ULTRA",
-    "SAAS-UL24": "CARE ULTRA",
-    "SAAS-UL36": "CARE ULTRA",
     "SAAS-EVTR": "ART TECH EVENT",
     "SAAS-EVTF": "ART TECH EVENT (remoto)",
     "SAAS-EVTO": "ART TECH EVENT (onsite)",
@@ -1165,6 +1177,7 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
   }
   const projectSectionLinks = [
     { id: "section-dati-operativi", label: "Dati operativi" },
+    { id: "section-referenti-cliente", label: "Referenti cliente" },
     { id: "section-documenti-checklist", label: "Documenti checklist" },
     { id: "section-scadenze-rinnovi", label: "Scadenze e rinnovi" },
     { id: "section-servizi", label: "Servizi" },
@@ -1177,6 +1190,7 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
   type LazySectionId = (typeof projectSectionLinks)[number]["id"];
   const emptyExpandedSections = (): Record<LazySectionId, boolean> => ({
     "section-dati-operativi": false,
+    "section-referenti-cliente": false,
     "section-documenti-checklist": false,
     "section-scadenze-rinnovi": false,
     "section-servizi": false,
@@ -1217,6 +1231,7 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
   );
   const [lazyDataLoaded, setLazyDataLoaded] = useState({
     cronoOperativi: false,
+    referenti: false,
     services: false,
     licenze: false,
     rinnovi: false,
@@ -1302,6 +1317,15 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
     { checklist_id: string; cliente: string | null; nome_checklist: string | null }[]
   >([]);
   const [documents, setDocuments] = useState<ChecklistDocument[]>([]);
+  const [clienteReferenti, setClienteReferenti] = useState<ClienteReferente[]>([]);
+  const [clienteReferentiError, setClienteReferentiError] = useState<string | null>(null);
+  const [clienteReferentiSaving, setClienteReferentiSaving] = useState(false);
+  const [newClienteReferente, setNewClienteReferente] = useState<{
+    nome: string;
+    telefono: string;
+    email: string;
+    ruolo: string;
+  }>({ nome: "", telefono: "", email: "", ruolo: "" });
   const [taskDocuments, setTaskDocuments] = useState<ChecklistTaskDocument[]>([]);
   const [taskAttachmentsById, setTaskAttachmentsById] = useState<
     Map<string, ChecklistTaskAttachment[]>
@@ -3522,6 +3546,9 @@ function buildFormData(c: Checklist): FormData {
     setRows(mappedRows);
     setOriginalRowIds((items || []).map((r) => r.id));
     setDocuments((docsData || []) as ChecklistDocument[]);
+    setClienteReferenti([]);
+    setClienteReferentiError(null);
+    setNewClienteReferente({ nome: "", telefono: "", email: "", ruolo: "" });
     setAssetSerials((serialsData || []) as AssetSerial[]);
     setTasks([]);
     setLicenze([]);
@@ -3551,6 +3578,7 @@ function buildFormData(c: Checklist): FormData {
     setLazySectionLoading(emptyExpandedSections());
     setLazyDataLoaded({
       cronoOperativi: false,
+      referenti: false,
       services: false,
       licenze: false,
       rinnovi: false,
@@ -3751,6 +3779,22 @@ function buildFormData(c: Checklist): FormData {
     setContrattoUltraNome(ultraNome);
     setInterventiInclusiUsati(includedUsed);
     setLazyDataLoaded((prev) => ({ ...prev, services: true }));
+  }
+
+  async function loadClienteReferentiSection(clienteId: string) {
+    setClienteReferentiError(null);
+    const res = await fetch(`/api/clienti/${encodeURIComponent(clienteId)}/referenti`, {
+      method: "GET",
+      cache: "no-store",
+      credentials: "include",
+    });
+    const json = await res.json().catch(() => ({} as any));
+    if (!res.ok || json?.ok === false) {
+      throw new Error(String(json?.error || "Errore caricamento referenti cliente"));
+    }
+
+    setClienteReferenti(((json?.referenti || []) as ClienteReferente[]).slice());
+    setLazyDataLoaded((prev) => ({ ...prev, referenti: true }));
   }
 
   async function loadTaskLastAlerts(checklistId: string) {
@@ -4411,6 +4455,7 @@ function buildFormData(c: Checklist): FormData {
     if (lazySectionLoading[sectionId]) return;
     const alreadyLoaded =
       (sectionId === "section-dati-operativi" && lazyDataLoaded.cronoOperativi) ||
+      (sectionId === "section-referenti-cliente" && lazyDataLoaded.referenti) ||
       sectionId === "section-documenti-checklist" ||
       (sectionId === "section-servizi" && lazyDataLoaded.services && lazyDataLoaded.licenze) ||
       (sectionId === "section-licenze" && lazyDataLoaded.licenze) ||
@@ -4426,6 +4471,12 @@ function buildFormData(c: Checklist): FormData {
       if (sectionId === "section-dati-operativi") {
         await loadCronoOperativi(id);
         setLazyDataLoaded((prev) => ({ ...prev, cronoOperativi: true }));
+      } else if (sectionId === "section-referenti-cliente") {
+        if (checklist.cliente_id) {
+          await loadClienteReferentiSection(checklist.cliente_id);
+        } else {
+          setLazyDataLoaded((prev) => ({ ...prev, referenti: true }));
+        }
       } else if (sectionId === "section-servizi") {
         if (!lazyDataLoaded.services) await loadProjectServicesSection(id, checklist);
         if (!lazyDataLoaded.licenze) await loadProjectLicenzeSection(id);
@@ -4452,6 +4503,8 @@ function buildFormData(c: Checklist): FormData {
         setProjectSimsError(message);
       } else if (sectionId === "section-dati-operativi") {
         setCronoOperativiError(message);
+      } else if (sectionId === "section-referenti-cliente") {
+        setClienteReferentiError(message);
       } else if (sectionId === "section-checklist-operativa") {
         setError(message);
       }
@@ -4467,6 +4520,57 @@ function buildFormData(c: Checklist): FormData {
   function openProjectSection(sectionId: LazySectionId) {
     setProjectSectionExpanded(sectionId, true);
     setTimeout(() => scrollToProjectSection(sectionId), 80);
+  }
+
+  async function addClienteReferente() {
+    const clienteId = String(checklist?.cliente_id || "").trim();
+    if (!clienteId) {
+      setClienteReferentiError("Collega prima un cliente al progetto.");
+      return;
+    }
+
+    const nome = newClienteReferente.nome.trim();
+    if (!nome) {
+      setClienteReferentiError("Inserisci il nome del referente.");
+      return;
+    }
+
+    setClienteReferentiSaving(true);
+    setClienteReferentiError(null);
+    try {
+      const res = await fetch(`/api/clienti/${encodeURIComponent(clienteId)}/referenti`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          nome,
+          telefono: newClienteReferente.telefono.trim(),
+          email: newClienteReferente.email.trim(),
+          ruolo: newClienteReferente.ruolo.trim(),
+        }),
+      });
+      const json = await res.json().catch(() => ({} as any));
+      if (!res.ok || json?.ok === false) {
+        throw new Error(String(json?.error || "Errore salvataggio referente"));
+      }
+
+      const inserted = (json?.referente || null) as ClienteReferente | null;
+      setClienteReferenti((prev) =>
+        inserted
+          ? [...prev, inserted].sort((a, b) =>
+              String(a.nome || "").localeCompare(String(b.nome || ""), "it")
+            )
+          : prev
+      );
+      setNewClienteReferente({ nome: "", telefono: "", email: "", ruolo: "" });
+      showToast("Referente cliente aggiunto");
+    } catch (err: any) {
+      const message = String(err?.message || "Errore salvataggio referente");
+      setClienteReferentiError(message);
+      showToast(`❌ ${message}`, "error");
+    } finally {
+      setClienteReferentiSaving(false);
+    }
   }
 
   function getEligibleOperatori(task: ChecklistTask | null) {
@@ -7607,6 +7711,144 @@ function buildFormData(c: Checklist): FormData {
         onSubmitManual={sendProjectRinnoviAlert}
         onSaveRule={saveProjectRinnoviAlertRule}
       />
+      {renderLazySection(
+        "section-referenti-cliente",
+        "Referenti cliente",
+        <>
+          {!checklist?.cliente_id ? (
+            <div style={{ opacity: 0.75 }}>
+              Collega prima un cliente al progetto per gestire i referenti.
+            </div>
+          ) : (
+            <>
+              <div
+                style={{
+                  marginBottom: 12,
+                  padding: 12,
+                  border: "1px solid #eee",
+                  borderRadius: 12,
+                  background: "white",
+                  display: "grid",
+                  gridTemplateColumns: "minmax(220px,1.4fr) minmax(180px,1fr) minmax(200px,1fr) minmax(180px,1fr) auto",
+                  gap: 10,
+                  alignItems: "end",
+                }}
+              >
+                <label>
+                  Nome<br />
+                  <input
+                    value={newClienteReferente.nome}
+                    onChange={(e) =>
+                      setNewClienteReferente((prev) => ({ ...prev, nome: e.target.value }))
+                    }
+                    placeholder="Nome referente"
+                    style={{ width: "100%", padding: 10 }}
+                  />
+                </label>
+                <label>
+                  Telefono<br />
+                  <input
+                    value={newClienteReferente.telefono}
+                    onChange={(e) =>
+                      setNewClienteReferente((prev) => ({ ...prev, telefono: e.target.value }))
+                    }
+                    placeholder="Telefono"
+                    style={{ width: "100%", padding: 10 }}
+                  />
+                </label>
+                <label>
+                  Email<br />
+                  <input
+                    value={newClienteReferente.email}
+                    onChange={(e) =>
+                      setNewClienteReferente((prev) => ({ ...prev, email: e.target.value }))
+                    }
+                    placeholder="Email"
+                    style={{ width: "100%", padding: 10 }}
+                  />
+                </label>
+                <label>
+                  Ruolo<br />
+                  <input
+                    value={newClienteReferente.ruolo}
+                    onChange={(e) =>
+                      setNewClienteReferente((prev) => ({ ...prev, ruolo: e.target.value }))
+                    }
+                    placeholder="Ruolo"
+                    style={{ width: "100%", padding: 10 }}
+                  />
+                </label>
+                <button
+                  type="button"
+                  onClick={addClienteReferente}
+                  disabled={clienteReferentiSaving}
+                  style={{
+                    padding: "10px 12px",
+                    borderRadius: 10,
+                    border: "1px solid #111",
+                    background: "#111",
+                    color: "white",
+                    cursor: clienteReferentiSaving ? "not-allowed" : "pointer",
+                    opacity: clienteReferentiSaving ? 0.7 : 1,
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {clienteReferentiSaving ? "Salvataggio..." : "Aggiungi referente"}
+                </button>
+              </div>
+
+              {clienteReferentiError && (
+                <div style={{ color: "#b91c1c", fontSize: 12, marginBottom: 10 }}>
+                  {clienteReferentiError}
+                </div>
+              )}
+
+              {clienteReferenti.length === 0 ? (
+                <div style={{ opacity: 0.7 }}>Nessun referente cliente registrato</div>
+              ) : (
+                <div style={{ border: "1px solid #eee", borderRadius: 12, overflow: "hidden" }}>
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "minmax(220px,1.4fr) minmax(160px,1fr) minmax(220px,1fr) minmax(180px,1fr)",
+                      gap: 10,
+                      padding: "10px 12px",
+                      fontWeight: 700,
+                      borderBottom: "1px solid #eee",
+                      background: "#fafafa",
+                    }}
+                  >
+                    <div>Nome</div>
+                    <div>Telefono</div>
+                    <div>Email</div>
+                    <div>Ruolo</div>
+                  </div>
+                  {clienteReferenti.map((referente) => (
+                    <div
+                      key={referente.id}
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "minmax(220px,1.4fr) minmax(160px,1fr) minmax(220px,1fr) minmax(180px,1fr)",
+                        gap: 10,
+                        padding: "10px 12px",
+                        borderBottom: "1px solid #f5f5f5",
+                        alignItems: "center",
+                        fontSize: 13,
+                      }}
+                    >
+                      <div style={{ fontWeight: 700 }}>{referente.nome || "—"}</div>
+                      <div>{referente.telefono || "—"}</div>
+                      <div>{referente.email || "—"}</div>
+                      <div>{referente.ruolo || "—"}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+        </>,
+        { loadingLabel: "Caricamento referenti cliente..." }
+      )}
       {renderLazySection(
         "section-documenti-checklist",
         "Documenti checklist",
