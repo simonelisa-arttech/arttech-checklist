@@ -1197,26 +1197,6 @@ export default function OperatoreAttivitaPage() {
                               ▶ Inizia
                             </button>
                           ) : null}
-                          {timbraturaState === "IN_CORSO" ? (
-                            <button
-                              type="button"
-                              onClick={() => void handleTimbraturaAction(row, key, "pause_timbratura")}
-                              disabled={timbraturaLoading}
-                              style={{
-                                padding: "12px 14px",
-                                borderRadius: 12,
-                                border: "1px solid #fcd34d",
-                                background: "#fffbeb",
-                                color: "#b45309",
-                                fontSize: 14,
-                                fontWeight: 800,
-                                cursor: timbraturaLoading ? "wait" : "pointer",
-                                opacity: timbraturaLoading ? 0.7 : 1,
-                              }}
-                            >
-                              ⏸ Pausa
-                            </button>
-                          ) : null}
                           {timbraturaState === "IN_PAUSA" ? (
                             <button
                               type="button"
