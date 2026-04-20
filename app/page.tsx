@@ -749,6 +749,40 @@ export function DashboardCockpitPage({
     return null;
   }
 
+  async function resolveOperatoreForSave() {
+    const existingId = String(currentOperatoreId || "").trim();
+    const existingName = String(getCurrentOperatoreDisplayName() || "").trim();
+    if (existingId) {
+      return {
+        id: existingId,
+        displayName: existingName || null,
+      };
+    }
+
+    const meRes = await fetch("/api/me-operatore", { credentials: "include" });
+    const meData = await meRes.json().catch(() => ({}));
+    if (!meRes.ok || !meData?.operatore?.id) {
+      throw new Error(String(meData?.error || "Operatore non associato"));
+    }
+
+    const resolvedId = String(meData.operatore.id || "").trim();
+    const resolvedName = String(meData.operatore.nome || "").trim() || null;
+    if (!resolvedId) {
+      throw new Error("Operatore non associato");
+    }
+
+    setCurrentOperatoreId(resolvedId);
+    setCurrentOperatoreLabel({
+      nome: meData.operatore.nome ?? null,
+      ruolo: meData.operatore.ruolo ?? null,
+    });
+
+    return {
+      id: resolvedId,
+      displayName: resolvedName,
+    };
+  }
+
   const isUltraOrPremium =
     saasPiano.startsWith("SAAS-UL") || saasPiano.startsWith("SAAS-PR");
 
@@ -2090,6 +2124,14 @@ export function DashboardCockpitPage({
       return;
     }
 
+    let operatoreForSave: { id: string; displayName: string | null } | null = null;
+    try {
+      operatoreForSave = await resolveOperatoreForSave();
+    } catch (err: any) {
+      alert(err?.message || "Operatore non associato");
+      return;
+    }
+
     // 1) Insert testata checklist e prendiamo l'id creato
     const payloadChecklist = {
       cliente: cliente.trim(),
@@ -2098,10 +2140,10 @@ export function DashboardCockpitPage({
       magazzino_importazione: magazzinoImportazione.trim()
         ? magazzinoImportazione.trim()
         : null,
-      created_by_operatore: currentOperatoreId || null,
-      updated_by_operatore: currentOperatoreId || null,
-      created_by: getCurrentOperatoreDisplayName(),
-      updated_by: getCurrentOperatoreDisplayName(),
+      created_by_operatore: operatoreForSave.id,
+      updated_by_operatore: operatoreForSave.id,
+      created_by: operatoreForSave.displayName,
+      updated_by: operatoreForSave.displayName,
       saas_piano: saasPiano || null,
       saas_scadenza: saasScadenza.trim() ? saasScadenza.trim() : null,
       saas_note: saasNote.trim() ? saasNote.trim() : null,
