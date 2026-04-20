@@ -16,7 +16,7 @@ import {
   getSlaBadgeLabel,
   getSlaPriority,
   getSlaPriorityColors,
-} from "../../lib/sla";
+} from "@/lib/sla";
 
 const SAAS_PIANI = [
   { code: "SAAS-PL", label: "CARE PLUS (ASSISTENZA BASE)" },
