@@ -224,6 +224,10 @@ export async function GET(request: Request) {
       getEffectiveProjectStatus({
         stato_progetto: row?.stato_progetto,
         pct_complessivo: pctByChecklistId.get(String(row?.id || "")) ?? null,
+        noleggio_vendita: row?.noleggio_vendita,
+        data_prevista: row?.data_prevista,
+        fine_noleggio: row?.fine_noleggio,
+        data_disinstallazione: row?.data_disinstallazione,
       }) || row?.stato_progetto || null,
   }));
 

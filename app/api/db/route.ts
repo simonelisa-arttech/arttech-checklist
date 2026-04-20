@@ -365,7 +365,16 @@ function normalizeChecklistStatusRows(table: string, data: any) {
     if (!row || typeof row !== "object") return row;
     return {
       ...row,
-      stato_progetto: getEffectiveProjectStatus({ stato_progetto: (row as any).stato_progetto }) ?? null,
+      stato_progetto:
+        getEffectiveProjectStatus({
+          stato_progetto: (row as any).stato_progetto,
+          noleggio_vendita: (row as any).noleggio_vendita,
+          data_prevista: (row as any).data_prevista,
+          data_inizio: (row as any).data_inizio,
+          fine_noleggio: (row as any).fine_noleggio,
+          data_fine_noleggio: (row as any).data_fine_noleggio,
+          data_disinstallazione: (row as any).data_disinstallazione,
+        }) ?? null,
     };
   });
 }

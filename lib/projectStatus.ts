@@ -135,13 +135,43 @@ export function getEffectiveProjectStatus(input: {
   stato_progetto?: string | null;
   checklistCompleted?: boolean;
   pct_complessivo?: number | null;
+  noleggio_vendita?: string | null;
+  data_prevista?: string | null;
+  data_inizio?: string | null;
+  fine_noleggio?: string | null;
+  data_fine_noleggio?: string | null;
+  data_disinstallazione?: string | null;
 }): RawProjectStatus | null {
   const raw = normalizeProjectStatusValue(input.stato_progetto);
   const isClosed =
     input.checklistCompleted === true || isChecklistOperativaCompletedFromPercent(input.pct_complessivo);
+  const projectKind: ProjectKind = isNoleggioValue(input.noleggio_vendita) ? "NOLEGGIO" : "VENDITA";
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const venditaDate = parseLocalDay(input.data_prevista);
+  const noleggioStart = parseLocalDay(input.data_inizio) || parseLocalDay(input.data_prevista);
+  const noleggioEnd =
+    parseLocalDay(input.data_fine_noleggio) ||
+    parseLocalDay(input.fine_noleggio) ||
+    parseLocalDay(input.data_disinstallazione);
 
   if (isClosed) return "CHIUSO";
+  if (raw === "RIENTRATO") return "RIENTRATO";
   if (raw === "CHIUSO") return "OPERATIVO";
+  if (raw === "IN_CORSO") {
+    if (projectKind === "VENDITA" && venditaDate && venditaDate <= today) {
+      return "OPERATIVO";
+    }
+    if (
+      projectKind === "NOLEGGIO" &&
+      noleggioStart &&
+      noleggioEnd &&
+      noleggioStart <= today &&
+      today <= noleggioEnd
+    ) {
+      return "IN_CORSO";
+    }
+  }
   return raw;
 }
 
@@ -164,6 +194,10 @@ export function getProjectPresentation(input: {
   checklistCompleted?: boolean;
   pct_complessivo?: number | null;
   noleggio_vendita?: string | null;
+  data_prevista?: string | null;
+  data_inizio?: string | null;
+  fine_noleggio?: string | null;
+  data_fine_noleggio?: string | null;
   data_disinstallazione?: string | null;
 }): {
   effectiveStatus: RawProjectStatus | null;
@@ -176,13 +210,24 @@ export function getProjectPresentation(input: {
   const projectKind: ProjectKind = isNoleggioValue(input.noleggio_vendita) ? "NOLEGGIO" : "VENDITA";
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  const disinstallazione = parseLocalDay(input.data_disinstallazione);
+  const noleggioStart = parseLocalDay(input.data_inizio) || parseLocalDay(input.data_prevista);
+  const disinstallazione =
+    parseLocalDay(input.data_fine_noleggio) ||
+    parseLocalDay(input.fine_noleggio) ||
+    parseLocalDay(input.data_disinstallazione);
   const isNoleggioInCorso =
     projectKind === "NOLEGGIO" &&
     effectiveStatus !== "CHIUSO" &&
+    effectiveStatus !== "RIENTRATO" &&
     raw !== "ANNULLATO" &&
-    (disinstallazione == null || disinstallazione >= today) &&
-    (effectiveStatus === "CONSEGNATO" || raw === "NOLEGGIO_ATTIVO" || raw === "NOLEGGIO_IN_CORSO");
+    noleggioStart != null &&
+    disinstallazione != null &&
+    noleggioStart <= today &&
+    today <= disinstallazione &&
+    (effectiveStatus === "CONSEGNATO" ||
+      effectiveStatus === "IN_CORSO" ||
+      raw === "NOLEGGIO_ATTIVO" ||
+      raw === "NOLEGGIO_IN_CORSO");
 
   const displayStatus: ProjectDisplayStatus | null = isNoleggioInCorso
     ? "NOLEGGIO_IN_CORSO"
