@@ -1,9 +1,8 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import AuthGate from "@/components/AuthGate";
-import LogoutButton from "@/components/LogoutButton";
+import AppShellHeader from "@/components/AppShellHeader";
 
 
 const geistSans = Geist({
@@ -31,126 +30,7 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
-        <header
-          style={{
-            maxWidth: 1100,
-            margin: "16px auto 0",
-            padding: "0 16px",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            gap: 12,
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "center", gap: 16, flexWrap: "wrap" }}>
-            <Link href="/" style={{ display: "inline-flex", alignItems: "center" }}>
-              <img
-                src="/at-logo.png"
-                alt="AT SYSTEM"
-                style={{ height: 48, width: "auto", objectFit: "contain" }}
-              />
-            </Link>
-            <nav
-              aria-label="Navigazione principale"
-              style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}
-            >
-              <Link
-                href="/dashboard"
-                style={{
-                  padding: "8px 12px",
-                  borderRadius: 10,
-                  border: "1px solid #ddd",
-                  textDecoration: "none",
-                  color: "inherit",
-                  background: "white",
-                }}
-              >
-                Dashboard
-              </Link>
-              <Link
-                href="/clienti-cockpit"
-                style={{
-                  padding: "8px 12px",
-                  borderRadius: 10,
-                  border: "1px solid #ddd",
-                  textDecoration: "none",
-                  color: "inherit",
-                  background: "white",
-                }}
-              >
-                Clienti
-              </Link>
-              <Link
-                href="/operatori"
-                style={{
-                  padding: "8px 12px",
-                  borderRadius: 10,
-                  border: "1px solid #ddd",
-                  textDecoration: "none",
-                  color: "inherit",
-                  background: "white",
-                }}
-              >
-                Operatori
-              </Link>
-              <Link
-                href="/operativi-kpi"
-                style={{
-                  padding: "8px 12px",
-                  borderRadius: 10,
-                  border: "1px solid #ddd",
-                  textDecoration: "none",
-                  color: "inherit",
-                  background: "white",
-                }}
-              >
-                KPI Operativi
-              </Link>
-              <Link
-                href="/sim"
-                style={{
-                  padding: "8px 12px",
-                  borderRadius: 10,
-                  border: "1px solid #ddd",
-                  textDecoration: "none",
-                  color: "inherit",
-                  background: "white",
-                }}
-              >
-                SIM
-              </Link>
-              <Link
-                href="/fatturazione"
-                style={{
-                  padding: "8px 12px",
-                  borderRadius: 10,
-                  border: "1px solid #ddd",
-                  textDecoration: "none",
-                  color: "inherit",
-                  background: "white",
-                }}
-              >
-                Fatturazione
-              </Link>
-              <Link
-                href="/cronoprogramma"
-                style={{
-                  padding: "8px 12px",
-                  borderRadius: 10,
-                  border: "1px solid #ddd",
-                  textDecoration: "none",
-                  color: "inherit",
-                  background: "white",
-                }}
-              >
-                Cronoprogramma
-              </Link>
-            </nav>
-          </div>
-          <div style={{ marginLeft: "auto" }}>
-            <LogoutButton />
-          </div>
-        </header>
+        <AppShellHeader />
         <AuthGate>{children}</AuthGate>
       </body>
     </html>
