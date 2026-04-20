@@ -11,6 +11,12 @@ import {
 } from "@/lib/projectStatus";
 import { calcM2FromDimensioni } from "@/lib/parseDimensioni";
 import { isSupabaseConfigured } from "@/lib/supabaseClient";
+import {
+  extractSlaHours,
+  getSlaBadgeLabel,
+  getSlaPriority,
+  getSlaPriorityColors,
+} from "../../lib/sla";
 
 const SAAS_PIANI = [
   { code: "SAAS-PL", label: "CARE PLUS (ASSISTENZA BASE)" },
@@ -42,6 +48,31 @@ function saasLabelFromCode(code?: string | null) {
   }
   const found = SAAS_PIANI.find((p) => p.code === normalized);
   return found ? found.label : "";
+}
+
+function renderSlaBadge(code?: string | null) {
+  const hours = extractSlaHours(code);
+  const label = getSlaBadgeLabel(code);
+  if (hours == null || !label) return null;
+  const colors = getSlaPriorityColors(getSlaPriority(hours));
+  return (
+    <span
+      style={{
+        display: "inline-block",
+        padding: "2px 8px",
+        borderRadius: 999,
+        fontSize: 12,
+        fontWeight: 700,
+        border: `1px solid ${colors.border}`,
+        background: colors.background,
+        color: colors.color,
+        whiteSpace: "nowrap",
+      }}
+      title={`SLA ${label}`}
+    >
+      {label}
+    </span>
+  );
 }
 
 type SaasServiceFilter = "EVENTS" | "ULTRA" | "PREMIUM" | "PLUS";
@@ -407,6 +438,10 @@ function getSortRaw(row: Checklist, key: SortKey) {
   if (key === "pct_complessivo") return row.pct_complessivo;
   if (key === "licenze_attive") return row.licenze_attive ?? 0;
   if (key === "saas_stato") return getExpiryStatus(row.saas_scadenza);
+  if (key === "saas_piano") {
+    const hours = extractSlaHours(row.saas_piano);
+    return hours != null ? hours : row.saas_piano;
+  }
   if (key === "proforma_doc") {
     const docs = (row.checklist_documents ?? []) as any[];
     const hasProforma = docs.some((d) =>
@@ -776,6 +811,7 @@ export default function DashboardEstesaPage() {
         getChecklistM2={getChecklistM2}
         renderDashboardAddressCell={renderDashboardAddressCell}
         saasLabelFromCode={saasLabelFromCode}
+        renderSlaBadge={renderSlaBadge}
         getExpiryStatus={getExpiryStatus}
         renderBadge={renderBadge}
         renderStatusBadge={renderStatusBadge}

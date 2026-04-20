@@ -70,7 +70,7 @@ import {
   getSlaBadgeLabel,
   getSlaPriority,
   getSlaPriorityColors,
-} from "@/lib/sla";
+} from "../../../lib/sla";
 
 type Checklist = {
   id: string;
