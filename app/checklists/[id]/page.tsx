@@ -1514,6 +1514,58 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
   const [projectInterventoBulkLastSentAt, setProjectInterventoBulkLastSentAt] = useState<string | null>(null);
   const [projectInterventoBulkLastToOperatoreId, setProjectInterventoBulkLastToOperatoreId] = useState<string | null>(null);
   const [projectInterventoBulkLastMessage, setProjectInterventoBulkLastMessage] = useState<string | null>(null);
+  const estimatedCreatedByDisplay = useMemo(() => {
+    const candidates: Array<{ name: string | null; at: string | null }> = [];
+
+    const pushCandidate = (name?: string | null, operatoreId?: string | null, at?: string | null) => {
+      const resolved =
+        normalizeOperatoreDisplayValue(name) ??
+        normalizeOperatoreDisplayValue(
+          operatoreId ? operatoriMap.get(String(operatoreId || "").trim()) ?? null : null
+        );
+      if (!resolved) return;
+      candidates.push({ name: resolved, at: at ?? null });
+    };
+
+    pushCandidate(
+      cronoOperativiMeta?.updated_by_nome ?? null,
+      cronoOperativiMeta?.updated_by_operatore ?? null,
+      cronoOperativiMeta?.updated_at ?? null
+    );
+    pushCandidate(
+      cronoDisinstallazioneMeta?.updated_by_nome ?? null,
+      cronoDisinstallazioneMeta?.updated_by_operatore ?? null,
+      cronoDisinstallazioneMeta?.updated_at ?? null
+    );
+
+    const taskComments = Object.values(taskCommentsById)
+      .flat()
+      .slice()
+      .sort((a, b) => String(a.created_at || "").localeCompare(String(b.created_at || "")));
+    for (const comment of taskComments) {
+      pushCandidate(comment.created_by_nome, comment.created_by_operatore, comment.created_at);
+    }
+
+    const interventiOrdered = projectInterventi
+      .slice()
+      .sort((a, b) => String(a.created_at || "").localeCompare(String(b.created_at || "")));
+    for (const intervento of interventiOrdered) {
+      pushCandidate(null, intervento.chiuso_da_operatore, intervento.created_at ?? null);
+      pushCandidate(null, intervento.alert_fattura_last_sent_by, intervento.created_at ?? null);
+    }
+
+    return candidates[0]?.name ?? null;
+  }, [
+    cronoDisinstallazioneMeta?.updated_at,
+    cronoDisinstallazioneMeta?.updated_by_nome,
+    cronoDisinstallazioneMeta?.updated_by_operatore,
+    cronoOperativiMeta?.updated_at,
+    cronoOperativiMeta?.updated_by_nome,
+    cronoOperativiMeta?.updated_by_operatore,
+    operatoriMap,
+    projectInterventi,
+    taskCommentsById,
+  ]);
   const [projectInterventoBulkPreviewOpen, setProjectInterventoBulkPreviewOpen] = useState(false);
   const [projectCloseInterventoId, setProjectCloseInterventoId] = useState<string | null>(null);
   const [projectCloseEsito, setProjectCloseEsito] = useState("");
@@ -6932,7 +6984,10 @@ function buildFormData(c: Checklist): FormData {
                   ? normalizeOperatoreDisplayValue(operatoriMap.get(checklist.created_by_operatore) ?? null) ??
                     normalizeOperatoreDisplayValue(checklist.created_by) ??
                     "—"
-                  : normalizeOperatoreDisplayValue(checklist.created_by) ?? "—")
+                  : normalizeOperatoreDisplayValue(checklist.created_by) ??
+                    (estimatedCreatedByDisplay
+                      ? `Creato da (stimato): ${estimatedCreatedByDisplay}`
+                      : "—"))
               }
               isEdit={false}
             />
