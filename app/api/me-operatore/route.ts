@@ -33,7 +33,7 @@ export async function GET(request: Request) {
   });
   const { data: operatore, error: opErr } = await supabaseAdmin
     .from("operatori")
-    .select("id, user_id, nome, ruolo, attivo, can_access_impostazioni")
+    .select("id, user_id, nome, ruolo, attivo, can_access_impostazioni, personale_id")
     .eq("user_id", user.id)
     .maybeSingle();
 
@@ -53,7 +53,7 @@ export async function GET(request: Request) {
 
   const { data: operatoreByEmail, error: byEmailErr } = await supabaseAdmin
     .from("operatori")
-    .select("id, user_id, nome, ruolo, attivo, can_access_impostazioni")
+    .select("id, user_id, nome, ruolo, attivo, can_access_impostazioni, personale_id")
     .ilike("email", userEmail)
     .limit(1)
     .maybeSingle();

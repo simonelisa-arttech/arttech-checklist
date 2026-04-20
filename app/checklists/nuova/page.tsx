@@ -38,6 +38,11 @@ type CatalogItem = {
   attivo: boolean;
 };
 
+type PersonaleInternoOption = {
+  id: string;
+  nome: string;
+};
+
 const CATEGORIE_VOCI = [
   "Elettronica",
   "SaaS/Servizi",
@@ -179,11 +184,13 @@ export default function NuovaChecklistPage() {
   const router = useRouter();
   const [catalogItems, setCatalogItems] = useState<CatalogItem[]>([]);
   const [deviceCatalogItems, setDeviceCatalogItems] = useState<CatalogItem[]>([]);
+  const [personaleInternoOptions, setPersonaleInternoOptions] = useState<PersonaleInternoOption[]>([]);
   const [currentOperatoreId, setCurrentOperatoreId] = useState<string>("");
 
   // campi testata
   const [cliente, setCliente] = useState("");
   const [clienteId, setClienteId] = useState<string | null>(null);
+  const [referenteArtTechId, setReferenteArtTechId] = useState("");
   const [nomeChecklist, setNomeChecklist] = useState("");
   const [proforma, setProforma] = useState("");
   const [magazzinoImportazione, setMagazzinoImportazione] = useState("");
@@ -252,8 +259,17 @@ export default function NuovaChecklistPage() {
   const [licenzeError, setLicenzeError] = useState<string | null>(null);
 
   const canCreate = useMemo(() => {
-    return nomeChecklist.trim().length > 0 && cliente.trim().length > 0;
-  }, [cliente, nomeChecklist]);
+    return (
+      nomeChecklist.trim().length > 0 &&
+      cliente.trim().length > 0 &&
+      referenteArtTechId.trim().length > 0
+    );
+  }, [cliente, nomeChecklist, referenteArtTechId]);
+  const referenteArtTechNome = useMemo(
+    () =>
+      personaleInternoOptions.find((option) => option.id === referenteArtTechId)?.nome || "",
+    [personaleInternoOptions, referenteArtTechId]
+  );
   const m2Calcolati = useMemo(
     () => {
       const base = calcM2FromDimensioni(dimensioni, numeroFacce);
@@ -322,25 +338,50 @@ export default function NuovaChecklistPage() {
 
   useEffect(() => {
     (async () => {
-      const { data: catalogItems, error: catalogErr } = await dbFrom("catalog_items")
-        .select("id, codice, descrizione, tipo, categoria, attivo")
-        .eq("attivo", true)
-        .order("descrizione", { ascending: true });
-      const { data: deviceItems, error: deviceErr } = await dbFrom("catalog_items")
-        .select("id, codice, descrizione, tipo, categoria, attivo")
-        .eq("attivo", true)
-        .ilike("codice", "EL-%")
-        .order("descrizione", { ascending: true });
+      const [catalogRes, deviceRes, personaleRes] = await Promise.all([
+        dbFrom("catalog_items")
+          .select("id, codice, descrizione, tipo, categoria, attivo")
+          .eq("attivo", true)
+          .order("descrizione", { ascending: true }),
+        dbFrom("catalog_items")
+          .select("id, codice, descrizione, tipo, categoria, attivo")
+          .eq("attivo", true)
+          .ilike("codice", "EL-%")
+          .order("descrizione", { ascending: true }),
+        dbFrom("personale")
+          .select("id,nome,cognome,tipo,attivo")
+          .eq("attivo", true)
+          .eq("tipo", "INTERNO")
+          .order("cognome", { ascending: true })
+          .order("nome", { ascending: true }),
+      ]);
 
-      if (catalogErr) {
-        console.error("Errore caricamento catalogo", catalogErr);
+      if (catalogRes.error) {
+        console.error("Errore caricamento catalogo", catalogRes.error);
       } else {
-        setCatalogItems((catalogItems || []) as CatalogItem[]);
+        setCatalogItems((((catalogRes.data as any[]) || []) as CatalogItem[]));
       }
-      if (deviceErr) {
-        console.error("Errore caricamento device/modelli (EL-%)", deviceErr);
+      if (deviceRes.error) {
+        console.error("Errore caricamento device/modelli (EL-%)", deviceRes.error);
       } else {
-        setDeviceCatalogItems((deviceItems || []) as CatalogItem[]);
+        setDeviceCatalogItems((((deviceRes.data as any[]) || []) as CatalogItem[]));
+      }
+      if (personaleRes.error) {
+        console.error("Errore caricamento personale interno", personaleRes.error);
+      } else {
+        setPersonaleInternoOptions(
+          ((((personaleRes.data as any[]) || []) as Array<Record<string, any>>)
+            .map((row) => {
+              const id = String(row.id || "").trim();
+              const nome = [String(row.nome || "").trim(), String(row.cognome || "").trim()]
+                .filter(Boolean)
+                .join(" ")
+                .trim();
+              if (!id || !nome) return null;
+              return { id, nome };
+            })
+            .filter(Boolean) as PersonaleInternoOption[])
+        );
       }
     })();
   }, []);
@@ -511,6 +552,10 @@ export default function NuovaChecklistPage() {
         alert("Inserisci il cliente.");
         return;
       }
+      if (!referenteArtTechId.trim() || !referenteArtTechNome.trim()) {
+        alert("Seleziona il referente Art Tech.");
+        return;
+      }
       let operatoreId: string;
       try {
         operatoreId = await resolveOperatoreIdForSave();
@@ -527,6 +572,8 @@ export default function NuovaChecklistPage() {
       const payloadChecklist = {
         cliente: cliente.trim(),
         cliente_id: clienteId,
+        referente_art_tech_id: referenteArtTechId,
+        referente_art_tech_nome: referenteArtTechNome,
         nome_checklist: nomeChecklist.trim(),
         proforma: proforma.trim() ? proforma.trim() : null,
         magazzino_importazione: magazzinoFields.codice || null,
@@ -581,6 +628,14 @@ export default function NuovaChecklistPage() {
           (msg.includes("impianto_quantita") && msg.includes("column"))
         );
       };
+      const isReferenteArtTechMissing = (err: any) => {
+        const msg = `${err?.message || ""}`.toLowerCase();
+        const code = `${err?.code || ""}`.toLowerCase();
+        return (
+          code === "pgrst204" &&
+          (msg.includes("referente_art_tech_id") || msg.includes("referente_art_tech_nome"))
+        );
+      };
       const isOperatoreFkError = (err: any) => {
         const msg = `${err?.message || ""}`.toLowerCase();
         const details = `${err?.details || ""}`.toLowerCase();
@@ -613,6 +668,13 @@ export default function NuovaChecklistPage() {
           ? (({ magazzino_drive_url: _skip, ...rest }) => rest)(payloadChecklist)
           : payloadChecklist;
         const { cliente_id, ...legacyPayload } = sourcePayload;
+        ({ data: created, error: errCreate } = await tryInsert(legacyPayload));
+      }
+      if (errCreate && isReferenteArtTechMissing(errCreate)) {
+        const sourcePayload = driveFallbackUsed
+          ? (({ magazzino_drive_url: _skip, ...rest }) => rest)(payloadChecklist)
+          : payloadChecklist;
+        const { referente_art_tech_id, referente_art_tech_nome, ...legacyPayload } = sourcePayload;
         ({ data: created, error: errCreate } = await tryInsert(legacyPayload));
       }
       if (errCreate && isImpiantoQuantitaMissing(errCreate)) {
@@ -876,6 +938,27 @@ export default function NuovaChecklistPage() {
               onChange={(e) => setNomeChecklist(e.target.value)}
               style={{ width: "100%", padding: 10 }}
             />
+          </label>
+
+          <label>
+            Referente Art Tech*<br />
+            <select
+              value={referenteArtTechId}
+              onChange={(e) => setReferenteArtTechId(e.target.value)}
+              style={{ width: "100%", padding: 10 }}
+            >
+              <option value="">Seleziona il referente Art Tech</option>
+              {personaleInternoOptions.map((option) => (
+                <option key={option.id} value={option.id}>
+                  {option.nome}
+                </option>
+              ))}
+            </select>
+            {!referenteArtTechId ? (
+              <div style={{ fontSize: 12, color: "crimson", marginTop: 6 }}>
+                Seleziona il referente Art Tech
+              </div>
+            ) : null}
           </label>
 
           <label>
