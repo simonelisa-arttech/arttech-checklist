@@ -27,6 +27,7 @@ type Props = {
   getChecklistM2: (row: any) => number | null;
   renderDashboardAddressCell: (value?: string | null) => React.ReactNode;
   saasLabelFromCode: (code?: string | null) => string;
+  renderSlaBadge: (code?: string | null) => React.ReactNode;
   getExpiryStatus: (value?: string | null) => "ATTIVA" | "SCADUTA" | "—";
   renderBadge: (label: "ATTIVA" | "SCADUTA" | "—") => React.ReactNode;
   renderStatusBadge: (value?: string | null) => React.ReactNode;
@@ -71,6 +72,7 @@ export default function DashboardProjectsSection({
   getChecklistM2,
   renderDashboardAddressCell,
   saasLabelFromCode,
+  renderSlaBadge,
   getExpiryStatus,
   renderBadge,
   renderStatusBadge,
@@ -581,7 +583,14 @@ export default function DashboardProjectsSection({
                     <td style={{ padding: "10px 12px", opacity: 0.85 }}>{c.magazzino_importazione ?? "—"}</td>
                     <td style={{ padding: "10px 12px", opacity: 0.85 }}>{c.descrizione ?? "—"}</td>
                     <td style={{ padding: "10px 12px", opacity: 0.85 }}>
-                      {c.saas_piano ? `${c.saas_piano} — ${saasLabelFromCode(c.saas_piano)}` : "—"}
+                      {c.saas_piano ? (
+                        <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                          <span>{`${c.saas_piano} — ${saasLabelFromCode(c.saas_piano)}`}</span>
+                          {renderSlaBadge(c.saas_piano)}
+                        </div>
+                      ) : (
+                        "—"
+                      )}
                     </td>
                     <td style={{ padding: "10px 12px", opacity: 0.85 }}>
                       {c.saas_scadenza ? new Date(c.saas_scadenza).toLocaleDateString() : "—"}
