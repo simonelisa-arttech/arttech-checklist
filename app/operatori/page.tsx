@@ -539,13 +539,21 @@ export default function OperatoreAttivitaPage() {
     return rows.filter((row) => {
       const key = getRowKey(row.kind, row.row_ref_id);
       const meta = metaByKey[key];
+      const comments = commentsByKey[key] || [];
+      const latestReportComment = comments.find((comment) => Boolean(parseStructuredReport(comment))) || null;
+      const latestReport = latestReportComment ? parseStructuredReport(latestReportComment) : null;
       const timbraturaState = timbraturaStateByKey[key] || "NON_INIZIATA";
-      const isCompleted = Boolean(meta?.fatto ?? row.fatto) || timbraturaState === "COMPLETATA";
+      const isCompleted =
+        latestReport?.esito === "COMPLETATO"
+          ? true
+          : latestReport?.esito === "PARZIALE" || latestReport?.esito === "NON_COMPLETATO"
+            ? false
+            : Boolean(meta?.fatto ?? row.fatto) || timbraturaState === "COMPLETATA";
       if (activityFilter === "ATTIVE") return !isCompleted;
       if (activityFilter === "FATTE") return isCompleted;
       return true;
     });
-  }, [activityFilter, metaByKey, rows, timbraturaStateByKey]);
+  }, [activityFilter, commentsByKey, metaByKey, rows, timbraturaStateByKey]);
 
   const groupedRows = useMemo(() => {
     const groups = {
