@@ -65,6 +65,12 @@ import {
   isChecklistOperativaCompletedFromTasks,
   normalizeProjectStatusForStorage,
 } from "@/lib/projectStatus";
+import {
+  extractSlaHours,
+  getSlaBadgeLabel,
+  getSlaPriority,
+  getSlaPriorityColors,
+} from "@/lib/sla";
 
 type Checklist = {
   id: string;
@@ -1088,6 +1094,31 @@ function saasLabelFromCode(code?: string | null) {
     "SAAS-CYB": "CYBER / HARDENING",
   };
   return map[raw] ?? null;
+}
+
+function renderSlaBadge(code?: string | null) {
+  const hours = extractSlaHours(code);
+  const label = getSlaBadgeLabel(code);
+  if (hours == null || !label) return null;
+  const colors = getSlaPriorityColors(getSlaPriority(hours));
+  return (
+    <span
+      style={{
+        display: "inline-block",
+        padding: "2px 8px",
+        borderRadius: 999,
+        fontSize: 12,
+        fontWeight: 700,
+        border: `1px solid ${colors.border}`,
+        background: colors.background,
+        color: colors.color,
+        whiteSpace: "nowrap",
+      }}
+      title={`SLA ${label}`}
+    >
+      {label}
+    </span>
+  );
 }
 
 function ServiceRow({
@@ -4195,16 +4226,38 @@ function buildFormData(c: Checklist): FormData {
     return !(code.startsWith("TEC") || code.startsWith("SAAS"));
   });
   const deviceOptions = deviceCatalogItems;
-  const saasPianoOptions = catalogItems
-    .filter((item) => {
-      const code = String(item.codice || "").toUpperCase();
-      return code.startsWith("SAAS-PL") || code.startsWith("SAAS-PR");
-    })
-    .map((item) => ({
-      code: String(item.codice || "").trim(),
-      label:
-        `${String(item.codice || "").trim()} — ${String(item.descrizione || "—").trim() || "—"}`,
-    }));
+  const saasPianoOptions = (() => {
+    const base = catalogItems
+      .filter((item) => {
+        const code = String(item.codice || "").toUpperCase();
+        return code.startsWith("SAAS-PL") || code.startsWith("SAAS-PR") || code.startsWith("SAAS-UL");
+      })
+      .map((item) => ({
+        code: String(item.codice || "").trim(),
+        label:
+          `${String(item.codice || "").trim()} — ${String(item.descrizione || "—").trim() || "—"}`,
+      }));
+
+    const seen = new Set(base.map((item) => item.code.toUpperCase()));
+    const currentCodes = [
+      String(formData?.saas_piano || "").trim(),
+      String(checklist?.saas_piano || "").trim(),
+      String(projectRenewalEdit?.saas_piano || "").trim(),
+    ].filter(Boolean);
+
+    for (const currentCode of currentCodes) {
+      const normalized = currentCode.toUpperCase();
+      if (seen.has(normalized)) continue;
+      if (!/^SAAS-(?:PL|PR|UL)(?:\d+)?$/i.test(currentCode)) continue;
+      base.push({
+        code: currentCode,
+        label: `${currentCode} — ${saasLabelFromCode(currentCode) ?? currentCode}`,
+      });
+      seen.add(normalized);
+    }
+
+    return base.sort((a, b) => a.code.localeCompare(b.code, "it", { numeric: true, sensitivity: "base" }));
+  })();
   const saasServiziAggiuntivi = catalogItems
     .filter((item) => {
       const code = String(item.codice || "").toUpperCase();
@@ -8289,6 +8342,7 @@ function buildFormData(c: Checklist): FormData {
                       ? `${checklist.saas_piano} — ${saasLabelFromCode(checklist.saas_piano) ?? "—"}`
                       : "—"}
                   </span>
+                  {renderSlaBadge(checklist.saas_piano)}
                   <span>
                     {checklist.saas_scadenza
                       ? new Date(checklist.saas_scadenza).toLocaleDateString()
