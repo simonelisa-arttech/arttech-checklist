@@ -1480,6 +1480,8 @@ export function DashboardCockpitPage({
     });
   }, [dashboardClientQuickFilter, dashboardClientRows, dashboardClientSearch]);
 
+  const clientRowsToRender = filteredDashboardClientRows;
+
   const dashboardClientSummary = useMemo(
     () => ({
       total: dashboardClientRows.length,
@@ -3174,7 +3176,7 @@ export function DashboardCockpitPage({
                   border: "1px solid #e2e8f0",
                 }}
               >
-                {dashboardClientRows.length} clienti
+                {clientRowsToRender.length} clienti
               </div>
               <div
                 style={{
@@ -3242,7 +3244,7 @@ export function DashboardCockpitPage({
               </div>
             ) : null}
             <div style={{ display: "grid", gap: 10 }}>
-              {filteredDashboardClientRows.length === 0 ? (
+              {clientRowsToRender.length === 0 ? (
                 <div
                   style={{
                     padding: "14px 16px",
@@ -3256,7 +3258,7 @@ export function DashboardCockpitPage({
                   Nessun cliente trovato con i filtri attuali.
                 </div>
               ) : (
-                filteredDashboardClientRows.map((row) => (
+                clientRowsToRender.map((row) => (
                   <Link
                     key={row.cliente}
                     href={`/clienti/${encodeURIComponent(row.cliente)}`}

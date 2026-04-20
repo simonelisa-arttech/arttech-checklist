@@ -425,6 +425,14 @@ function normalizeDateFilter(value?: string | null) {
   return /^\d{4}-\d{2}-\d{2}$/.test(raw) ? raw : null;
 }
 
+function countRowsBySource(rows: Array<Pick<ScadenzaAgendaRow, "source">>) {
+  return rows.reduce<Record<string, number>>((acc, row) => {
+    const key = normalizeString(row.source) || "unknown";
+    acc[key] = (acc[key] || 0) + 1;
+    return acc;
+  }, {});
+}
+
 function getOptionalColumnError(error: any, optionalColumns: string[]) {
   const message = String(error?.message || "").toLowerCase();
   if (!message) return null;
@@ -846,21 +854,50 @@ export async function buildScadenzeAgenda(
     ...garanzieMapped,
   ];
 
+  console.info("[scadenze] query_counts", {
+    filters,
+    checklists: checklistRows.length,
+    rinnovi_servizi: rinnoviRows.length,
+    tagliandi: tagliandiRows.length,
+    licenses: licenseRows.length,
+    garanzie_candidate: checklistRows.filter((c) => !isNoleggioChecklist(c.noleggio_vendita)).filter((c) => normalizeString(c.garanzia_scadenza)).length,
+  });
+  console.info("[scadenze] mapped_counts_before_filters", {
+    totale: rows.length,
+    by_source: countRowsBySource(rows),
+  });
+
   if (from) {
     const fromDate = parseLocalDay(from);
     if (fromDate) {
+      const before = rows;
       rows = rows.filter((row) => {
         const dt = parseLocalDay(row.scadenza);
         return dt != null && dt >= fromDate;
+      });
+      console.info("[scadenze] after_from_filter", {
+        from,
+        before: before.length,
+        after: rows.length,
+        by_source_before: countRowsBySource(before),
+        by_source_after: countRowsBySource(rows),
       });
     }
   }
   if (to) {
     const toDate = parseLocalDay(to);
     if (toDate) {
+      const before = rows;
       rows = rows.filter((row) => {
         const dt = parseLocalDay(row.scadenza);
         return dt != null && dt <= toDate;
+      });
+      console.info("[scadenze] after_to_filter", {
+        to,
+        before: before.length,
+        after: rows.length,
+        by_source_before: countRowsBySource(before),
+        by_source_after: countRowsBySource(rows),
       });
     }
   }
@@ -888,6 +925,21 @@ export async function buildScadenzeAgenda(
       return dt != null && dt < today;
     });
   }
+
+  console.info("[scadenze] final_counts", {
+    filters: {
+      from,
+      to,
+      cliente: clienteFilter || null,
+      cliente_id: clienteIdFilter || null,
+      checklist_id: checklistIdFilter || null,
+      progetto: progettoFilter || null,
+      tipo: tipoFilters,
+      stato: statoFilter,
+    },
+    totale: rows.length,
+    by_source: countRowsBySource(rows),
+  });
 
   return rows.sort((a, b) => {
     const scadenzaCmp = normalizeString(a.scadenza).localeCompare(normalizeString(b.scadenza));
