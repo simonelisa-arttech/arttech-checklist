@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import Link from "next/link";
 import ConfigMancante from "@/components/ConfigMancante";
 import { dbFrom } from "@/lib/clientDbBroker";
 import { isTimelineRowOverdueNotDone } from "@/lib/cronoprogrammaStatus";
@@ -62,10 +61,29 @@ type StopReportDraft = {
   note_finali: string;
 };
 
+type CronoComment = {
+  id: string;
+  commento: string;
+  created_at: string | null;
+  created_by_operatore: string | null;
+  created_by_nome: string | null;
+};
+
+type StructuredReport = {
+  esito: "COMPLETATO" | "PARZIALE" | "NON_COMPLETATO";
+  problemi: string;
+  materiali: string;
+  note_finali: string;
+};
+
 type PersonaleLinkOption = {
   id: string;
   label: string;
 };
+
+type ActivityFilter = "ATTIVE" | "FATTE" | "TUTTE";
+
+const REPORT_COMMENT_PREFIX = "__REPORT__:";
 
 const BADGE_COLORS = {
   statusExpired: { bg: "#fee2e2", border: "#fca5a5", color: "#b91c1c" },
@@ -110,6 +128,62 @@ function renderPill(
       {icon ? <span aria-hidden="true">{icon}</span> : null}
       {label}
     </span>
+  );
+}
+
+function parseStructuredReport(comment: CronoComment | null | undefined): StructuredReport | null {
+  const raw = String(comment?.commento || "");
+  if (!raw.startsWith(REPORT_COMMENT_PREFIX)) return null;
+  try {
+    const parsed = JSON.parse(raw.slice(REPORT_COMMENT_PREFIX.length));
+    const esito = String(parsed?.esito || "").trim().toUpperCase();
+    if (esito !== "COMPLETATO" && esito !== "PARZIALE" && esito !== "NON_COMPLETATO") return null;
+    return {
+      esito,
+      problemi: String(parsed?.problemi || "").trim(),
+      materiali: String(parsed?.materiali || "").trim(),
+      note_finali: String(parsed?.note_finali || "").trim(),
+    };
+  } catch {
+    return null;
+  }
+}
+
+function renderStructuredReportBlock(comment: CronoComment, report: StructuredReport) {
+  return (
+    <div style={{ display: "grid", gap: 6 }}>
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+        {renderPill(
+          `ESITO ${report.esito.replaceAll("_", " ")}`,
+          report.esito === "COMPLETATO"
+            ? BADGE_COLORS.statusOk
+            : report.esito === "PARZIALE"
+              ? BADGE_COLORS.statusDueSoon
+              : BADGE_COLORS.statusExpired
+        )}
+        {renderPill("REPORT ATTIVITÀ", BADGE_COLORS.statusNeutral)}
+      </div>
+      {report.problemi ? (
+        <div>
+          <strong>Problemi:</strong> <span style={{ whiteSpace: "pre-wrap" }}>{report.problemi}</span>
+        </div>
+      ) : null}
+      {report.materiali ? (
+        <div>
+          <strong>Materiali:</strong> <span style={{ whiteSpace: "pre-wrap" }}>{report.materiali}</span>
+        </div>
+      ) : null}
+      {report.note_finali ? (
+        <div>
+          <strong>Note finali:</strong> <span style={{ whiteSpace: "pre-wrap" }}>{report.note_finali}</span>
+        </div>
+      ) : null}
+      <div style={{ marginTop: 2, fontSize: 12, opacity: 0.7 }}>
+        {(comment.created_by_nome || "Operatore") +
+          " · " +
+          (comment.created_at ? new Date(comment.created_at).toLocaleString("it-IT") : "—")}
+      </div>
+    </div>
   );
 }
 
@@ -265,9 +339,14 @@ export default function OperatoreAttivitaPage() {
   >({});
   const [timbraturaLoadingKey, setTimbraturaLoadingKey] = useState<string | null>(null);
   const [liveNowMs, setLiveNowMs] = useState(() => Date.now());
+  const [commentsByKey, setCommentsByKey] = useState<Record<string, CronoComment[]>>({});
+  const [noteDraftByKey, setNoteDraftByKey] = useState<Record<string, string>>({});
+  const [savingCommentKey, setSavingCommentKey] = useState<string | null>(null);
+  const [notePanelKey, setNotePanelKey] = useState<string | null>(null);
   const [stopReportRowKey, setStopReportRowKey] = useState<string | null>(null);
   const [stopReportDraftByKey, setStopReportDraftByKey] = useState<Record<string, StopReportDraft>>({});
   const [stopReportError, setStopReportError] = useState<string | null>(null);
+  const [activityFilter, setActivityFilter] = useState<ActivityFilter>("ATTIVE");
   const [reloadNonce, setReloadNonce] = useState(0);
 
   useEffect(() => {
@@ -428,6 +507,7 @@ export default function OperatoreAttivitaPage() {
 
         if (!active) return;
         setMetaByKey(nextMeta);
+        setCommentsByKey((loadData?.comments || {}) as Record<string, CronoComment[]>);
         setRows(assignedRows);
         setTimeBudgetByKey(nextTimeBudget);
         setTimbraturaStateByKey(nextTimbraturaState);
@@ -455,6 +535,18 @@ export default function OperatoreAttivitaPage() {
     return () => window.clearInterval(timer);
   }, [timbraturaStateByKey]);
 
+  const filteredRows = useMemo(() => {
+    return rows.filter((row) => {
+      const key = getRowKey(row.kind, row.row_ref_id);
+      const meta = metaByKey[key];
+      const timbraturaState = timbraturaStateByKey[key] || "NON_INIZIATA";
+      const isCompleted = Boolean(meta?.fatto ?? row.fatto) || timbraturaState === "COMPLETATA";
+      if (activityFilter === "ATTIVE") return !isCompleted;
+      if (activityFilter === "FATTE") return isCompleted;
+      return true;
+    });
+  }, [activityFilter, metaByKey, rows, timbraturaStateByKey]);
+
   const groupedRows = useMemo(() => {
     const groups = {
       IN_CORSO: [] as TimelineRow[],
@@ -463,7 +555,7 @@ export default function OperatoreAttivitaPage() {
       PROSSIME: [] as TimelineRow[],
     };
 
-    for (const row of rows) {
+    for (const row of filteredRows) {
       const key = getRowKey(row.kind, row.row_ref_id);
       const activityDate = getActivityDateKey(row, metaByKey[key] || null);
       const timbraturaState = timbraturaStateByKey[key] || "NON_INIZIATA";
@@ -495,17 +587,11 @@ export default function OperatoreAttivitaPage() {
       { key: "OGGI", title: "Oggi", rows: groups.OGGI },
       { key: "PROSSIME", title: "Prossime", rows: groups.PROSSIME },
     ].filter((group) => group.rows.length > 0);
-  }, [metaByKey, rows, timbraturaStateByKey, todayIso]);
+  }, [filteredRows, metaByKey, timbraturaStateByKey, todayIso]);
 
   const sortedRows = useMemo(() => {
     return groupedRows.flatMap((group) => group.rows);
   }, [groupedRows]);
-  const stopReportRow = stopReportRowKey
-    ? rows.find((row) => getRowKey(row.kind, row.row_ref_id) === stopReportRowKey) || null
-    : null;
-  const stopReportDraft = stopReportRowKey
-    ? stopReportDraftByKey[stopReportRowKey] || EMPTY_STOP_REPORT
-    : EMPTY_STOP_REPORT;
 
   const summaryCounts = useMemo(() => {
     const findCount = (key: string) => groupedRows.find((group) => group.key === key)?.rows.length || 0;
@@ -515,6 +601,64 @@ export default function OperatoreAttivitaPage() {
       scadute: findCount("SCADUTE"),
     };
   }, [groupedRows]);
+
+  async function refreshActivityDetails(row: TimelineRow) {
+    const key = getRowKey(row.kind, row.row_ref_id);
+    const res = await fetch("/api/cronoprogramma", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({
+        action: "load",
+        rows: [{ row_kind: row.kind, row_ref_id: row.row_ref_id }],
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(String(data?.error || "Errore aggiornamento attività"));
+    }
+
+    const nextMeta = (data?.meta || {}) as Record<string, CronoMeta>;
+    const nextComments = (data?.comments || {}) as Record<string, CronoComment[]>;
+    const summary = ((data?.time_budget || {}) as Record<string, Record<string, unknown>>)[key] || {};
+    const stato = String(summary?.stato || "").trim().toUpperCase();
+
+    setMetaByKey((prev) => ({
+      ...prev,
+      ...(nextMeta[key] ? { [key]: nextMeta[key] } : {}),
+    }));
+    setCommentsByKey((prev) => ({
+      ...prev,
+      [key]: Array.isArray(nextComments[key]) ? nextComments[key] : [],
+    }));
+    setTimeBudgetByKey((prev) => ({
+      ...prev,
+      [key]: {
+        stimatoMinuti:
+          Number.isFinite(Number(summary?.stimatoMinuti)) && Number(summary?.stimatoMinuti) >= 0
+            ? Number(summary?.stimatoMinuti)
+            : null,
+        realeMinuti:
+          Number.isFinite(Number(summary?.realeMinuti)) && Number(summary?.realeMinuti) >= 0
+            ? Number(summary?.realeMinuti)
+            : null,
+        liveStartedAt: Array.isArray(summary?.liveStartedAt)
+          ? summary.liveStartedAt.map((item) => String(item || "").trim()).filter(Boolean)
+          : [],
+      },
+    }));
+    setTimbraturaStateByKey((prev) => ({
+      ...prev,
+      [key]:
+        stato === "IN_CORSO"
+          ? "IN_CORSO"
+          : stato === "IN_PAUSA"
+            ? "IN_PAUSA"
+            : stato === "COMPLETATA"
+              ? "COMPLETATA"
+              : "NON_INIZIATA",
+    }));
+  }
 
   async function handleTimbraturaAction(
     row: TimelineRow,
@@ -548,7 +692,9 @@ export default function OperatoreAttivitaPage() {
             ? "IN_CORSO"
             : action === "pause_timbratura"
               ? "IN_PAUSA"
-              : "COMPLETATA",
+              : String(data?.activity_state || "").trim().toUpperCase() === "NON_INIZIATA"
+                ? "NON_INIZIATA"
+                : "COMPLETATA",
       }));
       if (action === "start_timbratura" || action === "pause_timbratura" || action === "resume_timbratura") {
         setTimeBudgetByKey((prev) => {
@@ -608,6 +754,7 @@ export default function OperatoreAttivitaPage() {
   function openStopReport(row: TimelineRow) {
     const key = getRowKey(row.kind, row.row_ref_id);
     setStopReportError(null);
+    setNotePanelKey(key);
     setStopReportDraftByKey((prev) => ({
       ...prev,
       [key]: prev[key] || { ...EMPTY_STOP_REPORT },
@@ -636,7 +783,46 @@ export default function OperatoreAttivitaPage() {
       [key]: { ...EMPTY_STOP_REPORT },
     }));
     setStopReportError(null);
+    await refreshActivityDetails(row);
     setStopReportRowKey(null);
+  }
+
+  async function addInlineComment(row: TimelineRow) {
+    const key = getRowKey(row.kind, row.row_ref_id);
+    const commento = String(noteDraftByKey[key] || "").trim();
+    if (!commento) return;
+    try {
+      setSavingCommentKey(key);
+      setStopReportError(null);
+      const res = await fetch("/api/cronoprogramma", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          action: "add_comment",
+          row_kind: row.kind,
+          row_ref_id: row.row_ref_id,
+          commento,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data?.comment?.id) {
+        throw new Error(String(data?.error || "Errore salvataggio nota"));
+      }
+      setCommentsByKey((prev) => ({
+        ...prev,
+        [key]: [data.comment as CronoComment, ...(prev[key] || [])],
+      }));
+      setNoteDraftByKey((prev) => ({
+        ...prev,
+        [key]: "",
+      }));
+    } catch (err: any) {
+      setStopReportError(String(err?.message || "Errore salvataggio nota"));
+      setNotePanelKey(key);
+    } finally {
+      setSavingCommentKey((prev) => (prev === key ? null : prev));
+    }
   }
 
   async function handleLinkPersonale() {
@@ -823,39 +1009,100 @@ export default function OperatoreAttivitaPage() {
             </button>
           </div>
         </div>
-      ) : sortedRows.length === 0 ? (
+      ) : rows.length === 0 ? (
         <div>Nessuna attività assegnata.</div>
       ) : (
         <div style={{ display: "grid", gap: 10 }}>
-          {groupedRows.map((group) => (
-            <div key={group.key} style={{ display: "grid", gap: 10 }}>
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 10,
-                  marginTop: 4,
-                }}
-              >
-                <div
+          <div
+            style={{
+              display: "flex",
+              gap: 8,
+              flexWrap: "wrap",
+              alignItems: "center",
+            }}
+          >
+            {([
+              { key: "ATTIVE", label: "Attive" },
+              { key: "FATTE", label: "Fatte" },
+              { key: "TUTTE", label: "Tutte" },
+            ] as Array<{ key: ActivityFilter; label: string }>).map((option) => {
+              const active = activityFilter === option.key;
+              return (
+                <button
+                  key={option.key}
+                  type="button"
+                  onClick={() => setActivityFilter(option.key)}
                   style={{
+                    padding: "10px 14px",
+                    borderRadius: 999,
+                    border: active ? "1px solid #111827" : "1px solid #d1d5db",
+                    background: active ? "#111827" : "white",
+                    color: active ? "white" : "#111827",
                     fontSize: 13,
                     fontWeight: 800,
-                    color: "#475569",
-                    textTransform: "uppercase",
-                    letterSpacing: 0.4,
-                    whiteSpace: "nowrap",
+                    cursor: "pointer",
+                    minHeight: 40,
                   }}
                 >
-                  {group.title}
+                  {option.label}
+                </button>
+              );
+            })}
+          </div>
+          {sortedRows.length === 0 ? (
+            <div
+              style={{
+                border: "1px dashed #cbd5e1",
+                background: "#f8fafc",
+                borderRadius: 14,
+                padding: 16,
+                fontSize: 14,
+                color: "#64748b",
+              }}
+            >
+              {activityFilter === "ATTIVE"
+                ? "Nessuna attività attiva."
+                : activityFilter === "FATTE"
+                  ? "Nessuna attività completata."
+                  : "Nessuna attività disponibile."}
+            </div>
+          ) : (
+            groupedRows.map((group) => (
+              <div key={group.key} style={{ display: "grid", gap: 10 }}>
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 10,
+                    marginTop: 4,
+                  }}
+                >
+                  <div
+                    style={{
+                      fontSize: 13,
+                      fontWeight: 800,
+                      color: "#475569",
+                      textTransform: "uppercase",
+                      letterSpacing: 0.4,
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {group.title}
+                  </div>
+                  <div style={{ flex: 1, height: 1, background: "#e5e7eb" }} />
                 </div>
-                <div style={{ flex: 1, height: 1, background: "#e5e7eb" }} />
-              </div>
-              {group.rows.map((row) => {
+                {group.rows.map((row) => {
                 const key = getRowKey(row.kind, row.row_ref_id);
                 const meta = metaByKey[key] || null;
                 const operativi = extractOperativi(meta);
                 const schedule = getRowSchedule(row, meta);
+                const comments = commentsByKey[key] || [];
+                const latestReportComment = comments.find((comment) => Boolean(parseStructuredReport(comment))) || null;
+                const latestReport = latestReportComment ? parseStructuredReport(latestReportComment) : null;
+                const noteDraft = String(noteDraftByKey[key] || "");
+                const canSaveNote = noteDraft.trim().length > 0 && savingCommentKey !== key;
+                const stopReportDraft = stopReportDraftByKey[key] || EMPTY_STOP_REPORT;
+                const showNotesPanel = notePanelKey === key;
                 const modeLabel = getActivityModeLabel(operativi);
                 const kindLabel = getActivityKindLabel(row, operativi);
                 const timbraturaState = timbraturaStateByKey[key] || "NON_INIZIATA";
@@ -1002,26 +1249,28 @@ export default function OperatoreAttivitaPage() {
                               ⏹ Termina
                             </button>
                           ) : null}
-                          {row.checklist_id ? (
-                            <Link
-                              href={`/checklists/${row.checklist_id}`}
-                              style={{
-                                display: "inline-flex",
-                                alignItems: "center",
-                                justifyContent: "center",
-                                padding: "12px 14px",
-                                borderRadius: 12,
-                                border: "1px solid #d1d5db",
-                                background: "white",
-                                color: "inherit",
-                                textDecoration: "none",
-                                fontSize: 14,
-                                fontWeight: 800,
-                              }}
-                            >
-                              Note / report
-                            </Link>
-                          ) : null}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setStopReportError(null);
+                              setNotePanelKey((prev) => (prev === key ? null : key));
+                            }}
+                            style={{
+                              display: "inline-flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              padding: "12px 14px",
+                              borderRadius: 12,
+                              border: showNotesPanel ? "1px solid #111827" : "1px solid #d1d5db",
+                              background: showNotesPanel ? "#f8fafc" : "white",
+                              color: "inherit",
+                              fontSize: 14,
+                              fontWeight: 800,
+                              cursor: "pointer",
+                            }}
+                          >
+                            {showNotesPanel ? "Chiudi note / report" : "Note / report"}
+                          </button>
                         </div>
                         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", fontSize: 12, color: "#64748b" }}>
                           {timbraturaState === "IN_CORSO" ? renderPill("IN CORSO", BADGE_COLORS.activityRemote, "⏸") : null}
@@ -1030,185 +1279,257 @@ export default function OperatoreAttivitaPage() {
                           {timbraturaState === "IN_CORSO" ? renderPill(`LIVE ${formatLiveElapsed(liveElapsedMs)}`, BADGE_COLORS.activityRemote, "⏱") : null}
                           {timbraturaState === "IN_PAUSA" ? renderPill(`Accumulato ${formatMinutesCompact(displayedActualMinutes)}`, BADGE_COLORS.statusDueSoon, "⏱") : null}
                           {schedule.data_fine ? <span>Fine {formatOperativiDateLabel(schedule.data_fine)}</span> : null}
+                          {latestReport
+                            ? renderPill(
+                                `Esito ${latestReport.esito.replaceAll("_", " ")}`,
+                                latestReport.esito === "COMPLETATO"
+                                  ? BADGE_COLORS.statusOk
+                                  : latestReport.esito === "PARZIALE"
+                                    ? BADGE_COLORS.statusDueSoon
+                                    : BADGE_COLORS.statusExpired
+                              )
+                            : null}
                           {overdue ? renderPill("Urgente", BADGE_COLORS.statusExpired) : null}
                         </div>
+                        {showNotesPanel ? (
+                          <div
+                            style={{
+                              display: "grid",
+                              gap: 12,
+                              borderTop: "1px solid #e5e7eb",
+                              paddingTop: 12,
+                            }}
+                          >
+                            {stopReportError && notePanelKey === key ? (
+                              <div style={{ fontSize: 13, color: "#b91c1c" }}>{stopReportError}</div>
+                            ) : null}
+                            {latestReport && latestReportComment ? (
+                              <div style={{ display: "grid", gap: 6 }}>
+                                <div style={{ fontSize: 12, fontWeight: 800, color: "#475569", textTransform: "uppercase", letterSpacing: 0.4 }}>
+                                  Ultimo report finale
+                                </div>
+                                <div
+                                  style={{
+                                    border: "1px solid #e2e8f0",
+                                    background: "#f8fafc",
+                                    borderRadius: 12,
+                                    padding: 12,
+                                  }}
+                                >
+                                  {renderStructuredReportBlock(latestReportComment, latestReport)}
+                                </div>
+                              </div>
+                            ) : null}
+
+                            <div style={{ display: "grid", gap: 8 }}>
+                              <div style={{ fontSize: 12, fontWeight: 800, color: "#475569", textTransform: "uppercase", letterSpacing: 0.4 }}>
+                                Aggiungi nota
+                              </div>
+                              <textarea
+                                value={noteDraft}
+                                onChange={(e) =>
+                                  setNoteDraftByKey((prev) => ({
+                                    ...prev,
+                                    [key]: e.target.value,
+                                  }))
+                                }
+                                rows={3}
+                                placeholder="Scrivi aggiornamenti, materiali, problemi o istruzioni operative..."
+                                style={{
+                                  width: "100%",
+                                  padding: 12,
+                                  borderRadius: 12,
+                                  border: "1px solid #d1d5db",
+                                  resize: "vertical",
+                                  background: "white",
+                                }}
+                              />
+                              <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                                <button
+                                  type="button"
+                                  onClick={() => void addInlineComment(row)}
+                                  disabled={!canSaveNote}
+                                  style={{
+                                    padding: "10px 14px",
+                                    borderRadius: 10,
+                                    border: "1px solid #111827",
+                                    background: canSaveNote ? "#111827" : "#e5e7eb",
+                                    color: canSaveNote ? "white" : "#6b7280",
+                                    fontSize: 13,
+                                    fontWeight: 800,
+                                    cursor: canSaveNote ? "pointer" : "not-allowed",
+                                  }}
+                                >
+                                  {savingCommentKey === key ? "Salvo..." : "Salva nota"}
+                                </button>
+                              </div>
+                            </div>
+
+                            {timbraturaState === "IN_CORSO" ? (
+                              <div style={{ display: "grid", gap: 10 }}>
+                                <div style={{ fontSize: 12, fontWeight: 800, color: "#475569", textTransform: "uppercase", letterSpacing: 0.4 }}>
+                                  Report finale
+                                </div>
+                                <label style={{ display: "grid", gap: 6 }}>
+                                  <span style={{ fontSize: 12, fontWeight: 700, color: "#475569" }}>Esito</span>
+                                  <select
+                                    value={stopReportDraft.esito}
+                                    onChange={(e) =>
+                                      setStopReportDraftByKey((prev) => ({
+                                        ...prev,
+                                        [key]: {
+                                          ...(prev[key] || EMPTY_STOP_REPORT),
+                                          esito: e.target.value as StopReportDraft["esito"],
+                                        },
+                                      }))
+                                    }
+                                    style={{ width: "100%", padding: 10, borderRadius: 12, border: "1px solid #d1d5db" }}
+                                  >
+                                    <option value="COMPLETATO">COMPLETATO</option>
+                                    <option value="PARZIALE">PARZIALE</option>
+                                    <option value="NON_COMPLETATO">NON_COMPLETATO</option>
+                                  </select>
+                                </label>
+                                <label style={{ display: "grid", gap: 6 }}>
+                                  <span style={{ fontSize: 12, fontWeight: 700, color: "#475569" }}>Problemi</span>
+                                  <textarea
+                                    value={stopReportDraft.problemi}
+                                    onChange={(e) =>
+                                      setStopReportDraftByKey((prev) => ({
+                                        ...prev,
+                                        [key]: {
+                                          ...(prev[key] || EMPTY_STOP_REPORT),
+                                          problemi: e.target.value,
+                                        },
+                                      }))
+                                    }
+                                    rows={3}
+                                    placeholder="Problemi riscontrati"
+                                    style={{ width: "100%", padding: 10, borderRadius: 12, border: "1px solid #d1d5db", resize: "vertical" }}
+                                  />
+                                </label>
+                                <label style={{ display: "grid", gap: 6 }}>
+                                  <span style={{ fontSize: 12, fontWeight: 700, color: "#475569" }}>Materiali utilizzati</span>
+                                  <textarea
+                                    value={stopReportDraft.materiali}
+                                    onChange={(e) =>
+                                      setStopReportDraftByKey((prev) => ({
+                                        ...prev,
+                                        [key]: {
+                                          ...(prev[key] || EMPTY_STOP_REPORT),
+                                          materiali: e.target.value,
+                                        },
+                                      }))
+                                    }
+                                    rows={3}
+                                    placeholder="Materiali utilizzati"
+                                    style={{ width: "100%", padding: 10, borderRadius: 12, border: "1px solid #d1d5db", resize: "vertical" }}
+                                  />
+                                </label>
+                                <label style={{ display: "grid", gap: 6 }}>
+                                  <span style={{ fontSize: 12, fontWeight: 700, color: "#475569" }}>Note finali</span>
+                                  <textarea
+                                    value={stopReportDraft.note_finali}
+                                    onChange={(e) =>
+                                      setStopReportDraftByKey((prev) => ({
+                                        ...prev,
+                                        [key]: {
+                                          ...(prev[key] || EMPTY_STOP_REPORT),
+                                          note_finali: e.target.value,
+                                        },
+                                      }))
+                                    }
+                                    rows={3}
+                                    placeholder="Note finali"
+                                    style={{ width: "100%", padding: 10, borderRadius: 12, border: "1px solid #d1d5db", resize: "vertical" }}
+                                  />
+                                </label>
+                                <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                                  <button
+                                    type="button"
+                                    onClick={() => void submitStopReport(row)}
+                                    disabled={timbraturaLoading}
+                                    style={{
+                                      padding: "12px 14px",
+                                      borderRadius: 12,
+                                      border: "1px solid #111827",
+                                      background: "#111827",
+                                      color: "white",
+                                      fontSize: 14,
+                                      fontWeight: 800,
+                                      cursor: timbraturaLoading ? "wait" : "pointer",
+                                      opacity: timbraturaLoading ? 0.7 : 1,
+                                    }}
+                                  >
+                                    {timbraturaLoading ? "Salvo..." : "Salva e termina"}
+                                  </button>
+                                </div>
+                              </div>
+                            ) : null}
+
+                            <div style={{ display: "grid", gap: 8 }}>
+                              <div style={{ fontSize: 12, fontWeight: 800, color: "#475569", textTransform: "uppercase", letterSpacing: 0.4 }}>
+                                Storico attività
+                              </div>
+                              {comments.length === 0 ? (
+                                <div
+                                  style={{
+                                    border: "1px dashed #cbd5e1",
+                                    borderRadius: 12,
+                                    padding: 12,
+                                    background: "#f8fafc",
+                                    fontSize: 13,
+                                    color: "#64748b",
+                                  }}
+                                >
+                                  Nessuna nota o report presente.
+                                </div>
+                              ) : (
+                                comments.map((comment) => {
+                                  const structuredReport = parseStructuredReport(comment);
+                                  return (
+                                    <div
+                                      key={comment.id}
+                                      style={{
+                                        border: "1px solid #e5e7eb",
+                                        borderRadius: 12,
+                                        background: "white",
+                                        padding: 12,
+                                      }}
+                                    >
+                                      {structuredReport ? (
+                                        renderStructuredReportBlock(comment, structuredReport)
+                                      ) : (
+                                        <div style={{ display: "grid", gap: 6 }}>
+                                          <div style={{ whiteSpace: "pre-wrap", fontSize: 14, color: "#0f172a" }}>
+                                            {comment.commento}
+                                          </div>
+                                          <div style={{ fontSize: 12, color: "#64748b" }}>
+                                            {(comment.created_by_nome || "Operatore") +
+                                              " · " +
+                                              (comment.created_at
+                                                ? new Date(comment.created_at).toLocaleString("it-IT")
+                                                : "—")}
+                                          </div>
+                                        </div>
+                                      )}
+                                    </div>
+                                  );
+                                })
+                              )}
+                            </div>
+                          </div>
+                        ) : null}
                       </div>
                     </div>
                   </div>
                 );
-              })}
-            </div>
-          ))}
+                })}
+              </div>
+            ))
+          )}
         </div>
       )}
-      {stopReportRow && stopReportRowKey ? (
-        <div
-          onClick={() => {
-            if (timbraturaLoadingKey !== stopReportRowKey) {
-              setStopReportError(null);
-              setStopReportRowKey(null);
-            }
-          }}
-          style={{
-            position: "fixed",
-            inset: 0,
-            background: "rgba(15,23,42,0.38)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            padding: 16,
-            zIndex: 1500,
-          }}
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            style={{
-              width: "min(560px, 96vw)",
-              background: "white",
-              borderRadius: 18,
-              border: "1px solid #e5e7eb",
-              padding: 16,
-              display: "grid",
-              gap: 12,
-              boxShadow: "0 24px 48px rgba(15, 23, 42, 0.18)",
-            }}
-          >
-            <div style={{ display: "grid", gap: 4 }}>
-              <div style={{ fontSize: 12, fontWeight: 800, color: "#64748b", textTransform: "uppercase", letterSpacing: 0.4 }}>
-                Chiusura attività
-              </div>
-              <div style={{ fontSize: 18, fontWeight: 900, color: "#0f172a" }}>
-                {stopReportRow.progetto || "Attività"}
-              </div>
-              <div style={{ fontSize: 13, color: "#64748b" }}>
-                {stopReportRow.cliente || "Cliente non assegnato"} · {stopReportRow.kind}
-              </div>
-            </div>
-
-            <div style={{ display: "grid", gap: 10 }}>
-              <label style={{ display: "grid", gap: 6 }}>
-                <span style={{ fontSize: 12, fontWeight: 700, color: "#475569" }}>Esito</span>
-                <select
-                  value={stopReportDraft.esito}
-                  onChange={(e) =>
-                    setStopReportDraftByKey((prev) => ({
-                      ...prev,
-                      [stopReportRowKey]: {
-                        ...(prev[stopReportRowKey] || EMPTY_STOP_REPORT),
-                        esito: e.target.value as StopReportDraft["esito"],
-                      },
-                    }))
-                  }
-                  style={{ width: "100%", padding: 10, borderRadius: 12, border: "1px solid #d1d5db" }}
-                >
-                  <option value="COMPLETATO">COMPLETATO</option>
-                  <option value="PARZIALE">PARZIALE</option>
-                  <option value="NON_COMPLETATO">NON_COMPLETATO</option>
-                </select>
-              </label>
-
-              <label style={{ display: "grid", gap: 6 }}>
-                <span style={{ fontSize: 12, fontWeight: 700, color: "#475569" }}>Problemi</span>
-                <textarea
-                  value={stopReportDraft.problemi}
-                  onChange={(e) =>
-                    setStopReportDraftByKey((prev) => ({
-                      ...prev,
-                      [stopReportRowKey]: {
-                        ...(prev[stopReportRowKey] || EMPTY_STOP_REPORT),
-                        problemi: e.target.value,
-                      },
-                    }))
-                  }
-                  rows={3}
-                  placeholder="Problemi riscontrati"
-                  style={{ width: "100%", padding: 10, borderRadius: 12, border: "1px solid #d1d5db", resize: "vertical" }}
-                />
-              </label>
-
-              <label style={{ display: "grid", gap: 6 }}>
-                <span style={{ fontSize: 12, fontWeight: 700, color: "#475569" }}>Materiali utilizzati</span>
-                <textarea
-                  value={stopReportDraft.materiali}
-                  onChange={(e) =>
-                    setStopReportDraftByKey((prev) => ({
-                      ...prev,
-                      [stopReportRowKey]: {
-                        ...(prev[stopReportRowKey] || EMPTY_STOP_REPORT),
-                        materiali: e.target.value,
-                      },
-                    }))
-                  }
-                  rows={3}
-                  placeholder="Materiali utilizzati"
-                  style={{ width: "100%", padding: 10, borderRadius: 12, border: "1px solid #d1d5db", resize: "vertical" }}
-                />
-              </label>
-
-              <label style={{ display: "grid", gap: 6 }}>
-                <span style={{ fontSize: 12, fontWeight: 700, color: "#475569" }}>Note finali</span>
-                <textarea
-                  value={stopReportDraft.note_finali}
-                  onChange={(e) =>
-                    setStopReportDraftByKey((prev) => ({
-                      ...prev,
-                      [stopReportRowKey]: {
-                        ...(prev[stopReportRowKey] || EMPTY_STOP_REPORT),
-                        note_finali: e.target.value,
-                      },
-                    }))
-                  }
-                  rows={3}
-                  placeholder="Note finali"
-                  style={{ width: "100%", padding: 10, borderRadius: 12, border: "1px solid #d1d5db", resize: "vertical" }}
-                />
-              </label>
-            </div>
-
-            {stopReportError ? <div style={{ fontSize: 13, color: "#b91c1c" }}>{stopReportError}</div> : null}
-
-            <div style={{ display: "grid", gridTemplateColumns: "repeat(2, minmax(0, 1fr))", gap: 8 }}>
-              <button
-                type="button"
-                onClick={() => {
-                  setStopReportError(null);
-                  setStopReportRowKey(null);
-                }}
-                disabled={timbraturaLoadingKey === stopReportRowKey}
-                style={{
-                  padding: "12px 14px",
-                  borderRadius: 12,
-                  border: "1px solid #d1d5db",
-                  background: "white",
-                  fontSize: 14,
-                  fontWeight: 800,
-                  cursor: timbraturaLoadingKey === stopReportRowKey ? "wait" : "pointer",
-                }}
-              >
-                Annulla
-              </button>
-              <button
-                type="button"
-                onClick={() => void submitStopReport(stopReportRow)}
-                disabled={timbraturaLoadingKey === stopReportRowKey}
-                style={{
-                  padding: "12px 14px",
-                  borderRadius: 12,
-                  border: "1px solid #111827",
-                  background: "#111827",
-                  color: "white",
-                  fontSize: 14,
-                  fontWeight: 800,
-                  cursor: timbraturaLoadingKey === stopReportRowKey ? "wait" : "pointer",
-                  opacity: timbraturaLoadingKey === stopReportRowKey ? 0.7 : 1,
-                }}
-              >
-                {timbraturaLoadingKey === stopReportRowKey ? "Salvo..." : "Salva e termina"}
-              </button>
-            </div>
-          </div>
-        </div>
-      ) : null}
     </div>
   );
 }
