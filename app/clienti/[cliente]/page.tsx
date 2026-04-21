@@ -2909,14 +2909,19 @@ export default function ClientePage({
     }));
     const contrattiMapped: ScadenzaItem[] = contrattiRows.flatMap((c): ScadenzaItem[] => {
       const matchingUltraRows = ultraRinnoviRows.filter((r) => {
-        const rinnovoRef = String(r.riferimento || "").trim().toUpperCase();
+        const rinnovoRef = normalizeUltraMatchKey(getRinnovoReference(r));
         const contrattoRef = String(c.piano_codice || "ULTRA").trim().toUpperCase();
         const sameRef = rinnovoRef === contrattoRef || (!rinnovoRef && !c.piano_codice);
-        const sameScadenza = String(r.scadenza || "") === String(c.scadenza || "");
+        const sameScadenza =
+          normalizeUltraDateKey(r.scadenza) === normalizeUltraDateKey(c.scadenza);
         return sameRef && sameScadenza;
       });
+      const preferredUltraRows =
+        matchingUltraRows.filter((r) => Boolean(r.checklist_id)) || [];
+      const effectiveUltraRows =
+        preferredUltraRows.length > 0 ? preferredUltraRows : matchingUltraRows;
 
-      if (matchingUltraRows.length === 0) {
+      if (effectiveUltraRows.length === 0) {
         return [
           {
             id: `saas_contratto:${c.id}`,
@@ -2934,7 +2939,7 @@ export default function ClientePage({
         ];
       }
 
-      return matchingUltraRows.map((r) => ({
+      return effectiveUltraRows.map((r) => ({
         id: `saas_contratto:${c.id}:${r.id}`,
         source: "saas_contratto" as const,
         item_tipo: "SAAS_ULTRA",
