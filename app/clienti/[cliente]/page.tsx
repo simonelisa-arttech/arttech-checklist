@@ -2820,7 +2820,8 @@ export default function ClientePage({
         if (!isUltraRinnovoRow(r) || r.checklist_id) return true;
         return !scopedUltraRinnoviRows.some(
           (scopedRow) =>
-            normalizeUltraMatchKey(scopedRow.riferimento) === normalizeUltraMatchKey(r.riferimento) &&
+            normalizeUltraMatchKey(getRinnovoReference(scopedRow)) ===
+              normalizeUltraMatchKey(getRinnovoReference(r)) &&
             normalizeUltraDateKey(scopedRow.scadenza) === normalizeUltraDateKey(r.scadenza)
         );
       })
@@ -4475,12 +4476,14 @@ export default function ClientePage({
     const dateKey = normalizeUltraDateKey(row.scadenza);
     const exactMatches = ultraRows.filter(
       (r) =>
-        normalizeUltraMatchKey(r.riferimento) === refKey &&
+        normalizeUltraMatchKey(getRinnovoReference(r)) === refKey &&
         normalizeUltraDateKey(r.scadenza) === dateKey
     );
     if (exactMatches.length === 1) return exactMatches[0].checklist_id ?? null;
 
-    const refMatches = ultraRows.filter((r) => normalizeUltraMatchKey(r.riferimento) === refKey);
+    const refMatches = ultraRows.filter(
+      (r) => normalizeUltraMatchKey(getRinnovoReference(r)) === refKey
+    );
     if (refMatches.length === 1) return refMatches[0].checklist_id ?? null;
 
     const dateMatches = ultraRows.filter((r) => normalizeUltraDateKey(r.scadenza) === dateKey);
