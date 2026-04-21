@@ -3771,22 +3771,26 @@ export default function ClientePage({
     }
 
     if (savedContratto?.id) {
+      const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
       const rinnovoPayload: Record<string, any> = {
         cliente: clienteKey,
         item_tipo: "SAAS",
         subtipo: "ULTRA",
         scadenza: savedContratto.scadenza ?? null,
-        stato: "ATTIVA",
+        stato: "DA_AVVISARE",
         descrizione: "ULTRA",
       };
 
       const scopeAll = applyUltraToAllProjects;
       const scopeSelected = !scopeAll && applyUltraToSelectedProjects;
-      const scopedChecklistIds = scopeAll
+      const scopedChecklistIdsRaw = scopeAll
         ? checklists.map((c) => c.id)
         : scopeSelected
         ? selectedUltraProjectIds
         : [];
+      const scopedChecklistIds = scopedChecklistIdsRaw
+        .map((value) => (typeof value === "string" ? value.trim() : ""))
+        .filter((value) => value && value.toLowerCase() !== "null" && uuidPattern.test(value));
 
       if (scopeSelected && scopedChecklistIds.length === 0) {
         setContrattoError("Seleziona almeno un progetto per applicare SAAS ULTRA.");
@@ -3812,7 +3816,6 @@ export default function ClientePage({
         if (delScopedErr) console.error("Errore delete ultra scoped", delScopedErr);
 
         const scopedRows = scopedChecklistIds
-          .filter(Boolean)
           .map((checklistId) => {
             const checklist = checklistById.get(checklistId);
             return {
