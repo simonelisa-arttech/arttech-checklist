@@ -606,6 +606,12 @@ function formatRinnovoTipo(label?: string | null) {
   return upper || "";
 }
 
+function isUltraScadenzaItem(row: Pick<ScadenzaItem, "item_tipo" | "subtipo">) {
+  const itemTipo = String(row.item_tipo || "").toUpperCase();
+  const subtipo = String(row.subtipo || "").toUpperCase();
+  return itemTipo === "SAAS_ULTRA" || (itemTipo === "SAAS" && subtipo === "ULTRA");
+}
+
 function formatCategoria(label?: string | null) {
   const upper = String(label || "").toUpperCase();
   if (upper === "INTERVENTO") return "Intervento";
@@ -827,6 +833,7 @@ type ScadenzaItem = {
   contratto_id?: string | null;
   sim_id?: string | null;
   item_tipo?: string | null;
+  subtipo?: string | null;
   riferimento?: string | null;
   descrizione?: string | null;
   note?: string | null;
@@ -1132,9 +1139,18 @@ export default function ClientePage({
     const id = `e2e-${tipo}-${checklistId}`;
     setRinnovi((prev) => {
       const existing = prev.find(
-        (x) =>
-          String(x.checklist_id || "") === String(checklistId) &&
-          String(x.item_tipo || "").toUpperCase() === tipo
+        (x) => {
+          if (String(x.checklist_id || "") !== String(checklistId)) return false;
+          const currentTipo = String(x.item_tipo || "").toUpperCase();
+          if (currentTipo !== tipo) return false;
+          if (tipo === "SAAS") {
+            return String(x.subtipo || "").toUpperCase() !== "ULTRA";
+          }
+          if (tipo === "SAAS_ULTRA") {
+            return String(x.subtipo || "").toUpperCase() === "ULTRA";
+          }
+          return true;
+        }
       );
       if (existing) {
         return prev.map((x) =>
@@ -2795,14 +2811,24 @@ export default function ClientePage({
       const subtipo = String(r.subtipo || "").toUpperCase();
       return itemTipo === "SAAS_ULTRA" || (itemTipo === "SAAS" && subtipo === "ULTRA");
     });
+    const scopedUltraRinnoviRows = ultraRinnoviRows.filter((r) => Boolean(r.checklist_id));
     const rinnoviMapped = rinnovi
       // LICENZA is managed from `licenses` table in this page.
       // Keeping both sources causes "ghost/original row comes back" effects.
       .filter((r) => String(r.item_tipo || "").toUpperCase() !== "LICENZA")
+      .filter((r) => {
+        if (!isUltraRinnovoRow(r) || r.checklist_id) return true;
+        return !scopedUltraRinnoviRows.some(
+          (scopedRow) =>
+            normalizeUltraMatchKey(scopedRow.riferimento) === normalizeUltraMatchKey(r.riferimento) &&
+            normalizeUltraDateKey(scopedRow.scadenza) === normalizeUltraDateKey(r.scadenza)
+        );
+      })
       .map((r) => ({
       id: r.id,
       source: "rinnovi" as const,
-      item_tipo: r.item_tipo,
+      item_tipo: isUltraRinnovoRow(r) ? "SAAS_ULTRA" : r.item_tipo,
+      subtipo: r.subtipo ?? null,
       riferimento: getRinnovoReference(r),
       descrizione: r.descrizione ?? null,
       checklist_id: r.checklist_id ?? null,
@@ -2896,6 +2922,7 @@ export default function ClientePage({
             id: `saas_contratto:${c.id}`,
             source: "saas_contratto" as const,
             item_tipo: "SAAS_ULTRA",
+            subtipo: "ULTRA",
             riferimento: c.piano_codice ?? "ULTRA",
             descrizione: "Contratto ULTRA cliente",
             checklist_id: null,
@@ -2911,6 +2938,7 @@ export default function ClientePage({
         id: `saas_contratto:${c.id}:${r.id}`,
         source: "saas_contratto" as const,
         item_tipo: "SAAS_ULTRA",
+        subtipo: "ULTRA",
         riferimento: c.piano_codice ?? r.riferimento ?? "ULTRA",
         descrizione: "Contratto ULTRA cliente",
         checklist_id: r.checklist_id ?? null,
@@ -4431,8 +4459,7 @@ export default function ClientePage({
 
   function resolveChecklistIdForScadenzaCard(row: ScadenzaItem) {
     if (row.checklist_id) return row.checklist_id;
-    if (row.source !== "saas_contratto") return null;
-    if (String(row.item_tipo || "").toUpperCase() !== "SAAS_ULTRA") return null;
+    if (!isUltraScadenzaItem(row)) return null;
 
     const ultraRows = rinnovi.filter(
       (r): r is RinnovoServizioRow => isUltraRinnovoRow(r) && Boolean(r.checklist_id)
@@ -4465,7 +4492,8 @@ export default function ClientePage({
       id: r.id,
       source: "rinnovi",
       sim_id: r.sim_id ?? null,
-      item_tipo: r.item_tipo,
+      item_tipo: isUltraRinnovoRow(r) ? "SAAS_ULTRA" : r.item_tipo,
+      subtipo: r.subtipo ?? null,
       riferimento: getRinnovoReference(r),
       descrizione: r.descrizione ?? null,
       checklist_id: r.checklist_id ?? null,
