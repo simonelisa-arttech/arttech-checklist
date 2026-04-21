@@ -3820,7 +3820,6 @@ export default function ClientePage({
               ...rinnovoPayload,
               checklist_id: checklistId,
               proforma: checklist?.proforma ?? null,
-              cod_magazzino: checklist?.magazzino_importazione ?? null,
             };
           });
         const { error: insScopedErr } = await dbFrom("rinnovi_servizi")
