@@ -4415,6 +4415,51 @@ export default function ClientePage({
     return r.riferimento || r.descrizione || r.checklist_id?.slice(0, 8) || "—";
   }
 
+  function isUltraRinnovoRow(r: RinnovoServizioRow) {
+    const itemTipo = String(r.item_tipo || "").toUpperCase();
+    const subtipo = String(r.subtipo || "").toUpperCase();
+    return itemTipo === "SAAS_ULTRA" || (itemTipo === "SAAS" && subtipo === "ULTRA");
+  }
+
+  function normalizeUltraMatchKey(value?: string | null) {
+    return String(value || "").trim().toUpperCase();
+  }
+
+  function normalizeUltraDateKey(value?: string | null) {
+    return String(value || "").trim().slice(0, 10);
+  }
+
+  function resolveChecklistIdForScadenzaCard(row: ScadenzaItem) {
+    if (row.checklist_id) return row.checklist_id;
+    if (row.source !== "saas_contratto") return null;
+    if (String(row.item_tipo || "").toUpperCase() !== "SAAS_ULTRA") return null;
+
+    const ultraRows = rinnovi.filter(
+      (r): r is RinnovoServizioRow => isUltraRinnovoRow(r) && Boolean(r.checklist_id)
+    );
+    if (ultraRows.length === 0) return null;
+
+    const refKey = normalizeUltraMatchKey(row.riferimento);
+    const dateKey = normalizeUltraDateKey(row.scadenza);
+    const exactMatches = ultraRows.filter(
+      (r) =>
+        normalizeUltraMatchKey(r.riferimento) === refKey &&
+        normalizeUltraDateKey(r.scadenza) === dateKey
+    );
+    if (exactMatches.length === 1) return exactMatches[0].checklist_id ?? null;
+
+    const refMatches = ultraRows.filter((r) => normalizeUltraMatchKey(r.riferimento) === refKey);
+    if (refMatches.length === 1) return refMatches[0].checklist_id ?? null;
+
+    const dateMatches = ultraRows.filter((r) => normalizeUltraDateKey(r.scadenza) === dateKey);
+    if (dateMatches.length === 1) return dateMatches[0].checklist_id ?? null;
+
+    const uniqueChecklistIds = Array.from(new Set(ultraRows.map((r) => String(r.checklist_id || "")))).filter(Boolean);
+    if (uniqueChecklistIds.length === 1) return uniqueChecklistIds[0];
+
+    return null;
+  }
+
   function toScadenzaItemFromRinnovo(r: RinnovoServizioRow): ScadenzaItem {
     return {
       id: r.id,
@@ -7610,7 +7655,8 @@ ${rinnovi30ggBreakdown.debugSample
         ) : (
           <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
             {visibleRinnovi.map((row) => {
-              const project = checklistById.get(String(row.checklist_id || ""));
+              const resolvedChecklistId = resolveChecklistIdForScadenzaCard(row);
+              const project = checklistById.get(String(resolvedChecklistId || ""));
               const workflowStato = getWorkflowStato(row);
               const scadenzaBadge =
                 row.source === "licenze"
@@ -7624,21 +7670,21 @@ ${rinnovi30ggBreakdown.debugSample
               return (
                 <div
                   key={row.id}
-                  role={row.checklist_id ? "button" : undefined}
-                  tabIndex={row.checklist_id ? 0 : undefined}
+                  role={resolvedChecklistId ? "button" : undefined}
+                  tabIndex={resolvedChecklistId ? 0 : undefined}
                   onClick={() => {
-                    if (row.checklist_id) router.push(`/checklists/${row.checklist_id}`);
+                    if (resolvedChecklistId) router.push(`/checklists/${resolvedChecklistId}`);
                   }}
                   onKeyDown={(e) => {
-                    if (!row.checklist_id) return;
+                    if (!resolvedChecklistId) return;
                     if (e.key === "Enter" || e.key === " ") {
                       e.preventDefault();
-                      router.push(`/checklists/${row.checklist_id}`);
+                      router.push(`/checklists/${resolvedChecklistId}`);
                     }
                   }}
                   style={{
                     ...compactRowStyle,
-                    cursor: row.checklist_id ? "pointer" : "default",
+                    cursor: resolvedChecklistId ? "pointer" : "default",
                   }}
                 >
                   <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
