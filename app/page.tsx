@@ -49,6 +49,7 @@ type DocumentiAlertSummary = {
 };
 
 type DashboardClienteCockpitRow = {
+  rowKey: string;
   cliente: string;
   clienteId: string | null;
   projectCount: number;
@@ -65,6 +66,11 @@ type DashboardClienteCockpitRow = {
     color: string;
   };
 };
+
+type DashboardClienteCockpitEntry = Omit<
+  DashboardClienteCockpitRow,
+  "rowKey" | "attentionLabel" | "attentionColors"
+>;
 
 type ClienteAnagraficaRow = {
   id: string;
@@ -1233,7 +1239,7 @@ export function DashboardCockpitPage({
     const upcoming7Iso = toDateInputValue(upcoming7);
     const upcoming30Iso = toDateInputValue(upcoming30);
 
-    const clientMap = new Map<string, Omit<DashboardClienteCockpitRow, "attentionLabel" | "attentionColors">>();
+    const clientMap = new Map<string, DashboardClienteCockpitEntry>();
     const keyByClienteId = new Map<string, string>();
     const keyByClienteName = new Map<string, string>();
 
@@ -1299,10 +1305,7 @@ export function DashboardCockpitPage({
       return clientMap.get(dynamicKey) || null;
     };
 
-    const registerDeadline = (
-      entry: Omit<DashboardClienteCockpitRow, "attentionLabel" | "attentionColors"> | null,
-      rawValue?: string | null
-    ) => {
+    const registerDeadline = (entry: DashboardClienteCockpitEntry | null, rawValue?: string | null) => {
       const value = String(rawValue || "").trim().slice(0, 10);
       if (!entry || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return;
       if (value < todayIso) {
@@ -1348,11 +1351,34 @@ export function DashboardCockpitPage({
       }
     }
 
-    return Array.from(clientMap.values())
-      .map((entry) => {
+    const aggregatedRows = new Map<string, DashboardClienteCockpitEntry>();
+
+    for (const entry of clientMap.values()) {
+      const normalizedName = normalizeClienteSearchKey(entry.cliente);
+      const aggregateKey = normalizedName || (entry.clienteId ? `id:${entry.clienteId}` : "");
+      if (!aggregateKey) continue;
+      const existing = aggregatedRows.get(aggregateKey);
+      if (!existing) {
+        aggregatedRows.set(aggregateKey, { ...entry });
+        continue;
+      }
+      existing.cliente = existing.cliente || entry.cliente;
+      existing.clienteId = existing.clienteId || entry.clienteId;
+      existing.projectCount += entry.projectCount;
+      existing.openActivities += entry.openActivities;
+      existing.imminentActivities += entry.imminentActivities;
+      existing.overdueActivities += entry.overdueActivities;
+      existing.relevantDeadlines += entry.relevantDeadlines;
+      existing.overdueDeadlines += entry.overdueDeadlines;
+      existing.searchText = [existing.searchText, entry.searchText].filter(Boolean).join(" ");
+    }
+
+    return Array.from(aggregatedRows.entries())
+      .map(([aggregateKey, entry]) => {
         const hasAttention = entry.overdueActivities > 0 || entry.overdueDeadlines > 0;
         const hasMonitoring = entry.imminentActivities > 0 || entry.relevantDeadlines > 0;
         return {
+          rowKey: entry.clienteId ? `id:${entry.clienteId}` : `name:${aggregateKey}`,
           ...entry,
           attentionLabel: hasAttention
             ? ("ATTENZIONE" as const)
@@ -3260,7 +3286,7 @@ export function DashboardCockpitPage({
               ) : (
                 clientRowsToRender.map((row) => (
                   <Link
-                    key={row.cliente}
+                    key={row.rowKey}
                     href={`/clienti/${encodeURIComponent(row.cliente)}`}
                     style={{
                       display: "grid",
