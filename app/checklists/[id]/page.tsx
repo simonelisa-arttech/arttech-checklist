@@ -3812,8 +3812,25 @@ function buildFormData(c: Checklist): FormData {
     let activeContratto: ContrattoRow | null = null;
     let ultraNome: string | null = null;
     let includedUsed = 0;
+    let hasApplicableUltra = false;
 
     if (headChecklist.cliente_id || clienteKey) {
+      const { data: ultraRowsRaw, error: ultraRowsErr } = await db<any[]>({
+        table: "rinnovi_servizi",
+        op: "select",
+        select: "id, checklist_id, item_tipo, subtipo",
+        filter: { cliente: clienteKey, item_tipo: "SAAS", subtipo: "ULTRA" },
+        limit: 1000,
+      });
+      const ultraRows = (ultraRowsRaw || []) as Array<{ checklist_id?: string | null }>;
+      if (!ultraRowsErr) {
+        hasApplicableUltra = ultraRows.some(
+          (row) =>
+            String(row.checklist_id || "") === String(checklistId) ||
+            !String(row.checklist_id || "").trim()
+        );
+      }
+
       const { data: contrattiDataRaw, error: contrattiErr } = await db<any[]>({
         table: "saas_contratti",
         op: "select",
@@ -3824,7 +3841,7 @@ function buildFormData(c: Checklist): FormData {
       });
       const contrattiData = contrattiDataRaw || [];
 
-      if (!contrattiErr) {
+      if (!contrattiErr && (hasApplicableUltra || ultraRowsErr)) {
         const today = new Date();
         today.setHours(0, 0, 0, 0);
         const rows = (contrattiData || []) as ContrattoRow[];

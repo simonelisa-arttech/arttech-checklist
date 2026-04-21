@@ -2790,6 +2790,11 @@ export default function ClientePage({
 
   const rinnoviAll = useMemo<ScadenzaItem[]>(() => {
     const checklistMap = new Map(checklists.map((c) => [c.id, c] as const));
+    const ultraRinnoviRows = rinnovi.filter((r) => {
+      const itemTipo = String(r.item_tipo || "").toUpperCase();
+      const subtipo = String(r.subtipo || "").toUpperCase();
+      return itemTipo === "SAAS_ULTRA" || (itemTipo === "SAAS" && subtipo === "ULTRA");
+    });
     const rinnoviMapped = rinnovi
       // LICENZA is managed from `licenses` table in this page.
       // Keeping both sources causes "ghost/original row comes back" effects.
@@ -2876,18 +2881,47 @@ export default function ClientePage({
       stato: c.saas_scadenza ? getExpiryStatus(c.saas_scadenza) : null,
       modalita: null,
     }));
-    const contrattiMapped = contrattiRows.map((c) => ({
-      id: `saas_contratto:${c.id}`,
-      source: "saas_contratto" as const,
-      item_tipo: "SAAS_ULTRA",
-      riferimento: c.piano_codice ?? "ULTRA",
-      descrizione: "Contratto ULTRA cliente",
-      checklist_id: null,
-      contratto_id: c.id,
-      scadenza: c.scadenza ?? null,
-      stato: c.scadenza ? getExpiryStatus(c.scadenza) : "ATTIVA",
-      modalita: null,
-    }));
+    const contrattiMapped: ScadenzaItem[] = contrattiRows.flatMap((c): ScadenzaItem[] => {
+      const matchingUltraRows = ultraRinnoviRows.filter((r) => {
+        const rinnovoRef = String(r.riferimento || "").trim().toUpperCase();
+        const contrattoRef = String(c.piano_codice || "ULTRA").trim().toUpperCase();
+        const sameRef = rinnovoRef === contrattoRef || (!rinnovoRef && !c.piano_codice);
+        const sameScadenza = String(r.scadenza || "") === String(c.scadenza || "");
+        return sameRef && sameScadenza;
+      });
+
+      if (matchingUltraRows.length === 0) {
+        return [
+          {
+            id: `saas_contratto:${c.id}`,
+            source: "saas_contratto" as const,
+            item_tipo: "SAAS_ULTRA",
+            riferimento: c.piano_codice ?? "ULTRA",
+            descrizione: "Contratto ULTRA cliente",
+            checklist_id: null,
+            contratto_id: c.id,
+            scadenza: c.scadenza ?? null,
+            stato: c.scadenza ? getExpiryStatus(c.scadenza) : "ATTIVA",
+            modalita: null,
+          },
+        ];
+      }
+
+      return matchingUltraRows.map((r) => ({
+        id: `saas_contratto:${c.id}:${r.id}`,
+        source: "saas_contratto" as const,
+        item_tipo: "SAAS_ULTRA",
+        riferimento: c.piano_codice ?? r.riferimento ?? "ULTRA",
+        descrizione: "Contratto ULTRA cliente",
+        checklist_id: r.checklist_id ?? null,
+        contratto_id: c.id,
+        scadenza: c.scadenza ?? r.scadenza ?? null,
+        stato: c.scadenza ? getExpiryStatus(c.scadenza) : String(r.stato || "ATTIVA"),
+        proforma: r.proforma ?? null,
+        cod_magazzino: r.cod_magazzino ?? null,
+        modalita: null,
+      }));
+    });
     const rinnoviGaranziaChecklistIds = new Set(
       rinnovi
         .filter((r) => String(r.item_tipo || "").toUpperCase() === "GARANZIA")
