@@ -1,5 +1,7 @@
 "use client";
 
+import { isSupabaseConfigured, supabase } from "@/lib/supabaseClient";
+
 type DbOp = "select" | "insert" | "update" | "delete" | "upsert";
 
 type DbPayload = {
@@ -24,9 +26,19 @@ function likeToRegex(pattern: string) {
 
 async function callDb<T>(payload: DbPayload): Promise<DbResponse<T>> {
   try {
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (isSupabaseConfigured) {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
+      const accessToken = String(session?.access_token || "").trim();
+      if (accessToken) {
+        headers.authorization = `Bearer ${accessToken}`;
+      }
+    }
     const res = await fetch("/api/db", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers,
       cache: "no-store",
       credentials: "include",
       body: JSON.stringify(payload),
