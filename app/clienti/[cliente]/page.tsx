@@ -744,6 +744,15 @@ function calcM2(dimensioni?: string | null, numeroFacce?: number | null): number
   return calcM2FromDimensioni(dimensioni, numeroFacce ?? 1);
 }
 
+function normalizeChecklistUuid(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  if (!trimmed || trimmed.toLowerCase() === "null") return null;
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(trimmed)
+    ? trimmed
+    : null;
+}
+
 type ChecklistRow = {
   id: string;
   cliente: string | null;
@@ -3771,7 +3780,6 @@ export default function ClientePage({
     }
 
     if (savedContratto?.id) {
-      const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
       const rinnovoPayload: Record<string, any> = {
         cliente: clienteKey,
         item_tipo: "SAAS",
@@ -3788,32 +3796,48 @@ export default function ClientePage({
         : scopeSelected
         ? selectedUltraProjectIds
         : [];
-      const scopedChecklistIds = scopedChecklistIdsRaw
-        .map((value) => (typeof value === "string" ? value.trim() : ""))
-        .filter((value) => value && value.toLowerCase() !== "null" && uuidPattern.test(value));
+      const scopedChecklistIds = Array.from(
+        new Set(scopedChecklistIdsRaw.map(normalizeChecklistUuid).filter((value): value is string => !!value))
+      );
+      const wantsProjectScope = scopeAll || scopeSelected;
+      const ultraRinnoviRows = rinnovi.filter((row) => {
+        if (String(row.cliente || "").trim() !== clienteKey) return false;
+        if (String(row.item_tipo || "").toUpperCase() !== "SAAS") return false;
+        return String(row.subtipo || "").toUpperCase() === "ULTRA";
+      });
+      const globalUltraIds = ultraRinnoviRows
+        .filter((row) => !normalizeChecklistUuid(row.checklist_id))
+        .map((row) => row.id)
+        .filter(Boolean);
+      const scopedUltraExistingIds = ultraRinnoviRows
+        .filter((row) => {
+          const checklistId = normalizeChecklistUuid(row.checklist_id);
+          return !!checklistId && scopedChecklistIds.includes(checklistId);
+        })
+        .map((row) => row.id)
+        .filter(Boolean);
+      const existingGlobalUltra = ultraRinnoviRows.find((row) => !normalizeChecklistUuid(row.checklist_id));
 
-      if (scopeSelected && scopedChecklistIds.length === 0) {
+      if (wantsProjectScope && scopedChecklistIds.length === 0) {
         setContrattoError("Seleziona almeno un progetto per applicare SAAS ULTRA.");
         return;
       }
 
       if (scopedChecklistIds.length > 0) {
-        const { error: delGlobalErr } = await dbFrom("rinnovi_servizi")
-          .delete()
-          .eq("cliente", clienteKey)
-          .eq("item_tipo", "SAAS")
-          .eq("subtipo", "ULTRA")
-          .is("checklist_id", null);
-        if (delGlobalErr) console.error("Errore delete ultra globale", delGlobalErr);
+        if (globalUltraIds.length > 0) {
+          const { error: delGlobalErr } = await dbFrom("rinnovi_servizi")
+            .delete()
+            .in("id", globalUltraIds);
+          if (delGlobalErr) console.error("Errore delete ultra globale", delGlobalErr);
+        }
 
         // Evita duplicati: massimo una SAAS_ULTRA per progetto.
-        const { error: delScopedErr } = await dbFrom("rinnovi_servizi")
-          .delete()
-          .eq("cliente", clienteKey)
-          .eq("item_tipo", "SAAS")
-          .eq("subtipo", "ULTRA")
-          .in("checklist_id", scopedChecklistIds);
-        if (delScopedErr) console.error("Errore delete ultra scoped", delScopedErr);
+        if (scopedUltraExistingIds.length > 0) {
+          const { error: delScopedErr } = await dbFrom("rinnovi_servizi")
+            .delete()
+            .in("id", scopedUltraExistingIds);
+          if (delScopedErr) console.error("Errore delete ultra scoped", delScopedErr);
+        }
 
         const scopedRows = scopedChecklistIds
           .map((checklistId) => {
@@ -3829,28 +3853,17 @@ export default function ClientePage({
         if (insScopedErr) console.error("Errore insert ultra per progetto", insScopedErr);
       } else {
         // Modalità globale: pulisce eventuali associazioni ULTRA per-progetto.
-        const { error: delAllScopedErr } = await dbFrom("rinnovi_servizi")
-          .delete()
-          .eq("cliente", clienteKey)
-          .eq("item_tipo", "SAAS")
-          .eq("subtipo", "ULTRA")
-          .not("checklist_id", "is", null);
-        if (delAllScopedErr) console.error("Errore delete ultra scoped all", delAllScopedErr);
+        if (scopedUltraExistingIds.length > 0) {
+          const { error: delAllScopedErr } = await dbFrom("rinnovi_servizi")
+            .delete()
+            .in("id", scopedUltraExistingIds);
+          if (delAllScopedErr) console.error("Errore delete ultra scoped all", delAllScopedErr);
+        }
 
-        const { data: existing, error: findErr } = await dbFrom("rinnovi_servizi")
-          .select("id")
-          .eq("item_tipo", "SAAS")
-          .eq("subtipo", "ULTRA")
-          .eq("cliente", clienteKey)
-          .is("checklist_id", null)
-          .maybeSingle();
-
-        if (findErr) {
-          console.error("Errore lookup rinnovo SAAS", findErr);
-        } else if (existing?.id) {
+        if (existingGlobalUltra?.id) {
           const { error: updErr } = await dbFrom("rinnovi_servizi")
             .update(rinnovoPayload)
-            .eq("id", existing.id);
+            .eq("id", existingGlobalUltra.id);
           if (updErr) console.error("Errore update rinnovo SAAS", updErr);
         } else {
           const { error: insErr } = await dbFrom("rinnovi_servizi")
@@ -6932,10 +6945,12 @@ ${rinnovi30ggBreakdown.debugSample
               }}
             >
               {checklists.map((c) => {
-                const checked = selectedUltraProjectIds.includes(c.id);
+                const projectId = normalizeChecklistUuid(c.id);
+                if (!projectId) return null;
+                const checked = selectedUltraProjectIds.includes(projectId);
                 return (
                   <label
-                    key={c.id}
+                    key={projectId}
                     style={{
                       display: "flex",
                       alignItems: "center",
@@ -6949,12 +6964,12 @@ ${rinnovi30ggBreakdown.debugSample
                       checked={checked}
                       onChange={(e) => {
                         setSelectedUltraProjectIds((prev) => {
-                          if (e.target.checked) return Array.from(new Set([...prev, c.id]));
-                          return prev.filter((id) => id !== c.id);
+                          if (e.target.checked) return Array.from(new Set([...prev, projectId]));
+                          return prev.filter((id) => id !== projectId);
                         });
                       }}
                     />
-                    {c.nome_checklist || c.id}
+                    {c.nome_checklist || projectId}
                   </label>
                 );
               })}
