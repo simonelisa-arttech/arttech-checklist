@@ -3775,7 +3775,6 @@ export default function ClientePage({
         cliente: clienteKey,
         item_tipo: "SAAS",
         subtipo: "ULTRA",
-        riferimento: savedContratto.piano_codice ?? "ULTRA",
         scadenza: savedContratto.scadenza ?? null,
         stato: "ATTIVA",
         descrizione: "ULTRA",
