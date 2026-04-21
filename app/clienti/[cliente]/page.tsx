@@ -3720,6 +3720,20 @@ export default function ClientePage({
     });
   }
 
+  async function fetchUltraRinnoviRows(clienteKey: string) {
+    const key = (clienteKey || "").trim();
+    if (!key) return [] as RinnovoServizioRow[];
+    const { data, error } = await dbFrom("rinnovi_servizi")
+      .select("id, cliente, item_tipo, subtipo, checklist_id, scadenza, stato, descrizione, proforma")
+      .eq("cliente", key)
+      .eq("item_tipo", "SAAS")
+      .eq("subtipo", "ULTRA");
+    if (error) {
+      throw new Error(error.message);
+    }
+    return (data || []) as RinnovoServizioRow[];
+  }
+
   async function saveContratto() {
     const clienteKey = (cliente || "").trim();
     if (!clienteKey) return;
@@ -3800,11 +3814,7 @@ export default function ClientePage({
         new Set(scopedChecklistIdsRaw.map(normalizeChecklistUuid).filter((value): value is string => !!value))
       );
       const wantsProjectScope = scopeAll || scopeSelected;
-      const ultraRinnoviRows = rinnovi.filter((row) => {
-        if (String(row.cliente || "").trim() !== clienteKey) return false;
-        if (String(row.item_tipo || "").toUpperCase() !== "SAAS") return false;
-        return String(row.subtipo || "").toUpperCase() === "ULTRA";
-      });
+      const ultraRinnoviRows = await fetchUltraRinnoviRows(clienteKey);
       const globalUltraIds = ultraRinnoviRows
         .filter((row) => !normalizeChecklistUuid(row.checklist_id))
         .map((row) => row.id)
@@ -3874,6 +3884,7 @@ export default function ClientePage({
     }
 
     await fetchSaasContratti(clienteKey);
+    await fetchRinnovi(clienteKey);
     setContrattoError(null);
     setApplyUltraToAllProjects(false);
     setApplyUltraToSelectedProjects(false);
@@ -5011,11 +5022,20 @@ export default function ClientePage({
     setEditScadenzaSaving(true);
     setEditScadenzaErr(null);
     try {
+      const ultraRinnoviRows = await fetchUltraRinnoviRows(clienteKey);
       const { error } = await dbFrom("saas_contratti")
         .delete()
         .eq("id", editScadenzaItem.contratto_id);
       if (error) throw new Error(error.message);
+      const ultraRinnoviIds = ultraRinnoviRows.map((row) => row.id).filter(Boolean);
+      if (ultraRinnoviIds.length > 0) {
+        const { error: rinnoviErr } = await dbFrom("rinnovi_servizi")
+          .delete()
+          .in("id", ultraRinnoviIds);
+        if (rinnoviErr) throw new Error(rinnoviErr.message);
+      }
       await fetchSaasContratti(clienteKey);
+      await fetchRinnovi(clienteKey);
       setEditScadenzaOpen(false);
       showToast("✅ Contratto eliminato", "success");
     } catch (err: any) {
