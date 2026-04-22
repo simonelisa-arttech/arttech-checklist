@@ -263,7 +263,7 @@ function canReopenIntervento(currentRole: string | null) {
 }
 
 function isFatturaDaEmettere(i: InterventoRow) {
-  return getInterventoStato(i) === "CHIUSO" && getEsitoFatturazione(i) === "DA_FATTURARE";
+  return getEsitoFatturazione(i) === "DA_FATTURARE";
 }
 
 function getChecklistMeta(row: InterventoRow, checklists: InterventiChecklistOption[]) {

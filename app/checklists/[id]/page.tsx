@@ -2323,9 +2323,7 @@ function buildFormData(c: Checklist): FormData {
   }
 
   function getProjectFattureDaEmettereList() {
-    return projectInterventi.filter(
-      (row) => getInterventoRowStato(row) === "CHIUSO" && getProjectEsitoFatturazione(row) === "DA_FATTURARE"
-    );
+    return projectInterventi.filter((row) => getProjectEsitoFatturazione(row) === "DA_FATTURARE");
   }
 
   function buildProjectBulkFattureMessage(list: InterventoRow[]) {
@@ -3947,6 +3945,7 @@ function buildFormData(c: Checklist): FormData {
     }
     const interventiData = await loadProjectInterventi(checklistId);
     setProjectInterventi(interventiData);
+    setInterventiInclusiUsati(interventiData.filter((row) => Boolean(row.incluso)).length);
     await loadInterventoRowAttachmentCounts(interventiData);
     await fetchInterventoRowBulkLastAlert();
     setProjectInterventiError(null);
