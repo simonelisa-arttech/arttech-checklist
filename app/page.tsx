@@ -1574,10 +1574,15 @@ export function DashboardCockpitPage({
       SAAS: new Set<string>(),
       SAAS_ULTRA: new Set<string>(),
     };
+    const projectCountByFilter: Record<Exclude<DashboardClientSaasFilter, "TUTTI">, number> = {
+      SAAS: 0,
+      SAAS_ULTRA: 0,
+    };
 
     for (const item of items) {
       const filterKey = getDashboardSaasFilterKey(item);
       if (!filterKey) continue;
+      projectCountByFilter[filterKey] += 1;
       const rowKey = getDashboardClienteRowKey(item.cliente, item.cliente_id);
       if (!rowKey) continue;
       clientKeysByFilter[filterKey].add(rowKey);
@@ -1589,6 +1594,7 @@ export function DashboardCockpitPage({
         label: "SaaS",
         helper: "Clienti con piano SaaS",
         count: clientKeysByFilter.SAAS.size,
+        projectCount: projectCountByFilter.SAAS,
         colors: DASHBOARD_BADGE_COLORS.statusNeutral,
         clientKeys: clientKeysByFilter.SAAS,
       },
@@ -1597,6 +1603,7 @@ export function DashboardCockpitPage({
         label: "SaaS Ultra",
         helper: "Clienti con piano Ultra",
         count: clientKeysByFilter.SAAS_ULTRA.size,
+        projectCount: projectCountByFilter.SAAS_ULTRA,
         colors: DASHBOARD_BADGE_COLORS.statusDueSoon,
         clientKeys: clientKeysByFilter.SAAS_ULTRA,
       },
@@ -3680,9 +3687,12 @@ export function DashboardCockpitPage({
                               marginTop: 4,
                               fontSize: 12,
                               color: active ? "rgba(255,255,255,0.75)" : "#64748b",
+                              display: "grid",
+                              gap: 2,
                             }}
                           >
-                            {card.helper}
+                            <span>{card.count} clienti</span>
+                            <span>{card.projectCount} progetti</span>
                           </div>
                         </button>
                       );
