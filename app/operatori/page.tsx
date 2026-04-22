@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import ConfigMancante from "@/components/ConfigMancante";
 import { dbFrom } from "@/lib/clientDbBroker";
 import { isTimelineRowOverdueNotDone } from "@/lib/cronoprogrammaStatus";
@@ -381,6 +382,7 @@ export default function OperatoreAttivitaPage() {
     return <ConfigMancante />;
   }
 
+  const router = useRouter();
   const todayIso = dateToOperativiIsoDay(new Date());
   const currentMonthStart = new Date();
   currentMonthStart.setDate(1);
@@ -424,6 +426,10 @@ export default function OperatoreAttivitaPage() {
 
         const meRes = await fetch("/api/me-operatore", { credentials: "include" });
         const meData = await meRes.json().catch(() => ({}));
+        if (meRes.status === 401 || meRes.status === 403) {
+          router.replace("/login?next=%2Foperatori");
+          return;
+        }
         if (!meRes.ok || !meData?.operatore?.id) {
           throw new Error(String(meData?.error || "Operatore non autenticato"));
         }
@@ -589,7 +595,7 @@ export default function OperatoreAttivitaPage() {
     return () => {
       active = false;
     };
-  }, [reloadNonce]);
+  }, [reloadNonce, router]);
 
   useEffect(() => {
     const hasLive = Object.values(timbraturaStateByKey).some((state) => state === "IN_CORSO");
