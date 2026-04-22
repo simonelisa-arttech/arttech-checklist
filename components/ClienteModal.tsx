@@ -174,6 +174,7 @@ export default function ClienteModal({ open, onClose, initial, onSaved, onDelete
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
+        padding: 16,
         zIndex: 1000,
       }}
       onClick={onClose}
@@ -183,14 +184,17 @@ export default function ClienteModal({ open, onClose, initial, onSaved, onDelete
         style={{
           width: "100%",
           maxWidth: 720,
+          maxHeight: "90vh",
           background: "white",
           borderRadius: 14,
-          padding: 20,
           border: "1px solid #eee",
           boxShadow: "0 18px 50px rgba(0,0,0,0.2)",
+          display: "flex",
+          flexDirection: "column",
+          overflow: "hidden",
         }}
       >
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "20px 20px 0" }}>
           <h2 style={{ margin: 0 }}>
             {initial?.id ? "Modifica cliente" : "Nuovo cliente"}
           </h2>
@@ -210,142 +214,161 @@ export default function ClienteModal({ open, onClose, initial, onSaved, onDelete
           </button>
         </div>
 
-        <div style={{ display: "grid", gap: 12, marginTop: 14 }}>
-          <label>
-            Denominazione*<br />
-            <input
-              value={form.denominazione}
-              onChange={(e) => setForm({ ...form, denominazione: e.target.value })}
-              style={{ width: "100%", padding: 10 }}
-            />
-          </label>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+        <div
+          style={{
+            flex: 1,
+            overflowY: "auto",
+            padding: "14px 20px 0",
+            minHeight: 0,
+          }}
+        >
+          <div style={{ display: "grid", gap: 12 }}>
             <label>
-              Stato<br />
-              <select
-                value={form.attivo === false ? "0" : "1"}
-                onChange={(e) => setForm({ ...form, attivo: e.target.value === "1" })}
-                style={{ width: "100%", padding: 10 }}
-              >
-                <option value="1">Attivo</option>
-                <option value="0">Disattivo</option>
-              </select>
-            </label>
-            <label>
-              Codice interno<br />
+              Denominazione*<br />
               <input
-                value={form.codice_interno || ""}
-                onChange={(e) => setForm({ ...form, codice_interno: e.target.value })}
+                value={form.denominazione}
+                onChange={(e) => setForm({ ...form, denominazione: e.target.value })}
                 style={{ width: "100%", padding: 10 }}
               />
             </label>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              <label>
+                Stato<br />
+                <select
+                  value={form.attivo === false ? "0" : "1"}
+                  onChange={(e) => setForm({ ...form, attivo: e.target.value === "1" })}
+                  style={{ width: "100%", padding: 10 }}
+                >
+                  <option value="1">Attivo</option>
+                  <option value="0">Disattivo</option>
+                </select>
+              </label>
+              <label>
+                Codice interno<br />
+                <input
+                  value={form.codice_interno || ""}
+                  onChange={(e) => setForm({ ...form, codice_interno: e.target.value })}
+                  style={{ width: "100%", padding: 10 }}
+                />
+              </label>
+              <label>
+                Email<br />
+                <input
+                  value={form.email || ""}
+                  onChange={(e) => setForm({ ...form, email: e.target.value })}
+                  style={{ width: "100%", padding: 10 }}
+                />
+              </label>
+              <label>
+                Telefono<br />
+                <input
+                  value={form.telefono || ""}
+                  onChange={(e) => setForm({ ...form, telefono: e.target.value })}
+                  style={{ width: "100%", padding: 10 }}
+                />
+              </label>
+              <label style={{ gridColumn: "1 / -1" }}>
+                Link Drive cliente<br />
+                <input
+                  value={form.drive_url || ""}
+                  onChange={(e) => setForm({ ...form, drive_url: e.target.value })}
+                  placeholder="https://drive.google.com/..."
+                  style={{ width: "100%", padding: 10 }}
+                />
+              </label>
+              <label>
+                P.IVA<br />
+                <input
+                  value={form.piva || ""}
+                  onChange={(e) => setForm({ ...form, piva: e.target.value })}
+                  style={{ width: "100%", padding: 10 }}
+                />
+              </label>
+              <label>
+                Codice fiscale<br />
+                <input
+                  value={form.codice_fiscale || ""}
+                  onChange={(e) => setForm({ ...form, codice_fiscale: e.target.value })}
+                  style={{ width: "100%", padding: 10 }}
+                />
+              </label>
+              <label>
+                Codice SDI<br />
+                <input
+                  value={form.codice_sdi || ""}
+                  onChange={(e) => setForm({ ...form, codice_sdi: e.target.value })}
+                  style={{ width: "100%", padding: 10 }}
+                />
+              </label>
+              <label>
+                PEC<br />
+                <input
+                  value={form.pec || ""}
+                  onChange={(e) => setForm({ ...form, pec: e.target.value })}
+                  style={{ width: "100%", padding: 10 }}
+                />
+              </label>
+              <label>
+                Comune<br />
+                <input
+                  value={form.comune || ""}
+                  onChange={(e) => setForm({ ...form, comune: e.target.value })}
+                  style={{ width: "100%", padding: 10 }}
+                />
+              </label>
+              <label>
+                Provincia<br />
+                <input
+                  value={form.provincia || ""}
+                  onChange={(e) => setForm({ ...form, provincia: e.target.value })}
+                  style={{ width: "100%", padding: 10 }}
+                />
+              </label>
+              <label>
+                CAP<br />
+                <input
+                  value={form.cap || ""}
+                  onChange={(e) => setForm({ ...form, cap: e.target.value })}
+                  style={{ width: "100%", padding: 10 }}
+                />
+              </label>
+              <label>
+                Paese<br />
+                <input
+                  value={form.paese || ""}
+                  onChange={(e) => setForm({ ...form, paese: e.target.value })}
+                  style={{ width: "100%", padding: 10 }}
+                />
+              </label>
+            </div>
             <label>
-              Email<br />
+              Indirizzo<br />
               <input
-                value={form.email || ""}
-                onChange={(e) => setForm({ ...form, email: e.target.value })}
-                style={{ width: "100%", padding: 10 }}
-              />
-            </label>
-            <label>
-              Telefono<br />
-              <input
-                value={form.telefono || ""}
-                onChange={(e) => setForm({ ...form, telefono: e.target.value })}
-                style={{ width: "100%", padding: 10 }}
-              />
-            </label>
-            <label style={{ gridColumn: "1 / -1" }}>
-              Link Drive cliente<br />
-              <input
-                value={form.drive_url || ""}
-                onChange={(e) => setForm({ ...form, drive_url: e.target.value })}
-                placeholder="https://drive.google.com/..."
-                style={{ width: "100%", padding: 10 }}
-              />
-            </label>
-            <label>
-              P.IVA<br />
-              <input
-                value={form.piva || ""}
-                onChange={(e) => setForm({ ...form, piva: e.target.value })}
-                style={{ width: "100%", padding: 10 }}
-              />
-            </label>
-            <label>
-              Codice fiscale<br />
-              <input
-                value={form.codice_fiscale || ""}
-                onChange={(e) => setForm({ ...form, codice_fiscale: e.target.value })}
-                style={{ width: "100%", padding: 10 }}
-              />
-            </label>
-            <label>
-              Codice SDI<br />
-              <input
-                value={form.codice_sdi || ""}
-                onChange={(e) => setForm({ ...form, codice_sdi: e.target.value })}
-                style={{ width: "100%", padding: 10 }}
-              />
-            </label>
-            <label>
-              PEC<br />
-              <input
-                value={form.pec || ""}
-                onChange={(e) => setForm({ ...form, pec: e.target.value })}
-                style={{ width: "100%", padding: 10 }}
-              />
-            </label>
-            <label>
-              Comune<br />
-              <input
-                value={form.comune || ""}
-                onChange={(e) => setForm({ ...form, comune: e.target.value })}
-                style={{ width: "100%", padding: 10 }}
-              />
-            </label>
-            <label>
-              Provincia<br />
-              <input
-                value={form.provincia || ""}
-                onChange={(e) => setForm({ ...form, provincia: e.target.value })}
-                style={{ width: "100%", padding: 10 }}
-              />
-            </label>
-            <label>
-              CAP<br />
-              <input
-                value={form.cap || ""}
-                onChange={(e) => setForm({ ...form, cap: e.target.value })}
-                style={{ width: "100%", padding: 10 }}
-              />
-            </label>
-            <label>
-              Paese<br />
-              <input
-                value={form.paese || ""}
-                onChange={(e) => setForm({ ...form, paese: e.target.value })}
+                value={form.indirizzo || ""}
+                onChange={(e) => setForm({ ...form, indirizzo: e.target.value })}
                 style={{ width: "100%", padding: 10 }}
               />
             </label>
           </div>
-          <label>
-            Indirizzo<br />
-            <input
-              value={form.indirizzo || ""}
-              onChange={(e) => setForm({ ...form, indirizzo: e.target.value })}
-              style={{ width: "100%", padding: 10 }}
-            />
-          </label>
+
+          {error && (
+            <div style={{ color: "#b91c1c", marginTop: 12, fontSize: 13 }}>
+              {error}
+            </div>
+          )}
         </div>
 
-        {error && (
-          <div style={{ color: "#b91c1c", marginTop: 12, fontSize: 13 }}>
-            {error}
-          </div>
-        )}
-
-        <div style={{ display: "flex", gap: 10, marginTop: 16, alignItems: "center" }}>
+        <div
+          style={{
+            display: "flex",
+            gap: 10,
+            alignItems: "center",
+            padding: "16px 20px 20px",
+            borderTop: "1px solid #eee",
+            background: "white",
+            flexWrap: "wrap",
+          }}
+        >
           <button
             type="button"
             onClick={onSubmit}
