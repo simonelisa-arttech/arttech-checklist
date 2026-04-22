@@ -3109,7 +3109,8 @@ export default function ClientePage({
         const groupKey = `${normalizeUltraMatchKey(row.riferimento)}::${normalizeUltraDateKey(
           row.scadenza
         )}`;
-        return !scopedUltraGroupKeys.has(groupKey);
+        if (scopedUltraGroupKeys.has(groupKey)) return false;
+        return !resolveChecklistIdForScadenzaCard(row);
       })
       .sort(
       (a, b) => String(a.scadenza || "").localeCompare(String(b.scadenza || ""))
