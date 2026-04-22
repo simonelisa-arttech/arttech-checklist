@@ -3185,11 +3185,34 @@ export default function ClientePage({
     });
   }, [checklists, filteredRinnovi, rinnoviSearch, rinnoviTypeFilter]);
 
+  const dedupedCompactFilteredRinnovi = useMemo(() => {
+    const scopedUltraGroupKeys = new Set(
+      compactFilteredRinnovi
+        .filter((row) => {
+          if (String(row.item_tipo || "").toUpperCase() !== "SAAS_ULTRA") return false;
+          return Boolean(row.checklist_id || resolveChecklistIdForScadenzaCard(row));
+        })
+        .map(
+          (row) =>
+            `${normalizeUltraMatchKey(row.riferimento)}::${normalizeUltraDateKey(row.scadenza)}`
+        )
+    );
+
+    return compactFilteredRinnovi.filter((row) => {
+      if (String(row.item_tipo || "").toUpperCase() !== "SAAS_ULTRA") return true;
+      if (row.checklist_id) return true;
+      const groupKey = `${normalizeUltraMatchKey(row.riferimento)}::${normalizeUltraDateKey(
+        row.scadenza
+      )}`;
+      return !scopedUltraGroupKeys.has(groupKey);
+    });
+  }, [compactFilteredRinnovi, rinnovi]);
+
   const visibleRinnovi = useMemo(() => {
     return showAllRinnovi
-      ? compactFilteredRinnovi
-      : compactFilteredRinnovi.slice(0, RINNOVI_PREVIEW_LIMIT);
-  }, [compactFilteredRinnovi, showAllRinnovi]);
+      ? dedupedCompactFilteredRinnovi
+      : dedupedCompactFilteredRinnovi.slice(0, RINNOVI_PREVIEW_LIMIT);
+  }, [dedupedCompactFilteredRinnovi, showAllRinnovi]);
 
   const rinnovi30ggBreakdown = useMemo(() => {
     const now = startOfToday();
@@ -7641,7 +7664,7 @@ ${rinnovi30ggBreakdown.debugSample
               </button>
             );
           })}
-          {compactFilteredRinnovi.length > RINNOVI_PREVIEW_LIMIT ? (
+          {dedupedCompactFilteredRinnovi.length > RINNOVI_PREVIEW_LIMIT ? (
             <button
               type="button"
               onClick={() => setShowAllRinnovi((prev) => !prev)}
@@ -7655,14 +7678,14 @@ ${rinnovi30ggBreakdown.debugSample
                 cursor: "pointer",
               }}
             >
-              {showAllRinnovi ? "Nascondi" : `Mostra tutti (${compactFilteredRinnovi.length})`}
+              {showAllRinnovi ? "Nascondi" : `Mostra tutti (${dedupedCompactFilteredRinnovi.length})`}
             </button>
           ) : null}
         </div>
         <div style={{ marginTop: 8, fontSize: 12, color: "#64748b" }}>
-          {compactFilteredRinnovi.length === 0
+          {dedupedCompactFilteredRinnovi.length === 0
             ? "Nessuna scadenza o rinnovo trovato con i filtri correnti"
-            : `Preview compatta: ${visibleRinnovi.length} di ${compactFilteredRinnovi.length} elementi`}
+            : `Preview compatta: ${visibleRinnovi.length} di ${dedupedCompactFilteredRinnovi.length} elementi`}
         </div>
 
         <div
@@ -7782,7 +7805,7 @@ ${rinnovi30ggBreakdown.debugSample
           </div>
         </div>
 
-        {compactFilteredRinnovi.length === 0 ? (
+        {dedupedCompactFilteredRinnovi.length === 0 ? (
           <div style={{ marginTop: 10, opacity: 0.7 }}>Nessuna scadenza trovata</div>
         ) : (
           <div style={{ marginTop: 10, display: "grid", gap: 10 }}>
@@ -7858,7 +7881,7 @@ ${rinnovi30ggBreakdown.debugSample
             <div style={{ marginTop: 12 }}>
               <RenewalsBlock
                 cliente={cliente}
-                rows={compactFilteredRinnovi}
+                rows={dedupedCompactFilteredRinnovi}
                 checklistById={checklistById}
                 rinnoviError={rinnoviError}
                 rinnoviNotice={rinnoviNotice}
