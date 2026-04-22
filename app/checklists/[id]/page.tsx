@@ -1431,7 +1431,6 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [contrattoUltra, setContrattoUltra] = useState<ContrattoRow | null>(null);
   const [contrattoUltraNome, setContrattoUltraNome] = useState<string | null>(null);
-  const [interventiInclusiUsati, setInterventiInclusiUsati] = useState<number>(0);
   const [projectInterventi, setProjectInterventi] = useState<InterventoRow[]>([]);
   const [projectTagliando, setProjectTagliando] = useState<{
     scadenza: string;
@@ -1492,6 +1491,10 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
   const [rinnoviFilterScaduti, setRinnoviFilterScaduti] = useState(false);
   const [rinnoviFilterDaFatturare, setRinnoviFilterDaFatturare] = useState(false);
   const [projectInterventiExpandedId, setProjectInterventiExpandedId] = useState<string | null>(null);
+  const interventiInclusiUsati = useMemo(
+    () => projectInterventi.filter((row) => Boolean(row.incluso)).length,
+    [projectInterventi]
+  );
   const [projectInterventoEditId, setProjectInterventoEditId] = useState<string | null>(null);
   const [projectInterventoEditForm, setProjectInterventoEditForm] = useState<ProjectInterventoForm | null>(null);
   const [projectInterventoAttachmentCounts, setProjectInterventoAttachmentCounts] = useState<Map<string, number>>(new Map());
@@ -3641,7 +3644,6 @@ function buildFormData(c: Checklist): FormData {
     setLastAlertByTask(new Map());
     setContrattoUltra(null);
     setContrattoUltraNome(null);
-    setInterventiInclusiUsati(0);
     setProjectInterventi([]);
     setProjectInterventoAttachmentCounts(new Map());
     setProjectSims([]);
@@ -3809,7 +3811,6 @@ function buildFormData(c: Checklist): FormData {
     const clienteKey = String(headChecklist.cliente ?? "").trim();
     let activeContratto: ContrattoRow | null = null;
     let ultraNome: string | null = null;
-    let includedUsed = 0;
     let hasApplicableUltra = false;
 
     if (headChecklist.cliente_id || clienteKey) {
@@ -3862,20 +3863,10 @@ function buildFormData(c: Checklist): FormData {
         ultraNome = (pianoRows?.[0] as any)?.nome ?? null;
       }
 
-      if (activeContratto?.id) {
-        const { data: includedRows } = await dbFrom("saas_interventi")
-          .select("id, contratto_id, incluso")
-          .eq("checklist_id", checklistId)
-          .eq("contratto_id", activeContratto.id)
-          .eq("incluso", true)
-          .limit(1000);
-        includedUsed = (includedRows || []).length;
-      }
     }
 
     setContrattoUltra(activeContratto);
     setContrattoUltraNome(ultraNome);
-    setInterventiInclusiUsati(includedUsed);
     setLazyDataLoaded((prev) => ({ ...prev, services: true }));
   }
 
@@ -3945,7 +3936,6 @@ function buildFormData(c: Checklist): FormData {
     }
     const interventiData = await loadProjectInterventi(checklistId);
     setProjectInterventi(interventiData);
-    setInterventiInclusiUsati(interventiData.filter((row) => Boolean(row.incluso)).length);
     await loadInterventoRowAttachmentCounts(interventiData);
     await fetchInterventoRowBulkLastAlert();
     setProjectInterventiError(null);
