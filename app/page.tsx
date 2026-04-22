@@ -10,6 +10,7 @@ import { calcM2FromDimensioni } from "@/lib/parseDimensioni";
 import { getProjectPresentation, PROJECT_STATUS_FILTER_OPTIONS } from "@/lib/projectStatus";
 import { isSupabaseConfigured, supabase } from "@/lib/supabaseClient";
 import { dbFrom } from "@/lib/clientDbBroker";
+import { storageUpload } from "@/lib/clientStorageApi";
 import { isTimelineRowOverdueNotDone } from "@/lib/cronoprogrammaStatus";
 import {
   buildOperativiSchedule,
@@ -422,6 +423,7 @@ type CronoComment = {
 
 type QuickAttivitaType = "INSTALLAZIONE" | "DISINSTALLAZIONE" | "ALTRA_ATTIVITA";
 type DashboardClientSaasFilter = "TUTTI" | "SAAS" | "SAAS_ULTRA";
+type QuickAttachmentDocumentType = "GENERICO" | "CLIENTE" | "DRIVE" | "ODA_FORNITORE";
 type QuickAttivitaTouched = {
   ore: boolean;
   indirizzo: boolean;
@@ -429,6 +431,23 @@ type QuickAttivitaTouched = {
   referenteClienteContatto: boolean;
   referenteArtTechNome: boolean;
 };
+
+type QuickAttivitaAttachmentDraft =
+  | {
+      id: string;
+      kind: "UPLOAD";
+      title: string;
+      documentType: QuickAttachmentDocumentType;
+      file: File;
+    }
+  | {
+      id: string;
+      kind: "LINK";
+      title: string;
+      documentType: QuickAttachmentDocumentType;
+      url: string;
+      provider: "GOOGLE_DRIVE" | "GENERIC";
+    };
 
 type DashboardClienteReferente = {
   id: string;
@@ -453,6 +472,41 @@ const EMPTY_QUICK_ATTIVITA_TOUCHED: QuickAttivitaTouched = {
   referenteClienteContatto: false,
   referenteArtTechNome: false,
 };
+
+const QUICK_ATTACHMENT_TYPE_OPTIONS: Array<{ value: QuickAttachmentDocumentType; label: string }> = [
+  { value: "GENERICO", label: "Interno" },
+  { value: "CLIENTE", label: "Cliente" },
+  { value: "DRIVE", label: "Drive" },
+  { value: "ODA_FORNITORE", label: "ODA" },
+];
+
+const QUICK_ATTACHMENT_TYPE_BADGES: Record<
+  QuickAttachmentDocumentType,
+  { label: string; background: string; color: string }
+> = {
+  GENERICO: { label: "Interno", background: "#f3f4f6", color: "#374151" },
+  CLIENTE: { label: "Cliente", background: "#dbeafe", color: "#1d4ed8" },
+  DRIVE: { label: "Drive", background: "#dcfce7", color: "#166534" },
+  ODA_FORNITORE: { label: "ODA", background: "#fef3c7", color: "#92400e" },
+};
+
+const QUICK_ATTACHMENT_TITLE_PREFIX = "[DOC_TYPE:";
+
+function encodeQuickAttachmentTitle(title: string, documentType: QuickAttachmentDocumentType) {
+  return `${QUICK_ATTACHMENT_TITLE_PREFIX}${documentType}] ${title}`;
+}
+
+function isQuickAttachmentHttpUrl(url: string) {
+  return /^https?:\/\//i.test(String(url || "").trim());
+}
+
+function detectQuickAttachmentProvider(url: string) {
+  return String(url || "").toLowerCase().includes("drive.google.com") ? "GOOGLE_DRIVE" : "GENERIC";
+}
+
+function makeQuickAttachmentDraftId() {
+  return `draft_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+}
 
 function getDashboardClienteRowKey(clienteValue?: string | null, clienteIdValue?: string | null) {
   const clienteId = String(clienteIdValue || "").trim();
@@ -759,6 +813,15 @@ export function DashboardCockpitPage({
   const [addAttivitaReferenteClienteContatto, setAddAttivitaReferenteClienteContatto] = useState("");
   const [addAttivitaReferenteArtTechNome, setAddAttivitaReferenteArtTechNome] = useState("");
   const [addAttivitaReferentiCliente, setAddAttivitaReferentiCliente] = useState<DashboardClienteReferente[]>([]);
+  const [addAttivitaAttachmentDocumentType, setAddAttivitaAttachmentDocumentType] =
+    useState<QuickAttachmentDocumentType>("GENERICO");
+  const [addAttivitaAttachmentInputKey, setAddAttivitaAttachmentInputKey] = useState(0);
+  const [addAttivitaAttachmentFiles, setAddAttivitaAttachmentFiles] = useState<File[]>([]);
+  const [addAttivitaAttachmentLinkTitle, setAddAttivitaAttachmentLinkTitle] = useState("");
+  const [addAttivitaAttachmentLinkUrl, setAddAttivitaAttachmentLinkUrl] = useState("");
+  const [addAttivitaAttachmentDrafts, setAddAttivitaAttachmentDrafts] = useState<
+    QuickAttivitaAttachmentDraft[]
+  >([]);
   const [addAttivitaTouched, setAddAttivitaTouched] =
     useState<QuickAttivitaTouched>(EMPTY_QUICK_ATTIVITA_TOUCHED);
   const [addAttivitaSaving, setAddAttivitaSaving] = useState(false);
@@ -2437,6 +2500,104 @@ export function DashboardCockpitPage({
     addAttivitaTouched.referenteClienteContatto,
   ]);
 
+  function addQuickAttivitaFilesToDraft() {
+    if (addAttivitaAttachmentFiles.length === 0) {
+      setAddAttivitaError("Seleziona almeno un file da allegare.");
+      return;
+    }
+    setAddAttivitaError(null);
+    setAddAttivitaAttachmentDrafts((prev) => [
+      ...prev,
+      ...addAttivitaAttachmentFiles.map((file) => ({
+        id: makeQuickAttachmentDraftId(),
+        kind: "UPLOAD" as const,
+        title: file.name,
+        documentType: addAttivitaAttachmentDocumentType,
+        file,
+      })),
+    ]);
+    setAddAttivitaAttachmentFiles([]);
+    setAddAttivitaAttachmentInputKey((prev) => prev + 1);
+  }
+
+  function addQuickAttivitaLinkToDraft() {
+    const url = addAttivitaAttachmentLinkUrl.trim();
+    const title = addAttivitaAttachmentLinkTitle.trim() || url;
+    if (!isQuickAttachmentHttpUrl(url)) {
+      setAddAttivitaError("Inserisci un link Drive valido in formato http(s).");
+      return;
+    }
+    setAddAttivitaError(null);
+    setAddAttivitaAttachmentDrafts((prev) => [
+      ...prev,
+      {
+        id: makeQuickAttachmentDraftId(),
+        kind: "LINK",
+        title,
+        documentType: addAttivitaAttachmentDocumentType,
+        url,
+        provider: detectQuickAttachmentProvider(url),
+      },
+    ]);
+    setAddAttivitaAttachmentLinkTitle("");
+    setAddAttivitaAttachmentLinkUrl("");
+  }
+
+  function removeQuickAttivitaDraftAttachment(draftId: string) {
+    setAddAttivitaAttachmentDrafts((prev) => prev.filter((draft) => draft.id !== draftId));
+  }
+
+  async function persistQuickAttivitaDraftAttachments(entityId: string) {
+    for (const draft of addAttivitaAttachmentDrafts) {
+      if (draft.kind === "UPLOAD") {
+        const safeName = draft.file.name.replace(/\s+/g, "_");
+        const path = `intervento/${entityId}/${Date.now()}_${safeName}`;
+        const { error: uploadError } = await storageUpload(path, draft.file);
+        if (uploadError) {
+          throw new Error(`Errore upload allegato ${draft.file.name}: ${uploadError.message}`);
+        }
+
+        const res = await fetch("/api/attachments", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({
+            source: "UPLOAD",
+            entity_type: "INTERVENTO",
+            entity_id: entityId,
+            title: encodeQuickAttachmentTitle(draft.title, draft.documentType),
+            storage_path: path,
+            mime_type: draft.file.type || null,
+            size_bytes: draft.file.size,
+          }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          throw new Error(String(data?.error || `Errore salvataggio allegato ${draft.title}`));
+        }
+        continue;
+      }
+
+      const res = await fetch("/api/attachments", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          source: "LINK",
+          entity_type: "INTERVENTO",
+          entity_id: entityId,
+          title: encodeQuickAttachmentTitle(draft.title, draft.documentType),
+          url: draft.url,
+          provider: draft.provider,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(String(data?.error || `Errore salvataggio link ${draft.title}`));
+      }
+    }
+  }
+
   async function submitQuickAttivita() {
     if (!addAttivitaCliente || !addAttivitaChecklistId) {
       setAddAttivitaError("Seleziona cliente e progetto.");
@@ -2469,6 +2630,7 @@ export function DashboardCockpitPage({
     setAddAttivitaError(null);
     try {
       let insertedId: string | null = null;
+      let attachmentWarning: string | null = null;
       const payloadBase = {
         cliente: selectedChecklist.cliente,
         checklist_id: selectedChecklist.id,
@@ -2520,8 +2682,18 @@ export function DashboardCockpitPage({
         throw new Error(String(operativiJson?.error || "Attività creata ma dati operativi non salvati"));
       }
 
+      if (addAttivitaAttachmentDrafts.length > 0) {
+        try {
+          await persistQuickAttivitaDraftAttachments(insertedId);
+        } catch (attachmentError: any) {
+          attachmentWarning = String(
+            attachmentError?.message || "Attività creata ma alcuni allegati non sono stati salvati"
+          );
+        }
+      }
+
       await Promise.all([load(), loadHomeCrono()]);
-      setToastMsg(`${label} creata.`);
+      setToastMsg(attachmentWarning ? `${label} creata. ${attachmentWarning}` : `${label} creata.`);
       setAddAttivitaType("INSTALLAZIONE");
       setAddAttivitaCliente("");
       setAddAttivitaChecklistId("");
@@ -2533,6 +2705,12 @@ export function DashboardCockpitPage({
       setAddAttivitaReferenteClienteContatto("");
       setAddAttivitaReferenteArtTechNome("");
       setAddAttivitaReferentiCliente([]);
+      setAddAttivitaAttachmentDocumentType("GENERICO");
+      setAddAttivitaAttachmentInputKey(0);
+      setAddAttivitaAttachmentFiles([]);
+      setAddAttivitaAttachmentLinkTitle("");
+      setAddAttivitaAttachmentLinkUrl("");
+      setAddAttivitaAttachmentDrafts([]);
       setAddAttivitaTouched(EMPTY_QUICK_ATTIVITA_TOUCHED);
       closeAddAttivita("submit");
     } catch (err: any) {
@@ -2899,6 +3077,12 @@ export function DashboardCockpitPage({
                 setAddAttivitaReferenteClienteContatto("");
                 setAddAttivitaReferenteArtTechNome("");
                 setAddAttivitaReferentiCliente([]);
+                setAddAttivitaAttachmentDocumentType("GENERICO");
+                setAddAttivitaAttachmentInputKey(0);
+                setAddAttivitaAttachmentFiles([]);
+                setAddAttivitaAttachmentLinkTitle("");
+                setAddAttivitaAttachmentLinkUrl("");
+                setAddAttivitaAttachmentDrafts([]);
                 setAddAttivitaTouched(EMPTY_QUICK_ATTIVITA_TOUCHED);
                 setAddAttivitaOpen(true);
               }}
@@ -4531,6 +4715,189 @@ export function DashboardCockpitPage({
                 }}
               />
             </label>
+            <div
+              style={{
+                marginBottom: 12,
+                padding: 12,
+                borderRadius: 12,
+                border: "1px solid #e5e7eb",
+                background: "#f8fafc",
+              }}
+            >
+              <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 4 }}>Allegati</div>
+              <div style={{ fontSize: 12, color: "#64748b", marginBottom: 10 }}>
+                I file e i link vengono collegati alla nuova attività subito dopo il salvataggio.
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "180px 1fr auto", gap: 8, marginBottom: 8 }}>
+                <select
+                  value={addAttivitaAttachmentDocumentType}
+                  onChange={(e) =>
+                    setAddAttivitaAttachmentDocumentType(e.target.value as QuickAttachmentDocumentType)
+                  }
+                  style={{
+                    width: "100%",
+                    padding: 10,
+                    borderRadius: 8,
+                    border: "1px solid #d1d5db",
+                    background: "white",
+                    fontSize: 14,
+                  }}
+                >
+                  {QUICK_ATTACHMENT_TYPE_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      Tipo documento: {option.label}
+                    </option>
+                  ))}
+                </select>
+                <input
+                  key={addAttivitaAttachmentInputKey}
+                  type="file"
+                  multiple
+                  onChange={(e) => setAddAttivitaAttachmentFiles(e.target.files ? Array.from(e.target.files) : [])}
+                  style={{
+                    width: "100%",
+                    padding: 8,
+                    borderRadius: 8,
+                    border: "1px solid #d1d5db",
+                    background: "white",
+                    fontSize: 14,
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={addQuickAttivitaFilesToDraft}
+                  disabled={addAttivitaSaving}
+                  style={{
+                    padding: "8px 12px",
+                    borderRadius: 8,
+                    border: "1px solid #d1d5db",
+                    background: "white",
+                    cursor: "pointer",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  Aggiungi file
+                </button>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1.2fr auto", gap: 8 }}>
+                <input
+                  value={addAttivitaAttachmentLinkTitle}
+                  onChange={(e) => setAddAttivitaAttachmentLinkTitle(e.target.value)}
+                  placeholder="Titolo link / documento"
+                  style={{
+                    width: "100%",
+                    padding: 10,
+                    borderRadius: 8,
+                    border: "1px solid #d1d5db",
+                    background: "white",
+                    fontSize: 14,
+                  }}
+                />
+                <input
+                  value={addAttivitaAttachmentLinkUrl}
+                  onChange={(e) => setAddAttivitaAttachmentLinkUrl(e.target.value)}
+                  placeholder="Link Drive o URL documento"
+                  style={{
+                    width: "100%",
+                    padding: 10,
+                    borderRadius: 8,
+                    border: "1px solid #d1d5db",
+                    background: "white",
+                    fontSize: 14,
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={addQuickAttivitaLinkToDraft}
+                  disabled={addAttivitaSaving}
+                  style={{
+                    padding: "8px 12px",
+                    borderRadius: 8,
+                    border: "1px solid #d1d5db",
+                    background: "white",
+                    cursor: "pointer",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  Aggiungi link
+                </button>
+              </div>
+              {addAttivitaAttachmentDrafts.length > 0 ? (
+                <div style={{ display: "grid", gap: 8, marginTop: 10 }}>
+                  {addAttivitaAttachmentDrafts.map((draft) => {
+                    const badge = QUICK_ATTACHMENT_TYPE_BADGES[draft.documentType];
+                    return (
+                      <div
+                        key={draft.id}
+                        style={{
+                          display: "grid",
+                          gridTemplateColumns: "auto minmax(0, 1fr) auto",
+                          gap: 10,
+                          alignItems: "center",
+                          padding: "8px 10px",
+                          borderRadius: 10,
+                          border: "1px solid #e2e8f0",
+                          background: "white",
+                        }}
+                      >
+                        <span
+                          style={{
+                            padding: "3px 8px",
+                            borderRadius: 999,
+                            fontSize: 11,
+                            fontWeight: 800,
+                            background: badge.background,
+                            color: badge.color,
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          {badge.label}
+                        </span>
+                        <div style={{ minWidth: 0 }}>
+                          <div
+                            style={{
+                              fontSize: 13,
+                              fontWeight: 700,
+                              color: "#0f172a",
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            {draft.title}
+                          </div>
+                          <div
+                            style={{
+                              fontSize: 12,
+                              color: "#64748b",
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            {draft.kind === "UPLOAD" ? `File · ${draft.file.name}` : draft.url}
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => removeQuickAttivitaDraftAttachment(draft.id)}
+                          disabled={addAttivitaSaving}
+                          style={{
+                            padding: "6px 10px",
+                            borderRadius: 8,
+                            border: "1px solid #e5e7eb",
+                            background: "white",
+                            cursor: "pointer",
+                          }}
+                        >
+                          Rimuovi
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : null}
+            </div>
             {addAttivitaError && (
               <div style={{ marginBottom: 10, fontSize: 12, color: "#dc2626" }}>
                 {addAttivitaError}
