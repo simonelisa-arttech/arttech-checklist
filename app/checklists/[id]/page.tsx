@@ -4348,6 +4348,8 @@ function buildFormData(c: Checklist): FormData {
 
   const renderCronoOperativiSection = (
     title: string,
+    attachmentTitle: string,
+    attachmentEntityType: string,
     form: CronoOperativiFormState,
     setForm: Dispatch<SetStateAction<CronoOperativiFormState>>,
     onSave: () => void,
@@ -4540,6 +4542,15 @@ function buildFormData(c: Checklist): FormData {
       {notice ? (
         <div style={{ marginTop: 8, fontSize: 12, color: "#166534" }}>{notice}</div>
       ) : null}
+      <div style={{ marginTop: 12 }}>
+        <AttachmentsPanel
+          title={attachmentTitle}
+          entityType={attachmentEntityType}
+          entityId={id}
+          multiple
+          storagePrefix="checklist-operativi"
+        />
+      </div>
     </div>
   );
   const serialiControllo = assetSerials.filter((s) => s.tipo === "CONTROLLO");
@@ -7787,7 +7798,9 @@ function buildFormData(c: Checklist): FormData {
         "Dati operativi / cronoprogramma",
         <div style={{ display: "grid", gap: 12 }}>
           {renderCronoOperativiSection(
-            "BLOCCO INSTALLAZIONE",
+            "BLOCCO ATTIVITÀ",
+            "Allegati blocco attività (upload + link Drive)",
+            "CHECKLIST_OPERATIVI",
             cronoOperativiForm,
             setCronoOperativiForm,
             saveCronoOperativi,
@@ -7800,6 +7813,8 @@ function buildFormData(c: Checklist): FormData {
           {isNoleggioProject
             ? renderCronoOperativiSection(
                 "BLOCCO DISINSTALLAZIONE",
+                "Allegati blocco disinstallazione (upload + link Drive)",
+                "CHECKLIST_DISINSTALLAZIONE",
                 cronoDisinstallazioneForm,
                 setCronoDisinstallazioneForm,
                 saveCronoDisinstallazione,
