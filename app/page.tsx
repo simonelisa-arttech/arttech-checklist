@@ -798,8 +798,18 @@ export function DashboardCockpitPage({
   const [addInterventoReferentiCliente, setAddInterventoReferentiCliente] = useState<
     DashboardClienteReferente[]
   >([]);
+  const [addInterventoAttachmentDocumentType, setAddInterventoAttachmentDocumentType] =
+    useState<QuickAttachmentDocumentType>("GENERICO");
+  const [addInterventoAttachmentInputKey, setAddInterventoAttachmentInputKey] = useState(0);
+  const [addInterventoAttachmentFiles, setAddInterventoAttachmentFiles] = useState<File[]>([]);
+  const [addInterventoAttachmentLinkTitle, setAddInterventoAttachmentLinkTitle] = useState("");
+  const [addInterventoAttachmentLinkUrl, setAddInterventoAttachmentLinkUrl] = useState("");
+  const [addInterventoAttachmentDrafts, setAddInterventoAttachmentDrafts] = useState<
+    QuickAttivitaAttachmentDraft[]
+  >([]);
   const [addInterventoTouched, setAddInterventoTouched] =
     useState<QuickAttivitaTouched>(EMPTY_QUICK_ATTIVITA_TOUCHED);
+  const [addInterventoSaving, setAddInterventoSaving] = useState(false);
   const [addInterventoError, setAddInterventoError] = useState<string | null>(null);
   const [addAttivitaOpen, setAddAttivitaOpen] = useState(false);
   const [addAttivitaType, setAddAttivitaType] = useState<QuickAttivitaType>("INSTALLAZIONE");
@@ -2414,6 +2424,210 @@ export function DashboardCockpitPage({
     addInterventoTouched.referenteClienteContatto,
   ]);
 
+  function addQuickInterventoFilesToDraft() {
+    if (addInterventoAttachmentFiles.length === 0) {
+      setAddInterventoError("Seleziona almeno un file da allegare.");
+      return;
+    }
+    setAddInterventoError(null);
+    setAddInterventoAttachmentDrafts((prev) => [
+      ...prev,
+      ...addInterventoAttachmentFiles.map((file) => ({
+        id: makeQuickAttachmentDraftId(),
+        kind: "UPLOAD" as const,
+        title: file.name,
+        documentType: addInterventoAttachmentDocumentType,
+        file,
+      })),
+    ]);
+    setAddInterventoAttachmentFiles([]);
+    setAddInterventoAttachmentInputKey((prev) => prev + 1);
+  }
+
+  function addQuickInterventoLinkToDraft() {
+    const url = addInterventoAttachmentLinkUrl.trim();
+    const title = addInterventoAttachmentLinkTitle.trim() || url;
+    if (!isQuickAttachmentHttpUrl(url)) {
+      setAddInterventoError("Inserisci un link Drive valido in formato http(s).");
+      return;
+    }
+    setAddInterventoError(null);
+    setAddInterventoAttachmentDrafts((prev) => [
+      ...prev,
+      {
+        id: makeQuickAttachmentDraftId(),
+        kind: "LINK",
+        title,
+        documentType: addInterventoAttachmentDocumentType,
+        url,
+        provider: detectQuickAttachmentProvider(url),
+      },
+    ]);
+    setAddInterventoAttachmentLinkTitle("");
+    setAddInterventoAttachmentLinkUrl("");
+  }
+
+  function removeQuickInterventoDraftAttachment(draftId: string) {
+    setAddInterventoAttachmentDrafts((prev) => prev.filter((draft) => draft.id !== draftId));
+  }
+
+  async function persistQuickInterventoDraftAttachments(entityId: string) {
+    for (const draft of addInterventoAttachmentDrafts) {
+      if (draft.kind === "UPLOAD") {
+        const safeName = draft.file.name.replace(/\s+/g, "_");
+        const path = `intervento/${entityId}/${Date.now()}_${safeName}`;
+        const { error: uploadError } = await storageUpload(path, draft.file);
+        if (uploadError) {
+          throw new Error(`Errore upload allegato ${draft.file.name}: ${uploadError.message}`);
+        }
+
+        const res = await fetch("/api/attachments", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "include",
+          body: JSON.stringify({
+            source: "UPLOAD",
+            entity_type: "INTERVENTO",
+            entity_id: entityId,
+            title: encodeQuickAttachmentTitle(draft.title, draft.documentType),
+            storage_path: path,
+            mime_type: draft.file.type || null,
+            size_bytes: draft.file.size,
+          }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          throw new Error(String(data?.error || `Errore salvataggio allegato ${draft.title}`));
+        }
+        continue;
+      }
+
+      const res = await fetch("/api/attachments", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          source: "LINK",
+          entity_type: "INTERVENTO",
+          entity_id: entityId,
+          title: encodeQuickAttachmentTitle(draft.title, draft.documentType),
+          url: draft.url,
+          provider: draft.provider,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(String(data?.error || `Errore salvataggio link ${draft.title}`));
+      }
+    }
+  }
+
+  async function submitQuickIntervento() {
+    if (!addInterventoCliente || !addInterventoChecklistId) {
+      setAddInterventoError("Seleziona cliente e progetto.");
+      return;
+    }
+    const selectedChecklist = items.find((item) => item.id === addInterventoChecklistId) || null;
+    if (!selectedChecklist) {
+      setAddInterventoError("Progetto non trovato.");
+      return;
+    }
+
+    const descrizione = addInterventoDescrizione.trim() || "Nuovo intervento";
+    const today = new Date().toISOString().slice(0, 10);
+
+    setAddInterventoSaving(true);
+    setAddInterventoError(null);
+    try {
+      let insertedId: string | null = null;
+      let attachmentWarning: string | null = null;
+      const payloadBase = {
+        cliente: selectedChecklist.cliente,
+        checklist_id: selectedChecklist.id,
+        data: today,
+        data_tassativa: null,
+        descrizione,
+        tipo: descrizione,
+        incluso: false,
+        proforma: selectedChecklist.proforma || null,
+        codice_magazzino: selectedChecklist.magazzino_importazione || null,
+        fatturazione_stato: null,
+        stato_intervento: "APERTO",
+        esito_fatturazione: "DA_FATTURARE",
+        note: null,
+      };
+
+      let insRes = await dbFrom("saas_interventi").insert(payloadBase).select("id").single();
+      if (insRes.error && String(insRes.error.message || "").toLowerCase().includes("data_tassativa")) {
+        const { data_tassativa: _skip, ...payloadNoTassativa } = payloadBase;
+        insRes = await dbFrom("saas_interventi").insert(payloadNoTassativa).select("id").single();
+      }
+      if (insRes.error) {
+        throw new Error(insRes.error.message || "Errore creazione intervento");
+      }
+      insertedId = String((insRes.data as { id?: string } | null)?.id || "").trim() || null;
+      if (!insertedId) {
+        throw new Error("Intervento creato senza id");
+      }
+
+      const operativiRes = await fetch("/api/cronoprogramma", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "set_operativi",
+          row_kind: "INTERVENTO",
+          row_ref_id: insertedId,
+          data_inizio: today,
+          durata_giorni: "",
+          modalita_attivita: "ONSITE",
+          descrizione_attivita: descrizione,
+          indirizzo: addInterventoIndirizzo.trim(),
+          referente_cliente_nome: addInterventoReferenteClienteNome.trim(),
+          referente_cliente_contatto: addInterventoReferenteClienteContatto.trim(),
+          commerciale_art_tech_nome: addInterventoReferenteArtTechNome.trim(),
+        }),
+      });
+      const operativiJson = await operativiRes.json().catch(() => ({}));
+      if (!operativiRes.ok) {
+        throw new Error(String(operativiJson?.error || "Intervento creato ma dati operativi non salvati"));
+      }
+
+      if (addInterventoAttachmentDrafts.length > 0) {
+        try {
+          await persistQuickInterventoDraftAttachments(insertedId);
+        } catch (attachmentError: any) {
+          attachmentWarning = String(
+            attachmentError?.message || "Intervento creato ma alcuni allegati non sono stati salvati"
+          );
+        }
+      }
+
+      await Promise.all([load(), loadHomeCrono()]);
+      setToastMsg(attachmentWarning ? `Intervento creato. ${attachmentWarning}` : "Intervento creato.");
+      setAddInterventoCliente("");
+      setAddInterventoChecklistId("");
+      setAddInterventoDescrizione("");
+      setAddInterventoIndirizzo("");
+      setAddInterventoReferenteClienteNome("");
+      setAddInterventoReferenteClienteContatto("");
+      setAddInterventoReferenteArtTechNome("");
+      setAddInterventoReferentiCliente([]);
+      setAddInterventoAttachmentDocumentType("GENERICO");
+      setAddInterventoAttachmentInputKey(0);
+      setAddInterventoAttachmentFiles([]);
+      setAddInterventoAttachmentLinkTitle("");
+      setAddInterventoAttachmentLinkUrl("");
+      setAddInterventoAttachmentDrafts([]);
+      setAddInterventoTouched(EMPTY_QUICK_ATTIVITA_TOUCHED);
+      closeAddIntervento("submit");
+      router.push(`/checklists/${selectedChecklist.id}?focus=interventi`);
+    } catch (err: any) {
+      setAddInterventoError(String(err?.message || "Errore creazione intervento"));
+    } finally {
+      setAddInterventoSaving(false);
+    }
+  }
+
   useEffect(() => {
     if (!addAttivitaCliente) {
       setAddAttivitaChecklistId("");
@@ -3055,6 +3269,12 @@ export function DashboardCockpitPage({
                 setAddInterventoReferenteClienteContatto("");
                 setAddInterventoReferenteArtTechNome("");
                 setAddInterventoReferentiCliente([]);
+                setAddInterventoAttachmentDocumentType("GENERICO");
+                setAddInterventoAttachmentInputKey(0);
+                setAddInterventoAttachmentFiles([]);
+                setAddInterventoAttachmentLinkTitle("");
+                setAddInterventoAttachmentLinkUrl("");
+                setAddInterventoAttachmentDrafts([]);
                 setAddInterventoTouched(EMPTY_QUICK_ATTIVITA_TOUCHED);
                 setAddInterventoOpen(true);
               }}
@@ -4434,6 +4654,189 @@ export function DashboardCockpitPage({
                 }}
               />
             </label>
+            <div
+              style={{
+                marginBottom: 12,
+                padding: 12,
+                borderRadius: 12,
+                border: "1px solid #e5e7eb",
+                background: "#f8fafc",
+              }}
+            >
+              <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 4 }}>Allegati</div>
+              <div style={{ fontSize: 12, color: "#64748b", marginBottom: 10 }}>
+                I file e i link vengono collegati all&apos;intervento subito dopo la creazione.
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "180px 1fr auto", gap: 8, marginBottom: 8 }}>
+                <select
+                  value={addInterventoAttachmentDocumentType}
+                  onChange={(e) =>
+                    setAddInterventoAttachmentDocumentType(e.target.value as QuickAttachmentDocumentType)
+                  }
+                  style={{
+                    width: "100%",
+                    padding: 10,
+                    borderRadius: 8,
+                    border: "1px solid #d1d5db",
+                    background: "white",
+                    fontSize: 14,
+                  }}
+                >
+                  {QUICK_ATTACHMENT_TYPE_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      Tipo documento: {option.label}
+                    </option>
+                  ))}
+                </select>
+                <input
+                  key={addInterventoAttachmentInputKey}
+                  type="file"
+                  multiple
+                  onChange={(e) => setAddInterventoAttachmentFiles(e.target.files ? Array.from(e.target.files) : [])}
+                  style={{
+                    width: "100%",
+                    padding: 8,
+                    borderRadius: 8,
+                    border: "1px solid #d1d5db",
+                    background: "white",
+                    fontSize: 14,
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={addQuickInterventoFilesToDraft}
+                  disabled={addInterventoSaving}
+                  style={{
+                    padding: "8px 12px",
+                    borderRadius: 8,
+                    border: "1px solid #d1d5db",
+                    background: "white",
+                    cursor: "pointer",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  Aggiungi file
+                </button>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1.2fr auto", gap: 8 }}>
+                <input
+                  value={addInterventoAttachmentLinkTitle}
+                  onChange={(e) => setAddInterventoAttachmentLinkTitle(e.target.value)}
+                  placeholder="Titolo link / documento"
+                  style={{
+                    width: "100%",
+                    padding: 10,
+                    borderRadius: 8,
+                    border: "1px solid #d1d5db",
+                    background: "white",
+                    fontSize: 14,
+                  }}
+                />
+                <input
+                  value={addInterventoAttachmentLinkUrl}
+                  onChange={(e) => setAddInterventoAttachmentLinkUrl(e.target.value)}
+                  placeholder="Link Drive o URL documento"
+                  style={{
+                    width: "100%",
+                    padding: 10,
+                    borderRadius: 8,
+                    border: "1px solid #d1d5db",
+                    background: "white",
+                    fontSize: 14,
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={addQuickInterventoLinkToDraft}
+                  disabled={addInterventoSaving}
+                  style={{
+                    padding: "8px 12px",
+                    borderRadius: 8,
+                    border: "1px solid #d1d5db",
+                    background: "white",
+                    cursor: "pointer",
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  Aggiungi link
+                </button>
+              </div>
+              {addInterventoAttachmentDrafts.length > 0 ? (
+                <div style={{ display: "grid", gap: 8, marginTop: 10 }}>
+                  {addInterventoAttachmentDrafts.map((draft) => {
+                    const badge = QUICK_ATTACHMENT_TYPE_BADGES[draft.documentType];
+                    return (
+                      <div
+                        key={draft.id}
+                        style={{
+                          display: "grid",
+                          gridTemplateColumns: "auto minmax(0, 1fr) auto",
+                          gap: 10,
+                          alignItems: "center",
+                          padding: "8px 10px",
+                          borderRadius: 10,
+                          border: "1px solid #e2e8f0",
+                          background: "white",
+                        }}
+                      >
+                        <span
+                          style={{
+                            padding: "3px 8px",
+                            borderRadius: 999,
+                            fontSize: 11,
+                            fontWeight: 800,
+                            background: badge.background,
+                            color: badge.color,
+                            whiteSpace: "nowrap",
+                          }}
+                        >
+                          {badge.label}
+                        </span>
+                        <div style={{ minWidth: 0 }}>
+                          <div
+                            style={{
+                              fontSize: 13,
+                              fontWeight: 700,
+                              color: "#0f172a",
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            {draft.title}
+                          </div>
+                          <div
+                            style={{
+                              fontSize: 12,
+                              color: "#64748b",
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            {draft.kind === "UPLOAD" ? `File · ${draft.file.name}` : draft.url}
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => removeQuickInterventoDraftAttachment(draft.id)}
+                          disabled={addInterventoSaving}
+                          style={{
+                            padding: "6px 10px",
+                            borderRadius: 8,
+                            border: "1px solid #e5e7eb",
+                            background: "white",
+                            cursor: "pointer",
+                          }}
+                        >
+                          Rimuovi
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : null}
+            </div>
             {addInterventoError && (
               <div style={{ marginBottom: 10, fontSize: 12, color: "#dc2626" }}>
                 {addInterventoError}
@@ -4443,6 +4846,7 @@ export function DashboardCockpitPage({
               <button
                 type="button"
                 onClick={() => closeAddIntervento("cancel")}
+                disabled={addInterventoSaving}
                 style={{
                   padding: "8px 14px",
                   borderRadius: 8,
@@ -4455,20 +4859,8 @@ export function DashboardCockpitPage({
               </button>
               <button
                 type="button"
-                onClick={() => {
-                  if (!addInterventoCliente || !addInterventoChecklistId) {
-                    setAddInterventoError("Seleziona cliente e progetto.");
-                    return;
-                  }
-                  const params = new URLSearchParams();
-                  params.set("focus", "interventi");
-                  params.set("addIntervento", "1");
-                  if (addInterventoDescrizione.trim()) {
-                    params.set("descrizione", addInterventoDescrizione.trim());
-                  }
-                  router.push(`/checklists/${addInterventoChecklistId}?${params.toString()}`);
-                  closeAddIntervento("submit");
-                }}
+                onClick={() => void submitQuickIntervento()}
+                disabled={addInterventoSaving}
                 style={{
                   padding: "8px 14px",
                   borderRadius: 8,
@@ -4478,7 +4870,7 @@ export function DashboardCockpitPage({
                   cursor: "pointer",
                 }}
               >
-                Continua
+                {addInterventoSaving ? "Salvataggio..." : "Salva intervento"}
               </button>
             </div>
           </div>
