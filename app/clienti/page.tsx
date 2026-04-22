@@ -1,5 +1,6 @@
 "use client";
 
+import type { CSSProperties } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import ClienteModal, { ClienteRecord } from "@/components/ClienteModal";
@@ -7,6 +8,16 @@ import ConfigMancante from "@/components/ConfigMancante";
 import { isSupabaseConfigured } from "@/lib/supabaseClient";
 
 const PAGE_SIZE = 50;
+const menuItemStyle: CSSProperties = {
+  width: "100%",
+  padding: "8px 10px",
+  borderRadius: 8,
+  border: "none",
+  background: "white",
+  textAlign: "left",
+  fontSize: 13,
+  cursor: "pointer",
+};
 
 export default function ClientiPage() {
   if (!isSupabaseConfigured) {
@@ -26,6 +37,7 @@ export default function ClientiPage() {
     Record<string, { id?: string; email: string | null; attivo: boolean }>
   >({});
   const [portalActionKey, setPortalActionKey] = useState<string | null>(null);
+  const [openActionsClienteId, setOpenActionsClienteId] = useState<string | null>(null);
   const debounceRef = useRef<number | null>(null);
 
   useEffect(() => {
@@ -115,6 +127,17 @@ export default function ClientiPage() {
       active = false;
     };
   }, [rows]);
+
+  useEffect(() => {
+    if (!openActionsClienteId) return;
+    const onPointerDown = (event: MouseEvent) => {
+      const target = event.target as HTMLElement | null;
+      if (target?.closest('[data-actions-root="cliente-actions"]')) return;
+      setOpenActionsClienteId(null);
+    };
+    document.addEventListener("mousedown", onPointerDown);
+    return () => document.removeEventListener("mousedown", onPointerDown);
+  }, [openActionsClienteId]);
 
   const countLabel = useMemo(() => {
     return loading ? "Caricamento..." : `Totale caricati: ${rows.length}`;
@@ -242,214 +265,216 @@ export default function ClientiPage() {
                       );
                     })()}
                   </div>
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setEditing(row);
-                      setModalOpen(true);
-                    }}
-                    style={{
-                      padding: "6px 10px",
-                      borderRadius: 10,
-                      border: "1px solid #ddd",
-                      background: "white",
-                      cursor: "pointer",
-                    }}
+                  <div
+                    data-actions-root="cliente-actions"
+                    style={{ position: "relative", display: "inline-block" }}
                   >
-                    Modifica
-                  </button>
-                  <button
-                    type="button"
-                    onClick={async () => {
-                      const res = await fetch("/api/clienti", {
-                        method: "PATCH",
-                        headers: { "Content-Type": "application/json" },
-                        body: JSON.stringify({
-                          id: row.id,
-                          attivo: row.attivo === false ? true : false,
-                        }),
-                      });
-                      const json = await res.json();
-                      if (!res.ok || !json?.ok) {
-                        alert(json?.error || "Errore aggiornamento stato cliente");
-                        return;
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setOpenActionsClienteId((prev) =>
+                          prev === String(row.id || "") ? null : String(row.id || "")
+                        )
                       }
-                      setRows((prev) =>
-                        prev.map((r) => (r.id === row.id ? { ...r, ...json.data } : r))
-                      );
-                    }}
-                    style={{
-                      marginLeft: 8,
-                      padding: "6px 10px",
-                      borderRadius: 10,
-                      border: "1px solid #ddd",
-                      background: "white",
-                      cursor: "pointer",
-                    }}
-                  >
-                    {row.attivo === false ? "Riattiva" : "Disattiva"}
-                  </button>
-                  {!portalAccessByClienteId[String(row.id || "")]?.attivo ? (
-                    <button
-                      type="button"
-                      disabled={portalActionKey === `create:${String(row.id || "")}`}
-                      onClick={async () => {
-                        try {
-                          setPortalActionKey(`create:${String(row.id || "")}`);
-                          const res = await fetch("/api/clienti/portal-access", {
-                            method: "POST",
-                            headers: { "Content-Type": "application/json" },
-                            credentials: "include",
-                            body: JSON.stringify({ cliente_id: row.id }),
-                          });
-                          const json = await res.json().catch(() => ({}));
-                          if (!res.ok || !json?.ok) {
-                            alert(json?.error || "Errore creazione credenziali cliente");
-                            return;
-                          }
-
-                          setPortalAccessByClienteId((prev) => ({
-                            ...prev,
-                            [String(row.id || "")]: {
-                              id: json?.accesso?.id ? String(json.accesso.id) : undefined,
-                              email: String(json?.credenziali?.email || row.email || "").trim() || null,
-                              attivo: true,
-                            },
-                          }));
-
-                          alert(
-                            [
-                              "Credenziali area cliente create.",
-                              `Email: ${String(json?.credenziali?.email || row.email || "—")}`,
-                              `Password temporanea: ${String(json?.credenziali?.password_temporanea || "—")}`,
-                            ].join("\n")
-                          );
-                        } finally {
-                          setPortalActionKey(null);
-                        }
-                      }}
                       style={{
                         padding: "6px 10px",
                         borderRadius: 10,
-                        border: "1px solid #0f172a",
-                        background: "#0f172a",
-                        color: "white",
-                        cursor:
-                          portalActionKey === `create:${String(row.id || "")}`
-                            ? "progress"
-                            : "pointer",
-                        opacity: portalActionKey === `create:${String(row.id || "")}` ? 0.7 : 1,
-                      }}
-                    >
-                      {portalActionKey === `create:${String(row.id || "")}`
-                        ? "Creazione..."
-                        : "Crea credenziali area cliente"}
-                    </button>
-                  ) : null}
-                  {portalAccessByClienteId[String(row.id || "")] ? (
-                    <button
-                      type="button"
-                      disabled={portalActionKey === `reset:${String(row.id || "")}`}
-                      onClick={async () => {
-                        try {
-                          setPortalActionKey(`reset:${String(row.id || "")}`);
-                          const res = await fetch("/api/clienti/portal-access", {
-                            method: "PATCH",
-                            headers: { "Content-Type": "application/json" },
-                            credentials: "include",
-                            body: JSON.stringify({
-                              cliente_id: row.id,
-                              action: "reset_password",
-                            }),
-                          });
-                          const json = await res.json().catch(() => ({}));
-                          if (!res.ok || !json?.ok) {
-                            alert(json?.error || "Errore rigenerazione password cliente");
-                            return;
-                          }
-                          alert(
-                            [
-                              "Password temporanea rigenerata.",
-                              `Email: ${String(json?.credenziali?.email || row.email || "—")}`,
-                              `Password temporanea: ${String(json?.credenziali?.password_temporanea || "—")}`,
-                            ].join("\n")
-                          );
-                        } finally {
-                          setPortalActionKey(null);
-                        }
-                      }}
-                      style={{
-                        padding: "6px 10px",
-                        borderRadius: 10,
-                        border: "1px solid #1d4ed8",
+                        border: "1px solid #d1d5db",
                         background: "white",
-                        color: "#1d4ed8",
-                        cursor:
-                          portalActionKey === `reset:${String(row.id || "")}`
-                            ? "progress"
-                            : "pointer",
-                        opacity: portalActionKey === `reset:${String(row.id || "")}` ? 0.7 : 1,
+                        cursor: "pointer",
+                        minWidth: 82,
                       }}
                     >
-                      {portalActionKey === `reset:${String(row.id || "")}`
-                        ? "Rigenero..."
-                        : "Rigenera password"}
+                      Azioni
                     </button>
-                  ) : null}
-                  {portalAccessByClienteId[String(row.id || "")]?.attivo ? (
-                    <button
-                      type="button"
-                      disabled={portalActionKey === `deactivate:${String(row.id || "")}`}
-                      onClick={async () => {
-                        try {
-                          setPortalActionKey(`deactivate:${String(row.id || "")}`);
-                          const res = await fetch("/api/clienti/portal-access", {
-                            method: "PATCH",
-                            headers: { "Content-Type": "application/json" },
-                            credentials: "include",
-                            body: JSON.stringify({
-                              cliente_id: row.id,
-                              action: "deactivate",
-                            }),
-                          });
-                          const json = await res.json().catch(() => ({}));
-                          if (!res.ok || !json?.ok) {
-                            alert(json?.error || "Errore disattivazione accesso cliente");
-                            return;
-                          }
-                          setPortalAccessByClienteId((prev) => ({
-                            ...prev,
-                            [String(row.id || "")]: {
-                              id: json?.accesso?.id ? String(json.accesso.id) : prev[String(row.id || "")]?.id,
-                              email:
-                                String(json?.accesso?.email || prev[String(row.id || "")]?.email || "").trim() ||
-                                null,
-                              attivo: false,
-                            },
-                          }));
-                        } finally {
-                          setPortalActionKey(null);
-                        }
-                      }}
-                      style={{
-                        padding: "6px 10px",
-                        borderRadius: 10,
-                        border: "1px solid #b91c1c",
-                        background: "white",
-                        color: "#b91c1c",
-                        cursor:
-                          portalActionKey === `deactivate:${String(row.id || "")}`
-                            ? "progress"
-                            : "pointer",
-                        opacity: portalActionKey === `deactivate:${String(row.id || "")}` ? 0.7 : 1,
-                      }}
-                    >
-                      {portalActionKey === `deactivate:${String(row.id || "")}`
-                        ? "Disattivo..."
-                        : "Disattiva accesso"}
-                    </button>
-                  ) : null}
+                    {openActionsClienteId === String(row.id || "") ? (
+                      <div
+                        style={{
+                          position: "absolute",
+                          top: "calc(100% + 6px)",
+                          right: 0,
+                          zIndex: 20,
+                          minWidth: 220,
+                          background: "white",
+                          border: "1px solid #e5e7eb",
+                          borderRadius: 12,
+                          boxShadow: "0 10px 24px rgba(15, 23, 42, 0.14)",
+                          padding: 6,
+                          display: "grid",
+                          gap: 4,
+                        }}
+                      >
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setOpenActionsClienteId(null);
+                            setEditing(row);
+                            setModalOpen(true);
+                          }}
+                          style={menuItemStyle}
+                        >
+                          Modifica
+                        </button>
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            setOpenActionsClienteId(null);
+                            const res = await fetch("/api/clienti", {
+                              method: "PATCH",
+                              headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({
+                                id: row.id,
+                                attivo: row.attivo === false ? true : false,
+                              }),
+                            });
+                            const json = await res.json();
+                            if (!res.ok || !json?.ok) {
+                              alert(json?.error || "Errore aggiornamento stato cliente");
+                              return;
+                            }
+                            setRows((prev) =>
+                              prev.map((r) => (r.id === row.id ? { ...r, ...json.data } : r))
+                            );
+                          }}
+                          style={menuItemStyle}
+                        >
+                          {row.attivo === false ? "Riattiva" : "Disattiva"}
+                        </button>
+                        {!portalAccessByClienteId[String(row.id || "")]?.attivo ? (
+                          <button
+                            type="button"
+                            disabled={portalActionKey === `create:${String(row.id || "")}`}
+                            onClick={async () => {
+                              try {
+                                setOpenActionsClienteId(null);
+                                setPortalActionKey(`create:${String(row.id || "")}`);
+                                const res = await fetch("/api/clienti/portal-access", {
+                                  method: "POST",
+                                  headers: { "Content-Type": "application/json" },
+                                  credentials: "include",
+                                  body: JSON.stringify({ cliente_id: row.id }),
+                                });
+                                const json = await res.json().catch(() => ({}));
+                                if (!res.ok || !json?.ok) {
+                                  alert(json?.error || "Errore creazione credenziali cliente");
+                                  return;
+                                }
+
+                                setPortalAccessByClienteId((prev) => ({
+                                  ...prev,
+                                  [String(row.id || "")]: {
+                                    id: json?.accesso?.id ? String(json.accesso.id) : undefined,
+                                    email: String(json?.credenziali?.email || row.email || "").trim() || null,
+                                    attivo: true,
+                                  },
+                                }));
+
+                                alert(
+                                  [
+                                    "Credenziali area cliente create.",
+                                    `Email: ${String(json?.credenziali?.email || row.email || "—")}`,
+                                    `Password temporanea: ${String(json?.credenziali?.password_temporanea || "—")}`,
+                                  ].join("\n")
+                                );
+                              } finally {
+                                setPortalActionKey(null);
+                              }
+                            }}
+                            style={menuItemStyle}
+                          >
+                            {portalActionKey === `create:${String(row.id || "")}`
+                              ? "Creazione..."
+                              : "Crea credenziali area cliente"}
+                          </button>
+                        ) : null}
+                        {portalAccessByClienteId[String(row.id || "")] ? (
+                          <button
+                            type="button"
+                            disabled={portalActionKey === `reset:${String(row.id || "")}`}
+                            onClick={async () => {
+                              try {
+                                setOpenActionsClienteId(null);
+                                setPortalActionKey(`reset:${String(row.id || "")}`);
+                                const res = await fetch("/api/clienti/portal-access", {
+                                  method: "PATCH",
+                                  headers: { "Content-Type": "application/json" },
+                                  credentials: "include",
+                                  body: JSON.stringify({
+                                    cliente_id: row.id,
+                                    action: "reset_password",
+                                  }),
+                                });
+                                const json = await res.json().catch(() => ({}));
+                                if (!res.ok || !json?.ok) {
+                                  alert(json?.error || "Errore rigenerazione password cliente");
+                                  return;
+                                }
+                                alert(
+                                  [
+                                    "Password temporanea rigenerata.",
+                                    `Email: ${String(json?.credenziali?.email || row.email || "—")}`,
+                                    `Password temporanea: ${String(json?.credenziali?.password_temporanea || "—")}`,
+                                  ].join("\n")
+                                );
+                              } finally {
+                                setPortalActionKey(null);
+                              }
+                            }}
+                            style={menuItemStyle}
+                          >
+                            {portalActionKey === `reset:${String(row.id || "")}`
+                              ? "Rigenero..."
+                              : "Rigenera password"}
+                          </button>
+                        ) : null}
+                        {portalAccessByClienteId[String(row.id || "")]?.attivo ? (
+                          <button
+                            type="button"
+                            disabled={portalActionKey === `deactivate:${String(row.id || "")}`}
+                            onClick={async () => {
+                              try {
+                                setOpenActionsClienteId(null);
+                                setPortalActionKey(`deactivate:${String(row.id || "")}`);
+                                const res = await fetch("/api/clienti/portal-access", {
+                                  method: "PATCH",
+                                  headers: { "Content-Type": "application/json" },
+                                  credentials: "include",
+                                  body: JSON.stringify({
+                                    cliente_id: row.id,
+                                    action: "deactivate",
+                                  }),
+                                });
+                                const json = await res.json().catch(() => ({}));
+                                if (!res.ok || !json?.ok) {
+                                  alert(json?.error || "Errore disattivazione accesso cliente");
+                                  return;
+                                }
+                                setPortalAccessByClienteId((prev) => ({
+                                  ...prev,
+                                  [String(row.id || "")]: {
+                                    id: json?.accesso?.id
+                                      ? String(json.accesso.id)
+                                      : prev[String(row.id || "")]?.id,
+                                    email:
+                                      String(
+                                        json?.accesso?.email || prev[String(row.id || "")]?.email || ""
+                                      ).trim() || null,
+                                    attivo: false,
+                                  },
+                                }));
+                              } finally {
+                                setPortalActionKey(null);
+                              }
+                            }}
+                            style={menuItemStyle}
+                          >
+                            {portalActionKey === `deactivate:${String(row.id || "")}`
+                              ? "Disattivo accesso..."
+                              : "Disattiva accesso"}
+                          </button>
+                        ) : null}
+                      </div>
+                    ) : null}
                   </div>
                 </td>
               </tr>
@@ -489,6 +514,11 @@ export default function ClientiPage() {
             }
             return [cliente, ...prev];
           });
+        }}
+        onDeleted={(clienteId) => {
+          setRows((prev) => prev.filter((r) => r.id !== clienteId));
+          setModalOpen(false);
+          setEditing(null);
         }}
       />
     </div>

@@ -579,3 +579,26 @@ export async function PATCH(request: Request) {
     warning: warningParts.length > 0 ? warningParts.join(" ") : null,
   });
 }
+
+export async function DELETE(request: Request) {
+  if (!assertAuth(request)) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+  const supabase = getSupabaseClient();
+  if (!supabase) {
+    return NextResponse.json({ error: "Missing SUPABASE_SERVICE_ROLE_KEY" }, { status: 500 });
+  }
+
+  const body = await request.json().catch(() => ({}));
+  const id = `${body?.id || ""}`.trim();
+  if (!id) {
+    return NextResponse.json({ error: "Id mancante" }, { status: 400 });
+  }
+
+  const { error } = await supabase.from("clienti_anagrafica").delete().eq("id", id);
+  if (error) {
+    return NextResponse.json({ error: error.message || "Errore eliminazione cliente" }, { status: 500 });
+  }
+
+  return NextResponse.json({ ok: true, id });
+}

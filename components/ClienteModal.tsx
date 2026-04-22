@@ -26,9 +26,10 @@ type ClienteModalProps = {
   onClose: () => void;
   initial?: ClienteRecord | null;
   onSaved?: (cliente: ClienteRecord) => void;
+  onDeleted?: (clienteId: string) => void;
 };
 
-export default function ClienteModal({ open, onClose, initial, onSaved }: ClienteModalProps) {
+export default function ClienteModal({ open, onClose, initial, onSaved, onDeleted }: ClienteModalProps) {
   const [form, setForm] = useState<ClienteRecord>({
     denominazione: "",
     attivo: true,
@@ -47,6 +48,7 @@ export default function ClienteModal({ open, onClose, initial, onSaved }: Client
     drive_url: "",
   });
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -132,6 +134,34 @@ export default function ClienteModal({ open, onClose, initial, onSaved }: Client
       setError(err?.message || "Errore salvataggio cliente");
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function onDelete() {
+    if (!initial?.id) return;
+    const confirmed = window.confirm("Confermi eliminazione cliente?");
+    if (!confirmed) return;
+
+    setDeleting(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/clienti", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: initial.id }),
+      });
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok || !json?.ok) {
+        setError(json?.error || "Errore eliminazione cliente");
+        setDeleting(false);
+        return;
+      }
+      onDeleted?.(String(initial.id));
+      onClose();
+    } catch (err: any) {
+      setError(err?.message || "Errore eliminazione cliente");
+    } finally {
+      setDeleting(false);
     }
   }
 
@@ -315,11 +345,11 @@ export default function ClienteModal({ open, onClose, initial, onSaved }: Client
           </div>
         )}
 
-        <div style={{ display: "flex", gap: 10, marginTop: 16 }}>
+        <div style={{ display: "flex", gap: 10, marginTop: 16, alignItems: "center" }}>
           <button
             type="button"
             onClick={onSubmit}
-            disabled={saving}
+            disabled={saving || deleting}
             style={{
               padding: "10px 14px",
               borderRadius: 10,
@@ -334,6 +364,7 @@ export default function ClienteModal({ open, onClose, initial, onSaved }: Client
           <button
             type="button"
             onClick={onClose}
+            disabled={saving || deleting}
             style={{
               padding: "10px 14px",
               borderRadius: 10,
@@ -344,6 +375,24 @@ export default function ClienteModal({ open, onClose, initial, onSaved }: Client
           >
             Annulla
           </button>
+          {initial?.id ? (
+            <button
+              type="button"
+              onClick={onDelete}
+              disabled={saving || deleting}
+              style={{
+                marginLeft: "auto",
+                padding: "10px 14px",
+                borderRadius: 10,
+                border: "1px solid #b91c1c",
+                background: "white",
+                color: "#b91c1c",
+                cursor: "pointer",
+              }}
+            >
+              {deleting ? "Eliminazione..." : "Elimina cliente"}
+            </button>
+          ) : null}
         </div>
       </div>
     </div>
