@@ -32,7 +32,9 @@ export default function LogoutButton() {
           .trim()
           .toUpperCase();
         setOperatoreLabel(`Operatore: ${nome}${ruolo}`);
-        setCanAccessSettings(canAccessSettingsRole(roleNormalized));
+        setCanAccessSettings(
+          operatore.can_access_impostazioni === true || canAccessSettingsRole(roleNormalized)
+        );
       } catch {
         setOperatoreLabel("");
         setCanAccessSettings(false);
