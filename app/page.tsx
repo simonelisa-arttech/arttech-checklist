@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, type UIEvent } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import ConfigMancante from "@/components/ConfigMancante";
 import CronoprogrammaPanel from "@/components/cronoprogramma/CronoprogrammaPanel";
 import Toast from "@/components/Toast";
@@ -422,7 +422,7 @@ type CronoComment = {
 };
 
 type QuickAttivitaType = "INSTALLAZIONE" | "DISINSTALLAZIONE" | "ALTRA_ATTIVITA";
-type DashboardClientSaasFilter = "TUTTI" | "SAAS" | "SAAS_ULTRA";
+type DashboardClientSaasFilter = "TUTTI" | "SAAS" | "SAAS_ULTRA" | "ART_TECH_EVENTS";
 type QuickAttachmentDocumentType = "GENERICO" | "CLIENTE" | "DRIVE" | "ODA_FORNITORE";
 type QuickAttivitaTouched = {
   ore: boolean;
@@ -502,6 +502,12 @@ function makeQuickAttachmentDraftId() {
   return `draft_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
+function shouldRouteToOperatorApp(role?: string | null) {
+  const normalized = String(role || "").trim().toUpperCase();
+  if (!normalized) return false;
+  return !["ADMIN", "AMMINISTRAZIONE", "COMMERCIALE"].includes(normalized);
+}
+
 function getDashboardClienteRowKey(clienteValue?: string | null, clienteIdValue?: string | null) {
   const clienteId = String(clienteIdValue || "").trim();
   if (clienteId) return `id:${clienteId}`;
@@ -510,12 +516,37 @@ function getDashboardClienteRowKey(clienteValue?: string | null, clienteIdValue?
 }
 
 function getDashboardSaasFilterKey(item: Checklist): Exclude<DashboardClientSaasFilter, "TUTTI"> | null {
-  const piano = String(item.saas_piano || item.saas_tipo || item.tipo_saas || "").trim().toUpperCase();
-  if (!piano) return null;
-  if (piano.startsWith("SAAS-UL") || piano.startsWith("SAAS-PR") || piano.includes("ULTRA")) {
+  const piano = String(item.saas_piano || "").trim().toUpperCase();
+  const tipo = String(item.saas_tipo || item.tipo_saas || "").trim().toUpperCase();
+  const combined = `${piano} ${tipo}`.trim();
+  if (!combined) return null;
+  if (
+    combined.includes("SAAS-EVT") ||
+    combined.includes("EVENT") ||
+    combined.includes("ART TECH EVENT")
+  ) {
+    return "ART_TECH_EVENTS";
+  }
+  if (combined.startsWith("SAAS-UL") || combined.startsWith("SAAS-PR") || combined.includes("ULTRA")) {
     return "SAAS_ULTRA";
   }
   return "SAAS";
+}
+
+function isDashboardSaasConnectionActive(item: Checklist) {
+  const projectPresentation = getProjectPresentation({
+    stato_progetto: item.stato_progetto,
+    pct_complessivo: item.pct_complessivo,
+    noleggio_vendita: item.noleggio_vendita,
+    data_disinstallazione: item.data_disinstallazione,
+  });
+  const projectStatus = String(projectPresentation.displayStatus || "").trim().toUpperCase();
+  const saasStatus = String(item.saas_stato || "").trim().toUpperCase();
+  const projectIsActive = projectStatus !== "CHIUSO" && projectStatus !== "RIENTRATO";
+  const saasIsActive =
+    !saasStatus ||
+    !["DISATTIVO", "CESSATO", "SCADUTO", "CHIUSO", "INATTIVO"].includes(saasStatus);
+  return projectIsActive && saasIsActive;
 }
 
 type OperativiFields = {
@@ -720,6 +751,7 @@ export function DashboardCockpitPage({
     return <ConfigMancante />;
   }
   const router = useRouter();
+  const pathname = usePathname();
   const [items, setItems] = useState<Checklist[]>([]);
   const [clientiRegistry, setClientiRegistry] = useState<ClienteAnagraficaRow[]>([]);
   const [dashboardLoadError, setDashboardLoadError] = useState<string | null>(null);
@@ -1640,13 +1672,16 @@ export function DashboardCockpitPage({
     const clientKeysByFilter: Record<Exclude<DashboardClientSaasFilter, "TUTTI">, Set<string>> = {
       SAAS: new Set<string>(),
       SAAS_ULTRA: new Set<string>(),
+      ART_TECH_EVENTS: new Set<string>(),
     };
     const projectCountByFilter: Record<Exclude<DashboardClientSaasFilter, "TUTTI">, number> = {
       SAAS: 0,
       SAAS_ULTRA: 0,
+      ART_TECH_EVENTS: 0,
     };
 
     for (const item of items) {
+      if (!isDashboardSaasConnectionActive(item)) continue;
       const filterKey = getDashboardSaasFilterKey(item);
       if (!filterKey) continue;
       projectCountByFilter[filterKey] += 1;
@@ -1673,6 +1708,15 @@ export function DashboardCockpitPage({
         projectCount: projectCountByFilter.SAAS_ULTRA,
         colors: DASHBOARD_BADGE_COLORS.statusDueSoon,
         clientKeys: clientKeysByFilter.SAAS_ULTRA,
+      },
+      {
+        key: "ART_TECH_EVENTS" as const,
+        label: "Art Tech Events",
+        helper: "Clienti con servizio Events",
+        count: clientKeysByFilter.ART_TECH_EVENTS.size,
+        projectCount: projectCountByFilter.ART_TECH_EVENTS,
+        colors: DASHBOARD_BADGE_COLORS.statusOk,
+        clientKeys: clientKeysByFilter.ART_TECH_EVENTS,
       },
     ].filter((card) => card.count > 0);
   }, [items]);
@@ -1910,6 +1954,36 @@ export function DashboardCockpitPage({
     let error: any = null;
 
     try {
+      setOperatoreAssociationError(null);
+      let meRes: Response;
+      try {
+        meRes = await fetch("/api/me-operatore", { signal: controller.signal, credentials: "include" });
+      } catch (e: any) {
+        if (e?.name === "AbortError" || controller.signal.aborted) return;
+        throw new Error("Errore caricamento operatore corrente");
+      }
+      if (!isLatest()) return;
+      const meData = await meRes.json().catch(() => ({}));
+      if (!meRes.ok || !meData?.operatore?.id) {
+        if (meData?.error) {
+          console.error("Errore risoluzione operatore corrente", meData.error);
+        }
+        setCurrentOperatoreId("");
+        setCurrentOperatoreLabel(null);
+        setOperatoreAssociationError("Operatore non associato");
+      } else {
+        const resolvedRole = String(meData.operatore.ruolo || "").trim() || null;
+        setCurrentOperatoreId(String(meData.operatore.id));
+        setCurrentOperatoreLabel({
+          nome: meData.operatore.nome ?? null,
+          ruolo: resolvedRole,
+        });
+        if ((pathname === "/" || pathname === "/dashboard") && shouldRouteToOperatorApp(resolvedRole)) {
+          router.replace("/operatori");
+          return;
+        }
+      }
+
       const debug = new URLSearchParams(window.location.search).get("debug") === "1";
       const dashboardRes = await fetch(`/api/dashboard${debug ? "?debug=1" : ""}`, {
         signal: controller.signal,
@@ -2276,30 +2350,6 @@ export function DashboardCockpitPage({
         setOperatoriLookupById(nextMap);
       }
 
-      setOperatoreAssociationError(null);
-      let meRes: Response;
-      try {
-        meRes = await fetch("/api/me-operatore", { signal: controller.signal });
-      } catch (e: any) {
-        if (e?.name === "AbortError" || controller.signal.aborted) return;
-        throw new Error("Errore caricamento operatore corrente");
-      }
-      if (!isLatest()) return;
-      const meData = await meRes.json().catch(() => ({}));
-      if (!meRes.ok || !meData?.operatore?.id) {
-        if (meData?.error) {
-          console.error("Errore risoluzione operatore corrente", meData.error);
-        }
-        setCurrentOperatoreId("");
-        setCurrentOperatoreLabel(null);
-        setOperatoreAssociationError("Operatore non associato");
-      } else {
-        setCurrentOperatoreId(String(meData.operatore.id));
-        setCurrentOperatoreLabel({
-          nome: meData.operatore.nome ?? null,
-          ruolo: meData.operatore.ruolo ?? null,
-        });
-      }
     } catch (e: any) {
       if (e?.name === "AbortError" || controller.signal.aborted) return;
       if (!isLatest()) return;
@@ -4210,7 +4260,12 @@ export function DashboardCockpitPage({
                         cursor: "pointer",
                       }}
                     >
-                      {dashboardClientSaasFilter === "SAAS_ULTRA" ? "SaaS Ultra" : "SaaS"} attivo · Mostra tutti
+                      {dashboardClientSaasFilter === "SAAS_ULTRA"
+                        ? "SaaS Ultra"
+                        : dashboardClientSaasFilter === "ART_TECH_EVENTS"
+                        ? "Art Tech Events"
+                        : "SaaS"}{" "}
+                      attivo · Mostra tutti
                     </button>
                   ) : null}
                 </div>
