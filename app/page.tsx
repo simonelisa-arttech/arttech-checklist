@@ -420,6 +420,14 @@ type CronoComment = {
   created_by_nome: string | null;
 };
 
+type QuickAttivitaType = "INSTALLAZIONE" | "DISINSTALLAZIONE" | "ALTRA_ATTIVITA";
+
+const QUICK_ATTIVITA_OPTIONS: Array<{ value: QuickAttivitaType; label: string; tipo: string }> = [
+  { value: "INSTALLAZIONE", label: "Installazione", tipo: "INSTALLAZIONE" },
+  { value: "DISINSTALLAZIONE", label: "Disinstallazione", tipo: "DISINSTALLAZIONE" },
+  { value: "ALTRA_ATTIVITA", label: "Altra attività", tipo: "ATTIVITA_OPERATIVA" },
+];
+
 type OperativiFields = {
   data_inizio: string;
   durata_giorni: string;
@@ -686,6 +694,15 @@ export function DashboardCockpitPage({
   const [addInterventoChecklistId, setAddInterventoChecklistId] = useState("");
   const [addInterventoDescrizione, setAddInterventoDescrizione] = useState("");
   const [addInterventoError, setAddInterventoError] = useState<string | null>(null);
+  const [addAttivitaOpen, setAddAttivitaOpen] = useState(false);
+  const [addAttivitaType, setAddAttivitaType] = useState<QuickAttivitaType>("INSTALLAZIONE");
+  const [addAttivitaCliente, setAddAttivitaCliente] = useState("");
+  const [addAttivitaChecklistId, setAddAttivitaChecklistId] = useState("");
+  const [addAttivitaData, setAddAttivitaData] = useState("");
+  const [addAttivitaOre, setAddAttivitaOre] = useState("8");
+  const [addAttivitaDescrizione, setAddAttivitaDescrizione] = useState("");
+  const [addAttivitaSaving, setAddAttivitaSaving] = useState(false);
+  const [addAttivitaError, setAddAttivitaError] = useState<string | null>(null);
   const [debugLocation, setDebugLocation] = useState<string>("");
   const [debugCookieHasSb, setDebugCookieHasSb] = useState<boolean | null>(null);
   const [debugLocalKeys, setDebugLocalKeys] = useState<string[]>([]);
@@ -1050,32 +1067,34 @@ export function DashboardCockpitPage({
     setCronoToDate(dateToOperativiIsoDay(to));
   }, []);
 
-  useEffect(() => {
-    (async () => {
-      setCronoLoading(true);
-      setCronoError(null);
-      try {
-        const res = await fetch("/api/cronoprogramma", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action: "load_events" }),
-        });
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok) {
-          setCronoError(String(data?.error || "Errore caricamento cronoprogramma"));
-          setCronoRows([]);
-          return;
-        }
-        const timeline = ((data?.events as TimelineRow[]) || []).map((r) => ({
-          ...r,
-          tipologia: String(r.tipologia || inferInterventoTipologia(r.descrizione)).toUpperCase(),
-        }));
-        setCronoRows(timeline);
-        await loadHomeCronoRowState(timeline);
-      } finally {
-        setCronoLoading(false);
+  async function loadHomeCrono() {
+    setCronoLoading(true);
+    setCronoError(null);
+    try {
+      const res = await fetch("/api/cronoprogramma", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "load_events" }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setCronoError(String(data?.error || "Errore caricamento cronoprogramma"));
+        setCronoRows([]);
+        return;
       }
-    })();
+      const timeline = ((data?.events as TimelineRow[]) || []).map((r) => ({
+        ...r,
+        tipologia: String(r.tipologia || inferInterventoTipologia(r.descrizione)).toUpperCase(),
+      }));
+      setCronoRows(timeline);
+      await loadHomeCronoRowState(timeline);
+    } finally {
+      setCronoLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    void loadHomeCrono();
   }, []);
 
   const homeCronoClienti = useMemo(() => {
@@ -1526,6 +1545,13 @@ export function DashboardCockpitPage({
       .filter((c) => c.cliente === addInterventoCliente)
       .map((c) => ({ id: c.id, nome: c.nome_checklist }));
   }, [items, addInterventoCliente]);
+
+  const attivitaChecklistOptions = useMemo(() => {
+    if (!addAttivitaCliente) return [];
+    return items
+      .filter((c) => c.cliente === addAttivitaCliente)
+      .map((c) => ({ id: c.id, nome: c.nome_checklist }));
+  }, [items, addAttivitaCliente]);
 
   const selectedScadenzeSummary = scadenzeByPeriod[scadenzePeriodDays];
   const selectedSimScadenzeSummary = simScadenzeByPeriod[scadenzePeriodDays];
@@ -2114,6 +2140,10 @@ export function DashboardCockpitPage({
     setAddInterventoOpen(false);
   };
 
+  const closeAddAttivita = (_reason?: string) => {
+    setAddAttivitaOpen(false);
+  };
+
   useEffect(() => {
     if (!addInterventoCliente) {
       setAddInterventoChecklistId("");
@@ -2122,6 +2152,110 @@ export function DashboardCockpitPage({
     const first = items.find((c) => c.cliente === addInterventoCliente);
     if (first?.id) setAddInterventoChecklistId(first.id);
   }, [addInterventoCliente, items]);
+
+  useEffect(() => {
+    if (!addAttivitaCliente) {
+      setAddAttivitaChecklistId("");
+      return;
+    }
+    const first = items.find((c) => c.cliente === addAttivitaCliente);
+    if (first?.id) setAddAttivitaChecklistId(first.id);
+  }, [addAttivitaCliente, items]);
+
+  async function submitQuickAttivita() {
+    if (!addAttivitaCliente || !addAttivitaChecklistId) {
+      setAddAttivitaError("Seleziona cliente e progetto.");
+      return;
+    }
+    if (!addAttivitaData) {
+      setAddAttivitaError("Seleziona la data attività.");
+      return;
+    }
+    if (!addAttivitaOre.trim()) {
+      setAddAttivitaError("Inserisci le ore previste.");
+      return;
+    }
+    if (!Number.isFinite(Number(addAttivitaOre.replace(",", "."))) || Number(addAttivitaOre.replace(",", ".")) <= 0) {
+      setAddAttivitaError("Ore previste non valide.");
+      return;
+    }
+    const selectedChecklist = items.find((item) => item.id === addAttivitaChecklistId) || null;
+    if (!selectedChecklist) {
+      setAddAttivitaError("Progetto non trovato.");
+      return;
+    }
+
+    const selectedType = QUICK_ATTIVITA_OPTIONS.find((option) => option.value === addAttivitaType);
+    const label = selectedType?.label || "Attività operativa";
+    const tipo = selectedType?.tipo || "ATTIVITA_OPERATIVA";
+    const descrizione = addAttivitaDescrizione.trim() || label;
+
+    setAddAttivitaSaving(true);
+    setAddAttivitaError(null);
+    try {
+      let insertedId: string | null = null;
+      const payloadBase = {
+        cliente: selectedChecklist.cliente,
+        checklist_id: selectedChecklist.id,
+        data: addAttivitaData,
+        data_tassativa: addAttivitaData,
+        descrizione,
+        tipo,
+        incluso: false,
+        proforma: selectedChecklist.proforma || null,
+        codice_magazzino: selectedChecklist.magazzino_importazione || null,
+        fatturazione_stato: null,
+        stato_intervento: "APERTO",
+        esito_fatturazione: "NON_FATTURARE",
+        note: null,
+      };
+
+      let insRes = await dbFrom("saas_interventi").insert(payloadBase).select("id").single();
+      if (insRes.error && String(insRes.error.message || "").toLowerCase().includes("data_tassativa")) {
+        const { data_tassativa: _skip, ...payloadNoTassativa } = payloadBase;
+        insRes = await dbFrom("saas_interventi").insert(payloadNoTassativa).select("id").single();
+      }
+      if (insRes.error) {
+        throw new Error(insRes.error.message || "Errore creazione attività");
+      }
+      insertedId = String((insRes.data as { id?: string } | null)?.id || "").trim() || null;
+      if (!insertedId) {
+        throw new Error("Attività creata senza id");
+      }
+
+      const operativiRes = await fetch("/api/cronoprogramma", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "set_operativi",
+          row_kind: "INTERVENTO",
+          row_ref_id: insertedId,
+          data_inizio: addAttivitaData,
+          durata_giorni: addAttivitaOre.replace(",", "."),
+          modalita_attivita: "ONSITE",
+          descrizione_attivita: descrizione,
+        }),
+      });
+      const operativiJson = await operativiRes.json().catch(() => ({}));
+      if (!operativiRes.ok) {
+        throw new Error(String(operativiJson?.error || "Attività creata ma dati operativi non salvati"));
+      }
+
+      await Promise.all([load(), loadHomeCrono()]);
+      setToastMsg(`${label} creata.`);
+      setAddAttivitaType("INSTALLAZIONE");
+      setAddAttivitaCliente("");
+      setAddAttivitaChecklistId("");
+      setAddAttivitaData("");
+      setAddAttivitaOre("8");
+      setAddAttivitaDescrizione("");
+      closeAddAttivita("submit");
+    } catch (err: any) {
+      setAddAttivitaError(String(err?.message || "Errore creazione attività"));
+    } finally {
+      setAddAttivitaSaving(false);
+    }
+  }
 
   function addRow() {
     setRows((prev) => [
@@ -2458,6 +2592,22 @@ export function DashboardCockpitPage({
               style={navButtonStyle}
             >
               + Aggiungi intervento
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setAddAttivitaError(null);
+                setAddAttivitaType("INSTALLAZIONE");
+                setAddAttivitaCliente("");
+                setAddAttivitaChecklistId("");
+                setAddAttivitaData("");
+                setAddAttivitaOre("8");
+                setAddAttivitaDescrizione("");
+                setAddAttivitaOpen(true);
+              }}
+              style={navButtonStyle}
+            >
+              + Aggiungi attività
             </button>
           </div>
         </div>
@@ -3674,6 +3824,199 @@ export function DashboardCockpitPage({
                 }}
               >
                 Continua
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {addAttivitaOpen && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,0.35)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 16,
+            zIndex: 50,
+          }}
+          onClick={() => closeAddAttivita("overlay")}
+        >
+          <div
+            style={{
+              width: "100%",
+              maxWidth: 560,
+              background: "white",
+              borderRadius: 12,
+              padding: 20,
+              boxShadow: "0 10px 30px rgba(0,0,0,0.15)",
+            }}
+            onClick={(e) => e.stopPropagation()}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") closeAddAttivita("esc");
+            }}
+          >
+            <div style={{ fontWeight: 800, fontSize: 18, marginBottom: 14 }}>
+              Aggiungi attività
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              <label style={{ display: "block", marginBottom: 12 }}>
+                Tipo attività
+                <select
+                  value={addAttivitaType}
+                  onChange={(e) => setAddAttivitaType(e.target.value as QuickAttivitaType)}
+                  style={{
+                    width: "100%",
+                    padding: 10,
+                    marginTop: 6,
+                    borderRadius: 8,
+                    border: "1px solid #d1d5db",
+                    fontSize: 14,
+                  }}
+                >
+                  {QUICK_ATTIVITA_OPTIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label style={{ display: "block", marginBottom: 12 }}>
+                Cliente
+                <select
+                  value={addAttivitaCliente}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    setAddAttivitaCliente(value);
+                    setAddAttivitaChecklistId("");
+                  }}
+                  style={{
+                    width: "100%",
+                    padding: 10,
+                    marginTop: 6,
+                    borderRadius: 8,
+                    border: "1px solid #d1d5db",
+                    fontSize: 14,
+                  }}
+                >
+                  <option value="">—</option>
+                  {clientiOptions.map((c) => (
+                    <option key={c} value={c}>
+                      {c}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label style={{ display: "block", marginBottom: 12 }}>
+                Progetto
+                <select
+                  value={addAttivitaChecklistId}
+                  onChange={(e) => setAddAttivitaChecklistId(e.target.value)}
+                  style={{
+                    width: "100%",
+                    padding: 10,
+                    marginTop: 6,
+                    borderRadius: 8,
+                    border: "1px solid #d1d5db",
+                    fontSize: 14,
+                  }}
+                  disabled={!addAttivitaCliente}
+                >
+                  <option value="">—</option>
+                  {attivitaChecklistOptions.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.nome || c.id}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label style={{ display: "block", marginBottom: 12 }}>
+                Data
+                <input
+                  type="date"
+                  value={addAttivitaData}
+                  onChange={(e) => setAddAttivitaData(e.target.value)}
+                  style={{
+                    width: "100%",
+                    padding: 10,
+                    marginTop: 6,
+                    borderRadius: 8,
+                    border: "1px solid #d1d5db",
+                    fontSize: 14,
+                  }}
+                />
+              </label>
+              <label style={{ display: "block", marginBottom: 12 }}>
+                Ore previste
+                <input
+                  type="number"
+                  min="0.5"
+                  step="0.5"
+                  value={addAttivitaOre}
+                  onChange={(e) => setAddAttivitaOre(e.target.value)}
+                  style={{
+                    width: "100%",
+                    padding: 10,
+                    marginTop: 6,
+                    borderRadius: 8,
+                    border: "1px solid #d1d5db",
+                    fontSize: 14,
+                  }}
+                />
+              </label>
+            </div>
+            <label style={{ display: "block", marginBottom: 12 }}>
+              Descrizione attività
+              <textarea
+                value={addAttivitaDescrizione}
+                onChange={(e) => setAddAttivitaDescrizione(e.target.value)}
+                rows={3}
+                style={{
+                  width: "100%",
+                  padding: 10,
+                  marginTop: 6,
+                  borderRadius: 8,
+                  border: "1px solid #d1d5db",
+                  fontSize: 14,
+                  resize: "vertical",
+                }}
+              />
+            </label>
+            {addAttivitaError && (
+              <div style={{ marginBottom: 10, fontSize: 12, color: "#dc2626" }}>
+                {addAttivitaError}
+              </div>
+            )}
+            <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+              <button
+                type="button"
+                onClick={() => closeAddAttivita("cancel")}
+                disabled={addAttivitaSaving}
+                style={{
+                  padding: "8px 14px",
+                  borderRadius: 8,
+                  border: "1px solid #d1d5db",
+                  background: "white",
+                  cursor: "pointer",
+                }}
+              >
+                Annulla
+              </button>
+              <button
+                type="button"
+                onClick={() => void submitQuickAttivita()}
+                disabled={addAttivitaSaving}
+                style={{
+                  padding: "8px 14px",
+                  borderRadius: 8,
+                  border: "1px solid #111",
+                  background: "#111",
+                  color: "white",
+                  cursor: "pointer",
+                }}
+              >
+                {addAttivitaSaving ? "Salvataggio..." : "Salva attività"}
               </button>
             </div>
           </div>
