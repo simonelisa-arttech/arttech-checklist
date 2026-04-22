@@ -3060,7 +3060,7 @@ export default function ClientePage({
       stato: c.garanzia_scadenza ? getExpiryStatus(c.garanzia_scadenza) : null,
       modalita: null,
     }));
-    return [
+    const mergedRows = [
       ...rinnoviMapped,
       ...tagliandiMapped,
       ...licenzeMapped,
@@ -3068,9 +3068,28 @@ export default function ClientePage({
       ...saasMapped,
       ...contrattiMapped,
       ...garanzieMapped,
-    ].sort(
-      (a, b) => String(a.scadenza || "").localeCompare(String(b.scadenza || ""))
+    ];
+
+    const scopedUltraGroupKeys = new Set(
+      mergedRows
+        .filter((row) => row.item_tipo === "SAAS_ULTRA" && Boolean(row.checklist_id))
+        .map(
+          (row) =>
+            `${normalizeUltraMatchKey(row.riferimento)}::${normalizeUltraDateKey(row.scadenza)}`
+        )
     );
+
+    return mergedRows
+      .filter((row) => {
+        if (row.item_tipo !== "SAAS_ULTRA" || row.checklist_id) return true;
+        const groupKey = `${normalizeUltraMatchKey(row.riferimento)}::${normalizeUltraDateKey(
+          row.scadenza
+        )}`;
+        return !scopedUltraGroupKeys.has(groupKey);
+      })
+      .sort(
+      (a, b) => String(a.scadenza || "").localeCompare(String(b.scadenza || ""))
+      );
   }, [
     rinnovi,
     tagliandi,
