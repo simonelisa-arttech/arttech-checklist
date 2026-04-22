@@ -36,8 +36,6 @@ const DOCUMENT_TYPE_BADGES: Record<
   ODA_FORNITORE: { label: "ODA", background: "#fef3c7", color: "#92400e" },
 };
 
-const DOCUMENT_TYPE_PREFIX = "[DOC_TYPE:";
-
 type Props = {
   entityType: string;
   entityId: string | null;
@@ -54,29 +52,8 @@ function isHttpUrl(url: string) {
   return /^https?:\/\//i.test(url.trim());
 }
 
-function stripAttachmentDocumentTypePrefix(rawTitle: string) {
-  const trimmed = String(rawTitle || "").trim();
-  if (!trimmed.startsWith(DOCUMENT_TYPE_PREFIX)) {
-    return { title: trimmed, documentType: null as DocumentType | null };
-  }
-  const suffixIndex = trimmed.indexOf("]");
-  if (suffixIndex < 0) {
-    return { title: trimmed, documentType: null as DocumentType | null };
-  }
-  const maybeType = trimmed.slice(DOCUMENT_TYPE_PREFIX.length, suffixIndex) as DocumentType;
-  if (!DOCUMENT_TYPE_BADGES[maybeType]) {
-    return { title: trimmed, documentType: null as DocumentType | null };
-  }
-  return {
-    title: trimmed.slice(suffixIndex + 1).trim() || trimmed,
-    documentType: maybeType,
-  };
-}
-
 function resolveDocumentType(row: AttachmentRow): DocumentType {
   if (row.document_type && DOCUMENT_TYPE_BADGES[row.document_type]) return row.document_type;
-  const parsed = stripAttachmentDocumentTypePrefix(row.title);
-  if (parsed.documentType) return parsed.documentType;
   if (row.provider === "GOOGLE_DRIVE") return "DRIVE";
   return "GENERICO";
 }
@@ -401,7 +378,7 @@ export default function AttachmentsPanel({
               <div>{iconByRow(r)}</div>
               <div>
                 <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                  <div style={{ fontWeight: 600 }}>{stripAttachmentDocumentTypePrefix(r.title).title}</div>
+                  <div style={{ fontWeight: 600 }}>{r.title}</div>
                   {(() => {
                     const documentTypeBadge = DOCUMENT_TYPE_BADGES[resolveDocumentType(r)];
                     return (

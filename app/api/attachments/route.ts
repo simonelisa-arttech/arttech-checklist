@@ -41,6 +41,15 @@ function stripLegacyDocumentTypePrefix(rawTitle?: string | null) {
   };
 }
 
+function resolveAttachmentCreatePayload(body: any) {
+  const rawTitle = String(body?.title || "").trim();
+  const legacy = stripLegacyDocumentTypePrefix(rawTitle);
+  return {
+    title: legacy.title,
+    documentType: normalizeDocumentType(body?.document_type) || legacy.documentType,
+  };
+}
+
 export async function GET(request: Request) {
   const auth = await requireOperatore(request);
   if (!auth.ok) return auth.response;
@@ -111,10 +120,7 @@ export async function POST(request: Request) {
   const source = String(body?.source || "").trim().toUpperCase();
   const entityType = String(body?.entity_type || "").trim();
   const entityId = String(body?.entity_id || "").trim();
-  const rawTitle = String(body?.title || "").trim();
-  const parsedLegacy = stripLegacyDocumentTypePrefix(rawTitle);
-  const title = parsedLegacy.title;
-  const documentType = normalizeDocumentType(body?.document_type) || parsedLegacy.documentType;
+  const { title, documentType } = resolveAttachmentCreatePayload(body);
   if (!(source === "UPLOAD" || source === "LINK")) {
     return NextResponse.json({ error: "source non valido" }, { status: 400 });
   }
