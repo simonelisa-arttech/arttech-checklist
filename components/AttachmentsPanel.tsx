@@ -11,6 +11,7 @@ type AttachmentRow = {
   provider: string | null;
   url: string | null;
   title: string;
+  document_type?: DocumentType | null;
   storage_path: string | null;
   mime_type: string | null;
   size_bytes: number | null;
@@ -53,10 +54,6 @@ function isHttpUrl(url: string) {
   return /^https?:\/\//i.test(url.trim());
 }
 
-function encodeAttachmentTitle(title: string, documentType: DocumentType) {
-  return `${DOCUMENT_TYPE_PREFIX}${documentType}] ${title}`;
-}
-
 function stripAttachmentDocumentTypePrefix(rawTitle: string) {
   const trimmed = String(rawTitle || "").trim();
   if (!trimmed.startsWith(DOCUMENT_TYPE_PREFIX)) {
@@ -77,6 +74,7 @@ function stripAttachmentDocumentTypePrefix(rawTitle: string) {
 }
 
 function resolveDocumentType(row: AttachmentRow): DocumentType {
+  if (row.document_type && DOCUMENT_TYPE_BADGES[row.document_type]) return row.document_type;
   const parsed = stripAttachmentDocumentTypePrefix(row.title);
   if (parsed.documentType) return parsed.documentType;
   if (row.provider === "GOOGLE_DRIVE") return "DRIVE";
@@ -156,7 +154,8 @@ export default function AttachmentsPanel({
             source: "UPLOAD",
             entity_type: entityType,
             entity_id: entityId,
-            title: encodeAttachmentTitle(file.name, documentType),
+            title: file.name,
+            document_type: documentType,
             storage_path: path,
             mime_type: file.type || null,
             size_bytes: file.size,
@@ -195,7 +194,8 @@ export default function AttachmentsPanel({
           source: "LINK",
           entity_type: entityType,
           entity_id: entityId,
-          title: encodeAttachmentTitle(titleToSave, documentType),
+          title: titleToSave,
+          document_type: documentType,
           url,
           provider: detectProvider(url),
         }),

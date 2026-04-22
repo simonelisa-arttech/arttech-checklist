@@ -490,12 +490,6 @@ const QUICK_ATTACHMENT_TYPE_BADGES: Record<
   ODA_FORNITORE: { label: "ODA", background: "#fef3c7", color: "#92400e" },
 };
 
-const QUICK_ATTACHMENT_TITLE_PREFIX = "[DOC_TYPE:";
-
-function encodeQuickAttachmentTitle(title: string, documentType: QuickAttachmentDocumentType) {
-  return `${QUICK_ATTACHMENT_TITLE_PREFIX}${documentType}] ${title}`;
-}
-
 function isQuickAttachmentHttpUrl(url: string) {
   return /^https?:\/\//i.test(String(url || "").trim());
 }
@@ -2489,7 +2483,8 @@ export function DashboardCockpitPage({
             source: "UPLOAD",
             entity_type: "INTERVENTO",
             entity_id: entityId,
-            title: encodeQuickAttachmentTitle(draft.title, draft.documentType),
+            title: draft.title,
+            document_type: draft.documentType,
             storage_path: path,
             mime_type: draft.file.type || null,
             size_bytes: draft.file.size,
@@ -2510,7 +2505,8 @@ export function DashboardCockpitPage({
           source: "LINK",
           entity_type: "INTERVENTO",
           entity_id: entityId,
-          title: encodeQuickAttachmentTitle(draft.title, draft.documentType),
+          title: draft.title,
+          document_type: draft.documentType,
           url: draft.url,
           provider: draft.provider,
         }),
@@ -2779,7 +2775,8 @@ export function DashboardCockpitPage({
             source: "UPLOAD",
             entity_type: "INTERVENTO",
             entity_id: entityId,
-            title: encodeQuickAttachmentTitle(draft.title, draft.documentType),
+            title: draft.title,
+            document_type: draft.documentType,
             storage_path: path,
             mime_type: draft.file.type || null,
             size_bytes: draft.file.size,
@@ -2800,7 +2797,8 @@ export function DashboardCockpitPage({
           source: "LINK",
           entity_type: "INTERVENTO",
           entity_id: entityId,
-          title: encodeQuickAttachmentTitle(draft.title, draft.documentType),
+          title: draft.title,
+          document_type: draft.documentType,
           url: draft.url,
           provider: draft.provider,
         }),

@@ -3,6 +3,9 @@ export const runtime = "nodejs";
 import { NextResponse } from "next/server";
 import { requireOperatore } from "@/lib/adminAuth";
 
+const ALLOWED_DOCUMENT_TYPES = new Set(["GENERICO", "CLIENTE", "DRIVE", "ODA_FORNITORE"]);
+const DOCUMENT_TYPE_PREFIX = "[DOC_TYPE:";
+
 function normalizeProvider(url?: string | null) {
   const v = String(url || "").toLowerCase();
   if (v.includes("drive.google.com")) return "GOOGLE_DRIVE";
@@ -12,6 +15,30 @@ function normalizeProvider(url?: string | null) {
 function isHttpUrl(url?: string | null) {
   const v = String(url || "").trim();
   return /^https?:\/\//i.test(v);
+}
+
+function normalizeDocumentType(value?: string | null) {
+  const normalized = String(value || "").trim().toUpperCase();
+  return ALLOWED_DOCUMENT_TYPES.has(normalized) ? normalized : null;
+}
+
+function stripLegacyDocumentTypePrefix(rawTitle?: string | null) {
+  const trimmed = String(rawTitle || "").trim();
+  if (!trimmed.startsWith(DOCUMENT_TYPE_PREFIX)) {
+    return { title: trimmed, documentType: null as string | null };
+  }
+  const suffixIndex = trimmed.indexOf("]");
+  if (suffixIndex < 0) {
+    return { title: trimmed, documentType: null as string | null };
+  }
+  const legacyType = normalizeDocumentType(trimmed.slice(DOCUMENT_TYPE_PREFIX.length, suffixIndex));
+  if (!legacyType) {
+    return { title: trimmed, documentType: null as string | null };
+  }
+  return {
+    title: trimmed.slice(suffixIndex + 1).trim() || trimmed,
+    documentType: legacyType,
+  };
 }
 
 export async function GET(request: Request) {
@@ -28,7 +55,7 @@ export async function GET(request: Request) {
 
   const { data, error } = await supabaseAdmin
     .from("attachments")
-    .select("id, source, provider, url, title, storage_path, mime_type, size_bytes, entity_type, entity_id, created_by, created_at, visibile_al_cliente")
+    .select("id, source, provider, url, title, document_type, storage_path, mime_type, size_bytes, entity_type, entity_id, created_by, created_at, visibile_al_cliente")
     .eq("entity_type", entityType)
     .eq("entity_id", entityId)
     .order("created_at", { ascending: false });
@@ -59,7 +86,7 @@ export async function PATCH(request: Request) {
     .from("attachments")
     .update({ visibile_al_cliente: visibileAlCliente })
     .eq("id", id)
-    .select("id, source, provider, url, title, storage_path, mime_type, size_bytes, entity_type, entity_id, created_by, created_at, visibile_al_cliente")
+    .select("id, source, provider, url, title, document_type, storage_path, mime_type, size_bytes, entity_type, entity_id, created_by, created_at, visibile_al_cliente")
     .maybeSingle();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
@@ -84,7 +111,10 @@ export async function POST(request: Request) {
   const source = String(body?.source || "").trim().toUpperCase();
   const entityType = String(body?.entity_type || "").trim();
   const entityId = String(body?.entity_id || "").trim();
-  const title = String(body?.title || "").trim();
+  const rawTitle = String(body?.title || "").trim();
+  const parsedLegacy = stripLegacyDocumentTypePrefix(rawTitle);
+  const title = parsedLegacy.title;
+  const documentType = normalizeDocumentType(body?.document_type) || parsedLegacy.documentType;
   if (!(source === "UPLOAD" || source === "LINK")) {
     return NextResponse.json({ error: "source non valido" }, { status: 400 });
   }
@@ -102,6 +132,7 @@ export async function POST(request: Request) {
       provider: normalizeProvider(url),
       url,
       title,
+      document_type: documentType,
       storage_path: null,
       mime_type: null,
       size_bytes: null,
@@ -112,7 +143,7 @@ export async function POST(request: Request) {
     const { data, error } = await supabaseAdmin
       .from("attachments")
       .insert(payload)
-      .select("id, source, provider, url, title, storage_path, mime_type, size_bytes, entity_type, entity_id, created_by, created_at")
+      .select("id, source, provider, url, title, document_type, storage_path, mime_type, size_bytes, entity_type, entity_id, created_by, created_at")
       .maybeSingle();
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     return NextResponse.json({ ok: true, row: data });
@@ -127,6 +158,7 @@ export async function POST(request: Request) {
     provider: null,
     url: null,
     title,
+    document_type: documentType,
     storage_path: storagePath,
     mime_type: body?.mime_type ? String(body.mime_type) : null,
     size_bytes: body?.size_bytes != null ? Number(body.size_bytes) : null,
@@ -137,7 +169,7 @@ export async function POST(request: Request) {
   const { data, error } = await supabaseAdmin
     .from("attachments")
     .insert(payload)
-    .select("id, source, provider, url, title, storage_path, mime_type, size_bytes, entity_type, entity_id, created_by, created_at")
+    .select("id, source, provider, url, title, document_type, storage_path, mime_type, size_bytes, entity_type, entity_id, created_by, created_at")
     .maybeSingle();
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ ok: true, row: data });
