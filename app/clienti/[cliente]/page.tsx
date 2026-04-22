@@ -1138,32 +1138,104 @@ export default function ClientePage({
   const [bulkLastToOperatoreId, setBulkLastToOperatoreId] = useState<string | null>(null);
   const [bulkLastMessage, setBulkLastMessage] = useState<string | null>(null);
 
-  function upsertMockRinnovoState(
-    checklistId: string | null | undefined,
-    itemTipo: string,
-    stato: string
+  function matchRinnovoRowForItem(
+    rows: RinnovoServizioRow[],
+    r: ScadenzaItem,
+    clienteKey?: string | null
   ) {
-    if (!checklistId) return;
-    const tipo = String(itemTipo || "").toUpperCase();
-    const id = `e2e-${tipo}-${checklistId}`;
-    setRinnovi((prev) => {
-      const existing = prev.find(
-        (x) => {
-          if (String(x.checklist_id || "") !== String(checklistId)) return false;
-          const currentTipo = String(x.item_tipo || "").toUpperCase();
-          if (currentTipo !== tipo) return false;
-          if (tipo === "SAAS") {
-            return String(x.subtipo || "").toUpperCase() !== "ULTRA";
-          }
-          if (tipo === "SAAS_ULTRA") {
-            return String(x.subtipo || "").toUpperCase() === "ULTRA";
-          }
-          return true;
-        }
+    if (r.source === "rinnovi") {
+      return rows.find((x) => x.id === r.id) || null;
+    }
+    const tipo = String(r.item_tipo || "").toUpperCase();
+    const riferimento = String(r.riferimento || "").trim();
+    const scadenza = String(r.scadenza || "").trim();
+    if (tipo === "SIM") {
+      const simId = String(r.sim_id || "").trim();
+      if (!simId) return null;
+      return (
+        rows.find(
+          (x) =>
+            String(x.item_tipo || "").toUpperCase() === "SIM" &&
+            String(x.sim_id || "").trim() === simId
+        ) || null
       );
+    }
+    if (tipo === "SAAS_ULTRA") {
+      return (
+        rows.find(
+          (x) =>
+            (String(x.item_tipo || "").toUpperCase() === "SAAS_ULTRA" ||
+              (String(x.item_tipo || "").toUpperCase() === "SAAS" &&
+                String(x.subtipo || "").toUpperCase() === "ULTRA")) &&
+            String(x.checklist_id || "") === "" &&
+            String(x.scadenza || "") === scadenza &&
+            String(x.cliente || "").trim() === String(clienteKey || "").trim()
+        ) || null
+      );
+    }
+    if (tipo === "GARANZIA") {
+      return (
+        rows.find(
+          (x) =>
+            String(x.item_tipo || "").toUpperCase() === "GARANZIA" &&
+            String(x.checklist_id || "") === String(r.checklist_id || "")
+        ) || null
+      );
+    }
+    if (tipo === "SAAS") {
+      return (
+        rows.find((x) => {
+          if (String(x.item_tipo || "").toUpperCase() !== "SAAS") return false;
+          if (String(x.subtipo || "").toUpperCase() === "ULTRA") return false;
+          if (String(x.checklist_id || "") !== String(r.checklist_id || "")) return false;
+          if (riferimento && String(x.riferimento || "").trim() !== riferimento) return false;
+          if (scadenza && String(x.scadenza || "").trim() !== scadenza) return false;
+          return true;
+        }) ||
+        rows.find(
+          (x) =>
+            String(x.item_tipo || "").toUpperCase() === "SAAS" &&
+            String(x.subtipo || "").toUpperCase() !== "ULTRA" &&
+            String(x.checklist_id || "") === String(r.checklist_id || "")
+        ) ||
+        null
+      );
+    }
+    if (!r.checklist_id) return null;
+    return (
+      rows.find(
+        (x) =>
+          String(x.item_tipo || "").toUpperCase() === tipo &&
+          String(x.checklist_id || "") === String(r.checklist_id || "")
+      ) || null
+    );
+  }
+
+  function upsertMockRinnovoState(r: ScadenzaItem, stato: string) {
+    const mapped = mapRinnovoTipo(String(r.item_tipo || "").toUpperCase());
+    if (!mapped.item_tipo) return;
+    const tipo = String(mapped.item_tipo || "").toUpperCase();
+    const subtipo = mapped.subtipo;
+    const checklistId = r.checklist_id ?? null;
+    const id =
+      r.source === "rinnovi" && r.id
+        ? String(r.id)
+        : `e2e-${tipo}-${checklistId || "global"}-${String(r.riferimento || r.scadenza || "row")}`;
+    setRinnovi((prev) => {
+      const existing = matchRinnovoRowForItem(prev, { ...r, item_tipo: tipo, subtipo }, cliente);
       if (existing) {
         return prev.map((x) =>
-          x.id === existing.id ? { ...x, stato, item_tipo: tipo, checklist_id: checklistId } : x
+          x.id === existing.id
+            ? {
+                ...x,
+                stato,
+                item_tipo: tipo,
+                subtipo,
+                checklist_id: checklistId,
+                riferimento: r.riferimento ?? x.riferimento ?? null,
+                scadenza: r.scadenza ?? x.scadenza ?? null,
+              }
+            : x
         );
       }
       return [
@@ -1172,7 +1244,11 @@ export default function ClientePage({
           id,
           checklist_id: checklistId,
           item_tipo: tipo,
+          subtipo,
+          riferimento: r.riferimento ?? null,
           stato,
+          scadenza: r.scadenza ?? null,
+          cliente,
         } as RinnovoServizioRow,
       ];
     });
@@ -5193,10 +5269,7 @@ export default function ClientePage({
           return;
         }
         for (const r of list) {
-          const mapped = mapRinnovoTipo(String(r.item_tipo || "").toUpperCase());
-          if (mapped.item_tipo) {
-            upsertMockRinnovoState(r.checklist_id, mapped.item_tipo, "AVVISATO");
-          }
+          upsertMockRinnovoState(r, "AVVISATO");
         }
         setRinnoviAlertOk("✅ E2E mock: invio avviso simulato.");
         setRinnoviNotice("✅ E2E mock: stato AVVISATO.");
@@ -5785,61 +5858,7 @@ export default function ClientePage({
   }
 
   function getRinnovoMatch(r: ScadenzaItem) {
-    if (r.source === "rinnovi") {
-      return rinnovi.find((x) => x.id === r.id) || null;
-    }
-    const tipo = String(r.item_tipo || "").toUpperCase();
-    if (tipo === "SIM") {
-      const simId = String(r.sim_id || "").trim();
-      if (!simId) return null;
-      return (
-        rinnovi.find(
-          (x) =>
-            String(x.item_tipo || "").toUpperCase() === "SIM" &&
-            String(x.sim_id || "").trim() === simId
-        ) || null
-      );
-    }
-    if (tipo === "SAAS_ULTRA") {
-      return (
-        rinnovi.find(
-          (x) =>
-            (String(x.item_tipo || "").toUpperCase() === "SAAS_ULTRA" ||
-              (String(x.item_tipo || "").toUpperCase() === "SAAS" &&
-                String(x.subtipo || "").toUpperCase() === "ULTRA")) &&
-            String(x.checklist_id || "") === "" &&
-            String(x.scadenza || "") === String(r.scadenza || "") &&
-            String(x.cliente || "").trim() === String(cliente || "").trim()
-        ) || null
-      );
-    }
-    if (tipo === "GARANZIA") {
-      return (
-        rinnovi.find(
-          (x) =>
-            String(x.item_tipo || "").toUpperCase() === "GARANZIA" &&
-            String(x.checklist_id || "") === String(r.checklist_id || "")
-        ) || null
-      );
-    }
-    if (tipo === "SAAS") {
-      return (
-        rinnovi.find(
-          (x) =>
-            String(x.item_tipo || "").toUpperCase() === "SAAS" &&
-            !["ULTRA"].includes(String(x.subtipo || "").toUpperCase()) &&
-            String(x.checklist_id || "") === String(r.checklist_id || "")
-        ) || null
-      );
-    }
-    if (!r.checklist_id) return null;
-    return (
-      rinnovi.find(
-        (x) =>
-          String(x.item_tipo || "").toUpperCase() === tipo &&
-          String(x.checklist_id || "") === String(r.checklist_id || "")
-      ) || null
-    );
+    return matchRinnovoRowForItem(rinnovi, r, cliente);
   }
 
   function getWorkflowStato(r: ScadenzaItem) {
@@ -6042,10 +6061,7 @@ export default function ClientePage({
 
   async function markWorkflowNonRinnovato(r: ScadenzaItem) {
     if (isE2EMode) {
-      const mapped = mapRinnovoTipo(String(r.item_tipo || "").toUpperCase());
-      if (mapped.item_tipo) {
-        upsertMockRinnovoState(r.checklist_id, mapped.item_tipo, "NON_RINNOVATO");
-      }
+      upsertMockRinnovoState(r, "NON_RINNOVATO");
       setRinnoviNotice("Riga aggiornata: NON_RINNOVATO.");
       return;
     }
