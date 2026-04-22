@@ -718,6 +718,15 @@ export function DashboardCockpitPage({
   const [addInterventoCliente, setAddInterventoCliente] = useState("");
   const [addInterventoChecklistId, setAddInterventoChecklistId] = useState("");
   const [addInterventoDescrizione, setAddInterventoDescrizione] = useState("");
+  const [addInterventoIndirizzo, setAddInterventoIndirizzo] = useState("");
+  const [addInterventoReferenteClienteNome, setAddInterventoReferenteClienteNome] = useState("");
+  const [addInterventoReferenteClienteContatto, setAddInterventoReferenteClienteContatto] = useState("");
+  const [addInterventoReferenteArtTechNome, setAddInterventoReferenteArtTechNome] = useState("");
+  const [addInterventoReferentiCliente, setAddInterventoReferentiCliente] = useState<
+    DashboardClienteReferente[]
+  >([]);
+  const [addInterventoTouched, setAddInterventoTouched] =
+    useState<QuickAttivitaTouched>(EMPTY_QUICK_ATTIVITA_TOUCHED);
   const [addInterventoError, setAddInterventoError] = useState<string | null>(null);
   const [addAttivitaOpen, setAddAttivitaOpen] = useState(false);
   const [addAttivitaType, setAddAttivitaType] = useState<QuickAttivitaType>("INSTALLAZIONE");
@@ -1589,6 +1598,10 @@ export function DashboardCockpitPage({
     () => items.find((item) => item.id === addAttivitaChecklistId) || null,
     [items, addAttivitaChecklistId]
   );
+  const selectedInterventoChecklist = useMemo(
+    () => items.find((item) => item.id === addInterventoChecklistId) || null,
+    [items, addInterventoChecklistId]
+  );
 
   const selectedScadenzeSummary = scadenzeByPeriod[scadenzePeriodDays];
   const selectedSimScadenzeSummary = simScadenzeByPeriod[scadenzePeriodDays];
@@ -2184,11 +2197,78 @@ export function DashboardCockpitPage({
   useEffect(() => {
     if (!addInterventoCliente) {
       setAddInterventoChecklistId("");
+      setAddInterventoReferentiCliente([]);
       return;
     }
     const first = items.find((c) => c.cliente === addInterventoCliente);
     if (first?.id) setAddInterventoChecklistId(first.id);
   }, [addInterventoCliente, items]);
+
+  useEffect(() => {
+    const clienteId =
+      String(selectedInterventoChecklist?.cliente_id || "").trim() ||
+      String(items.find((item) => item.cliente === addInterventoCliente)?.cliente_id || "").trim();
+    if (!clienteId) {
+      setAddInterventoReferentiCliente([]);
+      return;
+    }
+    let active = true;
+    void (async () => {
+      try {
+        const res = await fetch(`/api/clienti/${encodeURIComponent(clienteId)}/referenti`, {
+          credentials: "include",
+          cache: "no-store",
+        });
+        const json = await res.json().catch(() => ({}));
+        if (!active) return;
+        if (!res.ok || json?.ok === false) {
+          setAddInterventoReferentiCliente([]);
+          return;
+        }
+        setAddInterventoReferentiCliente(((json?.referenti || []) as DashboardClienteReferente[]).slice());
+      } catch {
+        if (!active) return;
+        setAddInterventoReferentiCliente([]);
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, [addInterventoCliente, items, selectedInterventoChecklist]);
+
+  useEffect(() => {
+    if (selectedInterventoChecklist?.impianto_indirizzo && !addInterventoTouched.indirizzo) {
+      setAddInterventoIndirizzo(String(selectedInterventoChecklist.impianto_indirizzo || ""));
+    }
+    if (!addInterventoTouched.referenteArtTechNome) {
+      setAddInterventoReferenteArtTechNome(String(getCurrentOperatoreDisplayName() || ""));
+    }
+  }, [
+    selectedInterventoChecklist,
+    addInterventoTouched.indirizzo,
+    addInterventoTouched.referenteArtTechNome,
+    currentOperatoreId,
+    currentOperatoreLabel,
+    operatoriLookupById,
+  ]);
+
+  useEffect(() => {
+    const firstReferente =
+      addInterventoReferentiCliente.find((item) => item.attivo !== false) || addInterventoReferentiCliente[0];
+    if (!firstReferente) return;
+    if (!addInterventoTouched.referenteClienteNome) {
+      setAddInterventoReferenteClienteNome(String(firstReferente.nome || ""));
+    }
+    if (!addInterventoTouched.referenteClienteContatto) {
+      setAddInterventoReferenteClienteContatto(
+        String(firstReferente.telefono || firstReferente.email || "").trim()
+      );
+    }
+  }, [
+    addInterventoReferentiCliente,
+    addInterventoTouched.referenteClienteNome,
+    addInterventoTouched.referenteClienteContatto,
+  ]);
 
   useEffect(() => {
     if (!addAttivitaCliente) {
@@ -2711,6 +2791,12 @@ export function DashboardCockpitPage({
                 setAddInterventoCliente("");
                 setAddInterventoChecklistId("");
                 setAddInterventoDescrizione("");
+                setAddInterventoIndirizzo("");
+                setAddInterventoReferenteClienteNome("");
+                setAddInterventoReferenteClienteContatto("");
+                setAddInterventoReferenteArtTechNome("");
+                setAddInterventoReferentiCliente([]);
+                setAddInterventoTouched(EMPTY_QUICK_ATTIVITA_TOUCHED);
                 setAddInterventoOpen(true);
               }}
               style={navButtonStyle}
@@ -3845,55 +3931,131 @@ export function DashboardCockpitPage({
             <div style={{ fontWeight: 800, fontSize: 18, marginBottom: 14 }}>
               Aggiungi intervento
             </div>
-            <label style={{ display: "block", marginBottom: 12 }}>
-              Cliente
-              <select
-                value={addInterventoCliente}
-                onChange={(e) => {
-                  const value = e.target.value;
-                  setAddInterventoCliente(value);
-                  setAddInterventoChecklistId("");
-                }}
-                style={{
-                  width: "100%",
-                  padding: 10,
-                  marginTop: 6,
-                  borderRadius: 8,
-                  border: "1px solid #d1d5db",
-                  fontSize: 14,
-                }}
-              >
-                <option value="">—</option>
-                {clientiOptions.map((c) => (
-                  <option key={c} value={c}>
-                    {c}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label style={{ display: "block", marginBottom: 12 }}>
-              Progetto
-              <select
-                value={addInterventoChecklistId}
-                onChange={(e) => setAddInterventoChecklistId(e.target.value)}
-                style={{
-                  width: "100%",
-                  padding: 10,
-                  marginTop: 6,
-                  borderRadius: 8,
-                  border: "1px solid #d1d5db",
-                  fontSize: 14,
-                }}
-                disabled={!addInterventoCliente}
-              >
-                <option value="">—</option>
-                {checklistOptions.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.nome || c.id}
-                  </option>
-                ))}
-              </select>
-            </label>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              <label style={{ display: "block", marginBottom: 12 }}>
+                Cliente
+                <select
+                  value={addInterventoCliente}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    setAddInterventoCliente(value);
+                    setAddInterventoChecklistId("");
+                  }}
+                  style={{
+                    width: "100%",
+                    padding: 10,
+                    marginTop: 6,
+                    borderRadius: 8,
+                    border: "1px solid #d1d5db",
+                    fontSize: 14,
+                  }}
+                >
+                  <option value="">—</option>
+                  {clientiOptions.map((c) => (
+                    <option key={c} value={c}>
+                      {c}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label style={{ display: "block", marginBottom: 12 }}>
+                Progetto
+                <select
+                  value={addInterventoChecklistId}
+                  onChange={(e) => setAddInterventoChecklistId(e.target.value)}
+                  style={{
+                    width: "100%",
+                    padding: 10,
+                    marginTop: 6,
+                    borderRadius: 8,
+                    border: "1px solid #d1d5db",
+                    fontSize: 14,
+                  }}
+                  disabled={!addInterventoCliente}
+                >
+                  <option value="">—</option>
+                  {checklistOptions.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.nome || c.id}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              <label style={{ display: "block", marginBottom: 12 }}>
+                Indirizzo
+                <input
+                  value={addInterventoIndirizzo}
+                  onChange={(e) => {
+                    setAddInterventoIndirizzo(e.target.value);
+                    setAddInterventoTouched((prev) => ({ ...prev, indirizzo: true }));
+                  }}
+                  style={{
+                    width: "100%",
+                    padding: 10,
+                    marginTop: 6,
+                    borderRadius: 8,
+                    border: "1px solid #d1d5db",
+                    fontSize: 14,
+                  }}
+                />
+              </label>
+              <label style={{ display: "block", marginBottom: 12 }}>
+                Referente Art Tech
+                <input
+                  value={addInterventoReferenteArtTechNome}
+                  onChange={(e) => {
+                    setAddInterventoReferenteArtTechNome(e.target.value);
+                    setAddInterventoTouched((prev) => ({ ...prev, referenteArtTechNome: true }));
+                  }}
+                  style={{
+                    width: "100%",
+                    padding: 10,
+                    marginTop: 6,
+                    borderRadius: 8,
+                    border: "1px solid #d1d5db",
+                    fontSize: 14,
+                  }}
+                />
+              </label>
+              <label style={{ display: "block", marginBottom: 12 }}>
+                Referente cliente
+                <input
+                  value={addInterventoReferenteClienteNome}
+                  onChange={(e) => {
+                    setAddInterventoReferenteClienteNome(e.target.value);
+                    setAddInterventoTouched((prev) => ({ ...prev, referenteClienteNome: true }));
+                  }}
+                  style={{
+                    width: "100%",
+                    padding: 10,
+                    marginTop: 6,
+                    borderRadius: 8,
+                    border: "1px solid #d1d5db",
+                    fontSize: 14,
+                  }}
+                />
+              </label>
+              <label style={{ display: "block", marginBottom: 12 }}>
+                Contatto referente
+                <input
+                  value={addInterventoReferenteClienteContatto}
+                  onChange={(e) => {
+                    setAddInterventoReferenteClienteContatto(e.target.value);
+                    setAddInterventoTouched((prev) => ({ ...prev, referenteClienteContatto: true }));
+                  }}
+                  style={{
+                    width: "100%",
+                    padding: 10,
+                    marginTop: 6,
+                    borderRadius: 8,
+                    border: "1px solid #d1d5db",
+                    fontSize: 14,
+                  }}
+                />
+              </label>
+            </div>
             <label style={{ display: "block", marginBottom: 12 }}>
               Descrizione (opzionale)
               <input
