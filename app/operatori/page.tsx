@@ -427,7 +427,7 @@ export default function OperatoreAttivitaPage() {
         const meRes = await fetch("/api/me-operatore", { credentials: "include" });
         const meData = await meRes.json().catch(() => ({}));
         if (meRes.status === 401 || meRes.status === 403) {
-          router.replace("/login?next=%2Foperatori");
+          router.replace("/login?redirect=%2Foperatori");
           return;
         }
         if (!meRes.ok || !meData?.operatore?.id) {

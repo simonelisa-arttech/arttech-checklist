@@ -15,8 +15,6 @@ export default function LoginForm({ redirectTo }: LoginFormProps) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [recoveryMsg, setRecoveryMsg] = useState<string | null>(null);
-  const buildStamp = "AUTH BUILD PROD DOMAIN";
-
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
     e.stopPropagation();
@@ -41,7 +39,7 @@ export default function LoginForm({ redirectTo }: LoginFormProps) {
       return;
     }
 
-    router.replace("/");
+    router.replace(redirectTo || "/");
     router.refresh();
   }
 
@@ -68,9 +66,6 @@ export default function LoginForm({ redirectTo }: LoginFormProps) {
   return (
     <div style={{ maxWidth: 420, margin: "80px auto", padding: 16 }}>
       <h1 style={{ marginBottom: 6 }}>Login</h1>
-      <div style={{ marginBottom: 8, fontSize: 11, opacity: 0.7 }}>
-        {buildStamp}
-      </div>
       <div style={{ marginBottom: 20, fontSize: 12, opacity: 0.7 }}>
         Accedi con email e password
       </div>

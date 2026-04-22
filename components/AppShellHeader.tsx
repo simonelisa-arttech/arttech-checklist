@@ -28,6 +28,11 @@ const operatorMenuLinkStyle: CSSProperties = {
 export default function AppShellHeader() {
   const pathname = usePathname();
   const operatorMode = pathname === "/operatori";
+  const hiddenShellPaths = new Set(["/login", "/reset-password", "/auth/callback", "/operatori"]);
+
+  if (hiddenShellPaths.has(pathname)) {
+    return null;
+  }
 
   return (
     <header
@@ -49,14 +54,7 @@ export default function AppShellHeader() {
             style={{ height: 48, width: "auto", objectFit: "contain" }}
           />
         </Link>
-        {operatorMode ? (
-          <div style={{ display: "grid", gap: 2 }}>
-            <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: 0.4, color: "#64748b", textTransform: "uppercase" }}>
-              App operatore
-            </div>
-            <div style={{ fontSize: 15, fontWeight: 800, color: "#0f172a" }}>Attività assegnate</div>
-          </div>
-        ) : (
+        {operatorMode ? null : (
           <nav
             aria-label="Navigazione principale"
             style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}
@@ -74,7 +72,7 @@ export default function AppShellHeader() {
             >
               App operatori
             </Link>
-            <Link href="/operatori" style={navLinkStyle}>
+            <Link href="/impostazioni/operatori" style={navLinkStyle}>
               Anagrafica operatori
             </Link>
             <Link href="/operativi-kpi" style={navLinkStyle}>
@@ -93,63 +91,6 @@ export default function AppShellHeader() {
         )}
       </div>
       <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>
-        {operatorMode ? (
-          <details style={{ position: "relative" }}>
-            <summary
-              style={{
-                listStyle: "none",
-                cursor: "pointer",
-                padding: "8px 12px",
-                borderRadius: 10,
-                border: "1px solid #d1d5db",
-                background: "white",
-                fontSize: 13,
-                fontWeight: 800,
-                color: "#0f172a",
-              }}
-            >
-              Menu
-            </summary>
-            <div
-              style={{
-                position: "absolute",
-                right: 0,
-                top: "calc(100% + 8px)",
-                minWidth: 190,
-                padding: 10,
-                borderRadius: 14,
-                border: "1px solid #e5e7eb",
-                background: "white",
-                boxShadow: "0 18px 36px rgba(15,23,42,0.14)",
-                display: "grid",
-                gap: 8,
-                zIndex: 20,
-              }}
-            >
-              <Link href="/dashboard" style={operatorMenuLinkStyle}>
-                Dashboard
-              </Link>
-              <Link href="/clienti-cockpit" style={operatorMenuLinkStyle}>
-                Clienti
-              </Link>
-              <Link href="/operativi-kpi" style={operatorMenuLinkStyle}>
-                KPI Operativi
-              </Link>
-              <Link href="/sim" style={operatorMenuLinkStyle}>
-                SIM
-              </Link>
-              <Link href="/fatturazione" style={operatorMenuLinkStyle}>
-                Fatturazione
-              </Link>
-              <Link href="/cronoprogramma" style={operatorMenuLinkStyle}>
-                Cronoprogramma
-              </Link>
-              <Link href="/impostazioni" style={operatorMenuLinkStyle}>
-                Impostazioni
-              </Link>
-            </div>
-          </details>
-        ) : null}
         <LogoutButton />
       </div>
     </header>
