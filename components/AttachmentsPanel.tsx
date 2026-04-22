@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { storageSignedUrl, storageUpload } from "@/lib/clientStorageApi";
 
 type DocumentType = "GENERICO" | "CLIENTE" | "DRIVE" | "ODA_FORNITORE";
+type DocumentTypeFilter = "ALL" | DocumentType;
 
 type AttachmentRow = {
   id: string;
@@ -35,6 +36,14 @@ const DOCUMENT_TYPE_BADGES: Record<
   DRIVE: { label: "Drive", background: "#dcfce7", color: "#166534" },
   ODA_FORNITORE: { label: "ODA", background: "#fef3c7", color: "#92400e" },
 };
+
+const DOCUMENT_TYPE_FILTER_OPTIONS: Array<{ value: DocumentTypeFilter; label: string }> = [
+  { value: "ALL", label: "Tutti" },
+  { value: "GENERICO", label: "Interno" },
+  { value: "CLIENTE", label: "Cliente" },
+  { value: "DRIVE", label: "Drive" },
+  { value: "ODA_FORNITORE", label: "ODA" },
+];
 
 type Props = {
   entityType: string;
@@ -73,6 +82,8 @@ export default function AttachmentsPanel({
   const [linkTitle, setLinkTitle] = useState("");
   const [linkUrl, setLinkUrl] = useState("");
   const [documentType, setDocumentType] = useState<DocumentType>("GENERICO");
+  const [selectedDocumentTypeFilter, setSelectedDocumentTypeFilter] =
+    useState<DocumentTypeFilter>("ALL");
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const canUse = Boolean(entityId);
@@ -266,6 +277,10 @@ export default function AttachmentsPanel({
     () => (r: AttachmentRow) => (r.source === "LINK" ? (r.provider === "GOOGLE_DRIVE" ? "🟢" : "🔗") : "📄"),
     []
   );
+  const filteredRows = useMemo(() => {
+    if (selectedDocumentTypeFilter === "ALL") return rows;
+    return rows.filter((row) => resolveDocumentType(row) === selectedDocumentTypeFilter);
+  }, [rows, selectedDocumentTypeFilter]);
 
   return (
     <div style={{ border: "1px solid #eee", borderRadius: 12, padding: 12, background: "white" }}>
@@ -356,13 +371,38 @@ export default function AttachmentsPanel({
         </button>
       </div>
 
+      <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
+        {DOCUMENT_TYPE_FILTER_OPTIONS.map((option) => {
+          const active = selectedDocumentTypeFilter === option.value;
+          return (
+            <button
+              key={option.value}
+              type="button"
+              onClick={() => setSelectedDocumentTypeFilter(option.value)}
+              style={{
+                padding: "6px 10px",
+                borderRadius: 999,
+                border: active ? "1px solid #0f172a" : "1px solid #d1d5db",
+                background: active ? "#0f172a" : "white",
+                color: active ? "white" : "#334155",
+                fontSize: 12,
+                fontWeight: 700,
+                cursor: "pointer",
+              }}
+            >
+              {option.label}
+            </button>
+          );
+        })}
+      </div>
+
       {loading ? (
         <div style={{ opacity: 0.7, fontSize: 12 }}>Caricamento allegati...</div>
-      ) : rows.length === 0 ? (
+      ) : filteredRows.length === 0 ? (
         <div style={{ opacity: 0.7, fontSize: 12 }}>Nessun allegato</div>
       ) : (
         <div style={{ border: "1px solid #eee", borderRadius: 10, overflow: "hidden" }}>
-          {rows.map((r) => (
+          {filteredRows.map((r) => (
             <div
               key={r.id}
               style={{
