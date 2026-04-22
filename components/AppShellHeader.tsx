@@ -68,7 +68,7 @@ export default function AppShellHeader() {
               Clienti
             </Link>
             <Link href="/operatori" style={navLinkStyle}>
-              Operatori
+              Anagrafica operatori
             </Link>
             <Link href="/operativi-kpi" style={navLinkStyle}>
               KPI Operativi
