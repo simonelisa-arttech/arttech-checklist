@@ -421,6 +421,7 @@ type CronoComment = {
 };
 
 type QuickAttivitaType = "INSTALLAZIONE" | "DISINSTALLAZIONE" | "ALTRA_ATTIVITA";
+type DashboardClientSaasFilter = "TUTTI" | "SAAS" | "SAAS_ULTRA";
 type QuickAttivitaTouched = {
   ore: boolean;
   indirizzo: boolean;
@@ -452,6 +453,22 @@ const EMPTY_QUICK_ATTIVITA_TOUCHED: QuickAttivitaTouched = {
   referenteClienteContatto: false,
   referenteArtTechNome: false,
 };
+
+function getDashboardClienteRowKey(clienteValue?: string | null, clienteIdValue?: string | null) {
+  const clienteId = String(clienteIdValue || "").trim();
+  if (clienteId) return `id:${clienteId}`;
+  const normalizedName = normalizeClienteSearchKey(clienteValue);
+  return normalizedName ? `name:${normalizedName}` : null;
+}
+
+function getDashboardSaasFilterKey(item: Checklist): Exclude<DashboardClientSaasFilter, "TUTTI"> | null {
+  const piano = String(item.saas_piano || item.saas_tipo || item.tipo_saas || "").trim().toUpperCase();
+  if (!piano) return null;
+  if (piano.startsWith("SAAS-UL") || piano.startsWith("SAAS-PR") || piano.includes("ULTRA")) {
+    return "SAAS_ULTRA";
+  }
+  return "SAAS";
+}
 
 type OperativiFields = {
   data_inizio: string;
@@ -712,6 +729,8 @@ export function DashboardCockpitPage({
   const [dashboardClientQuickFilter, setDashboardClientQuickFilter] = useState<
     "TUTTI" | "ATTENZIONE" | "MONITORARE" | "STABILE"
   >("TUTTI");
+  const [dashboardClientSaasFilter, setDashboardClientSaasFilter] =
+    useState<DashboardClientSaasFilter>("TUTTI");
   const [showMissingEmailInfo, setShowMissingEmailInfo] = useState(false);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
   const [addInterventoOpen, setAddInterventoOpen] = useState(false);
@@ -1550,6 +1569,49 @@ export function DashboardCockpitPage({
     simSearchByChecklistId,
   ]);
 
+  const dashboardClientSaasCards = useMemo(() => {
+    const clientKeysByFilter: Record<Exclude<DashboardClientSaasFilter, "TUTTI">, Set<string>> = {
+      SAAS: new Set<string>(),
+      SAAS_ULTRA: new Set<string>(),
+    };
+
+    for (const item of items) {
+      const filterKey = getDashboardSaasFilterKey(item);
+      if (!filterKey) continue;
+      const rowKey = getDashboardClienteRowKey(item.cliente, item.cliente_id);
+      if (!rowKey) continue;
+      clientKeysByFilter[filterKey].add(rowKey);
+    }
+
+    return [
+      {
+        key: "SAAS" as const,
+        label: "SaaS",
+        helper: "Clienti con piano SaaS",
+        count: clientKeysByFilter.SAAS.size,
+        colors: DASHBOARD_BADGE_COLORS.statusNeutral,
+        clientKeys: clientKeysByFilter.SAAS,
+      },
+      {
+        key: "SAAS_ULTRA" as const,
+        label: "SaaS Ultra",
+        helper: "Clienti con piano Ultra",
+        count: clientKeysByFilter.SAAS_ULTRA.size,
+        colors: DASHBOARD_BADGE_COLORS.statusDueSoon,
+        clientKeys: clientKeysByFilter.SAAS_ULTRA,
+      },
+    ].filter((card) => card.count > 0);
+  }, [items]);
+
+  const dashboardClientSaasClientKeys = useMemo(() => {
+    return dashboardClientSaasCards.reduce<
+      Partial<Record<Exclude<DashboardClientSaasFilter, "TUTTI">, Set<string>>>
+    >((acc, card) => {
+      acc[card.key] = card.clientKeys;
+      return acc;
+    }, {});
+  }, [dashboardClientSaasCards]);
+
   const filteredDashboardClientRows = useMemo(() => {
     const needle = normalizeClienteSearchKey(dashboardClientSearch);
     return dashboardClientRows.filter((row) => {
@@ -1562,9 +1624,21 @@ export function DashboardCockpitPage({
       if (dashboardClientQuickFilter !== "TUTTI" && row.attentionLabel !== dashboardClientQuickFilter) {
         return false;
       }
+      if (dashboardClientSaasFilter !== "TUTTI") {
+        const allowedClientKeys = dashboardClientSaasClientKeys[dashboardClientSaasFilter];
+        if (!allowedClientKeys?.has(row.rowKey)) {
+          return false;
+        }
+      }
       return true;
     });
-  }, [dashboardClientQuickFilter, dashboardClientRows, dashboardClientSearch]);
+  }, [
+    dashboardClientQuickFilter,
+    dashboardClientRows,
+    dashboardClientSaasClientKeys,
+    dashboardClientSaasFilter,
+    dashboardClientSearch,
+  ]);
 
   const clientRowsToRender = filteredDashboardClientRows;
 
@@ -3509,34 +3583,112 @@ export function DashboardCockpitPage({
           {showClientiSection ? (
             <div style={{ marginTop: 24 }}>
             {showClientiCockpit ? (
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-                  gap: 12,
-                  marginBottom: 16,
-                }}
-              >
-                {[
-                  { label: "Totale clienti", value: dashboardClientSummary.total, colors: DASHBOARD_BADGE_COLORS.statusNeutral },
-                  { label: "Con attenzione", value: dashboardClientSummary.attention, colors: DASHBOARD_BADGE_COLORS.statusExpired },
-                  { label: "Con attività aperte", value: dashboardClientSummary.withOpenActivities, colors: DASHBOARD_BADGE_COLORS.statusDueSoon },
-                  { label: "Con scadenze rilevanti", value: dashboardClientSummary.withRelevantDeadlines, colors: DASHBOARD_BADGE_COLORS.statusDueSoon },
-                ].map((card) => (
+              <div style={{ display: "grid", gap: 12, marginBottom: 16 }}>
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+                    gap: 12,
+                  }}
+                >
+                  {[
+                    { label: "Totale clienti", value: dashboardClientSummary.total, colors: DASHBOARD_BADGE_COLORS.statusNeutral },
+                    { label: "Con attenzione", value: dashboardClientSummary.attention, colors: DASHBOARD_BADGE_COLORS.statusExpired },
+                    { label: "Con attività aperte", value: dashboardClientSummary.withOpenActivities, colors: DASHBOARD_BADGE_COLORS.statusDueSoon },
+                    { label: "Con scadenze rilevanti", value: dashboardClientSummary.withRelevantDeadlines, colors: DASHBOARD_BADGE_COLORS.statusDueSoon },
+                  ].map((card) => (
+                    <div
+                      key={card.label}
+                      style={{
+                        borderRadius: 16,
+                        border: `1px solid ${card.colors.border}`,
+                        background: card.colors.background,
+                        padding: "14px 16px",
+                        boxShadow: "0 1px 2px rgba(15, 23, 42, 0.06)",
+                      }}
+                    >
+                      <div style={{ fontSize: 12, fontWeight: 700, color: card.colors.color }}>{card.label}</div>
+                      <div style={{ marginTop: 6, fontSize: 26, fontWeight: 800, color: "#0f172a" }}>{card.value}</div>
+                    </div>
+                  ))}
+                </div>
+                {dashboardClientSaasCards.length > 0 ? (
                   <div
-                    key={card.label}
                     style={{
-                      borderRadius: 16,
-                      border: `1px solid ${card.colors.border}`,
-                      background: card.colors.background,
-                      padding: "14px 16px",
-                      boxShadow: "0 1px 2px rgba(15, 23, 42, 0.06)",
+                      display: "grid",
+                      gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+                      gap: 12,
                     }}
                   >
-                    <div style={{ fontSize: 12, fontWeight: 700, color: card.colors.color }}>{card.label}</div>
-                    <div style={{ marginTop: 6, fontSize: 26, fontWeight: 800, color: "#0f172a" }}>{card.value}</div>
+                    {dashboardClientSaasCards.map((card) => {
+                      const active = dashboardClientSaasFilter === card.key;
+                      return (
+                        <button
+                          key={card.key}
+                          type="button"
+                          onClick={() =>
+                            setDashboardClientSaasFilter((prev) => (prev === card.key ? "TUTTI" : card.key))
+                          }
+                          style={{
+                            textAlign: "left",
+                            borderRadius: 16,
+                            border: `1px solid ${active ? "#0f172a" : card.colors.border}`,
+                            background: active ? "#0f172a" : card.colors.background,
+                            padding: "14px 16px",
+                            boxShadow: "0 1px 2px rgba(15, 23, 42, 0.06)",
+                            cursor: "pointer",
+                            color: active ? "white" : "#0f172a",
+                          }}
+                        >
+                          <div
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "space-between",
+                              gap: 8,
+                            }}
+                          >
+                            <div
+                              style={{
+                                fontSize: 12,
+                                fontWeight: 800,
+                                color: active ? "rgba(255,255,255,0.8)" : card.colors.color,
+                              }}
+                            >
+                              {card.label}
+                            </div>
+                            <span
+                              style={{
+                                padding: "3px 8px",
+                                borderRadius: 999,
+                                fontSize: 11,
+                                fontWeight: 800,
+                                background: active ? "rgba(255,255,255,0.16)" : "#fff",
+                                border: active ? "1px solid rgba(255,255,255,0.2)" : "1px solid rgba(15,23,42,0.08)",
+                                color: active ? "white" : "#475569",
+                                whiteSpace: "nowrap",
+                              }}
+                            >
+                              {active ? "Filtro attivo" : "Filtra clienti"}
+                            </span>
+                          </div>
+                          <div style={{ marginTop: 6, fontSize: 26, fontWeight: 800 }}>
+                            {card.count}
+                          </div>
+                          <div
+                            style={{
+                              marginTop: 4,
+                              fontSize: 12,
+                              color: active ? "rgba(255,255,255,0.75)" : "#64748b",
+                            }}
+                          >
+                            {card.helper}
+                          </div>
+                        </button>
+                      );
+                    })}
                   </div>
-                ))}
+                ) : null}
               </div>
             ) : null}
             <div
@@ -3632,6 +3784,23 @@ export function DashboardCockpitPage({
                       </button>
                     );
                   })}
+                  {dashboardClientSaasFilter !== "TUTTI" ? (
+                    <button
+                      type="button"
+                      onClick={() => setDashboardClientSaasFilter("TUTTI")}
+                      style={{
+                        padding: "8px 12px",
+                        borderRadius: 999,
+                        border: "1px solid #bfdbfe",
+                        background: "#eff6ff",
+                        color: "#1d4ed8",
+                        fontWeight: 700,
+                        cursor: "pointer",
+                      }}
+                    >
+                      {dashboardClientSaasFilter === "SAAS_ULTRA" ? "SaaS Ultra" : "SaaS"} attivo · Mostra tutti
+                    </button>
+                  ) : null}
                 </div>
               </div>
             ) : null}
