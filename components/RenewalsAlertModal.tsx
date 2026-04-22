@@ -196,6 +196,7 @@ export default function RenewalsAlertModal({
     return Array.from(dedup.values());
   }, [customerEmail, customerEmails]);
   const customerEmailOverride = String(customerEmailDraft || "").trim();
+  const manualEmailValue = String(manualEmail || "").trim();
   const effectiveCustomerEmails = useMemo(() => {
     if (normalizedCustomerEmails.length > 0) return normalizedCustomerEmails;
     if (isValidEmail(customerEmailOverride)) return [customerEmailOverride];
@@ -209,7 +210,7 @@ export default function RenewalsAlertModal({
   const canSendManual =
     (toCliente && effectiveCustomerEmails.length > 0) ||
     (toArtTech &&
-      (artTechMode === "operatore" ? Boolean(operatoreId) : isValidEmail(manualEmail)));
+      (artTechMode === "operatore" ? Boolean(operatoreId) : Boolean(manualEmailValue)));
 
   useEffect(() => {
     if (!open || mode !== "AUTOMATICO") return;
@@ -771,7 +772,7 @@ export default function RenewalsAlertModal({
                   toArtTech,
                   artTechMode,
                   operatoreId,
-                  manualEmail,
+                  manualEmail: manualEmailValue,
                   manualName,
                   clienteEmailOverride:
                     toCliente && normalizedCustomerEmails.length === 0
