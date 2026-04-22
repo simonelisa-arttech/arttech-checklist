@@ -421,12 +421,37 @@ type CronoComment = {
 };
 
 type QuickAttivitaType = "INSTALLAZIONE" | "DISINSTALLAZIONE" | "ALTRA_ATTIVITA";
+type QuickAttivitaTouched = {
+  ore: boolean;
+  indirizzo: boolean;
+  referenteClienteNome: boolean;
+  referenteClienteContatto: boolean;
+  referenteArtTechNome: boolean;
+};
+
+type DashboardClienteReferente = {
+  id: string;
+  cliente_id: string;
+  nome: string;
+  telefono: string | null;
+  email: string | null;
+  ruolo: string | null;
+  attivo: boolean | null;
+};
 
 const QUICK_ATTIVITA_OPTIONS: Array<{ value: QuickAttivitaType; label: string; tipo: string }> = [
   { value: "INSTALLAZIONE", label: "Installazione", tipo: "INSTALLAZIONE" },
   { value: "DISINSTALLAZIONE", label: "Disinstallazione", tipo: "DISINSTALLAZIONE" },
   { value: "ALTRA_ATTIVITA", label: "Altra attività", tipo: "ATTIVITA_OPERATIVA" },
 ];
+
+const EMPTY_QUICK_ATTIVITA_TOUCHED: QuickAttivitaTouched = {
+  ore: false,
+  indirizzo: false,
+  referenteClienteNome: false,
+  referenteClienteContatto: false,
+  referenteArtTechNome: false,
+};
 
 type OperativiFields = {
   data_inizio: string;
@@ -701,6 +726,13 @@ export function DashboardCockpitPage({
   const [addAttivitaData, setAddAttivitaData] = useState("");
   const [addAttivitaOre, setAddAttivitaOre] = useState("8");
   const [addAttivitaDescrizione, setAddAttivitaDescrizione] = useState("");
+  const [addAttivitaIndirizzo, setAddAttivitaIndirizzo] = useState("");
+  const [addAttivitaReferenteClienteNome, setAddAttivitaReferenteClienteNome] = useState("");
+  const [addAttivitaReferenteClienteContatto, setAddAttivitaReferenteClienteContatto] = useState("");
+  const [addAttivitaReferenteArtTechNome, setAddAttivitaReferenteArtTechNome] = useState("");
+  const [addAttivitaReferentiCliente, setAddAttivitaReferentiCliente] = useState<DashboardClienteReferente[]>([]);
+  const [addAttivitaTouched, setAddAttivitaTouched] =
+    useState<QuickAttivitaTouched>(EMPTY_QUICK_ATTIVITA_TOUCHED);
   const [addAttivitaSaving, setAddAttivitaSaving] = useState(false);
   const [addAttivitaError, setAddAttivitaError] = useState<string | null>(null);
   const [debugLocation, setDebugLocation] = useState<string>("");
@@ -1553,6 +1585,11 @@ export function DashboardCockpitPage({
       .map((c) => ({ id: c.id, nome: c.nome_checklist }));
   }, [items, addAttivitaCliente]);
 
+  const selectedAttivitaChecklist = useMemo(
+    () => items.find((item) => item.id === addAttivitaChecklistId) || null,
+    [items, addAttivitaChecklistId]
+  );
+
   const selectedScadenzeSummary = scadenzeByPeriod[scadenzePeriodDays];
   const selectedSimScadenzeSummary = simScadenzeByPeriod[scadenzePeriodDays];
   const cockpitCardHeight = 128;
@@ -2156,11 +2193,88 @@ export function DashboardCockpitPage({
   useEffect(() => {
     if (!addAttivitaCliente) {
       setAddAttivitaChecklistId("");
+      setAddAttivitaReferentiCliente([]);
       return;
     }
     const first = items.find((c) => c.cliente === addAttivitaCliente);
     if (first?.id) setAddAttivitaChecklistId(first.id);
   }, [addAttivitaCliente, items]);
+
+  useEffect(() => {
+    const hoursByType: Record<QuickAttivitaType, string> = {
+      INSTALLAZIONE: "8",
+      DISINSTALLAZIONE: "4",
+      ALTRA_ATTIVITA: "2",
+    };
+    if (addAttivitaTouched.ore) return;
+    setAddAttivitaOre(hoursByType[addAttivitaType]);
+  }, [addAttivitaType, addAttivitaTouched.ore]);
+
+  useEffect(() => {
+    const clienteId =
+      String(selectedAttivitaChecklist?.cliente_id || "").trim() ||
+      String(items.find((item) => item.cliente === addAttivitaCliente)?.cliente_id || "").trim();
+    if (!clienteId) {
+      setAddAttivitaReferentiCliente([]);
+      return;
+    }
+    let active = true;
+    void (async () => {
+      try {
+        const res = await fetch(`/api/clienti/${encodeURIComponent(clienteId)}/referenti`, {
+          credentials: "include",
+          cache: "no-store",
+        });
+        const json = await res.json().catch(() => ({}));
+        if (!active) return;
+        if (!res.ok || json?.ok === false) {
+          setAddAttivitaReferentiCliente([]);
+          return;
+        }
+        setAddAttivitaReferentiCliente(((json?.referenti || []) as DashboardClienteReferente[]).slice());
+      } catch {
+        if (!active) return;
+        setAddAttivitaReferentiCliente([]);
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, [addAttivitaCliente, items, selectedAttivitaChecklist]);
+
+  useEffect(() => {
+    if (selectedAttivitaChecklist?.impianto_indirizzo && !addAttivitaTouched.indirizzo) {
+      setAddAttivitaIndirizzo(String(selectedAttivitaChecklist.impianto_indirizzo || ""));
+    }
+    if (!addAttivitaTouched.referenteArtTechNome) {
+      setAddAttivitaReferenteArtTechNome(String(getCurrentOperatoreDisplayName() || ""));
+    }
+  }, [
+    selectedAttivitaChecklist,
+    addAttivitaTouched.indirizzo,
+    addAttivitaTouched.referenteArtTechNome,
+    currentOperatoreId,
+    currentOperatoreLabel,
+    operatoriLookupById,
+  ]);
+
+  useEffect(() => {
+    const firstReferente =
+      addAttivitaReferentiCliente.find((item) => item.attivo !== false) || addAttivitaReferentiCliente[0];
+    if (!firstReferente) return;
+    if (!addAttivitaTouched.referenteClienteNome) {
+      setAddAttivitaReferenteClienteNome(String(firstReferente.nome || ""));
+    }
+    if (!addAttivitaTouched.referenteClienteContatto) {
+      setAddAttivitaReferenteClienteContatto(
+        String(firstReferente.telefono || firstReferente.email || "").trim()
+      );
+    }
+  }, [
+    addAttivitaReferentiCliente,
+    addAttivitaTouched.referenteClienteNome,
+    addAttivitaTouched.referenteClienteContatto,
+  ]);
 
   async function submitQuickAttivita() {
     if (!addAttivitaCliente || !addAttivitaChecklistId) {
@@ -2234,6 +2348,10 @@ export function DashboardCockpitPage({
           durata_giorni: addAttivitaOre.replace(",", "."),
           modalita_attivita: "ONSITE",
           descrizione_attivita: descrizione,
+          indirizzo: addAttivitaIndirizzo.trim(),
+          referente_cliente_nome: addAttivitaReferenteClienteNome.trim(),
+          referente_cliente_contatto: addAttivitaReferenteClienteContatto.trim(),
+          commerciale_art_tech_nome: addAttivitaReferenteArtTechNome.trim(),
         }),
       });
       const operativiJson = await operativiRes.json().catch(() => ({}));
@@ -2249,6 +2367,12 @@ export function DashboardCockpitPage({
       setAddAttivitaData("");
       setAddAttivitaOre("8");
       setAddAttivitaDescrizione("");
+      setAddAttivitaIndirizzo("");
+      setAddAttivitaReferenteClienteNome("");
+      setAddAttivitaReferenteClienteContatto("");
+      setAddAttivitaReferenteArtTechNome("");
+      setAddAttivitaReferentiCliente([]);
+      setAddAttivitaTouched(EMPTY_QUICK_ATTIVITA_TOUCHED);
       closeAddAttivita("submit");
     } catch (err: any) {
       setAddAttivitaError(String(err?.message || "Errore creazione attività"));
@@ -2603,6 +2727,12 @@ export function DashboardCockpitPage({
                 setAddAttivitaData("");
                 setAddAttivitaOre("8");
                 setAddAttivitaDescrizione("");
+                setAddAttivitaIndirizzo("");
+                setAddAttivitaReferenteClienteNome("");
+                setAddAttivitaReferenteClienteContatto("");
+                setAddAttivitaReferenteArtTechNome("");
+                setAddAttivitaReferentiCliente([]);
+                setAddAttivitaTouched(EMPTY_QUICK_ATTIVITA_TOUCHED);
                 setAddAttivitaOpen(true);
               }}
               style={navButtonStyle}
@@ -3954,7 +4084,84 @@ export function DashboardCockpitPage({
                   min="0.5"
                   step="0.5"
                   value={addAttivitaOre}
-                  onChange={(e) => setAddAttivitaOre(e.target.value)}
+                  onChange={(e) => {
+                    setAddAttivitaOre(e.target.value);
+                    setAddAttivitaTouched((prev) => ({ ...prev, ore: true }));
+                  }}
+                  style={{
+                    width: "100%",
+                    padding: 10,
+                    marginTop: 6,
+                    borderRadius: 8,
+                    border: "1px solid #d1d5db",
+                    fontSize: 14,
+                  }}
+                />
+              </label>
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              <label style={{ display: "block", marginBottom: 12 }}>
+                Indirizzo
+                <input
+                  value={addAttivitaIndirizzo}
+                  onChange={(e) => {
+                    setAddAttivitaIndirizzo(e.target.value);
+                    setAddAttivitaTouched((prev) => ({ ...prev, indirizzo: true }));
+                  }}
+                  style={{
+                    width: "100%",
+                    padding: 10,
+                    marginTop: 6,
+                    borderRadius: 8,
+                    border: "1px solid #d1d5db",
+                    fontSize: 14,
+                  }}
+                />
+              </label>
+              <label style={{ display: "block", marginBottom: 12 }}>
+                Referente Art Tech
+                <input
+                  value={addAttivitaReferenteArtTechNome}
+                  onChange={(e) => {
+                    setAddAttivitaReferenteArtTechNome(e.target.value);
+                    setAddAttivitaTouched((prev) => ({ ...prev, referenteArtTechNome: true }));
+                  }}
+                  style={{
+                    width: "100%",
+                    padding: 10,
+                    marginTop: 6,
+                    borderRadius: 8,
+                    border: "1px solid #d1d5db",
+                    fontSize: 14,
+                  }}
+                />
+              </label>
+              <label style={{ display: "block", marginBottom: 12 }}>
+                Referente cliente
+                <input
+                  value={addAttivitaReferenteClienteNome}
+                  onChange={(e) => {
+                    setAddAttivitaReferenteClienteNome(e.target.value);
+                    setAddAttivitaTouched((prev) => ({ ...prev, referenteClienteNome: true }));
+                  }}
+                  style={{
+                    width: "100%",
+                    padding: 10,
+                    marginTop: 6,
+                    borderRadius: 8,
+                    border: "1px solid #d1d5db",
+                    fontSize: 14,
+                  }}
+                />
+              </label>
+              <label style={{ display: "block", marginBottom: 12 }}>
+                Contatto referente
+                <input
+                  value={addAttivitaReferenteClienteContatto}
+                  onChange={(e) => {
+                    setAddAttivitaReferenteClienteContatto(e.target.value);
+                    setAddAttivitaTouched((prev) => ({ ...prev, referenteClienteContatto: true }));
+                  }}
                   style={{
                     width: "100%",
                     padding: 10,
