@@ -1222,10 +1222,34 @@ export default function ClientePage({
         ? String(r.id)
         : `e2e-${tipo}-${checklistId || "global"}-${String(r.riferimento || r.scadenza || "row")}`;
     setRinnovi((prev) => {
+      const matchingRows = prev.filter((row) => {
+        const rowTipo = String(row.item_tipo || "").toUpperCase();
+        const rowSubtipo = String(row.subtipo || "").toUpperCase();
+        if (tipo === "SAAS" && String(subtipo || "").toUpperCase() !== "ULTRA") {
+          if (rowTipo !== "SAAS" || rowSubtipo === "ULTRA") return false;
+          return String(row.checklist_id || "") === String(checklistId || "");
+        }
+        return false;
+      });
       const existing = matchRinnovoRowForItem(prev, { ...r, item_tipo: tipo, subtipo }, cliente);
       if (existing) {
         return prev.map((x) =>
-          x.id === existing.id
+          x.id === existing.id || matchingRows.some((row) => row.id === x.id)
+            ? {
+                ...x,
+                stato,
+                item_tipo: tipo,
+                subtipo,
+                checklist_id: checklistId,
+                riferimento: r.riferimento ?? x.riferimento ?? null,
+                scadenza: r.scadenza ?? x.scadenza ?? null,
+              }
+            : x
+        );
+      }
+      if (matchingRows.length > 0) {
+        return prev.map((x) =>
+          matchingRows.some((row) => row.id === x.id)
             ? {
                 ...x,
                 stato,
