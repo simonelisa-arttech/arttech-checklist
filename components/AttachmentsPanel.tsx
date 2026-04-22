@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { storageSignedUrl, storageUpload } from "@/lib/clientStorageApi";
 
+type DocumentType = "GENERICO" | "CLIENTE" | "DRIVE" | "ODA_FORNITORE";
+
 type AttachmentRow = {
   id: string;
   source: "UPLOAD" | "LINK";
@@ -15,6 +17,25 @@ type AttachmentRow = {
   created_at: string | null;
   visibile_al_cliente?: boolean | null;
 };
+
+const DOCUMENT_TYPE_OPTIONS: Array<{ value: DocumentType; label: string }> = [
+  { value: "GENERICO", label: "Generico" },
+  { value: "CLIENTE", label: "Cliente" },
+  { value: "DRIVE", label: "Drive" },
+  { value: "ODA_FORNITORE", label: "ODA fornitore" },
+];
+
+const DOCUMENT_TYPE_BADGES: Record<
+  DocumentType,
+  { label: string; background: string; color: string }
+> = {
+  GENERICO: { label: "Interno", background: "#f3f4f6", color: "#374151" },
+  CLIENTE: { label: "Cliente", background: "#dbeafe", color: "#1d4ed8" },
+  DRIVE: { label: "Drive", background: "#dcfce7", color: "#166534" },
+  ODA_FORNITORE: { label: "ODA", background: "#fef3c7", color: "#92400e" },
+};
+
+const DOCUMENT_TYPE_PREFIX = "[DOC_TYPE:";
 
 type Props = {
   entityType: string;
@@ -32,6 +53,36 @@ function isHttpUrl(url: string) {
   return /^https?:\/\//i.test(url.trim());
 }
 
+function encodeAttachmentTitle(title: string, documentType: DocumentType) {
+  return `${DOCUMENT_TYPE_PREFIX}${documentType}] ${title}`;
+}
+
+function stripAttachmentDocumentTypePrefix(rawTitle: string) {
+  const trimmed = String(rawTitle || "").trim();
+  if (!trimmed.startsWith(DOCUMENT_TYPE_PREFIX)) {
+    return { title: trimmed, documentType: null as DocumentType | null };
+  }
+  const suffixIndex = trimmed.indexOf("]");
+  if (suffixIndex < 0) {
+    return { title: trimmed, documentType: null as DocumentType | null };
+  }
+  const maybeType = trimmed.slice(DOCUMENT_TYPE_PREFIX.length, suffixIndex) as DocumentType;
+  if (!DOCUMENT_TYPE_BADGES[maybeType]) {
+    return { title: trimmed, documentType: null as DocumentType | null };
+  }
+  return {
+    title: trimmed.slice(suffixIndex + 1).trim() || trimmed,
+    documentType: maybeType,
+  };
+}
+
+function resolveDocumentType(row: AttachmentRow): DocumentType {
+  const parsed = stripAttachmentDocumentTypePrefix(row.title);
+  if (parsed.documentType) return parsed.documentType;
+  if (row.provider === "GOOGLE_DRIVE") return "DRIVE";
+  return "GENERICO";
+}
+
 export default function AttachmentsPanel({
   entityType,
   entityId,
@@ -46,6 +97,7 @@ export default function AttachmentsPanel({
   const [files, setFiles] = useState<File[]>([]);
   const [linkTitle, setLinkTitle] = useState("");
   const [linkUrl, setLinkUrl] = useState("");
+  const [documentType, setDocumentType] = useState<DocumentType>("GENERICO");
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const canUse = Boolean(entityId);
@@ -104,7 +156,7 @@ export default function AttachmentsPanel({
             source: "UPLOAD",
             entity_type: entityType,
             entity_id: entityId,
-            title: file.name,
+            title: encodeAttachmentTitle(file.name, documentType),
             storage_path: path,
             mime_type: file.type || null,
             size_bytes: file.size,
@@ -114,6 +166,7 @@ export default function AttachmentsPanel({
         if (!res.ok) throw new Error(data?.error || "Errore salvataggio allegato");
       }
       setFiles([]);
+      setDocumentType("GENERICO");
       if (fileInputRef.current) fileInputRef.current.value = "";
       await load();
     } catch (e: any) {
@@ -142,7 +195,7 @@ export default function AttachmentsPanel({
           source: "LINK",
           entity_type: entityType,
           entity_id: entityId,
-          title: titleToSave,
+          title: encodeAttachmentTitle(titleToSave, documentType),
           url,
           provider: detectProvider(url),
         }),
@@ -151,6 +204,7 @@ export default function AttachmentsPanel({
       if (!res.ok) throw new Error(data?.error || "Errore salvataggio link");
       setLinkTitle("");
       setLinkUrl("");
+      setDocumentType("GENERICO");
       await load();
     } catch (e: any) {
       setError(String(e?.message || e));
@@ -246,7 +300,19 @@ export default function AttachmentsPanel({
       )}
       {error && <div style={{ color: "#b91c1c", fontSize: 12, marginBottom: 8 }}>{error}</div>}
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 8, marginBottom: 8 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "180px 1fr auto", gap: 8, marginBottom: 8 }}>
+        <select
+          value={documentType}
+          disabled={!canUse}
+          onChange={(e) => setDocumentType(e.target.value as DocumentType)}
+          style={{ padding: 8, borderRadius: 8, border: "1px solid #ddd", background: "white" }}
+        >
+          {DOCUMENT_TYPE_OPTIONS.map((option) => (
+            <option key={option.value} value={option.value}>
+              Tipo documento: {option.label}
+            </option>
+          ))}
+        </select>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <input
             ref={fileInputRef}
@@ -334,7 +400,28 @@ export default function AttachmentsPanel({
             >
               <div>{iconByRow(r)}</div>
               <div>
-                <div style={{ fontWeight: 600 }}>{r.title}</div>
+                <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                  <div style={{ fontWeight: 600 }}>{stripAttachmentDocumentTypePrefix(r.title).title}</div>
+                  {(() => {
+                    const documentTypeBadge = DOCUMENT_TYPE_BADGES[resolveDocumentType(r)];
+                    return (
+                      <span
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          padding: "2px 8px",
+                          borderRadius: 999,
+                          fontSize: 11,
+                          fontWeight: 700,
+                          background: documentTypeBadge.background,
+                          color: documentTypeBadge.color,
+                        }}
+                      >
+                        {documentTypeBadge.label}
+                      </span>
+                    );
+                  })()}
+                </div>
                 <div style={{ opacity: 0.7, fontSize: 11 }}>
                   {r.source}
                   {r.provider ? ` · ${r.provider}` : ""}
