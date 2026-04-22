@@ -67,6 +67,13 @@ export default function AppShellHeader() {
             <Link href="/clienti-cockpit" style={navLinkStyle}>
               Clienti
             </Link>
+            <Link
+              href="/operatori"
+              style={navLinkStyle}
+              title="Accesso diretto operatori sul campo"
+            >
+              App operatori
+            </Link>
             <Link href="/operatori" style={navLinkStyle}>
               Anagrafica operatori
             </Link>
