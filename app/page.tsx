@@ -4046,24 +4046,48 @@ export function DashboardCockpitPage({
                   }}
                 >
                   {[
-                    { label: "Totale clienti", value: dashboardClientSummary.total, colors: DASHBOARD_BADGE_COLORS.statusNeutral },
-                    { label: "Con attenzione", value: dashboardClientSummary.attention, colors: DASHBOARD_BADGE_COLORS.statusExpired },
-                    { label: "Con attività aperte", value: dashboardClientSummary.withOpenActivities, colors: DASHBOARD_BADGE_COLORS.statusDueSoon },
-                    { label: "Con scadenze rilevanti", value: dashboardClientSummary.withRelevantDeadlines, colors: DASHBOARD_BADGE_COLORS.statusDueSoon },
+                    {
+                      label: "Totale clienti",
+                      value: dashboardClientSummary.total,
+                      colors: DASHBOARD_BADGE_COLORS.statusNeutral,
+                      href: "/clienti",
+                    },
+                    {
+                      label: "Con attenzione",
+                      value: dashboardClientSummary.attention,
+                      colors: DASHBOARD_BADGE_COLORS.statusExpired,
+                      href: "/clienti-cockpit?quick=ATTENZIONE",
+                    },
+                    {
+                      label: "Con attività aperte",
+                      value: dashboardClientSummary.withOpenActivities,
+                      colors: DASHBOARD_BADGE_COLORS.statusDueSoon,
+                      href: "/clienti-cockpit?focus=open-activities",
+                    },
+                    {
+                      label: "Con scadenze rilevanti",
+                      value: dashboardClientSummary.withRelevantDeadlines,
+                      colors: DASHBOARD_BADGE_COLORS.statusDueSoon,
+                      href: "/clienti-cockpit?focus=relevant-deadlines",
+                    },
                   ].map((card) => (
-                    <div
+                    <button
                       key={card.label}
+                      type="button"
+                      onClick={() => router.push(card.href)}
                       style={{
                         borderRadius: 16,
                         border: `1px solid ${card.colors.border}`,
                         background: card.colors.background,
                         padding: "14px 16px",
                         boxShadow: "0 1px 2px rgba(15, 23, 42, 0.06)",
+                        textAlign: "left",
+                        cursor: "pointer",
                       }}
                     >
                       <div style={{ fontSize: 12, fontWeight: 700, color: card.colors.color }}>{card.label}</div>
                       <div style={{ marginTop: 6, fontSize: 26, fontWeight: 800, color: "#0f172a" }}>{card.value}</div>
-                    </div>
+                    </button>
                   ))}
                 </div>
                 {dashboardClientSaasCards.length > 0 ? (
