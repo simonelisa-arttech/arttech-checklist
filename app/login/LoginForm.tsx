@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useMemo, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 
 type LoginFormProps = {
@@ -10,15 +10,21 @@ type LoginFormProps = {
 
 export default function LoginForm({ redirectTo }: LoginFormProps) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [recoveryMsg, setRecoveryMsg] = useState<string | null>(null);
+  const effectiveRedirectTo = useMemo(() => {
+    const fromQuery =
+      searchParams.get("redirect")?.trim() || searchParams.get("next")?.trim() || "";
+    return fromQuery || String(redirectTo || "").trim() || "/";
+  }, [redirectTo, searchParams]);
+
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
     e.stopPropagation();
-    console.log("LOGIN handler called");
     setError(null);
     setRecoveryMsg(null);
     setLoading(true);
@@ -39,7 +45,7 @@ export default function LoginForm({ redirectTo }: LoginFormProps) {
       return;
     }
 
-    router.replace(redirectTo || "/");
+    router.replace(effectiveRedirectTo);
     router.refresh();
   }
 
