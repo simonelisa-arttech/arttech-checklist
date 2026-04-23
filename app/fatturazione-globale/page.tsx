@@ -13,6 +13,7 @@ type SimRechargeRow = {
   data_ricarica: string;
   importo: number | null;
   billing_status: string;
+  payment_status?: string | null;
   note: string;
 };
 
@@ -46,6 +47,7 @@ type RinnovoBillingRow = {
   riferimento?: string | null;
   descrizione?: string | null;
   billing_requested_at?: string | null;
+  payment_status?: string | null;
 };
 
 const sectionTitles = ["DA FATTURARE", "EMESSE", "SCADUTE NON PAGATE", "FATTURATE"] as const;
@@ -113,6 +115,31 @@ function renderBillingStatoBadge(stato: BillingItem["stato"] | "SCADUTA") {
   );
 }
 
+function normalizePaymentStatus(value?: string | null): BillingItem["paymentStatus"] {
+  return String(value || "").trim().toUpperCase() === "PAGATO" ? "PAGATO" : "NON_PAGATO";
+}
+
+function renderPaymentStatusBadge(status: BillingItem["paymentStatus"]) {
+  const isPaid = status === "PAGATO";
+  return (
+    <span
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        padding: "4px 10px",
+        borderRadius: 999,
+        fontSize: 12,
+        fontWeight: 800,
+        background: isPaid ? "#dcfce7" : "#f3f4f6",
+        color: isPaid ? "#166534" : "#374151",
+        whiteSpace: "nowrap",
+      }}
+    >
+      {isPaid ? "PAGATO" : "NON PAGATO"}
+    </span>
+  );
+}
+
 function buildSimDescription(row: SimRechargeRow, sim?: SimCardRow | null) {
   const parts = [`Ricarica SIM ${sim?.numero_telefono || "—"}`];
   const note = String(row.note || "").trim();
@@ -143,7 +170,7 @@ function buildRinnovoDescription(row: RinnovoBillingRow) {
 
 async function loadBillingRinnoviRows() {
   let select =
-    "id, cliente, item_tipo, subtipo, checklist_id, scadenza, stato, riferimento, descrizione, billing_requested_at";
+    "id, cliente, item_tipo, subtipo, checklist_id, scadenza, stato, riferimento, descrizione, billing_requested_at, payment_status";
   let { data, error } = await supabase
     .from("rinnovi_servizi")
     .select(select)
@@ -152,7 +179,7 @@ async function loadBillingRinnoviRows() {
     .order("scadenza", { ascending: false });
 
   if (error && String(error.message || "").toLowerCase().includes("billing_requested_at")) {
-    select = "id, cliente, item_tipo, subtipo, checklist_id, scadenza, stato, riferimento, descrizione";
+    select = "id, cliente, item_tipo, subtipo, checklist_id, scadenza, stato, riferimento, descrizione, payment_status";
     const retry = await supabase
       .from("rinnovi_servizi")
       .select(select)
@@ -164,7 +191,7 @@ async function loadBillingRinnoviRows() {
   }
 
   if (error && String(error.message || "").toLowerCase().includes("riferimento")) {
-    select = "id, cliente, item_tipo, subtipo, checklist_id, scadenza, stato, descrizione";
+    select = "id, cliente, item_tipo, subtipo, checklist_id, scadenza, stato, descrizione, payment_status";
     const retry = await supabase
       .from("rinnovi_servizi")
       .select(select)
@@ -213,6 +240,7 @@ async function loadBillingRinnoviRows() {
         riferimento: row.riferimento ? String(row.riferimento) : null,
         descrizione: row.descrizione ? String(row.descrizione) : null,
         billing_requested_at: row.billing_requested_at ? String(row.billing_requested_at) : null,
+        payment_status: row.payment_status ? String(row.payment_status) : null,
       }) satisfies RinnovoBillingRow
   );
 }
@@ -239,7 +267,7 @@ export default function FatturazioneGlobalePage() {
 
       try {
         const { data: rechargeData, error: rechargeError } = await dbFrom("sim_recharges")
-          .select("id, sim_id, data_ricarica, importo, billing_status, note")
+          .select("id, sim_id, data_ricarica, importo, billing_status, payment_status, note")
           .eq("billing_status", "DA_FATTURARE")
           .order("data_ricarica", { ascending: false });
 
@@ -260,6 +288,7 @@ export default function FatturazioneGlobalePage() {
                     ? null
                     : Number(row.importo),
               billing_status: String(row.billing_status || ""),
+              payment_status: row.payment_status ? String(row.payment_status) : null,
               note: String(row.note || ""),
             }) satisfies SimRechargeRow
         );
@@ -323,6 +352,7 @@ export default function FatturazioneGlobalePage() {
             descrizione: buildSimDescription(row, sim),
             importo: row.importo ?? undefined,
             stato: "DA_FATTURARE",
+            paymentStatus: normalizePaymentStatus(row.payment_status),
             dataCompetenza: row.data_ricarica || undefined,
             riferimentoId: row.id,
           };
@@ -331,7 +361,7 @@ export default function FatturazioneGlobalePage() {
         const { data: interventiData, error: interventiError } = await supabase
           .from("saas_interventi")
           .select(
-            "id, cliente, checklist_id, ticket_no, data, descrizione, incluso, fatturazione_stato, esito_fatturazione, created_at, checklist:checklists(id, nome_checklist)"
+            "id, cliente, checklist_id, ticket_no, data, descrizione, incluso, fatturazione_stato, esito_fatturazione, payment_status, created_at, checklist:checklists(id, nome_checklist)"
           )
           .order("data", { ascending: false });
 
@@ -348,6 +378,7 @@ export default function FatturazioneGlobalePage() {
             progettoNome: row.checklist?.nome_checklist || undefined,
             descrizione: buildInterventoDescription(row),
             stato: "DA_FATTURARE",
+            paymentStatus: normalizePaymentStatus((row as InterventoBillingRow & { payment_status?: string | null }).payment_status),
             dataCompetenza: String(row.data || row.created_at || "") || undefined,
             riferimentoId: row.id,
           }));
@@ -389,6 +420,7 @@ export default function FatturazioneGlobalePage() {
               progettoNome: checklist?.nome_checklist || undefined,
               descrizione: buildRinnovoDescription(row),
               stato: "DA_FATTURARE",
+              paymentStatus: normalizePaymentStatus(row.payment_status),
               dataCompetenza: String(row.billing_requested_at || row.scadenza || "") || undefined,
               dataScadenza: String(row.scadenza || "") || undefined,
               riferimentoId: row.id,
@@ -406,6 +438,7 @@ export default function FatturazioneGlobalePage() {
               progettoNome: checklist?.nome_checklist || undefined,
               descrizione: buildRinnovoDescription(row),
               stato: "DA_FATTURARE",
+              paymentStatus: normalizePaymentStatus(row.payment_status),
               dataCompetenza: String(row.billing_requested_at || row.scadenza || "") || undefined,
               dataScadenza: String(row.scadenza || "") || undefined,
               riferimentoId: row.id,
@@ -481,7 +514,11 @@ export default function FatturazioneGlobalePage() {
       }
 
       setItems((prev) =>
-        prev.map((current) => (current.id === item.id ? { ...current, stato: "FATTURATO" } : current))
+        prev.map((current) =>
+          current.id === item.id
+            ? { ...current, stato: "FATTURATO", paymentStatus: current.paymentStatus || "NON_PAGATO" }
+            : current
+        )
       );
     } catch (err) {
       console.error("Errore aggiornamento stato fatturato", {
@@ -647,6 +684,7 @@ export default function FatturazioneGlobalePage() {
                         <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                           <div style={{ fontSize: 12, fontWeight: 800, color: "#6b7280" }}>{item.source}</div>
                           {renderBillingStatoBadge(getVisualBillingStato(item))}
+                          {item.stato === "FATTURATO" ? renderPaymentStatusBadge(item.paymentStatus || "NON_PAGATO") : null}
                         </div>
                         {item.importo != null ? (
                           <div style={{ fontSize: 13, fontWeight: 700 }}>{formatCurrency(item.importo)}</div>

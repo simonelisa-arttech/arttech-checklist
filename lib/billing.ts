@@ -6,6 +6,7 @@ export type BillingItem = {
   descrizione: string;
   importo?: number;
   stato: "DA_FATTURARE" | "FATTURATO";
+  paymentStatus?: "NON_PAGATO" | "PAGATO";
   dataCompetenza?: string;
   dataScadenza?: string;
   riferimentoId?: string;
