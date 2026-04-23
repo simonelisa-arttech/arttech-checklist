@@ -125,7 +125,7 @@ const TABLE_RULES: Record<
   },
   sim_recharges: {
     ops: ["select", "insert", "update", "delete"],
-    filterCols: ["id", "sim_id", "data_ricarica"],
+    filterCols: ["id", "sim_id", "data_ricarica", "billing_status"],
     orderCols: ["created_at", "data_ricarica"],
     requiredEqAnyOf: ["id", "sim_id"],
   },
