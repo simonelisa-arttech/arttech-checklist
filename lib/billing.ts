@@ -5,21 +5,19 @@ export type BillingItem = {
   progettoNome?: string;
   descrizione: string;
   importo?: number;
-  stato: "DA_FATTURARE" | "EMESSA" | "PAGATA" | "SCADUTA";
+  stato: "DA_FATTURARE" | "FATTURATO";
   dataCompetenza?: string;
   dataScadenza?: string;
   riferimentoId?: string;
 };
 
-export function getBillingStatoPriority(stato: BillingItem["stato"]) {
+export function getBillingStatoPriority(stato: BillingItem["stato"] | "SCADUTA") {
   switch (stato) {
     case "SCADUTA":
       return 4;
     case "DA_FATTURARE":
       return 3;
-    case "EMESSA":
-      return 2;
-    case "PAGATA":
+    case "FATTURATO":
       return 1;
     default:
       return 0;

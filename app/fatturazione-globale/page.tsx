@@ -48,7 +48,7 @@ type RinnovoBillingRow = {
   billing_requested_at?: string | null;
 };
 
-const sectionTitles = ["DA FATTURARE", "EMESSE", "SCADUTE NON PAGATE", "PAGATE"] as const;
+const sectionTitles = ["DA FATTURARE", "EMESSE", "SCADUTE NON PAGATE", "FATTURATE"] as const;
 
 function formatDate(value?: string | null) {
   const raw = String(value || "").trim();
@@ -72,8 +72,8 @@ function toTime(value?: string | null) {
   return Number.isFinite(date.getTime()) ? date.getTime() : 0;
 }
 
-function getVisualBillingStato(item: BillingItem): BillingItem["stato"] {
-  if (item.stato === "PAGATA" || item.stato === "EMESSA") return item.stato;
+function getVisualBillingStato(item: BillingItem): BillingItem["stato"] | "SCADUTA" {
+  if (item.stato === "FATTURATO") return item.stato;
   const scadenzaTime = toTime(item.dataScadenza);
   if (scadenzaTime > 0 && scadenzaTime < Date.now()) {
     return "SCADUTA";
@@ -81,7 +81,7 @@ function getVisualBillingStato(item: BillingItem): BillingItem["stato"] {
   return item.stato;
 }
 
-function renderBillingStatoBadge(stato: BillingItem["stato"]) {
+function renderBillingStatoBadge(stato: BillingItem["stato"] | "SCADUTA") {
   let background = "#f3f4f6";
   let color = "#374151";
   if (stato === "SCADUTA") {
@@ -90,10 +90,7 @@ function renderBillingStatoBadge(stato: BillingItem["stato"]) {
   } else if (stato === "DA_FATTURARE") {
     background = "#ffedd5";
     color = "#c2410c";
-  } else if (stato === "EMESSA") {
-    background = "#dbeafe";
-    color = "#1d4ed8";
-  } else if (stato === "PAGATA") {
+  } else if (stato === "FATTURATO") {
     background = "#dcfce7";
     color = "#166534";
   }
@@ -231,9 +228,7 @@ export default function FatturazioneGlobalePage() {
   const [savingItemId, setSavingItemId] = useState<string | null>(null);
   const [selectedCliente, setSelectedCliente] = useState("");
   const [selectedSource, setSelectedSource] = useState<"ALL" | "SIM" | "INTERVENTO" | "RINNOVO" | "SAAS">("ALL");
-  const [selectedStato, setSelectedStato] = useState<
-    "ALL" | "DA_FATTURARE" | "EMESSA" | "PAGATA" | "SCADUTA"
-  >("ALL");
+  const [selectedStato, setSelectedStato] = useState<"ALL" | "DA_FATTURARE" | "FATTURATO" | "SCADUTA">("ALL");
 
   useEffect(() => {
     let active = true;
@@ -458,10 +453,45 @@ export default function FatturazioneGlobalePage() {
       });
   }, [items, selectedCliente, selectedSource, selectedStato]);
 
-  function markAsPaid(itemId: string) {
-    setSavingItemId(itemId);
-    setItems((prev) => prev.map((item) => (item.id === itemId ? { ...item, stato: "PAGATA" } : item)));
-    setSavingItemId(null);
+  async function markAsFatturata(item: BillingItem) {
+    const targetId = String(item.riferimentoId || "").trim();
+    if (!targetId) return;
+    setSavingItemId(item.id);
+    try {
+      if (item.source === "SIM") {
+        const { error } = await dbFrom("sim_recharges")
+          .update({ billing_status: "FATTURATO" })
+          .eq("id", targetId);
+        if (error) throw error;
+      } else if (item.source === "INTERVENTO") {
+        const nowIso = new Date().toISOString();
+        const { error } = await dbFrom("saas_interventi")
+          .update({
+            fatturazione_stato: "FATTURATO",
+            esito_fatturazione: "FATTURATO",
+            fatturato_il: nowIso,
+          })
+          .eq("id", targetId);
+        if (error) throw error;
+      } else if (item.source === "RINNOVO" || item.source === "SAAS") {
+        const { error } = await dbFrom("rinnovi_servizi")
+          .update({ stato: "FATTURATO" })
+          .eq("id", targetId);
+        if (error) throw error;
+      }
+
+      setItems((prev) =>
+        prev.map((current) => (current.id === item.id ? { ...current, stato: "FATTURATO" } : current))
+      );
+    } catch (err) {
+      console.error("Errore aggiornamento stato fatturato", {
+        source: item.source,
+        riferimentoId: targetId,
+        err,
+      });
+    } finally {
+      setSavingItemId(null);
+    }
   }
 
   return (
@@ -572,7 +602,7 @@ export default function FatturazioneGlobalePage() {
                     value={selectedStato}
                     onChange={(e) =>
                       setSelectedStato(
-                        e.target.value as "ALL" | "DA_FATTURARE" | "EMESSA" | "PAGATA" | "SCADUTA"
+                        e.target.value as "ALL" | "DA_FATTURARE" | "FATTURATO" | "SCADUTA"
                       )
                     }
                     style={{
@@ -587,8 +617,7 @@ export default function FatturazioneGlobalePage() {
                   >
                     <option value="ALL">Tutti gli stati</option>
                     <option value="DA_FATTURARE">DA_FATTURARE</option>
-                    <option value="EMESSA">EMESSA</option>
-                    <option value="PAGATA">PAGATA</option>
+                    <option value="FATTURATO">FATTURATO</option>
                     <option value="SCADUTA">SCADUTA</option>
                   </select>
                 </div>
@@ -630,11 +659,11 @@ export default function FatturazioneGlobalePage() {
                           .filter(Boolean)
                           .join(" · ") || "—"}
                       </div>
-                      {item.stato !== "PAGATA" ? (
+                      {item.stato !== "FATTURATO" ? (
                         <div>
                           <button
                             type="button"
-                            onClick={() => markAsPaid(item.id)}
+                            onClick={() => void markAsFatturata(item)}
                             disabled={savingItemId === item.id}
                             style={{
                               minHeight: 34,
@@ -648,7 +677,7 @@ export default function FatturazioneGlobalePage() {
                               opacity: savingItemId === item.id ? 0.75 : 1,
                             }}
                           >
-                            {savingItemId === item.id ? "Aggiornamento..." : "Segna pagata"}
+                            {savingItemId === item.id ? "Aggiornamento..." : "Segna fatturata"}
                           </button>
                         </div>
                       ) : null}
