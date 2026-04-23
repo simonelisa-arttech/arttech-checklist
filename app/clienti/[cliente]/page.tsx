@@ -1138,6 +1138,24 @@ export default function ClientePage({
   const [bulkLastToOperatoreId, setBulkLastToOperatoreId] = useState<string | null>(null);
   const [bulkLastMessage, setBulkLastMessage] = useState<string | null>(null);
 
+  function pickPreferredRinnovoRow(rows: RinnovoServizioRow[]) {
+    if (rows.length <= 1) return rows[0] || null;
+    const statusRank = new Map<string, number>([
+      ["DA_AVVISARE", 0],
+      ["AVVISATO", 1],
+      ["CONFERMATO", 2],
+      ["DA_FATTURARE", 3],
+      ["FATTURATO", 4],
+      ["NON_RINNOVATO", 5],
+    ]);
+    return [...rows].sort((a, b) => {
+      const aRank = statusRank.get(String(a.stato || "").toUpperCase()) ?? -1;
+      const bRank = statusRank.get(String(b.stato || "").toUpperCase()) ?? -1;
+      if (bRank !== aRank) return bRank - aRank;
+      return String(b.id || "").localeCompare(String(a.id || ""));
+    })[0] || null;
+  }
+
   function matchRinnovoRowForItem(
     rows: RinnovoServizioRow[],
     r: ScadenzaItem,
@@ -1183,23 +1201,24 @@ export default function ClientePage({
       );
     }
     if (tipo === "SAAS") {
-      return (
-        rows.find((x) => {
+      const exactMatches = rows.filter((x) => {
           if (String(x.item_tipo || "").toUpperCase() !== "SAAS") return false;
           if (String(x.subtipo || "").toUpperCase() === "ULTRA") return false;
           if (String(x.checklist_id || "") !== String(r.checklist_id || "")) return false;
           if (riferimento && String(x.riferimento || "").trim() !== riferimento) return false;
           if (scadenza && String(x.scadenza || "").trim() !== scadenza) return false;
           return true;
-        }) ||
-        rows.find(
-          (x) =>
-            String(x.item_tipo || "").toUpperCase() === "SAAS" &&
-            String(x.subtipo || "").toUpperCase() !== "ULTRA" &&
-            String(x.checklist_id || "") === String(r.checklist_id || "")
-        ) ||
-        null
+        });
+      if (exactMatches.length > 0) {
+        return pickPreferredRinnovoRow(exactMatches);
+      }
+      const checklistMatches = rows.filter(
+        (x) =>
+          String(x.item_tipo || "").toUpperCase() === "SAAS" &&
+          String(x.subtipo || "").toUpperCase() !== "ULTRA" &&
+          String(x.checklist_id || "") === String(r.checklist_id || "")
       );
+      return pickPreferredRinnovoRow(checklistMatches);
     }
     if (!r.checklist_id) return null;
     return (
