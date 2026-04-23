@@ -127,7 +127,7 @@ const TABLE_RULES: Record<
     ops: ["select", "insert", "update", "delete"],
     filterCols: ["id", "sim_id", "data_ricarica", "billing_status"],
     orderCols: ["created_at", "data_ricarica"],
-    requiredEqAnyOf: ["id", "sim_id"],
+    requiredEqAnyOf: ["id", "sim_id", "billing_status"],
   },
   document_types: {
     ops: ["select", "insert", "update", "delete"],
