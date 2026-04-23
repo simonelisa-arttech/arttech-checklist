@@ -82,11 +82,6 @@ type StructuredReport = {
   note_finali: string;
 };
 
-type PersonaleLinkOption = {
-  id: string;
-  label: string;
-};
-
 type ActivityFilter = "ATTIVE" | "FATTE" | "TUTTE";
 
 const REPORT_COMMENT_PREFIX = "__REPORT__:";
@@ -392,11 +387,7 @@ export default function OperatoreAttivitaPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [operatoreLabel, setOperatoreLabel] = useState<string>("");
-  const [operatoreId, setOperatoreId] = useState<string | null>(null);
   const [personaleId, setPersonaleId] = useState<string | null>(null);
-  const [personaleLinkOptions, setPersonaleLinkOptions] = useState<PersonaleLinkOption[]>([]);
-  const [personaleLinkDraft, setPersonaleLinkDraft] = useState<string>("");
-  const [linkingPersonale, setLinkingPersonale] = useState(false);
   const [monthlyWorkedMinutes, setMonthlyWorkedMinutes] = useState<number>(0);
   const [rows, setRows] = useState<TimelineRow[]>([]);
   const [metaByKey, setMetaByKey] = useState<Record<string, CronoMeta>>({});
@@ -414,7 +405,6 @@ export default function OperatoreAttivitaPage() {
   const [stopReportDraftByKey, setStopReportDraftByKey] = useState<Record<string, StopReportDraft>>({});
   const [stopReportError, setStopReportError] = useState<string | null>(null);
   const [activityFilter, setActivityFilter] = useState<ActivityFilter>("ATTIVE");
-  const [reloadNonce, setReloadNonce] = useState(0);
 
   useEffect(() => {
     let active = true;
@@ -435,7 +425,6 @@ export default function OperatoreAttivitaPage() {
         }
 
         const operatoreId = String(meData.operatore.id);
-        setOperatoreId(operatoreId);
         setOperatoreLabel(String(meData.operatore.nome || "Operatore"));
         const personaleIdFromAuth =
           String(meData?.operatore?.personale_id || "").trim() || null;
@@ -450,33 +439,13 @@ export default function OperatoreAttivitaPage() {
           linkedPersonaleId = String((operatoreRow as any)?.personale_id || "").trim() || null;
         }
         if (!linkedPersonaleId) {
-          const { data: personaleRows, error: personaleErr } = await dbFrom("personale")
-            .select("id,nome,cognome")
-            .eq("attivo", true)
-            .order("cognome", { ascending: true })
-            .order("nome", { ascending: true });
-          if (personaleErr) throw new Error(personaleErr.message);
           if (!active) return;
-          const options = (((personaleRows as any[]) || []) as Array<Record<string, any>>)
-            .map((row) => {
-              const id = String(row.id || "").trim();
-              const label = [String(row.nome || "").trim(), String(row.cognome || "").trim()]
-                .filter(Boolean)
-                .join(" ")
-                .trim();
-              if (!id || !label) return null;
-              return { id, label } satisfies PersonaleLinkOption;
-            })
-            .filter(Boolean) as PersonaleLinkOption[];
-          setPersonaleLinkOptions(options);
-          setPersonaleLinkDraft((prev) => prev || options[0]?.id || "");
-          setError("Operatore non collegato a personale");
+          setPersonaleId(null);
+          setError("Profilo operatore non collegato al personale. Contatta l'amministrazione.");
           setRows([]);
           return;
         }
         if (!active) return;
-        setPersonaleLinkOptions([]);
-        setPersonaleLinkDraft("");
         setPersonaleId(linkedPersonaleId);
 
         const eventsRes = await fetch("/api/cronoprogramma", {
@@ -595,7 +564,7 @@ export default function OperatoreAttivitaPage() {
     return () => {
       active = false;
     };
-  }, [reloadNonce, router]);
+  }, [router]);
 
   useEffect(() => {
     const hasLive = Object.values(timbraturaStateByKey).some((state) => state === "IN_CORSO");
@@ -901,37 +870,6 @@ export default function OperatoreAttivitaPage() {
     }
   }
 
-  async function handleLinkPersonale() {
-    if (!operatoreId || !personaleLinkDraft) {
-      setError("Seleziona una persona da collegare.");
-      return;
-    }
-    try {
-      setLinkingPersonale(true);
-      setError(null);
-      const res = await fetch("/api/operatori", {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({
-          id: operatoreId,
-          personale_id: personaleLinkDraft,
-        }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        setError(String(data?.error || "Errore collegamento operatore"));
-        return;
-      }
-      setPersonaleId(personaleLinkDraft);
-      setReloadNonce((prev) => prev + 1);
-    } catch (err: any) {
-      setError(String(err?.message || "Errore collegamento operatore"));
-    } finally {
-      setLinkingPersonale(false);
-    }
-  }
-
   return (
     <div style={{ maxWidth: 760, margin: "20px auto", padding: 16, paddingBottom: 72 }}>
       <div
@@ -1067,52 +1005,12 @@ export default function OperatoreAttivitaPage() {
         >
           <div style={{ display: "grid", gap: 4 }}>
             <div style={{ fontSize: 16, fontWeight: 900, color: "#991b1b" }}>
-              Collega il tuo profilo operatore al personale
+              Profilo operatore non collegato al personale
             </div>
             <div style={{ fontSize: 13, color: "#7f1d1d" }}>
-              Seleziona la persona corretta dall’anagrafica per attivare la vista delle attività assegnate.
+              L'accesso all'app operatori usa solo il collegamento associato alle tue credenziali.
+              Contatta l'amministrazione per completare l'associazione corretta e attivare la vista delle attività assegnate.
             </div>
-          </div>
-          <label style={{ display: "grid", gap: 6 }}>
-            <span style={{ fontSize: 12, fontWeight: 700, color: "#475569" }}>Personale</span>
-            <select
-              value={personaleLinkDraft}
-              onChange={(e) => setPersonaleLinkDraft(e.target.value)}
-              style={{
-                width: "100%",
-                padding: 12,
-                borderRadius: 12,
-                border: "1px solid #d1d5db",
-                background: "white",
-              }}
-            >
-              <option value="">Seleziona personale</option>
-              {personaleLinkOptions.map((option) => (
-                <option key={option.id} value={option.id}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <div>
-            <button
-              type="button"
-              onClick={() => void handleLinkPersonale()}
-              disabled={!personaleLinkDraft || linkingPersonale}
-              style={{
-                padding: "12px 16px",
-                borderRadius: 12,
-                border: "1px solid #93c5fd",
-                background: "#dbeafe",
-                color: "#1d4ed8",
-                fontSize: 14,
-                fontWeight: 800,
-                cursor: !personaleLinkDraft || linkingPersonale ? "default" : "pointer",
-                opacity: !personaleLinkDraft || linkingPersonale ? 0.7 : 1,
-              }}
-            >
-              {linkingPersonale ? "Collego..." : "Collega"}
-            </button>
           </div>
         </div>
       ) : rows.length === 0 ? (
