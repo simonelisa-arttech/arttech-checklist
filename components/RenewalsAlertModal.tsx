@@ -207,10 +207,12 @@ export default function RenewalsAlertModal({
     customerDeliveryMode === "AUTO_CLIENTE" && normalizedCustomerEmails.length === 0;
   const customerManualInternal = customerDeliveryMode === "MANUALE_INTERNO";
   const canUseAutomaticCliente = !customerManualInternal && !customerAutoBlocked;
+  const usingArtTechOperator = toArtTech && artTechMode === "operatore";
+  const usingArtTechManualEmail = toArtTech && artTechMode === "email";
+  const canSendArtTech =
+    usingArtTechOperator ? Boolean(operatoreId) : usingArtTechManualEmail ? Boolean(manualEmailValue) : false;
   const canSendManual =
-    (toCliente && effectiveCustomerEmails.length > 0) ||
-    (toArtTech &&
-      (artTechMode === "operatore" ? Boolean(operatoreId) : Boolean(manualEmailValue)));
+    (toCliente && effectiveCustomerEmails.length > 0) || canSendArtTech;
 
   useEffect(() => {
     if (!open || mode !== "AUTOMATICO") return;
@@ -435,7 +437,7 @@ export default function RenewalsAlertModal({
             {toArtTech && (
               <label style={{ display: "block", marginBottom: 10 }}>
                 Destinatario Art Tech<br />
-                {artTechMode === "operatore" ? (
+                {usingArtTechOperator ? (
                   <select
                     value={operatoreId}
                     onChange={(e) => setOperatoreId(e.target.value)}
@@ -450,7 +452,8 @@ export default function RenewalsAlertModal({
                       </option>
                     ))}
                   </select>
-                ) : (
+                ) : null}
+                {usingArtTechManualEmail ? (
                   <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
                     <input
                       placeholder="Email"
@@ -465,7 +468,7 @@ export default function RenewalsAlertModal({
                       style={{ width: "100%", padding: 8 }}
                     />
                   </div>
-                )}
+                ) : null}
               </label>
             )}
 
