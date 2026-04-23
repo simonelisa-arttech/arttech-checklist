@@ -502,12 +502,6 @@ function makeQuickAttachmentDraftId() {
   return `draft_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 }
 
-function shouldRouteToOperatorApp(role?: string | null) {
-  const normalized = String(role || "").trim().toUpperCase();
-  if (!normalized) return false;
-  return !["ADMIN", "AMMINISTRAZIONE", "COMMERCIALE"].includes(normalized);
-}
-
 function getDashboardClienteRowKey(clienteValue?: string | null, clienteIdValue?: string | null) {
   const clienteId = String(clienteIdValue || "").trim();
   if (clienteId) return `id:${clienteId}`;
@@ -1972,13 +1966,14 @@ export function DashboardCockpitPage({
         setCurrentOperatoreLabel(null);
         setOperatoreAssociationError("Operatore non associato");
       } else {
-        const resolvedRole = String(meData.operatore.ruolo || "").trim() || null;
+        const canAccessBackoffice = meData.operatore.can_access_backoffice !== false;
+        const canAccessOperatorApp = meData.operatore.can_access_operator_app === true;
         setCurrentOperatoreId(String(meData.operatore.id));
         setCurrentOperatoreLabel({
           nome: meData.operatore.nome ?? null,
-          ruolo: resolvedRole,
+          ruolo: String(meData.operatore.ruolo || "").trim() || null,
         });
-        if ((pathname === "/" || pathname === "/dashboard") && shouldRouteToOperatorApp(resolvedRole)) {
+        if (canAccessBackoffice === false && canAccessOperatorApp) {
           router.replace("/operatori");
           return;
         }

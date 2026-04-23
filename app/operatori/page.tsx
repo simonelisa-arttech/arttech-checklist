@@ -423,6 +423,13 @@ export default function OperatoreAttivitaPage() {
         if (!meRes.ok || !meData?.operatore?.id) {
           throw new Error(String(meData?.error || "Operatore non autenticato"));
         }
+        if (meData?.operatore?.can_access_operator_app === false) {
+          if (!active) return;
+          setPersonaleId(null);
+          setError("Accesso non autorizzato all'app operatori. Contatta l'amministrazione.");
+          setRows([]);
+          return;
+        }
 
         const operatoreId = String(meData.operatore.id);
         setOperatoreLabel(String(meData.operatore.nome || "Operatore"));

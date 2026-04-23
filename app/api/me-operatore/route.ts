@@ -11,6 +11,8 @@ type OperatoreMeRow = {
   ruolo: string | null;
   attivo: boolean | null;
   can_access_impostazioni: boolean | null;
+  can_access_backoffice: boolean | null;
+  can_access_operator_app: boolean | null;
   personale_id: string | null;
   email?: string | null;
 };
@@ -107,6 +109,8 @@ function pickBestOperatoreCandidate(
       if (String(row.user_id || "") === userId) total += 250;
       if (row.personale_id) total += 50;
       if (row.can_access_impostazioni === true) total += 25;
+      if (row.can_access_backoffice === true) total += 10;
+      if (row.can_access_operator_app === true) total += 10;
       return total;
     };
     const diff = score(b) - score(a);
@@ -145,7 +149,9 @@ export async function GET(request: Request) {
   });
   const { data: operatoriByUserId, error: opErr } = await supabaseAdmin
     .from("operatori")
-    .select("id, user_id, nome, ruolo, attivo, can_access_impostazioni, personale_id, email")
+    .select(
+      "id, user_id, nome, ruolo, attivo, can_access_impostazioni, can_access_backoffice, can_access_operator_app, personale_id, email"
+    )
     .eq("user_id", user.id);
 
   if (opErr) {
@@ -159,7 +165,9 @@ export async function GET(request: Request) {
   if (userEmail) {
     const { data: byEmailRows, error: byEmailErr } = await supabaseAdmin
       .from("operatori")
-      .select("id, user_id, nome, ruolo, attivo, can_access_impostazioni, personale_id, email")
+      .select(
+        "id, user_id, nome, ruolo, attivo, can_access_impostazioni, can_access_backoffice, can_access_operator_app, personale_id, email"
+      )
       .ilike("email", userEmail);
 
     if (byEmailErr) {
