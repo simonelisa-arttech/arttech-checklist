@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import ConfigMancante from "@/components/ConfigMancante";
 import { dbFrom } from "@/lib/clientDbBroker";
@@ -235,9 +236,30 @@ export default function FatturazionePage() {
   return (
     <div style={{ maxWidth: 1100, margin: "24px auto", padding: "0 16px 48px" }}>
       <div style={{ display: "grid", gap: 6, marginBottom: 20 }}>
-        <h1 style={{ margin: 0, fontSize: 32 }}>Fatturazione</h1>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+          <h1 style={{ margin: 0, fontSize: 32 }}>Fatturazione SIM</h1>
+          <Link
+            href="/sim"
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              minHeight: 38,
+              padding: "0 14px",
+              borderRadius: 10,
+              border: "1px solid #d1d5db",
+              background: "#fff",
+              color: "#111827",
+              textDecoration: "none",
+              fontWeight: 700,
+              fontSize: 14,
+            }}
+          >
+            Torna a SIM
+          </Link>
+        </div>
         <div style={{ fontSize: 14, color: "#6b7280" }}>
-          Ricariche SIM da fatturare raccolte in una vista unica e compatta.
+          Vista dedicata alle sole ricariche SIM da fatturare, senza includere altre fatturazioni future.
         </div>
       </div>
 

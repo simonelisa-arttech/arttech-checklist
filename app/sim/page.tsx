@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import ConfigMancante from "@/components/ConfigMancante";
 import { dbFrom } from "@/lib/clientDbBroker";
@@ -915,40 +916,61 @@ export default function SimPage() {
             Inventario SIM centralizzato con ricerca e filtri minimi.
           </div>
         </div>
-        <button
-          type="button"
-          onClick={syncSimCards}
-          disabled={syncing}
-          style={{
-            height: 42,
-            padding: "0 16px",
-            borderRadius: 10,
-            border: "1px solid #d1d5db",
-            background: "#fff",
-            color: "#111827",
-            fontWeight: 800,
-            cursor: syncing ? "wait" : "pointer",
-            opacity: syncing ? 0.8 : 1,
-          }}
-        >
-          {syncing ? "Sincronizzazione..." : "Sincronizza SIM"}
-        </button>
-        <button
-          type="button"
-          onClick={addNewSim}
-          style={{
-            height: 42,
-            padding: "0 16px",
-            borderRadius: 10,
-            border: "1px solid #0f172a",
-            background: "#0f172a",
-            color: "#fff",
-            fontWeight: 800,
-            cursor: "pointer",
-          }}
-        >
-          + Nuova SIM
-        </button>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+          <Link
+            href="/fatturazione"
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              height: 42,
+              padding: "0 16px",
+              borderRadius: 10,
+              border: "1px solid #d1d5db",
+              background: "#fff",
+              color: "#111827",
+              textDecoration: "none",
+              fontWeight: 800,
+              whiteSpace: "nowrap",
+            }}
+          >
+            Fatturazione SIM
+          </Link>
+          <button
+            type="button"
+            onClick={syncSimCards}
+            disabled={syncing}
+            style={{
+              height: 42,
+              padding: "0 16px",
+              borderRadius: 10,
+              border: "1px solid #d1d5db",
+              background: "#fff",
+              color: "#111827",
+              fontWeight: 800,
+              cursor: syncing ? "wait" : "pointer",
+              opacity: syncing ? 0.8 : 1,
+            }}
+          >
+            {syncing ? "Sincronizzazione..." : "Sincronizza SIM"}
+          </button>
+          <button
+            type="button"
+            onClick={addNewSim}
+            style={{
+              height: 42,
+              padding: "0 16px",
+              borderRadius: 10,
+              border: "1px solid #0f172a",
+              background: "#0f172a",
+              color: "#fff",
+              fontWeight: 800,
+              cursor: "pointer",
+            }}
+          >
+            + Nuova SIM
+          </button>
+        </div>
       </div>
 
       <div

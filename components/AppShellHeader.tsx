@@ -92,9 +92,6 @@ export default function AppShellHeader() {
               <Link href="/sim" style={dropdownLinkStyle}>
                 SIM
               </Link>
-              <Link href="/fatturazione" style={dropdownLinkStyle}>
-                Fatturazione
-              </Link>
               <Link href="/operatori" style={dropdownLinkStyle} title="Accesso diretto operatori sul campo">
                 App operatori
               </Link>
