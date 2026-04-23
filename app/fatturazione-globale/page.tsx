@@ -75,6 +75,15 @@ function toTime(value?: string | null) {
   return Number.isFinite(date.getTime()) ? date.getTime() : 0;
 }
 
+function isOverdueUnpaid(item: BillingItem) {
+  return (
+    item.stato === "FATTURATO" &&
+    (item.paymentStatus || "NON_PAGATO") === "NON_PAGATO" &&
+    toTime(item.dataScadenza) > 0 &&
+    toTime(item.dataScadenza) < Date.now()
+  );
+}
+
 function getVisualBillingStato(item: BillingItem): BillingItem["stato"] | "SCADUTA" {
   if (item.stato === "FATTURATO") return item.stato;
   const scadenzaTime = toTime(item.dataScadenza);
@@ -480,6 +489,7 @@ export default function FatturazioneGlobalePage() {
   const daFatturareItems = useMemo(() => {
     const clienteQuery = selectedCliente.trim().toLowerCase();
     return items
+      .filter((item) => !isOverdueUnpaid(item))
       .filter((item) =>
         !clienteQuery ? true : String(item.clienteNome || "").toLowerCase().includes(clienteQuery)
       )
@@ -493,6 +503,14 @@ export default function FatturazioneGlobalePage() {
         return toTime(b.dataCompetenza) - toTime(a.dataCompetenza);
       });
   }, [items, selectedCliente, selectedSource, selectedStato]);
+
+  const scaduteNonPagateItems = useMemo(
+    () =>
+      items
+        .filter((item) => isOverdueUnpaid(item))
+        .sort((a, b) => toTime(b.dataScadenza || b.dataCompetenza) - toTime(a.dataScadenza || a.dataCompetenza)),
+    [items]
+  );
 
   async function markAsFatturata(item: BillingItem) {
     const targetId = String(item.riferimentoId || "").trim();
@@ -611,7 +629,8 @@ export default function FatturazioneGlobalePage() {
       >
         {sectionTitles.map((title) => {
           const isDaFatturare = title === "DA FATTURARE";
-          const rows = isDaFatturare ? daFatturareItems : [];
+          const isScaduteNonPagate = title === "SCADUTE NON PAGATE";
+          const rows = isDaFatturare ? daFatturareItems : isScaduteNonPagate ? scaduteNonPagateItems : [];
           return (
             <section
               key={title}
@@ -709,7 +728,11 @@ export default function FatturazioneGlobalePage() {
                 <div style={{ padding: 18, fontSize: 14, color: "#6b7280" }}>Caricamento...</div>
               ) : rows.length === 0 ? (
                 <div style={{ padding: 18, fontSize: 14, color: "#6b7280" }}>
-                  {isDaFatturare ? "Nessun risultato con i filtri attuali" : "Nessun dato disponibile"}
+                  {isDaFatturare
+                    ? "Nessun risultato con i filtri attuali"
+                    : isScaduteNonPagate
+                      ? "Nessuna voce scaduta non pagata"
+                      : "Nessun dato disponibile"}
                 </div>
               ) : (
                 <div style={{ display: "grid", gap: 0 }}>
@@ -721,9 +744,12 @@ export default function FatturazioneGlobalePage() {
                         borderTop: "1px solid #f3f4f6",
                         display: "grid",
                         gap: 6,
-                        background: getVisualBillingStato(item) === "SCADUTA" ? "#fff5f5" : "#fff",
+                        background:
+                          getVisualBillingStato(item) === "SCADUTA" || isScaduteNonPagate ? "#fff5f5" : "#fff",
                         borderLeft:
-                          getVisualBillingStato(item) === "SCADUTA" ? "4px solid #dc2626" : "4px solid transparent",
+                          getVisualBillingStato(item) === "SCADUTA" || isScaduteNonPagate
+                            ? "4px solid #dc2626"
+                            : "4px solid transparent",
                       }}
                     >
                       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
