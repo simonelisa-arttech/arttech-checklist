@@ -30,6 +30,7 @@ type ChecklistRow = {
 };
 
 type InterventoBillingRow = InterventoRow & {
+  payment_status?: string | null;
   checklist?: {
     id: string;
     nome_checklist: string | null;
@@ -174,7 +175,7 @@ async function loadBillingRinnoviRows() {
   let { data, error } = await supabase
     .from("rinnovi_servizi")
     .select(select)
-    .eq("stato", "DA_FATTURARE")
+    .in("stato", ["DA_FATTURARE", "FATTURATO"])
     .in("item_tipo", ["RINNOVO", "SAAS"])
     .order("scadenza", { ascending: false });
 
@@ -183,7 +184,7 @@ async function loadBillingRinnoviRows() {
     const retry = await supabase
       .from("rinnovi_servizi")
       .select(select)
-      .eq("stato", "DA_FATTURARE")
+      .in("stato", ["DA_FATTURARE", "FATTURATO"])
       .in("item_tipo", ["RINNOVO", "SAAS"])
       .order("scadenza", { ascending: false });
     data = ((retry.data as any[]) || []).map((row) => ({ ...row, billing_requested_at: null }));
@@ -195,7 +196,7 @@ async function loadBillingRinnoviRows() {
     const retry = await supabase
       .from("rinnovi_servizi")
       .select(select)
-      .eq("stato", "DA_FATTURARE")
+      .in("stato", ["DA_FATTURARE", "FATTURATO"])
       .in("item_tipo", ["RINNOVO", "SAAS"])
       .order("scadenza", { ascending: false });
     data = ((retry.data as any[]) || []).map((row) => ({
@@ -207,11 +208,11 @@ async function loadBillingRinnoviRows() {
   }
 
   if (error && String(error.message || "").toLowerCase().includes("descrizione")) {
-    select = "id, cliente, item_tipo, subtipo, checklist_id, scadenza, stato";
+    select = "id, cliente, item_tipo, subtipo, checklist_id, scadenza, stato, payment_status";
     const retry = await supabase
       .from("rinnovi_servizi")
       .select(select)
-      .eq("stato", "DA_FATTURARE")
+      .in("stato", ["DA_FATTURARE", "FATTURATO"])
       .in("item_tipo", ["RINNOVO", "SAAS"])
       .order("scadenza", { ascending: false });
     data = ((retry.data as any[]) || []).map((row) => ({
@@ -219,6 +220,7 @@ async function loadBillingRinnoviRows() {
       riferimento: null,
       descrizione: null,
       billing_requested_at: null,
+      payment_status: row.payment_status ?? null,
     }));
     error = retry.error;
   }
@@ -268,7 +270,7 @@ export default function FatturazioneGlobalePage() {
       try {
         const { data: rechargeData, error: rechargeError } = await dbFrom("sim_recharges")
           .select("id, sim_id, data_ricarica, importo, billing_status, payment_status, note")
-          .eq("billing_status", "DA_FATTURARE")
+          .in("billing_status", ["DA_FATTURARE", "FATTURATO"])
           .order("data_ricarica", { ascending: false });
 
         if (rechargeError) {
@@ -351,7 +353,10 @@ export default function FatturazioneGlobalePage() {
             progettoNome: checklist?.nome_checklist || "SIM libera",
             descrizione: buildSimDescription(row, sim),
             importo: row.importo ?? undefined,
-            stato: "DA_FATTURARE",
+            stato:
+              String(row.billing_status || "").trim().toUpperCase() === "FATTURATO"
+                ? "FATTURATO"
+                : "DA_FATTURARE",
             paymentStatus: normalizePaymentStatus(row.payment_status),
             dataCompetenza: row.data_ricarica || undefined,
             riferimentoId: row.id,
@@ -370,15 +375,18 @@ export default function FatturazioneGlobalePage() {
         }
 
         const interventiItems: BillingItem[] = (((interventiData as any[]) || []) as InterventoBillingRow[])
-          .filter((row) => getCanonicalInterventoEsitoFatturazione(row) === "DA_FATTURARE")
+          .filter((row) => {
+            const stato = getCanonicalInterventoEsitoFatturazione(row);
+            return stato === "DA_FATTURARE" || stato === "FATTURATO";
+          })
           .map((row) => ({
             id: `INTERVENTO:${row.id}`,
             source: "INTERVENTO",
             clienteNome: String(row.cliente || "—"),
             progettoNome: row.checklist?.nome_checklist || undefined,
             descrizione: buildInterventoDescription(row),
-            stato: "DA_FATTURARE",
-            paymentStatus: normalizePaymentStatus((row as InterventoBillingRow & { payment_status?: string | null }).payment_status),
+            stato: getCanonicalInterventoEsitoFatturazione(row) === "FATTURATO" ? "FATTURATO" : "DA_FATTURARE",
+            paymentStatus: normalizePaymentStatus(row.payment_status),
             dataCompetenza: String(row.data || row.created_at || "") || undefined,
             riferimentoId: row.id,
           }));
@@ -419,7 +427,7 @@ export default function FatturazioneGlobalePage() {
               clienteNome: String(row.cliente || checklist?.cliente || "—"),
               progettoNome: checklist?.nome_checklist || undefined,
               descrizione: buildRinnovoDescription(row),
-              stato: "DA_FATTURARE",
+              stato: String(row.stato || "").trim().toUpperCase() === "FATTURATO" ? "FATTURATO" : "DA_FATTURARE",
               paymentStatus: normalizePaymentStatus(row.payment_status),
               dataCompetenza: String(row.billing_requested_at || row.scadenza || "") || undefined,
               dataScadenza: String(row.scadenza || "") || undefined,
@@ -437,7 +445,7 @@ export default function FatturazioneGlobalePage() {
               clienteNome: String(row.cliente || checklist?.cliente || "—"),
               progettoNome: checklist?.nome_checklist || undefined,
               descrizione: buildRinnovoDescription(row),
-              stato: "DA_FATTURARE",
+              stato: String(row.stato || "").trim().toUpperCase() === "FATTURATO" ? "FATTURATO" : "DA_FATTURARE",
               paymentStatus: normalizePaymentStatus(row.payment_status),
               dataCompetenza: String(row.billing_requested_at || row.scadenza || "") || undefined,
               dataScadenza: String(row.scadenza || "") || undefined,
@@ -522,6 +530,44 @@ export default function FatturazioneGlobalePage() {
       );
     } catch (err) {
       console.error("Errore aggiornamento stato fatturato", {
+        source: item.source,
+        riferimentoId: targetId,
+        err,
+      });
+    } finally {
+      setSavingItemId(null);
+    }
+  }
+
+  async function markAsPaid(item: BillingItem) {
+    const targetId = String(item.riferimentoId || "").trim();
+    if (!targetId) return;
+    setSavingItemId(item.id);
+    try {
+      if (item.source === "SIM") {
+        const { error } = await dbFrom("sim_recharges")
+          .update({ payment_status: "PAGATO" })
+          .eq("id", targetId);
+        if (error) throw error;
+      } else if (item.source === "INTERVENTO") {
+        const { error } = await dbFrom("saas_interventi")
+          .update({ payment_status: "PAGATO" })
+          .eq("id", targetId);
+        if (error) throw error;
+      } else if (item.source === "RINNOVO" || item.source === "SAAS") {
+        const { error } = await dbFrom("rinnovi_servizi")
+          .update({ payment_status: "PAGATO" })
+          .eq("id", targetId);
+        if (error) throw error;
+      }
+
+      setItems((prev) =>
+        prev.map((current) =>
+          current.id === item.id ? { ...current, paymentStatus: "PAGATO" } : current
+        )
+      );
+    } catch (err) {
+      console.error("Errore aggiornamento payment_status", {
         source: item.source,
         riferimentoId: targetId,
         err,
@@ -697,26 +743,48 @@ export default function FatturazioneGlobalePage() {
                           .filter(Boolean)
                           .join(" · ") || "—"}
                       </div>
-                      {item.stato !== "FATTURATO" ? (
-                        <div>
-                          <button
-                            type="button"
-                            onClick={() => void markAsFatturata(item)}
-                            disabled={savingItemId === item.id}
-                            style={{
-                              minHeight: 34,
-                              padding: "0 12px",
-                              borderRadius: 8,
-                              border: "1px solid #d1d5db",
-                              background: "#fff",
-                              color: "#111827",
-                              fontWeight: 700,
-                              cursor: savingItemId === item.id ? "wait" : "pointer",
-                              opacity: savingItemId === item.id ? 0.75 : 1,
-                            }}
-                          >
-                            {savingItemId === item.id ? "Aggiornamento..." : "Segna fatturata"}
-                          </button>
+                      {item.stato !== "FATTURATO" || (item.paymentStatus || "NON_PAGATO") === "NON_PAGATO" ? (
+                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                          {item.stato !== "FATTURATO" ? (
+                            <button
+                              type="button"
+                              onClick={() => void markAsFatturata(item)}
+                              disabled={savingItemId === item.id}
+                              style={{
+                                minHeight: 34,
+                                padding: "0 12px",
+                                borderRadius: 8,
+                                border: "1px solid #d1d5db",
+                                background: "#fff",
+                                color: "#111827",
+                                fontWeight: 700,
+                                cursor: savingItemId === item.id ? "wait" : "pointer",
+                                opacity: savingItemId === item.id ? 0.75 : 1,
+                              }}
+                            >
+                              {savingItemId === item.id ? "Aggiornamento..." : "Segna fatturata"}
+                            </button>
+                          ) : null}
+                          {item.stato === "FATTURATO" && (item.paymentStatus || "NON_PAGATO") === "NON_PAGATO" ? (
+                            <button
+                              type="button"
+                              onClick={() => void markAsPaid(item)}
+                              disabled={savingItemId === item.id}
+                              style={{
+                                minHeight: 34,
+                                padding: "0 12px",
+                                borderRadius: 8,
+                                border: "1px solid #d1d5db",
+                                background: "#fff",
+                                color: "#111827",
+                                fontWeight: 700,
+                                cursor: savingItemId === item.id ? "wait" : "pointer",
+                                opacity: savingItemId === item.id ? 0.75 : 1,
+                              }}
+                            >
+                              {savingItemId === item.id ? "Aggiornamento..." : "Segna pagata"}
+                            </button>
+                          ) : null}
                         </div>
                       ) : null}
                     </div>
