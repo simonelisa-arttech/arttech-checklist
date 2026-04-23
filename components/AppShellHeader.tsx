@@ -80,13 +80,13 @@ export default function AppShellHeader() {
           <details style={{ position: "relative" }}>
             <summary style={dropdownTriggerStyle}>Menu</summary>
             <div style={dropdownPanelStyle}>
-              <Link href="/" style={dropdownLinkStyle}>
+              <Link href="/dashboard" style={dropdownLinkStyle}>
                 Dashboard
               </Link>
               <Link href="/cronoprogramma" style={dropdownLinkStyle}>
                 Cronoprogramma
               </Link>
-              <Link href="/clienti" style={dropdownLinkStyle}>
+              <Link href="/clienti-cockpit" style={dropdownLinkStyle}>
                 Clienti
               </Link>
               <Link href="/sim" style={dropdownLinkStyle}>
