@@ -934,6 +934,36 @@ export default function OperatoreAttivitaPage() {
 
   return (
     <div style={{ maxWidth: 760, margin: "20px auto", padding: 16, paddingBottom: 72 }}>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 12,
+          marginBottom: 18,
+        }}
+      >
+        <img
+          src="/at-logo.png"
+          alt="ART TECH"
+          style={{ height: 38, width: "auto", objectFit: "contain", flexShrink: 0 }}
+        />
+        <div style={{ display: "grid", gap: 2 }}>
+          <div
+            style={{
+              fontSize: 11,
+              fontWeight: 800,
+              letterSpacing: 0.5,
+              color: "#64748b",
+              textTransform: "uppercase",
+            }}
+          >
+            Art Tech
+          </div>
+          <div style={{ fontSize: 20, fontWeight: 900, color: "#0f172a", lineHeight: 1.05 }}>
+            APP OPERATORI
+          </div>
+        </div>
+      </div>
       <div style={{ display: "grid", gap: 14, marginBottom: 18 }}>
         <div>
           <div style={{ fontSize: 12, fontWeight: 800, letterSpacing: 0.4, color: "#475569", textTransform: "uppercase", marginBottom: 6 }}>
