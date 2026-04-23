@@ -35,6 +35,19 @@ type InterventoBillingRow = InterventoRow & {
   } | null;
 };
 
+type RinnovoBillingRow = {
+  id: string;
+  cliente?: string | null;
+  item_tipo?: string | null;
+  subtipo?: string | null;
+  checklist_id?: string | null;
+  scadenza?: string | null;
+  stato?: string | null;
+  riferimento?: string | null;
+  descrizione?: string | null;
+  billing_requested_at?: string | null;
+};
+
 const sectionTitles = ["DA FATTURARE", "EMESSE", "SCADUTE NON PAGATE", "PAGATE"] as const;
 
 function formatDate(value?: string | null) {
@@ -59,6 +72,50 @@ function toTime(value?: string | null) {
   return Number.isFinite(date.getTime()) ? date.getTime() : 0;
 }
 
+function getVisualBillingStato(item: BillingItem): BillingItem["stato"] {
+  if (item.stato === "PAGATA" || item.stato === "EMESSA") return item.stato;
+  const scadenzaTime = toTime(item.dataScadenza);
+  if (scadenzaTime > 0 && scadenzaTime < Date.now()) {
+    return "SCADUTA";
+  }
+  return item.stato;
+}
+
+function renderBillingStatoBadge(stato: BillingItem["stato"]) {
+  let background = "#f3f4f6";
+  let color = "#374151";
+  if (stato === "SCADUTA") {
+    background = "#fee2e2";
+    color = "#991b1b";
+  } else if (stato === "DA_FATTURARE") {
+    background = "#ffedd5";
+    color = "#c2410c";
+  } else if (stato === "EMESSA") {
+    background = "#dbeafe";
+    color = "#1d4ed8";
+  } else if (stato === "PAGATA") {
+    background = "#dcfce7";
+    color = "#166534";
+  }
+  return (
+    <span
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        padding: "4px 10px",
+        borderRadius: 999,
+        fontSize: 12,
+        fontWeight: 800,
+        background,
+        color,
+        whiteSpace: "nowrap",
+      }}
+    >
+      {stato}
+    </span>
+  );
+}
+
 function buildSimDescription(row: SimRechargeRow, sim?: SimCardRow | null) {
   const parts = [`Ricarica SIM ${sim?.numero_telefono || "—"}`];
   const note = String(row.note || "").trim();
@@ -73,6 +130,96 @@ function buildInterventoDescription(row: InterventoBillingRow) {
   return parts.join(" · ");
 }
 
+function buildRinnovoDescription(row: RinnovoBillingRow) {
+  const tipo = String(row.item_tipo || "").toUpperCase();
+  const subtipo = String(row.subtipo || "").toUpperCase();
+  const label =
+    tipo === "SAAS"
+      ? subtipo === "ULTRA"
+        ? "SaaS Ultra"
+        : "SaaS"
+      : "Rinnovo";
+  const ref = String(row.riferimento || "").trim();
+  const descrizione = String(row.descrizione || "").trim();
+  return [label, ref || null, descrizione || null].filter(Boolean).join(" · ");
+}
+
+async function loadBillingRinnoviRows() {
+  let select =
+    "id, cliente, item_tipo, subtipo, checklist_id, scadenza, stato, riferimento, descrizione, billing_requested_at";
+  let { data, error } = await supabase
+    .from("rinnovi_servizi")
+    .select(select)
+    .eq("stato", "DA_FATTURARE")
+    .in("item_tipo", ["RINNOVO", "SAAS"])
+    .order("scadenza", { ascending: false });
+
+  if (error && String(error.message || "").toLowerCase().includes("billing_requested_at")) {
+    select = "id, cliente, item_tipo, subtipo, checklist_id, scadenza, stato, riferimento, descrizione";
+    const retry = await supabase
+      .from("rinnovi_servizi")
+      .select(select)
+      .eq("stato", "DA_FATTURARE")
+      .in("item_tipo", ["RINNOVO", "SAAS"])
+      .order("scadenza", { ascending: false });
+    data = ((retry.data as any[]) || []).map((row) => ({ ...row, billing_requested_at: null }));
+    error = retry.error;
+  }
+
+  if (error && String(error.message || "").toLowerCase().includes("riferimento")) {
+    select = "id, cliente, item_tipo, subtipo, checklist_id, scadenza, stato, descrizione";
+    const retry = await supabase
+      .from("rinnovi_servizi")
+      .select(select)
+      .eq("stato", "DA_FATTURARE")
+      .in("item_tipo", ["RINNOVO", "SAAS"])
+      .order("scadenza", { ascending: false });
+    data = ((retry.data as any[]) || []).map((row) => ({
+      ...row,
+      riferimento: null,
+      billing_requested_at: row.billing_requested_at ?? null,
+    }));
+    error = retry.error;
+  }
+
+  if (error && String(error.message || "").toLowerCase().includes("descrizione")) {
+    select = "id, cliente, item_tipo, subtipo, checklist_id, scadenza, stato";
+    const retry = await supabase
+      .from("rinnovi_servizi")
+      .select(select)
+      .eq("stato", "DA_FATTURARE")
+      .in("item_tipo", ["RINNOVO", "SAAS"])
+      .order("scadenza", { ascending: false });
+    data = ((retry.data as any[]) || []).map((row) => ({
+      ...row,
+      riferimento: null,
+      descrizione: null,
+      billing_requested_at: null,
+    }));
+    error = retry.error;
+  }
+
+  if (error) {
+    throw new Error(`Errore caricamento rinnovi e SaaS: ${error.message}`);
+  }
+
+  return (((data as any[]) || []) as Array<Record<string, any>>).map(
+    (row) =>
+      ({
+        id: String(row.id || ""),
+        cliente: row.cliente ? String(row.cliente) : null,
+        item_tipo: row.item_tipo ? String(row.item_tipo) : null,
+        subtipo: row.subtipo ? String(row.subtipo) : null,
+        checklist_id: row.checklist_id ? String(row.checklist_id) : null,
+        scadenza: row.scadenza ? String(row.scadenza) : null,
+        stato: row.stato ? String(row.stato) : null,
+        riferimento: row.riferimento ? String(row.riferimento) : null,
+        descrizione: row.descrizione ? String(row.descrizione) : null,
+        billing_requested_at: row.billing_requested_at ? String(row.billing_requested_at) : null,
+      }) satisfies RinnovoBillingRow
+  );
+}
+
 export default function FatturazioneGlobalePage() {
   if (!isSupabaseConfigured) {
     return <ConfigMancante />;
@@ -81,6 +228,12 @@ export default function FatturazioneGlobalePage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [items, setItems] = useState<BillingItem[]>([]);
+  const [savingItemId, setSavingItemId] = useState<string | null>(null);
+  const [selectedCliente, setSelectedCliente] = useState("");
+  const [selectedSource, setSelectedSource] = useState<"ALL" | "SIM" | "INTERVENTO" | "RINNOVO" | "SAAS">("ALL");
+  const [selectedStato, setSelectedStato] = useState<
+    "ALL" | "DA_FATTURARE" | "EMESSA" | "PAGATA" | "SCADUTA"
+  >("ALL");
 
   useEffect(() => {
     let active = true;
@@ -204,8 +357,70 @@ export default function FatturazioneGlobalePage() {
             riferimentoId: row.id,
           }));
 
-        const nextItems = [...simItems, ...interventiItems].sort((a, b) => {
-          const byStatus = getBillingStatoPriority(b.stato) - getBillingStatoPriority(a.stato);
+        const rinnoviRows = await loadBillingRinnoviRows();
+        const rinnoviChecklistIds = Array.from(
+          new Set(rinnoviRows.map((row) => String(row.checklist_id || "")).filter(Boolean))
+        );
+        const rinnoviChecklistMap = new Map<string, ChecklistRow>();
+
+        if (rinnoviChecklistIds.length > 0) {
+          const { data: rinnoviChecklistData, error: rinnoviChecklistError } = await dbFrom("checklists")
+            .select("id, nome_checklist, cliente")
+            .in("id", rinnoviChecklistIds);
+
+          if (rinnoviChecklistError) {
+            throw new Error(`Errore caricamento progetti rinnovi: ${rinnoviChecklistError.message}`);
+          }
+
+          for (const row of (((rinnoviChecklistData as any[]) || []) as Array<Record<string, any>>)) {
+            const id = String(row.id || "");
+            if (!id) continue;
+            rinnoviChecklistMap.set(id, {
+              id,
+              nome_checklist: String(row.nome_checklist || ""),
+              cliente: String(row.cliente || ""),
+            });
+          }
+        }
+
+        const rinnovoItems: BillingItem[] = rinnoviRows
+          .filter((row) => String(row.item_tipo || "").toUpperCase() === "RINNOVO")
+          .map((row) => {
+            const checklist = row.checklist_id ? rinnoviChecklistMap.get(row.checklist_id) || null : null;
+            return {
+              id: `RINNOVO:${row.id}`,
+              source: "RINNOVO",
+              clienteNome: String(row.cliente || checklist?.cliente || "—"),
+              progettoNome: checklist?.nome_checklist || undefined,
+              descrizione: buildRinnovoDescription(row),
+              stato: "DA_FATTURARE",
+              dataCompetenza: String(row.billing_requested_at || row.scadenza || "") || undefined,
+              dataScadenza: String(row.scadenza || "") || undefined,
+              riferimentoId: row.id,
+            };
+          });
+
+        const saasItems: BillingItem[] = rinnoviRows
+          .filter((row) => String(row.item_tipo || "").toUpperCase() === "SAAS")
+          .map((row) => {
+            const checklist = row.checklist_id ? rinnoviChecklistMap.get(row.checklist_id) || null : null;
+            return {
+              id: `SAAS:${row.id}`,
+              source: "SAAS",
+              clienteNome: String(row.cliente || checklist?.cliente || "—"),
+              progettoNome: checklist?.nome_checklist || undefined,
+              descrizione: buildRinnovoDescription(row),
+              stato: "DA_FATTURARE",
+              dataCompetenza: String(row.billing_requested_at || row.scadenza || "") || undefined,
+              dataScadenza: String(row.scadenza || "") || undefined,
+              riferimentoId: row.id,
+            };
+          });
+
+        const nextItems = [...simItems, ...interventiItems, ...rinnovoItems, ...saasItems].sort((a, b) => {
+          const byStatus =
+            getBillingStatoPriority(getVisualBillingStato(b)) -
+            getBillingStatoPriority(getVisualBillingStato(a));
           if (byStatus !== 0) return byStatus;
           return toTime(b.dataCompetenza) - toTime(a.dataCompetenza);
         });
@@ -226,10 +441,28 @@ export default function FatturazioneGlobalePage() {
     };
   }, []);
 
-  const daFatturareItems = useMemo(
-    () => items.filter((item) => item.stato === "DA_FATTURARE"),
-    [items]
-  );
+  const daFatturareItems = useMemo(() => {
+    const clienteQuery = selectedCliente.trim().toLowerCase();
+    return items
+      .filter((item) =>
+        !clienteQuery ? true : String(item.clienteNome || "").toLowerCase().includes(clienteQuery)
+      )
+      .filter((item) => (selectedSource === "ALL" ? true : item.source === selectedSource))
+      .filter((item) => (selectedStato === "ALL" ? true : getVisualBillingStato(item) === selectedStato))
+      .sort((a, b) => {
+        const byStatus =
+          getBillingStatoPriority(getVisualBillingStato(b)) -
+          getBillingStatoPriority(getVisualBillingStato(a));
+        if (byStatus !== 0) return byStatus;
+        return toTime(b.dataCompetenza) - toTime(a.dataCompetenza);
+      });
+  }, [items, selectedCliente, selectedSource, selectedStato]);
+
+  function markAsPaid(itemId: string) {
+    setSavingItemId(itemId);
+    setItems((prev) => prev.map((item) => (item.id === itemId ? { ...item, stato: "PAGATA" } : item)));
+    setSavingItemId(null);
+  }
 
   return (
     <div style={{ maxWidth: 1100, margin: "24px auto", padding: "0 16px 48px" }}>
@@ -288,10 +521,84 @@ export default function FatturazioneGlobalePage() {
               >
                 {title}
               </div>
+              {isDaFatturare ? (
+                <div
+                  style={{
+                    padding: 18,
+                    borderBottom: "1px solid #f3f4f6",
+                    display: "grid",
+                    gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+                    gap: 10,
+                  }}
+                >
+                  <input
+                    value={selectedCliente}
+                    onChange={(e) => setSelectedCliente(e.target.value)}
+                    placeholder="Cerca cliente..."
+                    style={{
+                      minHeight: 40,
+                      padding: "0 12px",
+                      borderRadius: 10,
+                      border: "1px solid #d1d5db",
+                      background: "#fff",
+                      color: "#111827",
+                      fontSize: 14,
+                    }}
+                  />
+                  <select
+                    value={selectedSource}
+                    onChange={(e) =>
+                      setSelectedSource(
+                        e.target.value as "ALL" | "SIM" | "INTERVENTO" | "RINNOVO" | "SAAS"
+                      )
+                    }
+                    style={{
+                      minHeight: 40,
+                      padding: "0 12px",
+                      borderRadius: 10,
+                      border: "1px solid #d1d5db",
+                      background: "#fff",
+                      color: "#111827",
+                      fontSize: 14,
+                    }}
+                  >
+                    <option value="ALL">Tutti i tipi</option>
+                    <option value="SIM">SIM</option>
+                    <option value="INTERVENTO">INTERVENTO</option>
+                    <option value="RINNOVO">RINNOVO</option>
+                    <option value="SAAS">SAAS</option>
+                  </select>
+                  <select
+                    value={selectedStato}
+                    onChange={(e) =>
+                      setSelectedStato(
+                        e.target.value as "ALL" | "DA_FATTURARE" | "EMESSA" | "PAGATA" | "SCADUTA"
+                      )
+                    }
+                    style={{
+                      minHeight: 40,
+                      padding: "0 12px",
+                      borderRadius: 10,
+                      border: "1px solid #d1d5db",
+                      background: "#fff",
+                      color: "#111827",
+                      fontSize: 14,
+                    }}
+                  >
+                    <option value="ALL">Tutti gli stati</option>
+                    <option value="DA_FATTURARE">DA_FATTURARE</option>
+                    <option value="EMESSA">EMESSA</option>
+                    <option value="PAGATA">PAGATA</option>
+                    <option value="SCADUTA">SCADUTA</option>
+                  </select>
+                </div>
+              ) : null}
               {loading ? (
                 <div style={{ padding: 18, fontSize: 14, color: "#6b7280" }}>Caricamento...</div>
               ) : rows.length === 0 ? (
-                <div style={{ padding: 18, fontSize: 14, color: "#6b7280" }}>Nessun dato disponibile</div>
+                <div style={{ padding: 18, fontSize: 14, color: "#6b7280" }}>
+                  {isDaFatturare ? "Nessun risultato con i filtri attuali" : "Nessun dato disponibile"}
+                </div>
               ) : (
                 <div style={{ display: "grid", gap: 0 }}>
                   {rows.map((item) => (
@@ -302,10 +609,16 @@ export default function FatturazioneGlobalePage() {
                         borderTop: "1px solid #f3f4f6",
                         display: "grid",
                         gap: 6,
+                        background: getVisualBillingStato(item) === "SCADUTA" ? "#fff5f5" : "#fff",
+                        borderLeft:
+                          getVisualBillingStato(item) === "SCADUTA" ? "4px solid #dc2626" : "4px solid transparent",
                       }}
                     >
                       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-                        <div style={{ fontSize: 12, fontWeight: 800, color: "#6b7280" }}>{item.source}</div>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                          <div style={{ fontSize: 12, fontWeight: 800, color: "#6b7280" }}>{item.source}</div>
+                          {renderBillingStatoBadge(getVisualBillingStato(item))}
+                        </div>
                         {item.importo != null ? (
                           <div style={{ fontSize: 13, fontWeight: 700 }}>{formatCurrency(item.importo)}</div>
                         ) : null}
@@ -313,10 +626,32 @@ export default function FatturazioneGlobalePage() {
                       <div style={{ fontSize: 15, fontWeight: 700, color: "#111827" }}>{item.clienteNome}</div>
                       <div style={{ fontSize: 13, color: "#111827" }}>{item.descrizione}</div>
                       <div style={{ fontSize: 12, color: "#6b7280" }}>
-                        {[item.progettoNome ? `Progetto: ${item.progettoNome}` : null, item.dataCompetenza ? `Competenza: ${formatDate(item.dataCompetenza)}` : null]
+                        {[item.progettoNome ? `Progetto: ${item.progettoNome}` : null, item.dataCompetenza ? `Competenza: ${formatDate(item.dataCompetenza)}` : null, item.dataScadenza ? `Scadenza: ${formatDate(item.dataScadenza)}` : null]
                           .filter(Boolean)
                           .join(" · ") || "—"}
                       </div>
+                      {item.stato !== "PAGATA" ? (
+                        <div>
+                          <button
+                            type="button"
+                            onClick={() => markAsPaid(item.id)}
+                            disabled={savingItemId === item.id}
+                            style={{
+                              minHeight: 34,
+                              padding: "0 12px",
+                              borderRadius: 8,
+                              border: "1px solid #d1d5db",
+                              background: "#fff",
+                              color: "#111827",
+                              fontWeight: 700,
+                              cursor: savingItemId === item.id ? "wait" : "pointer",
+                              opacity: savingItemId === item.id ? 0.75 : 1,
+                            }}
+                          >
+                            {savingItemId === item.id ? "Aggiornamento..." : "Segna pagata"}
+                          </button>
+                        </div>
+                      ) : null}
                     </div>
                   ))}
                 </div>
