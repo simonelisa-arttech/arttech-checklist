@@ -15,8 +15,82 @@ type OperatoreMeRow = {
   email?: string | null;
 };
 
+type PersonaleMeRow = {
+  id: string;
+  nome: string | null;
+  cognome: string | null;
+  email: string | null;
+  attivo: boolean | null;
+};
+
 function normalizeEmail(value?: string | null) {
   return String(value || "").trim().toLowerCase();
+}
+
+function normalizeText(value?: string | null) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
+}
+
+function normalizePersonFullName(nome?: string | null, cognome?: string | null) {
+  return [normalizeText(nome), normalizeText(cognome)].filter(Boolean).join(" ").trim();
+}
+
+function normalizeOperatoreFullName(value?: string | null) {
+  return normalizeText(value).replace(/\s+/g, " ").trim();
+}
+
+async function resolvePersonaleIdForOperatore(
+  supabaseAdmin: any,
+  operatore: OperatoreMeRow,
+  userEmail: string
+) {
+  const normalizedUserEmail = normalizeEmail(userEmail);
+  const normalizedOperatoreEmail = normalizeEmail(operatore.email);
+  const emailsToTry = Array.from(new Set([normalizedUserEmail, normalizedOperatoreEmail].filter(Boolean)));
+
+  if (emailsToTry.length > 0) {
+    const { data: byEmailRows, error: byEmailErr } = await supabaseAdmin
+      .from("personale")
+      .select("id, nome, cognome, email, attivo")
+      .eq("attivo", true)
+      .in("email", emailsToTry);
+
+    if (byEmailErr) {
+      throw byEmailErr;
+    }
+
+    const exactEmailMatches = ((byEmailRows || []) as PersonaleMeRow[]).filter((row) =>
+      emailsToTry.includes(normalizeEmail(row.email))
+    );
+    if (exactEmailMatches.length === 1) {
+      return exactEmailMatches[0].id;
+    }
+  }
+
+  const normalizedOperatoreName = normalizeOperatoreFullName(operatore.nome);
+  if (!normalizedOperatoreName) return null;
+
+  const { data: personaleRows, error: personaleErr } = await supabaseAdmin
+    .from("personale")
+    .select("id, nome, cognome, email, attivo")
+    .eq("attivo", true);
+
+  if (personaleErr) {
+    throw personaleErr;
+  }
+
+  const fullNameMatches = ((personaleRows || []) as PersonaleMeRow[]).filter(
+    (row) => normalizePersonFullName(row.nome, row.cognome) === normalizedOperatoreName
+  );
+  if (fullNameMatches.length === 1) {
+    return fullNameMatches[0].id;
+  }
+
+  return null;
 }
 
 function pickBestOperatoreCandidate(
@@ -115,11 +189,34 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: updErr.message }, { status: 500 });
   }
 
+  let resolvedPersonaleId = String(operatore.personale_id || "").trim() || null;
+  if (!resolvedPersonaleId) {
+    try {
+      resolvedPersonaleId = await resolvePersonaleIdForOperatore(supabaseAdmin, operatore, userEmail);
+    } catch (personaleResolveErr: any) {
+      return NextResponse.json(
+        { error: String(personaleResolveErr?.message || "Errore risoluzione personale operatore") },
+        { status: 500 }
+      );
+    }
+
+    if (resolvedPersonaleId) {
+      const { error: personaleLinkErr } = await supabaseAdmin
+        .from("operatori")
+        .update({ personale_id: resolvedPersonaleId })
+        .eq("id", operatore.id);
+      if (personaleLinkErr) {
+        return NextResponse.json({ error: personaleLinkErr.message }, { status: 500 });
+      }
+    }
+  }
+
   return NextResponse.json({
     ok: true,
     operatore: {
       ...operatore,
       user_id: user.id,
+      personale_id: resolvedPersonaleId,
     },
   });
 }
