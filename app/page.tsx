@@ -811,6 +811,9 @@ export function DashboardCockpitPage({
   const [addInterventoCliente, setAddInterventoCliente] = useState("");
   const [addInterventoChecklistId, setAddInterventoChecklistId] = useState("");
   const [addInterventoDescrizione, setAddInterventoDescrizione] = useState("");
+  const [addInterventoPersonalePrevisto, setAddInterventoPersonalePrevisto] = useState("");
+  const [addInterventoMezzi, setAddInterventoMezzi] = useState("");
+  const [addInterventoNoteOperative, setAddInterventoNoteOperative] = useState("");
   const [addInterventoIndirizzo, setAddInterventoIndirizzo] = useState("");
   const [addInterventoReferenteClienteNome, setAddInterventoReferenteClienteNome] = useState("");
   const [addInterventoReferenteClienteContatto, setAddInterventoReferenteClienteContatto] = useState("");
@@ -838,6 +841,9 @@ export function DashboardCockpitPage({
   const [addAttivitaData, setAddAttivitaData] = useState("");
   const [addAttivitaOre, setAddAttivitaOre] = useState("8");
   const [addAttivitaDescrizione, setAddAttivitaDescrizione] = useState("");
+  const [addAttivitaPersonalePrevisto, setAddAttivitaPersonalePrevisto] = useState("");
+  const [addAttivitaMezzi, setAddAttivitaMezzi] = useState("");
+  const [addAttivitaNoteOperative, setAddAttivitaNoteOperative] = useState("");
   const [addAttivitaIndirizzo, setAddAttivitaIndirizzo] = useState("");
   const [addAttivitaReferenteClienteNome, setAddAttivitaReferenteClienteNome] = useState("");
   const [addAttivitaReferenteClienteContatto, setAddAttivitaReferenteClienteContatto] = useState("");
@@ -1788,6 +1794,16 @@ export function DashboardCockpitPage({
     () => items.find((item) => item.id === addInterventoChecklistId) || null,
     [items, addInterventoChecklistId]
   );
+  const quickOperatoreNameOptions = useMemo(() => {
+    const names = new Set<string>();
+    const currentName = String(currentOperatoreLabel?.nome || "").trim();
+    if (currentName) names.add(currentName);
+    for (const entry of operatoriLookupById.values()) {
+      const nome = String(entry.nome || "").trim();
+      if (nome) names.add(nome);
+    }
+    return Array.from(names).sort((a, b) => a.localeCompare(b, "it"));
+  }, [currentOperatoreLabel, operatoriLookupById]);
 
   const selectedScadenzeSummary = scadenzeByPeriod[scadenzePeriodDays];
   const selectedSimScadenzeSummary = simScadenzeByPeriod[scadenzePeriodDays];
@@ -2621,7 +2637,10 @@ export function DashboardCockpitPage({
           data_inizio: today,
           durata_giorni: "",
           modalita_attivita: "ONSITE",
-          descrizione_attivita: descrizione,
+          personale_previsto: addInterventoPersonalePrevisto.trim(),
+          personale_ids: [],
+          mezzi: addInterventoMezzi.trim(),
+          descrizione_attivita: addInterventoNoteOperative.trim() || descrizione,
           indirizzo: addInterventoIndirizzo.trim(),
           referente_cliente_nome: addInterventoReferenteClienteNome.trim(),
           referente_cliente_contatto: addInterventoReferenteClienteContatto.trim(),
@@ -2648,6 +2667,9 @@ export function DashboardCockpitPage({
       setAddInterventoCliente("");
       setAddInterventoChecklistId("");
       setAddInterventoDescrizione("");
+      setAddInterventoPersonalePrevisto("");
+      setAddInterventoMezzi("");
+      setAddInterventoNoteOperative("");
       setAddInterventoIndirizzo("");
       setAddInterventoReferenteClienteNome("");
       setAddInterventoReferenteClienteContatto("");
@@ -2927,7 +2949,10 @@ export function DashboardCockpitPage({
           data_inizio: addAttivitaData,
           durata_giorni: addAttivitaOre.replace(",", "."),
           modalita_attivita: "ONSITE",
-          descrizione_attivita: descrizione,
+          personale_previsto: addAttivitaPersonalePrevisto.trim(),
+          personale_ids: [],
+          mezzi: addAttivitaMezzi.trim(),
+          descrizione_attivita: addAttivitaNoteOperative.trim() || descrizione,
           indirizzo: addAttivitaIndirizzo.trim(),
           referente_cliente_nome: addAttivitaReferenteClienteNome.trim(),
           referente_cliente_contatto: addAttivitaReferenteClienteContatto.trim(),
@@ -2957,6 +2982,9 @@ export function DashboardCockpitPage({
       setAddAttivitaData("");
       setAddAttivitaOre("8");
       setAddAttivitaDescrizione("");
+      setAddAttivitaPersonalePrevisto("");
+      setAddAttivitaMezzi("");
+      setAddAttivitaNoteOperative("");
       setAddAttivitaIndirizzo("");
       setAddAttivitaReferenteClienteNome("");
       setAddAttivitaReferenteClienteContatto("");
@@ -4726,6 +4754,61 @@ export function DashboardCockpitPage({
                 }}
               />
             </label>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              <label style={{ display: "block", marginBottom: 12 }}>
+                Personale previsto / assegnato
+                <input
+                  list="quick-intervento-personale-options"
+                  value={addInterventoPersonalePrevisto}
+                  onChange={(e) => setAddInterventoPersonalePrevisto(e.target.value)}
+                  style={{
+                    width: "100%",
+                    padding: 10,
+                    marginTop: 6,
+                    borderRadius: 8,
+                    border: "1px solid #d1d5db",
+                    fontSize: 14,
+                  }}
+                />
+                <datalist id="quick-intervento-personale-options">
+                  {quickOperatoreNameOptions.map((name) => (
+                    <option key={name} value={name} />
+                  ))}
+                </datalist>
+              </label>
+              <label style={{ display: "block", marginBottom: 12 }}>
+                Mezzi
+                <input
+                  value={addInterventoMezzi}
+                  onChange={(e) => setAddInterventoMezzi(e.target.value)}
+                  style={{
+                    width: "100%",
+                    padding: 10,
+                    marginTop: 6,
+                    borderRadius: 8,
+                    border: "1px solid #d1d5db",
+                    fontSize: 14,
+                  }}
+                />
+              </label>
+            </div>
+            <label style={{ display: "block", marginBottom: 12 }}>
+              Note operative
+              <textarea
+                value={addInterventoNoteOperative}
+                onChange={(e) => setAddInterventoNoteOperative(e.target.value)}
+                rows={3}
+                style={{
+                  width: "100%",
+                  padding: 10,
+                  marginTop: 6,
+                  borderRadius: 8,
+                  border: "1px solid #d1d5db",
+                  fontSize: 14,
+                  resize: "vertical",
+                }}
+              />
+            </label>
             <div
               style={{
                 marginBottom: 12,
@@ -5167,6 +5250,61 @@ export function DashboardCockpitPage({
               <textarea
                 value={addAttivitaDescrizione}
                 onChange={(e) => setAddAttivitaDescrizione(e.target.value)}
+                rows={3}
+                style={{
+                  width: "100%",
+                  padding: 10,
+                  marginTop: 6,
+                  borderRadius: 8,
+                  border: "1px solid #d1d5db",
+                  fontSize: 14,
+                  resize: "vertical",
+                }}
+              />
+            </label>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+              <label style={{ display: "block", marginBottom: 12 }}>
+                Personale previsto / assegnato
+                <input
+                  list="quick-attivita-personale-options"
+                  value={addAttivitaPersonalePrevisto}
+                  onChange={(e) => setAddAttivitaPersonalePrevisto(e.target.value)}
+                  style={{
+                    width: "100%",
+                    padding: 10,
+                    marginTop: 6,
+                    borderRadius: 8,
+                    border: "1px solid #d1d5db",
+                    fontSize: 14,
+                  }}
+                />
+                <datalist id="quick-attivita-personale-options">
+                  {quickOperatoreNameOptions.map((name) => (
+                    <option key={name} value={name} />
+                  ))}
+                </datalist>
+              </label>
+              <label style={{ display: "block", marginBottom: 12 }}>
+                Mezzi
+                <input
+                  value={addAttivitaMezzi}
+                  onChange={(e) => setAddAttivitaMezzi(e.target.value)}
+                  style={{
+                    width: "100%",
+                    padding: 10,
+                    marginTop: 6,
+                    borderRadius: 8,
+                    border: "1px solid #d1d5db",
+                    fontSize: 14,
+                  }}
+                />
+              </label>
+            </div>
+            <label style={{ display: "block", marginBottom: 12 }}>
+              Note operative
+              <textarea
+                value={addAttivitaNoteOperative}
+                onChange={(e) => setAddAttivitaNoteOperative(e.target.value)}
                 rows={3}
                 style={{
                   width: "100%",
