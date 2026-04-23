@@ -12,6 +12,8 @@ type OperatorePayload = {
   alert_enabled: boolean;
   riceve_notifiche?: boolean;
   can_access_impostazioni?: boolean;
+  can_access_backoffice?: boolean;
+  can_access_operator_app?: boolean;
   alert_tasks: {
     task_template_ids: string[];
     all_task_status_change: boolean;
@@ -29,13 +31,17 @@ export async function GET(request: Request) {
 
   let { data, error } = await supabase
     .from("operatori")
-    .select("id, user_id, nome, ruolo, email, attivo, alert_enabled, riceve_notifiche, can_access_impostazioni, alert_tasks")
+    .select(
+      "id, user_id, nome, ruolo, email, attivo, alert_enabled, riceve_notifiche, can_access_impostazioni, can_access_backoffice, can_access_operator_app, alert_tasks"
+    )
     .order("ruolo", { ascending: true })
     .order("nome", { ascending: true });
   if (error && String(error.message || "").toLowerCase().includes("riceve_notifiche")) {
     const fallback = await supabase
       .from("operatori")
-      .select("id, user_id, nome, ruolo, email, attivo, alert_enabled, alert_tasks")
+      .select(
+        "id, user_id, nome, ruolo, email, attivo, alert_enabled, can_access_impostazioni, can_access_backoffice, can_access_operator_app, alert_tasks"
+      )
       .order("ruolo", { ascending: true })
       .order("nome", { ascending: true });
     data = (fallback.data || []).map((r: any) => ({ ...r, riceve_notifiche: r.alert_enabled !== false }));
@@ -63,6 +69,8 @@ export async function POST(request: Request) {
     ...body,
     riceve_notifiche: body.riceve_notifiche !== false,
     can_access_impostazioni: body.can_access_impostazioni === true,
+    can_access_backoffice: body.can_access_backoffice === true,
+    can_access_operator_app: body.can_access_operator_app !== false,
   };
   let { data, error } = await supabase
     .from("operatori")
@@ -160,6 +168,8 @@ export async function PATCH(request: Request) {
   const payload: any = { ...body };
   if (payload.riceve_notifiche === undefined) payload.riceve_notifiche = true;
   if (payload.can_access_impostazioni === undefined) payload.can_access_impostazioni = false;
+  if (payload.can_access_backoffice === undefined) payload.can_access_backoffice = false;
+  if (payload.can_access_operator_app === undefined) payload.can_access_operator_app = true;
   let { error } = await supabase.from("operatori").update(payload).eq("id", body.id);
   if (error && String(error.message || "").toLowerCase().includes("riceve_notifiche")) {
     delete payload.riceve_notifiche;

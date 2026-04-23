@@ -15,6 +15,8 @@ type OperatoreRow = {
   alert_enabled?: boolean;
   riceve_notifiche?: boolean;
   can_access_impostazioni?: boolean;
+  can_access_backoffice?: boolean;
+  can_access_operator_app?: boolean;
   alert_tasks?: {
     task_template_ids: string[];
     all_task_status_change: boolean;
@@ -133,6 +135,8 @@ export default function OperatoriPage() {
       alert_enabled: Boolean(r.alert_enabled),
       riceve_notifiche: r.riceve_notifiche !== false,
       can_access_impostazioni: r.can_access_impostazioni === true,
+      can_access_backoffice: r.can_access_backoffice === true,
+      can_access_operator_app: r.can_access_operator_app !== false,
       alert_tasks: normalizeAlertTasks(r.alert_tasks),
       isNew: false,
     }));
@@ -163,6 +167,8 @@ export default function OperatoriPage() {
         alert_enabled: false,
         riceve_notifiche: true,
         can_access_impostazioni: false,
+        can_access_backoffice: false,
+        can_access_operator_app: true,
         alert_tasks: defaultAlertTasks(),
         isNew: true,
       },
@@ -190,6 +196,8 @@ export default function OperatoriPage() {
       alert_enabled: Boolean(row.alert_enabled),
       riceve_notifiche: row.riceve_notifiche !== false,
       can_access_impostazioni: row.can_access_impostazioni === true,
+      can_access_backoffice: row.can_access_backoffice === true,
+      can_access_operator_app: row.can_access_operator_app !== false,
       alert_tasks: normalizeAlertTasks(row.alert_tasks),
     };
 
@@ -568,7 +576,7 @@ export default function OperatoriPage() {
             style={{
               display: "grid",
               gridTemplateColumns:
-                "minmax(180px, 1.4fr) minmax(120px, 1fr) minmax(220px, 1.6fr) 90px 110px 150px 170px minmax(220px, 1fr)",
+                "minmax(180px, 1.4fr) minmax(120px, 1fr) minmax(220px, 1.6fr) 90px 110px 150px 170px 170px 180px minmax(220px, 1fr)",
               padding: "10px 12px",
               fontWeight: 700,
               background: "#fafafa",
@@ -582,6 +590,8 @@ export default function OperatoriPage() {
             <div>Alert</div>
             <div>Riceve notif.</div>
             <div>Accesso Impostazioni</div>
+            <div>Accesso backoffice</div>
+            <div>Accesso app operatori</div>
             <div>Azioni</div>
           </div>
           {rows.length === 0 ? (
@@ -593,7 +603,7 @@ export default function OperatoriPage() {
                   style={{
                     display: "grid",
                     gridTemplateColumns:
-                      "minmax(180px, 1.4fr) minmax(120px, 1fr) minmax(220px, 1.6fr) 90px 110px 150px 170px minmax(220px, 1fr)",
+                      "minmax(180px, 1.4fr) minmax(120px, 1fr) minmax(220px, 1.6fr) 90px 110px 150px 170px 170px 180px minmax(220px, 1fr)",
                     padding: "10px 12px",
                     borderBottom: "1px solid #f3f4f6",
                     alignItems: "center",
@@ -659,6 +669,26 @@ export default function OperatoriPage() {
                       }
                     />
                     {row.can_access_impostazioni === true ? "SI" : "NO"}
+                  </label>
+                  <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <input
+                      type="checkbox"
+                      checked={row.can_access_backoffice === true}
+                      onChange={(e) =>
+                        updateRow(idx, { can_access_backoffice: e.target.checked })
+                      }
+                    />
+                    {row.can_access_backoffice === true ? "SI" : "NO"}
+                  </label>
+                  <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <input
+                      type="checkbox"
+                      checked={row.can_access_operator_app !== false}
+                      onChange={(e) =>
+                        updateRow(idx, { can_access_operator_app: e.target.checked })
+                      }
+                    />
+                    {row.can_access_operator_app !== false ? "SI" : "NO"}
                   </label>
                   <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                     <button
