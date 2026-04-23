@@ -6,6 +6,46 @@ import { usePathname, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 import { canAccessSettingsRole } from "@/lib/adminRoles";
 
+const dropdownTriggerStyle = {
+  padding: "8px 12px",
+  borderRadius: 10,
+  border: "1px solid #ddd",
+  background: "white",
+  color: "#111827",
+  cursor: "pointer",
+  fontSize: 14,
+  fontWeight: 600,
+  listStyle: "none" as const,
+};
+
+const dropdownPanelStyle = {
+  position: "absolute" as const,
+  top: "calc(100% + 8px)",
+  right: 0,
+  width: "min(280px, calc(100vw - 32px))",
+  padding: 10,
+  borderRadius: 14,
+  border: "1px solid #e5e7eb",
+  background: "white",
+  boxShadow: "0 18px 36px rgba(15,23,42,0.14)",
+  display: "grid",
+  gap: 8,
+  zIndex: 30,
+};
+
+const dropdownLinkStyle = {
+  padding: "8px 10px",
+  borderRadius: 10,
+  border: "1px solid #e5e7eb",
+  background: "white",
+  color: "#0f172a",
+  fontSize: 13,
+  fontWeight: 700,
+  textDecoration: "none",
+  width: "100%",
+  boxSizing: "border-box" as const,
+};
+
 export default function LogoutButton() {
   const router = useRouter();
   const pathname = usePathname();
@@ -63,21 +103,41 @@ export default function LogoutButton() {
         </div>
       ) : null}
       {canAccessSettings ? (
-        <Link
-          href="/impostazioni"
-          style={{
-            padding: "8px 12px",
-            borderRadius: 10,
-            border: "1px solid #ddd",
-            background: "white",
-            cursor: "pointer",
-            textDecoration: "none",
-            color: "inherit",
-            fontWeight: 600,
-          }}
-        >
-          Impostazioni
-        </Link>
+        <details style={{ position: "relative" }}>
+          <summary style={dropdownTriggerStyle}>Impostazioni</summary>
+          <div style={dropdownPanelStyle}>
+            <Link href="/impostazioni" style={dropdownLinkStyle}>
+              Panoramica impostazioni
+            </Link>
+            <Link href="/impostazioni/operatori" style={dropdownLinkStyle}>
+              Anagrafica operatori
+            </Link>
+            <Link href="/impostazioni/personale" style={dropdownLinkStyle}>
+              Personale
+            </Link>
+            <Link href="/impostazioni/aziende" style={dropdownLinkStyle}>
+              Aziende
+            </Link>
+            <Link href="/impostazioni/documenti" style={dropdownLinkStyle}>
+              Doc sicurezza
+            </Link>
+            <Link href="/impostazioni/checklist-attivita" style={dropdownLinkStyle}>
+              Gestisci progetto operativo
+            </Link>
+            <Link href="/impostazioni/preset-avvisi" style={dropdownLinkStyle}>
+              Preset avvisi
+            </Link>
+            <Link href="/impostazioni/regole-globali-avvisi" style={dropdownLinkStyle}>
+              Regole globali avvisi
+            </Link>
+            <Link href="/catalogo" style={dropdownLinkStyle}>
+              Catalogo
+            </Link>
+            <Link href="/import-progetti" style={dropdownLinkStyle}>
+              Importa progetti
+            </Link>
+          </div>
+        </details>
       ) : null}
       <button
         type="button"
