@@ -67,6 +67,21 @@ function resolveDocumentType(row: AttachmentRow): DocumentType {
   return "GENERICO";
 }
 
+function normalizeSearchText(value?: string | null) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function getAttachmentFileName(row: AttachmentRow) {
+  const storageName = String(row.storage_path || "").split("/").filter(Boolean).pop() || "";
+  const urlName = String(row.url || "")
+    .split("?")[0]
+    .split("#")[0]
+    .split("/")
+    .filter(Boolean)
+    .pop() || "";
+  return storageName || urlName || row.title || "";
+}
+
 export default function AttachmentsPanel({
   entityType,
   entityId,
@@ -84,6 +99,7 @@ export default function AttachmentsPanel({
   const [documentType, setDocumentType] = useState<DocumentType>("GENERICO");
   const [selectedDocumentTypeFilter, setSelectedDocumentTypeFilter] =
     useState<DocumentTypeFilter>("ALL");
+  const [searchQuery, setSearchQuery] = useState("");
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const canUse = Boolean(entityId);
@@ -278,9 +294,25 @@ export default function AttachmentsPanel({
     []
   );
   const filteredRows = useMemo(() => {
-    if (selectedDocumentTypeFilter === "ALL") return rows;
-    return rows.filter((row) => resolveDocumentType(row) === selectedDocumentTypeFilter);
-  }, [rows, selectedDocumentTypeFilter]);
+    const byDocumentType =
+      selectedDocumentTypeFilter === "ALL"
+        ? rows
+        : rows.filter((row) => resolveDocumentType(row) === selectedDocumentTypeFilter);
+
+    const normalizedQuery = normalizeSearchText(searchQuery);
+    if (!normalizedQuery) return byDocumentType;
+
+    return byDocumentType.filter((row) => {
+      const title = normalizeSearchText(row.title);
+      const fileName = normalizeSearchText(getAttachmentFileName(row));
+      const url = normalizeSearchText(row.url);
+      return (
+        title.includes(normalizedQuery) ||
+        fileName.includes(normalizedQuery) ||
+        url.includes(normalizedQuery)
+      );
+    });
+  }, [rows, searchQuery, selectedDocumentTypeFilter]);
 
   return (
     <div style={{ border: "1px solid #eee", borderRadius: 12, padding: 12, background: "white" }}>
@@ -394,6 +426,15 @@ export default function AttachmentsPanel({
             </button>
           );
         })}
+      </div>
+
+      <div style={{ marginBottom: 12 }}>
+        <input
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          placeholder="Cerca allegati..."
+          style={{ width: "100%", padding: 8, borderRadius: 8, border: "1px solid #ddd" }}
+        />
       </div>
 
       {loading ? (
