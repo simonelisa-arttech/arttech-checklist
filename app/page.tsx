@@ -16,6 +16,8 @@ import {
   buildOperativiSchedule,
   dateToOperativiIsoDay,
   durationToInputValue,
+  estimatedMinutesToLegacyDays,
+  minutesToHoursInput,
   normalizeOperativiDate,
 } from "@/lib/operativiSchedule";
 import { checkOperativiConflicts } from "@/lib/operativiConflicts";
@@ -399,6 +401,7 @@ type CronoMeta = {
   updated_by_operatore: string | null;
   updated_by_nome: string | null;
   data_inizio?: string | null;
+  durata_prevista_minuti?: number | null;
   durata_giorni?: number | null;
   modalita_attivita?: string | null;
   personale_previsto?: string | null;
@@ -411,6 +414,20 @@ type CronoMeta = {
   referente_cliente_contatto?: string | null;
   commerciale_art_tech_nome?: string | null;
   commerciale_art_tech_contatto?: string | null;
+  slots?: Array<{
+    id?: string;
+    data_inizio?: string | null;
+    durata_prevista_minuti?: number | null;
+    orario?: string | null;
+    position?: number;
+  }>;
+  referenti_cliente?: Array<{
+    id?: string;
+    nome?: string | null;
+    contatto?: string | null;
+    ruolo?: string | null;
+    position?: number;
+  }>;
 };
 
 type CronoComment = {
@@ -557,6 +574,13 @@ type OperativiFields = {
   referente_cliente_contatto: string;
   commerciale_art_tech_nome: string;
   commerciale_art_tech_contatto: string;
+  referenti_cliente: Array<{
+    id?: string;
+    nome?: string | null;
+    contatto?: string | null;
+    ruolo?: string | null;
+    position?: number;
+  }>;
 };
 
 const EMPTY_OPERATIVI: OperativiFields = {
@@ -573,12 +597,109 @@ const EMPTY_OPERATIVI: OperativiFields = {
   referente_cliente_contatto: "",
   commerciale_art_tech_nome: "",
   commerciale_art_tech_contatto: "",
+  referenti_cliente: [],
 };
 
+type CronoMetaSlot = NonNullable<CronoMeta["slots"]>[number];
+type CronoMetaReferente = NonNullable<CronoMeta["referenti_cliente"]>[number];
+
+function getSortedCronoSlots(slots?: CronoMeta["slots"] | null): CronoMetaSlot[] {
+  return (Array.isArray(slots) ? slots : [])
+    .filter((slot) => {
+      const data = normalizeOperativiDate(slot?.data_inizio);
+      const durata = Number(slot?.durata_prevista_minuti);
+      const hasDuration = Number.isFinite(durata) && durata >= 0;
+      const hasOrario = Boolean(String(slot?.orario || "").trim());
+      return Boolean(data || hasDuration || hasOrario);
+    })
+    .sort((left, right) => {
+      const leftPosition = Number.isFinite(Number(left?.position)) ? Number(left?.position) : Number.MAX_SAFE_INTEGER;
+      const rightPosition = Number.isFinite(Number(right?.position)) ? Number(right?.position) : Number.MAX_SAFE_INTEGER;
+      if (leftPosition !== rightPosition) return leftPosition - rightPosition;
+      const leftDate = normalizeOperativiDate(left?.data_inizio);
+      const rightDate = normalizeOperativiDate(right?.data_inizio);
+      if (leftDate !== rightDate) return String(leftDate).localeCompare(String(rightDate));
+      return String(left?.id || "").localeCompare(String(right?.id || ""));
+    });
+}
+
+function getSortedCronoReferenti(referenti?: CronoMeta["referenti_cliente"] | null): CronoMetaReferente[] {
+  return (Array.isArray(referenti) ? referenti : [])
+    .filter((referente) =>
+      Boolean(
+        String(referente?.nome || "").trim() ||
+          String(referente?.contatto || "").trim() ||
+          String(referente?.ruolo || "").trim()
+      )
+    )
+    .sort((left, right) => {
+      const leftPosition = Number.isFinite(Number(left?.position)) ? Number(left?.position) : Number.MAX_SAFE_INTEGER;
+      const rightPosition = Number.isFinite(Number(right?.position)) ? Number(right?.position) : Number.MAX_SAFE_INTEGER;
+      if (leftPosition !== rightPosition) return leftPosition - rightPosition;
+      return String(left?.id || "").localeCompare(String(right?.id || ""));
+    });
+}
+
+function getCronoPrimarySlot(meta?: CronoMeta | null) {
+  return getSortedCronoSlots(meta?.slots)[0];
+}
+
+function getCronoPrimaryDate(meta?: CronoMeta | null) {
+  return normalizeOperativiDate(getCronoPrimarySlot(meta)?.data_inizio) || normalizeOperativiDate(meta?.data_inizio);
+}
+
+function getCronoPrimaryOrario(meta?: CronoMeta | null) {
+  const slotWithOrario = getSortedCronoSlots(meta?.slots).find((slot) => String(slot?.orario || "").trim());
+  return String(slotWithOrario?.orario || meta?.orario || "");
+}
+
+function getCronoTotalEstimatedMinutes(meta?: CronoMeta | null) {
+  const slots = getSortedCronoSlots(meta?.slots);
+  if (slots.length) {
+    const total = slots.reduce((sum, slot) => {
+      const value = Number(slot?.durata_prevista_minuti);
+      return Number.isFinite(value) && value >= 0 ? sum + Math.round(value) : sum;
+    }, 0);
+    return total > 0 ? total : null;
+  }
+  const value = Number(meta?.durata_prevista_minuti);
+  if (Number.isFinite(value) && value >= 0) return Math.round(value);
+  return null;
+}
+
+function buildReferentiClienteSummary(meta?: CronoMeta | null) {
+  const referenti = getSortedCronoReferenti(meta?.referenti_cliente);
+  if (!referenti.length) {
+    return {
+      referenti,
+      nome: String(meta?.referente_cliente_nome || ""),
+      contatto: String(meta?.referente_cliente_contatto || ""),
+    };
+  }
+  const nome = referenti
+    .map((referente) => {
+      const nomeValue = String(referente?.nome || "").trim();
+      const ruoloValue = String(referente?.ruolo || "").trim();
+      return [nomeValue, ruoloValue].filter(Boolean).join(" — ");
+    })
+    .filter(Boolean)
+    .join(" • ");
+  const contatto = referenti
+    .map((referente) => String(referente?.contatto || "").trim())
+    .filter(Boolean)
+    .join(" • ");
+  return { referenti, nome, contatto };
+}
+
 function extractOperativi(meta?: CronoMeta | null): OperativiFields {
+  const totalEstimatedMinutes = getCronoTotalEstimatedMinutes(meta);
+  const referentiSummary = buildReferentiClienteSummary(meta);
   return {
-    data_inizio: normalizeOperativiDate(meta?.data_inizio),
-    durata_giorni: durationToInputValue(meta?.durata_giorni),
+    data_inizio: getCronoPrimaryDate(meta),
+    durata_giorni:
+      totalEstimatedMinutes != null
+        ? minutesToHoursInput(totalEstimatedMinutes)
+        : durationToInputValue(meta?.durata_giorni),
     modalita_attivita: String(meta?.modalita_attivita || ""),
     personale_previsto: String(meta?.personale_previsto || ""),
     personale_ids: Array.isArray(meta?.personale_ids)
@@ -587,16 +708,51 @@ function extractOperativi(meta?: CronoMeta | null): OperativiFields {
     mezzi: String(meta?.mezzi || ""),
     descrizione_attivita: String(meta?.descrizione_attivita || ""),
     indirizzo: String(meta?.indirizzo || ""),
-    orario: String(meta?.orario || ""),
-    referente_cliente_nome: String(meta?.referente_cliente_nome || ""),
-    referente_cliente_contatto: String(meta?.referente_cliente_contatto || ""),
+    orario: getCronoPrimaryOrario(meta),
+    referente_cliente_nome: referentiSummary.nome,
+    referente_cliente_contatto: referentiSummary.contatto,
     commerciale_art_tech_nome: String(meta?.commerciale_art_tech_nome || ""),
     commerciale_art_tech_contatto: String(meta?.commerciale_art_tech_contatto || ""),
+    referenti_cliente: referentiSummary.referenti,
   };
 }
 
-function getRowSchedule(row: TimelineRow, value?: { data_inizio?: string | null; durata_giorni?: string | number | null } | null) {
-  return buildOperativiSchedule(value?.data_inizio ?? null, row.data_tassativa || row.data_prevista, value?.durata_giorni ?? null);
+function getRowSchedule(
+  row: TimelineRow,
+  value?:
+    | {
+        data_inizio?: string | null;
+        durata_prevista_minuti?: number | null;
+        durata_giorni?: string | number | null;
+        slots?: CronoMeta["slots"] | null;
+      }
+    | null
+) {
+  const slots = getSortedCronoSlots(value?.slots);
+  if (slots.length) {
+    const firstSlot = slots[0];
+    const lastSlot = [...slots]
+      .reverse()
+      .find((slot) => normalizeOperativiDate(slot?.data_inizio)) || firstSlot;
+    const data_inizio =
+      normalizeOperativiDate(firstSlot?.data_inizio) ||
+      normalizeOperativiDate(value?.data_inizio) ||
+      normalizeOperativiDate(row.data_tassativa || row.data_prevista);
+    const data_fine = normalizeOperativiDate(lastSlot?.data_inizio) || data_inizio;
+    const startDate = data_inizio ? new Date(`${data_inizio}T00:00:00Z`) : null;
+    const endDate = data_fine ? new Date(`${data_fine}T00:00:00Z`) : null;
+    const durata_giorni =
+      startDate && endDate
+        ? Math.max(1, Math.round((endDate.getTime() - startDate.getTime()) / 86400000) + 1)
+        : 1;
+    return {
+      data_inizio,
+      data_fine,
+      durata_giorni,
+    };
+  }
+  const durataLegacy = estimatedMinutesToLegacyDays(value?.durata_prevista_minuti) ?? value?.durata_giorni ?? null;
+  return buildOperativiSchedule(value?.data_inizio ?? null, row.data_tassativa || row.data_prevista, durataLegacy);
 }
 
 function inferInterventoTipologia(text?: string | null) {
