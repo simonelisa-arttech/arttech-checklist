@@ -28,9 +28,13 @@ type OperativiInput = {
   commerciale_art_tech_nome?: string | null;
   commerciale_art_tech_contatto?: string | null;
 };
+type OperativiSlotInput = OperativiInput & {
+  position?: string | number | null;
+};
 const CUTOFF = "2026-01-01";
 const REPORT_COMMENT_PREFIX = "__REPORT__:";
 const REPORT_OUTCOME_VALUES = new Set(["COMPLETATO", "PARZIALE", "NON_COMPLETATO"]);
+type ReportOutcome = "COMPLETATO" | "PARZIALE" | "NON_COMPLETATO";
 
 function rowKey(rowKind: string, rowRefId: string) {
   return `${rowKind}:${rowRefId}`;
@@ -57,6 +61,18 @@ function isOnOrAfterCutoff(value?: string | null) {
 function cleanText(v: unknown) {
   const s = String(v ?? "").trim();
   return s ? s : null;
+}
+
+function parseStructuredReportOutcome(commentValue: unknown): ReportOutcome | null {
+  const raw = String(commentValue || "");
+  if (!raw.startsWith(REPORT_COMMENT_PREFIX)) return null;
+  try {
+    const parsed = JSON.parse(raw.slice(REPORT_COMMENT_PREFIX.length));
+    const esito = String(parsed?.esito || "").trim().toUpperCase();
+    return REPORT_OUTCOME_VALUES.has(esito) ? (esito as ReportOutcome) : null;
+  } catch {
+    return null;
+  }
 }
 
 function cleanModalitaAttivita(value: unknown) {
@@ -155,6 +171,44 @@ function mapMetaRow(row: any) {
     referente_cliente_contatto: row?.referente_cliente_contatto || null,
     commerciale_art_tech_nome: row?.commerciale_art_tech_nome || null,
     commerciale_art_tech_contatto: row?.commerciale_art_tech_contatto || null,
+  };
+}
+
+function mapSlotRow(row: any) {
+  return {
+    position:
+      Number.isFinite(Number(row?.position)) && Number(row?.position) >= 0
+        ? Number(row?.position)
+        : 0,
+    data_inizio: row?.data_inizio || null,
+    durata_giorni:
+      Number.isFinite(Number(row?.durata_giorni)) && Number(row?.durata_giorni) > 0
+        ? Number(row?.durata_giorni)
+        : null,
+    durata_prevista_minuti:
+      Number.isFinite(Number(row?.durata_prevista_minuti)) && Number(row?.durata_prevista_minuti) >= 0
+        ? Number(row?.durata_prevista_minuti)
+        : null,
+    modalita_attivita: row?.modalita_attivita || null,
+    personale_previsto: row?.personale_previsto || null,
+    personale_ids: Array.isArray(row?.personale_ids)
+      ? row.personale_ids.map((value: unknown) => String(value || "").trim()).filter(Boolean)
+      : [],
+    mezzi: row?.mezzi || null,
+    descrizione_attivita: row?.descrizione_attivita || null,
+    indirizzo: row?.indirizzo || null,
+    orario: row?.orario || null,
+    referente_cliente_nome: row?.referente_cliente_nome || null,
+    referente_cliente_contatto: row?.referente_cliente_contatto || null,
+    commerciale_art_tech_nome: row?.commerciale_art_tech_nome || null,
+    commerciale_art_tech_contatto: row?.commerciale_art_tech_contatto || null,
+  };
+}
+
+function toOperativiSlotPayload(input: OperativiSlotInput, position: number) {
+  return {
+    position,
+    ...toOperativiPayload(input),
   };
 }
 
@@ -446,6 +500,28 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: metaErr.message }, { status: 500 });
     }
 
+    let slotRows: any[] | null = null;
+    let slotsErr: any = null;
+    {
+      const res = await supabaseAdmin
+        .from("cronoprogramma_meta_slots")
+        .select(
+          "row_kind, row_ref_id, position, data_inizio, durata_giorni, durata_prevista_minuti, modalita_attivita, personale_previsto, personale_ids, mezzi, descrizione_attivita, indirizzo, orario, referente_cliente_nome, referente_cliente_contatto, commerciale_art_tech_nome, commerciale_art_tech_contatto"
+        )
+        .in("row_ref_id", rowIds)
+        .in("row_kind", rowKinds as any)
+        .order("position", { ascending: true });
+      slotRows = res.data as any[] | null;
+      slotsErr = res.error;
+    }
+
+    if (
+      slotsErr &&
+      !String(slotsErr.message || "").toLowerCase().includes("cronoprogramma_meta_slots")
+    ) {
+      return NextResponse.json({ error: slotsErr.message }, { status: 500 });
+    }
+
     const { data: commentRows, error: commErr } = await supabaseAdmin
       .from("cronoprogramma_comments")
       .select("id, row_kind, row_ref_id, commento, created_at, created_by_operatore, operatore:created_by_operatore(nome)")
@@ -478,7 +554,24 @@ export async function POST(request: Request) {
       metaByKey[key] = mapMetaRow(row as any);
     }
 
+    const slotsByKey: Record<string, any[]> = {};
+    for (const row of slotRows || []) {
+      const key = rowKey(String((row as any).row_kind), String((row as any).row_ref_id));
+      if (!wanted.has(key)) continue;
+      if (!slotsByKey[key]) slotsByKey[key] = [];
+      slotsByKey[key].push(mapSlotRow(row as any));
+    }
+    for (const [key, slots] of Object.entries(slotsByKey)) {
+      if (slots.length > 0) {
+        metaByKey[key] = {
+          ...(metaByKey[key] || {}),
+          slots,
+        };
+      }
+    }
+
     const commentsByKey: Record<string, any[]> = {};
+    const latestReportOutcomeByKey: Record<string, ReportOutcome | null> = {};
     for (const row of commentRows || []) {
       const key = rowKey(String((row as any).row_kind), String((row as any).row_ref_id));
       if (!wanted.has(key)) continue;
@@ -490,6 +583,9 @@ export async function POST(request: Request) {
         created_by_operatore: (row as any).created_by_operatore || null,
         created_by_nome: (row as any).operatore?.nome || null,
       });
+      if (!(key in latestReportOutcomeByKey)) {
+        latestReportOutcomeByKey[key] = parseStructuredReportOutcome((row as any).commento);
+      }
     }
 
     const timbraturaIds = (timbratureRows || [])
@@ -587,7 +683,14 @@ export async function POST(request: Request) {
       const stato = String((row as any).stato || "").trim().toUpperCase();
       if (stato === "IN_CORSO") current.stato = "IN_CORSO";
       else if (stato === "IN_PAUSA" && current.stato !== "IN_CORSO") current.stato = "IN_PAUSA";
-      else if (stato === "COMPLETATA" && current.stato === "NON_INIZIATA") current.stato = "COMPLETATA";
+      else if (stato === "COMPLETATA" && current.stato === "NON_INIZIATA") {
+        const latestReportOutcome = latestReportOutcomeByKey[key];
+        const shouldTreatActivityAsCompleted =
+          latestReportOutcome == null || latestReportOutcome === "COMPLETATO";
+        if (shouldTreatActivityAsCompleted) {
+          current.stato = "COMPLETATA";
+        }
+      }
     }
 
     return NextResponse.json({
@@ -698,9 +801,57 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
+    let slotsResponse: any[] | undefined;
+    if (Array.isArray(body?.slots)) {
+      const { error: deleteSlotsErr } = await supabaseAdmin
+        .from("cronoprogramma_meta_slots")
+        .delete()
+        .eq("row_kind", rowKind)
+        .eq("row_ref_id", rowRefId);
+
+      if (deleteSlotsErr) {
+        return NextResponse.json({ error: deleteSlotsErr.message }, { status: 500 });
+      }
+
+      const normalizedSlots = (body.slots as unknown[])
+        .map((slot, index) =>
+          toOperativiSlotPayload(
+            slot && typeof slot === "object" ? (slot as OperativiSlotInput) : {},
+            index
+          )
+        );
+
+      if (normalizedSlots.length > 0) {
+        const insertPayload = normalizedSlots.map((slot) => ({
+          row_kind: rowKind,
+          row_ref_id: rowRefId,
+          ...slot,
+        }));
+
+        const { data: insertedSlots, error: insertSlotsErr } = await supabaseAdmin
+          .from("cronoprogramma_meta_slots")
+          .insert(insertPayload)
+          .select(
+            "position, data_inizio, durata_giorni, durata_prevista_minuti, modalita_attivita, personale_previsto, personale_ids, mezzi, descrizione_attivita, indirizzo, orario, referente_cliente_nome, referente_cliente_contatto, commerciale_art_tech_nome, commerciale_art_tech_contatto"
+          )
+          .order("position", { ascending: true });
+
+        if (insertSlotsErr) {
+          return NextResponse.json({ error: insertSlotsErr.message }, { status: 500 });
+        }
+
+        slotsResponse = (insertedSlots || []).map((row) => mapSlotRow(row));
+      } else {
+        slotsResponse = [];
+      }
+    }
+
     return NextResponse.json({
       ok: true,
-      meta: mapMetaRow(data as any),
+      meta: {
+        ...mapMetaRow(data as any),
+        ...(slotsResponse ? { slots: slotsResponse } : {}),
+      },
     });
   }
 
@@ -737,18 +888,34 @@ export async function POST(request: Request) {
     }
 
     const nowIso = new Date().toISOString();
-    const { error } = await supabaseAdmin.from("cronoprogramma_timbrature").insert({
-      row_kind: rowKind,
-      row_ref_id: rowRefId,
-      operatore_id: operatore.id,
-      personale_id: personaleId,
-      started_at: nowIso,
-      stato: "IN_CORSO",
-      updated_at: nowIso,
-    });
+    const { data: createdTimbratura, error } = await supabaseAdmin
+      .from("cronoprogramma_timbrature")
+      .insert({
+        row_kind: rowKind,
+        row_ref_id: rowRefId,
+        operatore_id: operatore.id,
+        personale_id: personaleId,
+        started_at: nowIso,
+        stato: "IN_CORSO",
+        updated_at: nowIso,
+      })
+      .select("id")
+      .single();
 
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
+    if (error || !createdTimbratura?.id) {
+      return NextResponse.json({ error: error?.message || "Timbratura non creata" }, { status: 500 });
+    }
+
+    const { error: createIntervalErr } = await supabaseAdmin
+      .from("cronoprogramma_timbrature_intervalli")
+      .insert({
+        timbratura_id: createdTimbratura.id,
+        started_at: nowIso,
+      });
+
+    if (createIntervalErr) {
+      await supabaseAdmin.from("cronoprogramma_timbrature").delete().eq("id", createdTimbratura.id);
+      return NextResponse.json({ error: createIntervalErr.message }, { status: 500 });
     }
 
     return NextResponse.json({ ok: true });
@@ -763,7 +930,7 @@ export async function POST(request: Request) {
 
     const { data: openTimbratura, error: openErr } = await supabaseAdmin
       .from("cronoprogramma_timbrature")
-      .select("id")
+      .select("id, started_at")
       .eq("row_kind", rowKind)
       .eq("row_ref_id", rowRefId)
       .eq("operatore_id", operatore.id)
@@ -791,23 +958,37 @@ export async function POST(request: Request) {
     if (intervalErr) {
       return NextResponse.json({ error: intervalErr.message }, { status: 500 });
     }
-    if (!openInterval?.id) {
+    const now = new Date();
+    const intervalStartedAt = String(openInterval?.started_at || openTimbratura.started_at || "").trim();
+    if (!intervalStartedAt) {
       return NextResponse.json({ error: "Nessun intervallo attivo da mettere in pausa" }, { status: 404 });
     }
 
-    const now = new Date();
-    const startedAt = new Date(String(openInterval.started_at || ""));
+    const startedAt = new Date(intervalStartedAt);
     const durationMinutes = Number.isFinite(startedAt.getTime())
       ? Math.max(0, Math.round((now.getTime() - startedAt.getTime()) / 60000))
       : 0;
 
-    const { error: closeIntervalErr } = await supabaseAdmin
-      .from("cronoprogramma_timbrature_intervalli")
-      .update({
-        ended_at: now.toISOString(),
-        durata_minuti: durationMinutes,
-      })
-      .eq("id", openInterval.id);
+    const closeIntervalErr = openInterval?.id
+      ? (
+          await supabaseAdmin
+            .from("cronoprogramma_timbrature_intervalli")
+            .update({
+              ended_at: now.toISOString(),
+              durata_minuti: durationMinutes,
+            })
+            .eq("id", openInterval.id)
+        ).error
+      : (
+          await supabaseAdmin
+            .from("cronoprogramma_timbrature_intervalli")
+            .insert({
+              timbratura_id: openTimbratura.id,
+              started_at: intervalStartedAt,
+              ended_at: now.toISOString(),
+              durata_minuti: durationMinutes,
+            })
+        ).error;
 
     if (closeIntervalErr) {
       return NextResponse.json({ error: closeIntervalErr.message }, { status: 500 });
@@ -905,11 +1086,52 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Nessuna timbratura aperta per questa attività" }, { status: 404 });
     }
 
+    const { data: openInterval, error: intervalErr } = await supabaseAdmin
+      .from("cronoprogramma_timbrature_intervalli")
+      .select("id, started_at")
+      .eq("timbratura_id", openTimbratura.id)
+      .is("ended_at", null)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (intervalErr) {
+      return NextResponse.json({ error: intervalErr.message }, { status: 500 });
+    }
+
     const now = new Date();
-    const startedAt = new Date(String(openTimbratura.started_at || ""));
+    const intervalStartedAt = String(openInterval?.started_at || openTimbratura.started_at || "").trim();
+    const startedAt = new Date(intervalStartedAt);
     const durationMinutes = Number.isFinite(startedAt.getTime())
       ? Math.max(0, Math.round((now.getTime() - startedAt.getTime()) / 60000))
       : 0;
+
+    if (intervalStartedAt) {
+      const closeIntervalErr = openInterval?.id
+        ? (
+            await supabaseAdmin
+              .from("cronoprogramma_timbrature_intervalli")
+              .update({
+                ended_at: now.toISOString(),
+                durata_minuti: durationMinutes,
+              })
+              .eq("id", openInterval.id)
+          ).error
+        : (
+            await supabaseAdmin
+              .from("cronoprogramma_timbrature_intervalli")
+              .insert({
+                timbratura_id: openTimbratura.id,
+                started_at: intervalStartedAt,
+                ended_at: now.toISOString(),
+                durata_minuti: durationMinutes,
+              })
+          ).error;
+
+      if (closeIntervalErr) {
+        return NextResponse.json({ error: closeIntervalErr.message }, { status: 500 });
+      }
+    }
 
     const { error } = await supabaseAdmin
       .from("cronoprogramma_timbrature")
@@ -925,6 +1147,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
+    let activityState: "COMPLETATA" | "NON_INIZIATA" = "COMPLETATA";
     const rawReport = body?.report && typeof body.report === "object" ? body.report : null;
     if (rawReport) {
       const esito = String((rawReport as any).esito || "").trim().toUpperCase();
@@ -937,6 +1160,8 @@ export async function POST(request: Request) {
         if (!REPORT_OUTCOME_VALUES.has(esito)) {
           return NextResponse.json({ error: "Esito report non valido" }, { status: 400 });
         }
+
+        activityState = esito === "COMPLETATO" ? "COMPLETATA" : "NON_INIZIATA";
 
         const reportComment = `${REPORT_COMMENT_PREFIX}${JSON.stringify({
           esito,
@@ -958,7 +1183,11 @@ export async function POST(request: Request) {
       }
     }
 
-    return NextResponse.json({ ok: true, durata_effettiva_minuti: durationMinutes });
+    return NextResponse.json({
+      ok: true,
+      durata_effettiva_minuti: durationMinutes,
+      activity_state: activityState,
+    });
   }
 
   if (action === "add_comment") {
