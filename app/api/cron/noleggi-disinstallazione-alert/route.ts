@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { sendEmail } from "@/lib/email";
 import { requireOperatore } from "@/lib/adminAuth";
+import { getEffectiveProjectStatus } from "@/lib/projectStatus";
 import {
   getDaysUntilScadenza,
   getRomeIsoDay,
@@ -170,7 +171,12 @@ export async function GET(request: Request) {
     id: row.id,
     cliente: row.cliente,
     nome_checklist: row.nome_checklist,
-    stato_progetto: row.stato_progetto,
+    stato_progetto:
+      getEffectiveProjectStatus({
+        stato_progetto: row.stato_progetto,
+        noleggio_vendita: row.noleggio_vendita,
+        data_disinstallazione: missingDataDisinstallazione ? null : row.data_disinstallazione ?? null,
+      }) ?? row.stato_progetto,
     noleggio_vendita: row.noleggio_vendita,
     data_disinstallazione: missingDataDisinstallazione ? null : row.data_disinstallazione ?? null,
   }));

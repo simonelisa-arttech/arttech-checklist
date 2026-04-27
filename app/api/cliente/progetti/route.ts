@@ -3,6 +3,7 @@ export const runtime = "nodejs";
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { getAccessTokenFromRequest } from "@/lib/serverAuthToken";
+import { getEffectiveProjectStatus } from "@/lib/projectStatus";
 
 type ClientePortaleAuthRow = {
   cliente_id: string;
@@ -95,6 +96,17 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
+  const progetti = (data || []).map((row: any) => ({
+    ...row,
+    stato_progetto:
+      getEffectiveProjectStatus({
+        stato_progetto: row?.stato_progetto ?? null,
+        noleggio_vendita: row?.noleggio_vendita ?? null,
+        data_prevista: row?.data_prevista ?? null,
+        fine_noleggio: row?.fine_noleggio ?? null,
+      }) ?? row?.stato_progetto ?? null,
+  }));
+
   return NextResponse.json({
     ok: true,
     cliente: {
@@ -102,6 +114,6 @@ export async function GET(request: Request) {
       email: auth.cliente.email,
       attivo: auth.cliente.attivo,
     },
-    progetti: data || [],
+    progetti,
   });
 }
