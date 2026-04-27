@@ -28,8 +28,12 @@ test("Invio avviso aggiorna stato a AVVISATO (E2E seed)", async ({ page }) => {
 
   const modal = page.getByTestId("renewals-alert-modal");
   await expect(modal).toBeVisible();
+  await page.waitForLoadState("networkidle");
 
-  await modal.getByLabel(/Email manuale/i).check();
+  const manualEmailRadio = modal.locator('input[name="renewals-alert-art-tech-mode"]').nth(1);
+  await manualEmailRadio.click({ force: true });
+  await expect(manualEmailRadio).toBeChecked();
+  await expect(modal.getByPlaceholder("Email")).toBeVisible();
   await modal.getByPlaceholder("Email").fill("qa-e2e@arttech.local");
   await modal.getByRole("button", { name: /^Invia$/ }).click();
 
