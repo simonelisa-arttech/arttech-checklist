@@ -31,6 +31,13 @@ type OperativiInput = {
 type OperativiSlotInput = OperativiInput & {
   position?: string | number | null;
 };
+type OperativiReferenteInput = {
+  id?: string | null;
+  nome?: string | null;
+  contatto?: string | null;
+  ruolo?: string | null;
+  position?: string | number | null;
+};
 const CUTOFF = "2026-01-01";
 const REPORT_COMMENT_PREFIX = "__REPORT__:";
 const REPORT_OUTCOME_VALUES = new Set(["COMPLETATO", "PARZIALE", "NON_COMPLETATO"]);
@@ -209,6 +216,28 @@ function toOperativiSlotPayload(input: OperativiSlotInput, position: number) {
   return {
     position,
     ...toOperativiPayload(input),
+  };
+}
+
+function mapReferenteRow(row: any) {
+  return {
+    id: String(row?.id || "").trim() || null,
+    nome: row?.nome || null,
+    contatto: row?.contatto || null,
+    ruolo: row?.ruolo || null,
+    position:
+      Number.isFinite(Number(row?.position)) && Number(row?.position) >= 0
+        ? Number(row?.position)
+        : 0,
+  };
+}
+
+function toReferentePayload(input: OperativiReferenteInput, position: number) {
+  return {
+    position,
+    nome: cleanText(input?.nome),
+    contatto: cleanText(input?.contatto),
+    ruolo: cleanText(input?.ruolo),
   };
 }
 
@@ -522,6 +551,26 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: slotsErr.message }, { status: 500 });
     }
 
+    let referentiRows: any[] | null = null;
+    let referentiErr: any = null;
+    {
+      const res = await supabaseAdmin
+        .from("cronoprogramma_meta_referenti")
+        .select("id, row_kind, row_ref_id, nome, contatto, ruolo, position")
+        .in("row_ref_id", rowIds)
+        .in("row_kind", rowKinds as any)
+        .order("position", { ascending: true });
+      referentiRows = res.data as any[] | null;
+      referentiErr = res.error;
+    }
+
+    if (
+      referentiErr &&
+      !String(referentiErr.message || "").toLowerCase().includes("cronoprogramma_meta_referenti")
+    ) {
+      return NextResponse.json({ error: referentiErr.message }, { status: 500 });
+    }
+
     const { data: commentRows, error: commErr } = await supabaseAdmin
       .from("cronoprogramma_comments")
       .select("id, row_kind, row_ref_id, commento, created_at, created_by_operatore, operatore:created_by_operatore(nome)")
@@ -566,6 +615,22 @@ export async function POST(request: Request) {
         metaByKey[key] = {
           ...(metaByKey[key] || {}),
           slots,
+        };
+      }
+    }
+
+    const referentiByKey: Record<string, any[]> = {};
+    for (const row of referentiRows || []) {
+      const key = rowKey(String((row as any).row_kind), String((row as any).row_ref_id));
+      if (!wanted.has(key)) continue;
+      if (!referentiByKey[key]) referentiByKey[key] = [];
+      referentiByKey[key].push(mapReferenteRow(row as any));
+    }
+    for (const [key, referenti] of Object.entries(referentiByKey)) {
+      if (referenti.length > 0) {
+        metaByKey[key] = {
+          ...(metaByKey[key] || {}),
+          referenti_cliente: referenti,
         };
       }
     }
@@ -846,11 +911,56 @@ export async function POST(request: Request) {
       }
     }
 
+    let referentiResponse: any[] | undefined;
+    if (Array.isArray(body?.referenti_cliente)) {
+      const { error: deleteReferentiErr } = await supabaseAdmin
+        .from("cronoprogramma_meta_referenti")
+        .delete()
+        .eq("row_kind", rowKind)
+        .eq("row_ref_id", rowRefId);
+
+      if (deleteReferentiErr) {
+        return NextResponse.json({ error: deleteReferentiErr.message }, { status: 500 });
+      }
+
+      const normalizedReferenti = (body.referenti_cliente as unknown[])
+        .map((referente, index) =>
+          toReferentePayload(
+            referente && typeof referente === "object" ? (referente as OperativiReferenteInput) : {},
+            index
+          )
+        )
+        .filter((referente) => referente.nome || referente.contatto || referente.ruolo);
+
+      if (normalizedReferenti.length > 0) {
+        const insertPayload = normalizedReferenti.map((referente) => ({
+          row_kind: rowKind,
+          row_ref_id: rowRefId,
+          ...referente,
+        }));
+
+        const { data: insertedReferenti, error: insertReferentiErr } = await supabaseAdmin
+          .from("cronoprogramma_meta_referenti")
+          .insert(insertPayload)
+          .select("id, nome, contatto, ruolo, position")
+          .order("position", { ascending: true });
+
+        if (insertReferentiErr) {
+          return NextResponse.json({ error: insertReferentiErr.message }, { status: 500 });
+        }
+
+        referentiResponse = (insertedReferenti || []).map((row) => mapReferenteRow(row));
+      } else {
+        referentiResponse = [];
+      }
+    }
+
     return NextResponse.json({
       ok: true,
       meta: {
         ...mapMetaRow(data as any),
         ...(slotsResponse ? { slots: slotsResponse } : {}),
+        ...(referentiResponse ? { referenti_cliente: referentiResponse } : {}),
       },
     });
   }
