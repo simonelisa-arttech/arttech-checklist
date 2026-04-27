@@ -51,6 +51,7 @@ type Props = {
   title?: string;
   multiple?: boolean;
   storagePrefix?: string;
+  onCountChange?: (count: number) => void;
 };
 
 function detectProvider(url: string) {
@@ -88,6 +89,7 @@ export default function AttachmentsPanel({
   title = "Allegati",
   multiple = false,
   storagePrefix,
+  onCountChange,
 }: Props) {
   const [rows, setRows] = useState<AttachmentRow[]>([]);
   const [loading, setLoading] = useState(false);
@@ -107,6 +109,7 @@ export default function AttachmentsPanel({
   async function load() {
     if (!canUse) {
       setRows([]);
+      onCountChange?.(0);
       return;
     }
     setLoading(true);
@@ -124,7 +127,9 @@ export default function AttachmentsPanel({
         setRows([]);
         return;
       }
-      setRows((data?.rows as AttachmentRow[]) || []);
+      const nextRows = ((data?.rows as AttachmentRow[]) || []);
+      setRows(nextRows);
+      onCountChange?.(nextRows.length);
     } finally {
       setLoading(false);
     }

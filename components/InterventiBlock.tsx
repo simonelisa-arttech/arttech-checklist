@@ -93,6 +93,7 @@ type Props = {
   includedResidual: number | null;
   includedSummaryOverride?: string | null;
   attachmentCounts?: Map<string, number>;
+  onInterventoAttachmentCountChange?: (interventoId: string, count: number) => void;
   getOperatoreNome: (value?: string | null) => string;
   currentOperatoreRole: string | null;
   newIntervento: InterventoFormState;
@@ -517,6 +518,7 @@ export default function InterventiBlock({
   includedResidual,
   includedSummaryOverride,
   attachmentCounts,
+  onInterventoAttachmentCountChange,
   getOperatoreNome,
   currentOperatoreRole,
   newIntervento,
@@ -1607,6 +1609,9 @@ export default function InterventiBlock({
                             entityId={row.id}
                             multiple
                             storagePrefix="intervento"
+                            onCountChange={(count) =>
+                              onInterventoAttachmentCountChange?.(row.id, count)
+                            }
                           />
                         </div>
                         <div style={{ display: "flex", gap: 8, justifyContent: "flex-end", marginTop: 10 }}>
@@ -1731,6 +1736,9 @@ export default function InterventiBlock({
                       entityId={row.id}
                       multiple
                       storagePrefix="intervento"
+                      onCountChange={(count) =>
+                        onInterventoAttachmentCountChange?.(row.id, count)
+                      }
                     />
                   </div>
                 </>

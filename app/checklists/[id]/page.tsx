@@ -2242,6 +2242,17 @@ function buildFormData(c: Checklist): FormData {
     setProjectInterventoAttachmentCounts(counts);
   }
 
+  function syncProjectInterventoAttachmentCount(interventoId: string, count: number) {
+    const key = String(interventoId || "").trim();
+    if (!key) return;
+    setProjectInterventoAttachmentCounts((prev) => {
+      const next = new Map(prev);
+      if (count > 0) next.set(key, count);
+      else next.delete(key);
+      return next;
+    });
+  }
+
   async function loadTaskAttachmentCounts(taskIds: string[]) {
     const ids = Array.from(new Set(taskIds.filter(Boolean)));
     if (ids.length === 0) {
@@ -6629,6 +6640,7 @@ function buildFormData(c: Checklist): FormData {
       }
       includedSummaryOverride={!contrattoUltra ? " / Totale inclusi: —" : null}
       attachmentCounts={projectInterventoAttachmentCounts}
+      onInterventoAttachmentCountChange={syncProjectInterventoAttachmentCount}
       getOperatoreNome={(value) => operatoriMap.get(String(value || "")) || String(value || "—")}
       currentOperatoreRole={alertOperatori.find((row) => row.id === currentOperatoreId)?.ruolo ?? null}
       currentProjectLabel={checklist?.nome_checklist || "—"}
