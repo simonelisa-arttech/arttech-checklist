@@ -52,7 +52,6 @@ import {
 } from "@/lib/magazzino";
 import {
   computeOperativiEndDate,
-  durationToInputValue,
   estimatedMinutesToLegacyDays,
   getOperativiEstimatedMinutes,
   hoursInputToMinutes,
@@ -455,6 +454,13 @@ type CronoOperativiMeta = {
   updated_at?: string | null;
   updated_by_operatore?: string | null;
   updated_by_nome?: string | null;
+  slots?: Array<{
+    id?: string | null;
+    position?: number | null;
+    data_inizio?: string | null;
+    durata_prevista_minuti?: number | null;
+    orario?: string | null;
+  }> | null;
   data_inizio?: string | null;
   durata_giorni?: number | null;
   durata_prevista_minuti?: number | null;
@@ -484,7 +490,15 @@ type CronoReferenteCliente = {
   ruolo: string;
 };
 
+type CronoOperativiSlot = {
+  id?: string;
+  data_inizio: string;
+  durata_prevista_minuti: number | null;
+  orario: string;
+};
+
 type CronoOperativiFormState = {
+  slots: CronoOperativiSlot[];
   data_inizio: string;
   durata_giorni: string;
   personale_previsto: string;
@@ -795,6 +809,7 @@ function startOfToday() {
 }
 
 const EMPTY_CRONO_OPERATIVI: CronoOperativiFormState = {
+  slots: [{ data_inizio: "", durata_prevista_minuti: null, orario: "" }],
   data_inizio: "",
   durata_giorni: "",
   personale_previsto: "",
@@ -809,6 +824,62 @@ const EMPTY_CRONO_OPERATIVI: CronoOperativiFormState = {
   commerciale_art_tech_nome: "",
   commerciale_art_tech_contatto: "",
 };
+
+function createEmptyCronoOperativiSlot(): CronoOperativiSlot {
+  return {
+    data_inizio: "",
+    durata_prevista_minuti: null,
+    orario: "",
+  };
+}
+
+function normalizeCronoOperativiSlot(value: unknown): CronoOperativiSlot {
+  const row = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+  const id = String(row.id || "").trim();
+  const minutesRaw = Number(row.durata_prevista_minuti);
+  return {
+    ...(id ? { id } : {}),
+    data_inizio: normalizeOperativiDate(String(row.data_inizio || "")),
+    durata_prevista_minuti:
+      Number.isFinite(minutesRaw) && minutesRaw >= 0 ? Math.round(minutesRaw) : null,
+    orario: String(row.orario || ""),
+  };
+}
+
+function buildCronoOperativiSlots(meta?: CronoOperativiMeta | null): CronoOperativiSlot[] {
+  const slots = Array.isArray(meta?.slots)
+    ? meta.slots.map((value) => normalizeCronoOperativiSlot(value))
+    : [];
+  const filtered = slots.filter(
+    (slot) => slot.data_inizio || slot.durata_prevista_minuti != null || slot.orario
+  );
+  if (filtered.length > 0) return filtered;
+  const stimatoMinuti = getOperativiEstimatedMinutes(meta);
+  const legacySlot = {
+    data_inizio: normalizeOperativiDate(meta?.data_inizio),
+    durata_prevista_minuti: stimatoMinuti ?? null,
+    orario: String(meta?.orario || ""),
+  };
+  if (legacySlot.data_inizio || legacySlot.durata_prevista_minuti != null || legacySlot.orario) {
+    return [legacySlot];
+  }
+  return [createEmptyCronoOperativiSlot()];
+}
+
+function syncCronoOperativiLegacyFields(form: CronoOperativiFormState): CronoOperativiFormState {
+  const slots = form.slots.length > 0 ? form.slots : [createEmptyCronoOperativiSlot()];
+  const firstSlot = slots[0];
+  return {
+    ...form,
+    slots,
+    data_inizio: firstSlot.data_inizio || "",
+    durata_giorni:
+      firstSlot.durata_prevista_minuti != null
+        ? minutesToHoursInput(firstSlot.durata_prevista_minuti)
+        : "",
+    orario: firstSlot.orario || "",
+  };
+}
 
 function normalizeReferenteCliente(value: unknown): CronoReferenteCliente {
   const row = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
@@ -836,12 +907,12 @@ function buildFallbackReferentiCliente(meta?: CronoOperativiMeta | null): CronoR
 }
 
 function extractCronoOperativi(meta?: CronoOperativiMeta | null) {
-  const stimatoMinuti = getOperativiEstimatedMinutes(meta);
+  const slots = buildCronoOperativiSlots(meta);
   const referentiCliente = buildFallbackReferentiCliente(meta);
-  return {
-    data_inizio: normalizeOperativiDate(meta?.data_inizio),
-    durata_giorni:
-      stimatoMinuti != null ? minutesToHoursInput(stimatoMinuti) : durationToInputValue(meta?.durata_giorni),
+  return syncCronoOperativiLegacyFields({
+    slots,
+    data_inizio: "",
+    durata_giorni: "",
     personale_previsto: String(meta?.personale_previsto || ""),
     personale_ids: Array.isArray(meta?.personale_ids)
       ? meta.personale_ids.map((value) => String(value || "").trim()).filter(Boolean)
@@ -855,7 +926,7 @@ function extractCronoOperativi(meta?: CronoOperativiMeta | null) {
     referente_cliente_contatto: referentiCliente[0]?.contatto || "",
     commerciale_art_tech_nome: String(meta?.commerciale_art_tech_nome || ""),
     commerciale_art_tech_contatto: String(meta?.commerciale_art_tech_contatto || ""),
-  };
+  });
 }
 
 function addReferente(list: CronoReferenteCliente[]) {
@@ -873,6 +944,23 @@ function updateReferente(
   field: keyof Omit<CronoReferenteCliente, "id">,
   value: string
 ) {
+  return list.map((row, currentIndex) =>
+    currentIndex === index ? { ...row, [field]: value } : row
+  );
+}
+
+function addSlot(list: CronoOperativiSlot[]) {
+  return [...list, createEmptyCronoOperativiSlot()];
+}
+
+function removeSlot(list: CronoOperativiSlot[], index: number) {
+  const next = list.filter((_, currentIndex) => currentIndex !== index);
+  return next.length > 0 ? next : [createEmptyCronoOperativiSlot()];
+}
+
+function updateSlot<
+  TField extends keyof Omit<CronoOperativiSlot, "id">
+>(list: CronoOperativiSlot[], index: number, field: TField, value: CronoOperativiSlot[TField]) {
   return list.map((row, currentIndex) =>
     currentIndex === index ? { ...row, [field]: value } : row
   );
@@ -3442,7 +3530,9 @@ function buildFormData(c: Checklist): FormData {
     setError(null);
     setNotice(null);
     try {
-      const durataPrevistaMinuti = hoursInputToMinutes(form.durata_giorni);
+      const normalizedForm = syncCronoOperativiLegacyFields(form);
+      const firstSlot = normalizedForm.slots[0] || createEmptyCronoOperativiSlot();
+      const durataPrevistaMinuti = firstSlot.durata_prevista_minuti;
       const referentiCliente = form.referenti_cliente.map((referente) => ({
         ...(referente.id ? { id: referente.id } : {}),
         nome: referente.nome,
@@ -3457,7 +3547,17 @@ function buildFormData(c: Checklist): FormData {
           action: "set_operativi",
           row_kind: rowKind,
           row_ref_id: id,
-          ...form,
+          ...normalizedForm,
+          slots: normalizedForm.slots.map((slot) => ({
+            ...(slot.id ? { id: slot.id } : {}),
+            data_inizio: slot.data_inizio,
+            durata_prevista_minuti: slot.durata_prevista_minuti,
+            durata_giorni:
+              slot.durata_prevista_minuti != null
+                ? estimatedMinutesToLegacyDays(slot.durata_prevista_minuti)
+                : null,
+            orario: slot.orario,
+          })),
           referenti_cliente: referentiCliente,
           referente_cliente_nome: referentiCliente[0]?.nome || "",
           referente_cliente_contatto: referentiCliente[0]?.contatto || "",
@@ -4442,46 +4542,141 @@ function buildFormData(c: Checklist): FormData {
           gap: 10,
         }}
       >
-        <div>
-          <div style={{ fontSize: 12, marginBottom: 4 }}>Data inizio</div>
-          <input
-            type="date"
-            value={form.data_inizio}
-            onChange={(e) => setForm((prev) => ({ ...prev, data_inizio: e.target.value }))}
-            style={{ width: "100%", padding: 8 }}
-          />
-          {!form.data_inizio && fallbackStartDate ? (
-            <div style={{ marginTop: 4, fontSize: 11, opacity: 0.7 }}>
-              Fallback automatico: {new Date(fallbackStartDate).toLocaleDateString("it-IT")}
+        <div style={{ gridColumn: "1 / -1" }}>
+          <div style={{ fontSize: 12, marginBottom: 6 }}>Giornate attività</div>
+          <div style={{ display: "grid", gap: 8 }}>
+            {form.slots.map((slot, index) => {
+              const computedEndDate = computeOperativiEndDate(
+                slot.data_inizio || fallbackStartDate,
+                estimatedMinutesToLegacyDays(slot.durata_prevista_minuti)
+              );
+              return (
+                <div
+                  key={slot.id || `slot-${index}`}
+                  style={{
+                    border: "1px solid #e5e7eb",
+                    borderRadius: 10,
+                    padding: 8,
+                    display: "grid",
+                    gap: 8,
+                  }}
+                >
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) auto",
+                      gap: 8,
+                      alignItems: "end",
+                    }}
+                  >
+                    <div>
+                      <div style={{ fontSize: 12, marginBottom: 4 }}>Data attività</div>
+                      <input
+                        type="date"
+                        value={slot.data_inizio}
+                        onChange={(e) =>
+                          setForm((prev) => ({
+                            ...prev,
+                            slots: updateSlot(prev.slots, index, "data_inizio", e.target.value),
+                          }))
+                        }
+                        style={{ width: "100%", padding: 8 }}
+                      />
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 12, marginBottom: 4 }}>Ore previste</div>
+                      <input
+                        type="number"
+                        min={0}
+                        step={0.5}
+                        value={minutesToHoursInput(slot.durata_prevista_minuti)}
+                        onChange={(e) =>
+                          setForm((prev) => ({
+                            ...prev,
+                            slots: updateSlot(
+                              prev.slots,
+                              index,
+                              "durata_prevista_minuti",
+                              hoursInputToMinutes(e.target.value)
+                            ),
+                          }))
+                        }
+                        placeholder="8"
+                        style={{ width: "100%", padding: 8 }}
+                      />
+                    </div>
+                    <div>
+                      <div style={{ fontSize: 12, marginBottom: 4 }}>Orario</div>
+                      <input
+                        value={slot.orario}
+                        onChange={(e) =>
+                          setForm((prev) => ({
+                            ...prev,
+                            slots: updateSlot(prev.slots, index, "orario", e.target.value),
+                          }))
+                        }
+                        style={{ width: "100%", padding: 8 }}
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setForm((prev) => ({
+                          ...prev,
+                          slots: removeSlot(prev.slots, index),
+                        }))
+                      }
+                      style={{
+                        padding: "8px 10px",
+                        borderRadius: 8,
+                        border: "1px solid #d1d5db",
+                        background: "#fff",
+                        cursor: "pointer",
+                        whiteSpace: "nowrap",
+                        height: 38,
+                      }}
+                    >
+                      Rimuovi
+                    </button>
+                  </div>
+                  {!slot.data_inizio && fallbackStartDate && index === 0 ? (
+                    <div style={{ fontSize: 11, opacity: 0.7 }}>
+                      Fallback automatico: {new Date(fallbackStartDate).toLocaleDateString("it-IT")}
+                    </div>
+                  ) : null}
+                  <div style={{ fontSize: 11, opacity: 0.7 }}>
+                    Data fine: {computedEndDate ? new Date(computedEndDate).toLocaleDateString("it-IT") : "—"}
+                  </div>
+                </div>
+              );
+            })}
+            <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+              <button
+                type="button"
+                onClick={() =>
+                  setForm((prev) => ({
+                    ...prev,
+                    slots: addSlot(prev.slots),
+                  }))
+                }
+                style={{
+                  padding: "8px 12px",
+                  borderRadius: 8,
+                  border: "1px solid #d1d5db",
+                  background: "#fff",
+                  cursor: "pointer",
+                  fontWeight: 600,
+                }}
+              >
+                + Aggiungi giornata
+              </button>
+              <span style={{ fontSize: 12, fontWeight: 700 }}>
+                Totale ore previste:{" "}
+                {minutesToHoursInput(
+                  form.slots.reduce((total, slot) => total + (slot.durata_prevista_minuti ?? 0), 0)
+                ) || "0"}
+              </span>
             </div>
-          ) : null}
-        </div>
-        <div>
-          <div style={{ fontSize: 12, marginBottom: 4 }}>Ore previste</div>
-          <input
-            type="number"
-            min={0}
-            step={0.5}
-            value={form.durata_giorni}
-            onChange={(e) => setForm((prev) => ({ ...prev, durata_giorni: e.target.value }))}
-            placeholder="8"
-            style={{ width: "100%", padding: 8 }}
-          />
-          <div style={{ marginTop: 4, fontSize: 11, opacity: 0.7 }}>
-            Data fine:{" "}
-            {computeOperativiEndDate(
-              form.data_inizio || fallbackStartDate,
-              estimatedMinutesToLegacyDays(hoursInputToMinutes(form.durata_giorni))
-            ) ? (
-              new Date(
-                computeOperativiEndDate(
-                  form.data_inizio || fallbackStartDate,
-                  estimatedMinutesToLegacyDays(hoursInputToMinutes(form.durata_giorni))
-                )
-              ).toLocaleDateString("it-IT")
-            ) : (
-              "—"
-            )}
           </div>
         </div>
         <div>
@@ -4520,14 +4715,6 @@ function buildFormData(c: Checklist): FormData {
             value={form.indirizzo}
             onChange={(e) => setForm((prev) => ({ ...prev, indirizzo: e.target.value }))}
             style={{ width: "100%", minHeight: 70, padding: 8 }}
-          />
-        </div>
-        <div>
-          <div style={{ fontSize: 12, marginBottom: 4 }}>Orario</div>
-          <input
-            value={form.orario}
-            onChange={(e) => setForm((prev) => ({ ...prev, orario: e.target.value }))}
-            style={{ width: "100%", padding: 8 }}
           />
         </div>
         <div>
