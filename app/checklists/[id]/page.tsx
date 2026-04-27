@@ -464,10 +464,24 @@ type CronoOperativiMeta = {
   descrizione_attivita?: string | null;
   indirizzo?: string | null;
   orario?: string | null;
+  referenti_cliente?: Array<{
+    id?: string | null;
+    nome?: string | null;
+    contatto?: string | null;
+    ruolo?: string | null;
+    position?: number | null;
+  }> | null;
   referente_cliente_nome?: string | null;
   referente_cliente_contatto?: string | null;
   commerciale_art_tech_nome?: string | null;
   commerciale_art_tech_contatto?: string | null;
+};
+
+type CronoReferenteCliente = {
+  id?: string;
+  nome: string;
+  contatto: string;
+  ruolo: string;
 };
 
 type CronoOperativiFormState = {
@@ -479,6 +493,7 @@ type CronoOperativiFormState = {
   descrizione_attivita: string;
   indirizzo: string;
   orario: string;
+  referenti_cliente: CronoReferenteCliente[];
   referente_cliente_nome: string;
   referente_cliente_contatto: string;
   commerciale_art_tech_nome: string;
@@ -788,14 +803,41 @@ const EMPTY_CRONO_OPERATIVI: CronoOperativiFormState = {
   descrizione_attivita: "",
   indirizzo: "",
   orario: "",
+  referenti_cliente: [{ nome: "", contatto: "", ruolo: "" }],
   referente_cliente_nome: "",
   referente_cliente_contatto: "",
   commerciale_art_tech_nome: "",
   commerciale_art_tech_contatto: "",
 };
 
+function normalizeReferenteCliente(value: unknown): CronoReferenteCliente {
+  const row = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+  const id = String(row.id || "").trim();
+  return {
+    ...(id ? { id } : {}),
+    nome: String(row.nome || "").trim(),
+    contatto: String(row.contatto || "").trim(),
+    ruolo: String(row.ruolo || "").trim(),
+  };
+}
+
+function buildFallbackReferentiCliente(meta?: CronoOperativiMeta | null): CronoReferenteCliente[] {
+  const referenti = Array.isArray(meta?.referenti_cliente)
+    ? meta.referenti_cliente.map((value) => normalizeReferenteCliente(value))
+    : [];
+  const filtered = referenti.filter((row) => row.nome || row.contatto || row.ruolo);
+  if (filtered.length > 0) return filtered;
+  const fallback = {
+    nome: String(meta?.referente_cliente_nome || ""),
+    contatto: String(meta?.referente_cliente_contatto || ""),
+    ruolo: "",
+  };
+  return fallback.nome || fallback.contatto ? [fallback] : [{ nome: "", contatto: "", ruolo: "" }];
+}
+
 function extractCronoOperativi(meta?: CronoOperativiMeta | null) {
   const stimatoMinuti = getOperativiEstimatedMinutes(meta);
+  const referentiCliente = buildFallbackReferentiCliente(meta);
   return {
     data_inizio: normalizeOperativiDate(meta?.data_inizio),
     durata_giorni:
@@ -808,11 +850,32 @@ function extractCronoOperativi(meta?: CronoOperativiMeta | null) {
     descrizione_attivita: String(meta?.descrizione_attivita || ""),
     indirizzo: String(meta?.indirizzo || ""),
     orario: String(meta?.orario || ""),
-    referente_cliente_nome: String(meta?.referente_cliente_nome || ""),
-    referente_cliente_contatto: String(meta?.referente_cliente_contatto || ""),
+    referenti_cliente: referentiCliente,
+    referente_cliente_nome: referentiCliente[0]?.nome || "",
+    referente_cliente_contatto: referentiCliente[0]?.contatto || "",
     commerciale_art_tech_nome: String(meta?.commerciale_art_tech_nome || ""),
     commerciale_art_tech_contatto: String(meta?.commerciale_art_tech_contatto || ""),
   };
+}
+
+function addReferente(list: CronoReferenteCliente[]) {
+  return [...list, { nome: "", contatto: "", ruolo: "" }];
+}
+
+function removeReferente(list: CronoReferenteCliente[], index: number) {
+  const next = list.filter((_, currentIndex) => currentIndex !== index);
+  return next.length > 0 ? next : [{ nome: "", contatto: "", ruolo: "" }];
+}
+
+function updateReferente(
+  list: CronoReferenteCliente[],
+  index: number,
+  field: keyof Omit<CronoReferenteCliente, "id">,
+  value: string
+) {
+  return list.map((row, currentIndex) =>
+    currentIndex === index ? { ...row, [field]: value } : row
+  );
 }
 
 function isNoleggioValue(value?: string | null) {
@@ -3380,6 +3443,12 @@ function buildFormData(c: Checklist): FormData {
     setNotice(null);
     try {
       const durataPrevistaMinuti = hoursInputToMinutes(form.durata_giorni);
+      const referentiCliente = form.referenti_cliente.map((referente) => ({
+        ...(referente.id ? { id: referente.id } : {}),
+        nome: referente.nome,
+        contatto: referente.contatto,
+        ruolo: referente.ruolo,
+      }));
       perfCountFetch("POST /api/cronoprogramma set_operativi");
       const res = await fetch("/api/cronoprogramma", {
         method: "POST",
@@ -3389,6 +3458,9 @@ function buildFormData(c: Checklist): FormData {
           row_kind: rowKind,
           row_ref_id: id,
           ...form,
+          referenti_cliente: referentiCliente,
+          referente_cliente_nome: referentiCliente[0]?.nome || "",
+          referente_cliente_contatto: referentiCliente[0]?.contatto || "",
           durata_prevista_minuti: durataPrevistaMinuti,
           durata_giorni: estimatedMinutesToLegacyDays(durataPrevistaMinuti),
         }),
@@ -4460,23 +4532,138 @@ function buildFormData(c: Checklist): FormData {
         </div>
         <div>
           <div style={{ fontSize: 12, marginBottom: 4 }}>Referente cliente</div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-            <input
-              value={form.referente_cliente_nome}
-              onChange={(e) =>
-                setForm((prev) => ({ ...prev, referente_cliente_nome: e.target.value }))
-              }
-              placeholder="Nome"
-              style={{ width: "100%", padding: 8 }}
-            />
-            <input
-              value={form.referente_cliente_contatto}
-              onChange={(e) =>
-                setForm((prev) => ({ ...prev, referente_cliente_contatto: e.target.value }))
-              }
-              placeholder="Contatto"
-              style={{ width: "100%", padding: 8 }}
-            />
+          <div style={{ display: "grid", gap: 8 }}>
+            {form.referenti_cliente.map((referente, index) => (
+              <div
+                key={referente.id || `referente-${index}`}
+                style={{
+                  border: "1px solid #e5e7eb",
+                  borderRadius: 10,
+                  padding: 8,
+                  display: "grid",
+                  gap: 8,
+                }}
+              >
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)",
+                    gap: 8,
+                  }}
+                >
+                  <input
+                    value={referente.nome}
+                    onChange={(e) =>
+                      setForm((prev) => {
+                        const referentiCliente = updateReferente(
+                          prev.referenti_cliente,
+                          index,
+                          "nome",
+                          e.target.value
+                        );
+                        return {
+                          ...prev,
+                          referenti_cliente: referentiCliente,
+                          referente_cliente_nome: referentiCliente[0]?.nome || "",
+                        };
+                      })
+                    }
+                    placeholder="Nome"
+                    style={{ width: "100%", padding: 8 }}
+                  />
+                  <input
+                    value={referente.contatto}
+                    onChange={(e) =>
+                      setForm((prev) => {
+                        const referentiCliente = updateReferente(
+                          prev.referenti_cliente,
+                          index,
+                          "contatto",
+                          e.target.value
+                        );
+                        return {
+                          ...prev,
+                          referenti_cliente: referentiCliente,
+                          referente_cliente_contatto: referentiCliente[0]?.contatto || "",
+                        };
+                      })
+                    }
+                    placeholder="Contatto"
+                    style={{ width: "100%", padding: 8 }}
+                  />
+                </div>
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "minmax(0, 1fr) auto",
+                    gap: 8,
+                    alignItems: "center",
+                  }}
+                >
+                  <input
+                    value={referente.ruolo}
+                    onChange={(e) =>
+                      setForm((prev) => ({
+                        ...prev,
+                        referenti_cliente: updateReferente(
+                          prev.referenti_cliente,
+                          index,
+                          "ruolo",
+                          e.target.value
+                        ),
+                      }))
+                    }
+                    placeholder="es. Sicurezza / Elettrico / Permessi"
+                    style={{ width: "100%", padding: 8 }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setForm((prev) => {
+                        const referentiCliente = removeReferente(prev.referenti_cliente, index);
+                        return {
+                          ...prev,
+                          referenti_cliente: referentiCliente,
+                          referente_cliente_nome: referentiCliente[0]?.nome || "",
+                          referente_cliente_contatto: referentiCliente[0]?.contatto || "",
+                        };
+                      })
+                    }
+                    style={{
+                      padding: "8px 10px",
+                      borderRadius: 8,
+                      border: "1px solid #d1d5db",
+                      background: "#fff",
+                      cursor: "pointer",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    Rimuovi
+                  </button>
+                </div>
+              </div>
+            ))}
+            <div>
+              <button
+                type="button"
+                onClick={() =>
+                  setForm((prev) => ({
+                    ...prev,
+                    referenti_cliente: addReferente(prev.referenti_cliente),
+                  }))
+                }
+                style={{
+                  padding: "8px 12px",
+                  borderRadius: 8,
+                  border: "1px solid #d1d5db",
+                  background: "#fff",
+                  cursor: "pointer",
+                  fontWeight: 600,
+                }}
+              >
+                + Aggiungi referente
+              </button>
+            </div>
           </div>
         </div>
         <div>
