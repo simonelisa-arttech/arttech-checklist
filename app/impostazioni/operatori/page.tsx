@@ -716,6 +716,12 @@ export default function OperatoriPage() {
                   </select>
                   <div style={{ display: "grid", gap: 8, minWidth: 0 }}>
                     {renderBooleanSetting(
+                      "Attivo",
+                      row.attivo,
+                      (next) => updateRow(idx, { attivo: next }),
+                      "Attivo"
+                    )}
+                    {renderBooleanSetting(
                       "Impost.",
                       row.can_access_impostazioni === true,
                       (next) => updateRow(idx, { can_access_impostazioni: next }),
@@ -736,19 +742,13 @@ export default function OperatoriPage() {
                   </div>
                   <div style={{ display: "grid", gap: 8, minWidth: 0 }}>
                     {renderBooleanSetting(
-                      "Attivo",
-                      row.attivo,
-                      (next) => updateRow(idx, { attivo: next }),
-                      "Attivo"
-                    )}
-                    {renderBooleanSetting(
                       "Alert",
                       Boolean(row.alert_enabled),
                       (next) => updateRow(idx, { alert_enabled: next }),
                       "Alert attivi"
                     )}
                     {renderBooleanSetting(
-                      "Notif.",
+                      "Email",
                       row.riceve_notifiche !== false,
                       (next) => updateRow(idx, { riceve_notifiche: next }),
                       "Riceve notifiche"
