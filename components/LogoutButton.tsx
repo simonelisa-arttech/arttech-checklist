@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type MouseEvent } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 import { canAccessSettingsRole } from "@/lib/adminRoles";
@@ -45,6 +45,13 @@ const dropdownLinkStyle = {
   width: "100%",
   boxSizing: "border-box" as const,
 };
+
+function closeDropdownOnNavigation(event: MouseEvent<HTMLElement>) {
+  const details = event.currentTarget.closest("details");
+  if (details instanceof HTMLDetailsElement) {
+    details.open = false;
+  }
+}
 
 export default function LogoutButton() {
   const router = useRouter();
@@ -106,34 +113,45 @@ export default function LogoutButton() {
         <details style={{ position: "relative" }}>
           <summary style={dropdownTriggerStyle}>Impostazioni</summary>
           <div style={dropdownPanelStyle}>
-            <Link href="/impostazioni" style={dropdownLinkStyle}>
+            <Link href="/impostazioni" style={dropdownLinkStyle} onClick={closeDropdownOnNavigation}>
               Panoramica impostazioni
             </Link>
-            <Link href="/impostazioni/operatori" style={dropdownLinkStyle}>
+            <Link href="/impostazioni/operatori" style={dropdownLinkStyle} onClick={closeDropdownOnNavigation}>
               Anagrafica operatori
             </Link>
-            <Link href="/impostazioni/personale" style={dropdownLinkStyle}>
+            <Link href="/impostazioni/personale" style={dropdownLinkStyle} onClick={closeDropdownOnNavigation}>
               Personale
             </Link>
-            <Link href="/impostazioni/aziende" style={dropdownLinkStyle}>
+            <Link href="/impostazioni/aziende" style={dropdownLinkStyle} onClick={closeDropdownOnNavigation}>
               Aziende
             </Link>
-            <Link href="/impostazioni/documenti" style={dropdownLinkStyle}>
+            <Link href="/impostazioni/documenti" style={dropdownLinkStyle} onClick={closeDropdownOnNavigation}>
               Doc sicurezza
             </Link>
-            <Link href="/impostazioni/checklist-attivita" style={dropdownLinkStyle}>
+            <Link
+              href="/impostazioni/checklist-attivita"
+              style={dropdownLinkStyle}
+              onClick={closeDropdownOnNavigation}
+            >
               Gestisci progetto operativo
             </Link>
-            <Link href="/impostazioni/preset-avvisi" style={dropdownLinkStyle}>
+            <Link href="/impostazioni/preset-avvisi" style={dropdownLinkStyle} onClick={closeDropdownOnNavigation}>
               Preset avvisi
             </Link>
-            <Link href="/impostazioni/regole-globali-avvisi" style={dropdownLinkStyle}>
+            <Link
+              href="/impostazioni/regole-globali-avvisi"
+              style={dropdownLinkStyle}
+              onClick={closeDropdownOnNavigation}
+            >
               Regole globali avvisi
             </Link>
-            <Link href="/catalogo" style={dropdownLinkStyle}>
+            <Link href="/catalogo" style={dropdownLinkStyle} onClick={closeDropdownOnNavigation}>
               Catalogo
             </Link>
-            <Link href="/import-progetti" style={dropdownLinkStyle}>
+            <Link href="/fatturazione-globale" style={dropdownLinkStyle} onClick={closeDropdownOnNavigation}>
+              Fatturazione globale
+            </Link>
+            <Link href="/import-progetti" style={dropdownLinkStyle} onClick={closeDropdownOnNavigation}>
               Importa progetti
             </Link>
           </div>

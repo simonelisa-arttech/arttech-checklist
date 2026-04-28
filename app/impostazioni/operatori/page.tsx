@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
 import Link from "next/link";
 import ConfigMancante from "@/components/ConfigMancante";
 import { isSupabaseConfigured, supabase } from "@/lib/supabaseClient";
@@ -36,6 +36,22 @@ const RUOLI = [
   "COMMERCIALE",
   "AMMINISTRAZIONE",
 ];
+
+const compactBooleanBadgeStyle = (enabled: boolean) =>
+  ({
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    minWidth: 26,
+    padding: "2px 6px",
+    borderRadius: 999,
+    border: `1px solid ${enabled ? "#86efac" : "#d1d5db"}`,
+    background: enabled ? "#dcfce7" : "#f3f4f6",
+    color: enabled ? "#166534" : "#4b5563",
+    fontSize: 11,
+    fontWeight: 800,
+    lineHeight: 1,
+  }) satisfies CSSProperties;
 
 export default function OperatoriPage() {
   if (!isSupabaseConfigured) {
@@ -396,6 +412,27 @@ export default function OperatoriPage() {
     await loadOperatori();
   }
 
+  function renderBooleanCell(
+    checked: boolean,
+    onChange: (next: boolean) => void,
+    ariaLabel: string
+  ) {
+    return (
+      <label
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: 6,
+          minWidth: 0,
+        }}
+      >
+        <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} aria-label={ariaLabel} />
+        <span style={compactBooleanBadgeStyle(checked)}>{checked ? "SI" : "NO"}</span>
+      </label>
+    );
+  }
+
   return (
     <div style={{ maxWidth: 1100, margin: "40px auto", padding: 16 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
@@ -576,11 +613,12 @@ export default function OperatoriPage() {
             style={{
               display: "grid",
               gridTemplateColumns:
-                "minmax(180px, 1.4fr) minmax(120px, 1fr) minmax(220px, 1.6fr) 90px 110px 150px 170px 170px 180px minmax(220px, 1fr)",
+                "minmax(180px, 1.35fr) minmax(120px, 0.9fr) minmax(220px, 1.45fr) 84px 84px 94px 94px 94px 84px minmax(220px, 1fr)",
               padding: "10px 12px",
               fontWeight: 700,
               background: "#fafafa",
               borderBottom: "1px solid #eee",
+              fontSize: 13,
             }}
           >
             <div>Nome</div>
@@ -588,10 +626,10 @@ export default function OperatoriPage() {
             <div>Email</div>
             <div>Attivo</div>
             <div>Alert</div>
-            <div>Riceve notif.</div>
-            <div>Accesso Impostazioni</div>
-            <div>Accesso backoffice</div>
-            <div>Accesso app operatori</div>
+            <div>Notif.</div>
+            <div>Impost.</div>
+            <div>Backoffice</div>
+            <div>App</div>
             <div>Azioni</div>
           </div>
           {rows.length === 0 ? (
@@ -603,7 +641,7 @@ export default function OperatoriPage() {
                   style={{
                     display: "grid",
                     gridTemplateColumns:
-                      "minmax(180px, 1.4fr) minmax(120px, 1fr) minmax(220px, 1.6fr) 90px 110px 150px 170px 170px 180px minmax(220px, 1fr)",
+                      "minmax(180px, 1.35fr) minmax(120px, 0.9fr) minmax(220px, 1.45fr) 84px 84px 94px 94px 94px 84px minmax(220px, 1fr)",
                     padding: "10px 12px",
                     borderBottom: "1px solid #f3f4f6",
                     alignItems: "center",
@@ -632,64 +670,32 @@ export default function OperatoriPage() {
                     onChange={(e) => updateRow(idx, { email: e.target.value })}
                     style={{ width: "100%", padding: 8, minWidth: 0 }}
                   />
-                  <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <input
-                      type="checkbox"
-                      checked={row.attivo}
-                      onChange={(e) => updateRow(idx, { attivo: e.target.checked })}
-                    />
-                    {row.attivo ? "Si" : "No"}
-                  </label>
-                  <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <input
-                      type="checkbox"
-                      checked={Boolean(row.alert_enabled)}
-                      onChange={(e) =>
-                        updateRow(idx, { alert_enabled: e.target.checked })
-                      }
-                    />
-                    {row.alert_enabled ? "ON" : "OFF"}
-                  </label>
-                  <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <input
-                      type="checkbox"
-                      checked={row.riceve_notifiche !== false}
-                      onChange={(e) =>
-                        updateRow(idx, { riceve_notifiche: e.target.checked })
-                      }
-                    />
-                    {row.riceve_notifiche !== false ? "SI" : "NO"}
-                  </label>
-                  <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <input
-                      type="checkbox"
-                      checked={row.can_access_impostazioni === true}
-                      onChange={(e) =>
-                        updateRow(idx, { can_access_impostazioni: e.target.checked })
-                      }
-                    />
-                    {row.can_access_impostazioni === true ? "SI" : "NO"}
-                  </label>
-                  <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <input
-                      type="checkbox"
-                      checked={row.can_access_backoffice === true}
-                      onChange={(e) =>
-                        updateRow(idx, { can_access_backoffice: e.target.checked })
-                      }
-                    />
-                    {row.can_access_backoffice === true ? "SI" : "NO"}
-                  </label>
-                  <label style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <input
-                      type="checkbox"
-                      checked={row.can_access_operator_app !== false}
-                      onChange={(e) =>
-                        updateRow(idx, { can_access_operator_app: e.target.checked })
-                      }
-                    />
-                    {row.can_access_operator_app !== false ? "SI" : "NO"}
-                  </label>
+                  {renderBooleanCell(row.attivo, (next) => updateRow(idx, { attivo: next }), "Attivo")}
+                  {renderBooleanCell(
+                    Boolean(row.alert_enabled),
+                    (next) => updateRow(idx, { alert_enabled: next }),
+                    "Alert attivi"
+                  )}
+                  {renderBooleanCell(
+                    row.riceve_notifiche !== false,
+                    (next) => updateRow(idx, { riceve_notifiche: next }),
+                    "Riceve notifiche"
+                  )}
+                  {renderBooleanCell(
+                    row.can_access_impostazioni === true,
+                    (next) => updateRow(idx, { can_access_impostazioni: next }),
+                    "Accesso impostazioni"
+                  )}
+                  {renderBooleanCell(
+                    row.can_access_backoffice === true,
+                    (next) => updateRow(idx, { can_access_backoffice: next }),
+                    "Accesso backoffice"
+                  )}
+                  {renderBooleanCell(
+                    row.can_access_operator_app !== false,
+                    (next) => updateRow(idx, { can_access_operator_app: next }),
+                    "Accesso app operatori"
+                  )}
                   <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                     <button
                       type="button"

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import type { CSSProperties } from "react";
+import type { CSSProperties, MouseEvent } from "react";
 import LogoutButton from "@/components/LogoutButton";
 
 const dropdownTriggerStyle: CSSProperties = {
@@ -45,6 +45,13 @@ const dropdownLinkStyle: CSSProperties = {
   boxSizing: "border-box",
 };
 
+function closeDropdownOnNavigation(event: MouseEvent<HTMLElement>) {
+  const details = event.currentTarget.closest("details");
+  if (details instanceof HTMLDetailsElement) {
+    details.open = false;
+  }
+}
+
 export default function AppShellHeader() {
   const pathname = usePathname();
   const hiddenShellPaths = new Set(["/login", "/reset-password", "/auth/callback", "/operatori"]);
@@ -80,19 +87,24 @@ export default function AppShellHeader() {
           <details style={{ position: "relative" }}>
             <summary style={dropdownTriggerStyle}>Menu</summary>
             <div style={dropdownPanelStyle}>
-              <Link href="/dashboard" style={dropdownLinkStyle}>
+              <Link href="/dashboard" style={dropdownLinkStyle} onClick={closeDropdownOnNavigation}>
                 Dashboard
               </Link>
-              <Link href="/cronoprogramma" style={dropdownLinkStyle}>
+              <Link href="/cronoprogramma" style={dropdownLinkStyle} onClick={closeDropdownOnNavigation}>
                 Cronoprogramma
               </Link>
-              <Link href="/clienti-cockpit" style={dropdownLinkStyle}>
+              <Link href="/clienti-cockpit" style={dropdownLinkStyle} onClick={closeDropdownOnNavigation}>
                 Clienti
               </Link>
-              <Link href="/sim" style={dropdownLinkStyle}>
+              <Link href="/sim" style={dropdownLinkStyle} onClick={closeDropdownOnNavigation}>
                 SIM
               </Link>
-              <Link href="/operatori" style={dropdownLinkStyle} title="Accesso diretto operatori sul campo">
+              <Link
+                href="/operatori"
+                style={dropdownLinkStyle}
+                title="Accesso diretto operatori sul campo"
+                onClick={closeDropdownOnNavigation}
+              >
                 App operatori
               </Link>
             </div>
