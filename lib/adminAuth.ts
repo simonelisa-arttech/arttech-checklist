@@ -10,6 +10,9 @@ type OperatoreAuthRow = {
   attivo: boolean | null;
   email: string | null;
   nome: string | null;
+  can_access_impostazioni?: boolean | null;
+  can_access_backoffice?: boolean | null;
+  can_access_operator_app?: boolean | null;
 };
 
 type RequireAdminOk = {
@@ -33,6 +36,31 @@ type RequireAdminErr = {
 
 function unauthorized(message = "Unauthorized", status = 401): RequireAdminErr {
   return { ok: false, response: NextResponse.json({ error: message }, { status }) };
+}
+
+function normalizeEmail(value?: string | null) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function pickBestOperatoreCandidate(rows: OperatoreAuthRow[], userId: string, userEmail: string) {
+  const normalizedUserEmail = normalizeEmail(userEmail);
+  const ranked = [...rows].sort((a, b) => {
+    const score = (row: OperatoreAuthRow) => {
+      let total = 0;
+      if (row.attivo !== false) total += 1000;
+      if (normalizeEmail(row.email) === normalizedUserEmail) total += 500;
+      if (String(row.user_id || "") === userId) total += 250;
+      if (row.can_access_impostazioni === true) total += 50;
+      if (row.can_access_backoffice === true) total += 25;
+      if (row.can_access_operator_app === true) total += 10;
+      if (isAdminRole(row.ruolo)) total += 25;
+      return total;
+    };
+    const diff = score(b) - score(a);
+    if (diff !== 0) return diff;
+    return String(a.nome || "").localeCompare(String(b.nome || ""), "it", { sensitivity: "base" });
+  });
+  return ranked[0] || null;
 }
 
 export function getSiteUrl() {
@@ -73,46 +101,50 @@ async function resolveOperatoreAuth(request: Request): Promise<RequireOperatoreO
   });
   const { data: op, error: opErr } = await adminClient
     .from("operatori")
-    .select("id, user_id, ruolo, attivo, email, nome")
-    .eq("user_id", user.id)
-    .maybeSingle();
+    .select("id, user_id, ruolo, attivo, email, nome, can_access_impostazioni, can_access_backoffice, can_access_operator_app")
+    .eq("user_id", user.id);
 
   if (opErr) {
     return unauthorized(opErr.message, 500);
   }
 
-  let operatore = op as OperatoreAuthRow | null;
-  if (!operatore) {
-    const userEmail = String(user.email || "").trim().toLowerCase();
-    if (userEmail) {
-      const { data: opByEmail, error: opEmailErr } = await adminClient
-        .from("operatori")
-        .select("id, user_id, ruolo, attivo, email, nome")
-        .ilike("email", userEmail)
-        .limit(1)
-        .maybeSingle();
+  const userEmail = normalizeEmail(user.email);
+  let operatoriByEmail: OperatoreAuthRow[] = [];
+  if (userEmail) {
+    const { data: opByEmail, error: opEmailErr } = await adminClient
+      .from("operatori")
+      .select("id, user_id, ruolo, attivo, email, nome, can_access_impostazioni, can_access_backoffice, can_access_operator_app")
+      .ilike("email", userEmail);
 
-      if (opEmailErr) {
-        return unauthorized(opEmailErr.message, 500);
-      }
-      if (opByEmail) {
-        operatore = opByEmail as OperatoreAuthRow;
-        if (!opByEmail.user_id || opByEmail.user_id !== user.id) {
-          const { error: updErr } = await adminClient
-            .from("operatori")
-            .update({ user_id: user.id })
-            .eq("id", opByEmail.id);
-          if (updErr) {
-            return unauthorized(updErr.message, 500);
-          }
-          operatore = { ...(opByEmail as OperatoreAuthRow), user_id: user.id };
-        }
-      }
+    if (opEmailErr) {
+      return unauthorized(opEmailErr.message, 500);
     }
+    operatoriByEmail = (opByEmail || []) as OperatoreAuthRow[];
   }
+
+  const candidates = [...((op || []) as OperatoreAuthRow[]), ...operatoriByEmail].reduce<OperatoreAuthRow[]>(
+    (acc, row) => {
+      if (!row?.id || acc.some((item) => item.id === row.id)) return acc;
+      acc.push(row);
+      return acc;
+    },
+    []
+  );
+
+  let operatore = pickBestOperatoreCandidate(candidates, user.id, userEmail);
 
   if (!operatore) {
     return unauthorized("Operatore non associato", 403);
+  }
+  if (!operatore.user_id || operatore.user_id !== user.id) {
+    const { error: updErr } = await adminClient
+      .from("operatori")
+      .update({ user_id: user.id })
+      .eq("id", operatore.id);
+    if (updErr) {
+      return unauthorized(updErr.message, 500);
+    }
+    operatore = { ...operatore, user_id: user.id };
   }
   if (operatore.attivo === false) {
     return unauthorized("Operatore inattivo", 403);
