@@ -1166,6 +1166,7 @@ export function DashboardCockpitPage({
   const [cronoDeletingCommentId, setCronoDeletingCommentId] = useState<string | null>(null);
   const [cronoNoteHistoryKey, setCronoNoteHistoryKey] = useState<string | null>(null);
   const [cronoOperativiDraftByKey, setCronoOperativiDraftByKey] = useState<Record<string, OperativiFields>>({});
+  const [hoveredDashboardProjectId, setHoveredDashboardProjectId] = useState<string | null>(null);
   const cronoTopScrollRef = useRef<HTMLDivElement | null>(null);
   const cronoMainScrollRef = useRef<HTMLDivElement | null>(null);
   const cronoBottomScrollRef = useRef<HTMLDivElement | null>(null);
@@ -3897,13 +3898,22 @@ export function DashboardCockpitPage({
                             <th
                               key={label}
                               style={{
-                                padding: "12px 14px",
+                                padding: "14px 14px",
                                 borderBottom: "1px solid #e2e8f0",
                                 textAlign: label === "Azioni" ? "right" : "left",
                                 fontSize: 12,
                                 fontWeight: 800,
                                 color: "#475569",
                                 whiteSpace: "nowrap",
+                                ...(label === "Cliente"
+                                  ? {
+                                      position: "sticky" as const,
+                                      left: 0,
+                                      zIndex: 2,
+                                      background: "#f8fafc",
+                                      minWidth: 220,
+                                    }
+                                  : {}),
                               }}
                             >
                               {label}
@@ -3912,16 +3922,73 @@ export function DashboardCockpitPage({
                         </tr>
                       </thead>
                       <tbody>
-                        {filteredDashboardProjectRows.map((item) => {
+                        {filteredDashboardProjectRows.map((item, index) => {
                           const projectStatus = getProjectStatusBadge(item.stato_progetto);
                           const keyDate = item.data_tassativa || item.data_prevista;
+                          const isHovered = hoveredDashboardProjectId === item.id;
+                          const rowBackground = isHovered ? "#f8fafc" : index % 2 === 0 ? "#ffffff" : "#fbfdff";
                           return (
-                            <tr key={item.id} style={{ borderBottom: "1px solid #e2e8f0" }}>
-                              <td style={{ padding: "12px 14px", verticalAlign: "top", fontSize: 14, color: "#334155" }}>
-                                {item.cliente || "—"}
+                            <tr
+                              key={item.id}
+                              onMouseEnter={() => setHoveredDashboardProjectId(item.id)}
+                              onMouseLeave={() =>
+                                setHoveredDashboardProjectId((current) => (current === item.id ? null : current))
+                              }
+                              style={{
+                                borderBottom: "1px solid #dbe4ee",
+                                background: rowBackground,
+                                transition: "background-color 120ms ease",
+                              }}
+                            >
+                              <td
+                                style={{
+                                  padding: "14px 14px",
+                                  verticalAlign: "top",
+                                  fontSize: 14,
+                                  color: "#334155",
+                                  position: "sticky",
+                                  left: 0,
+                                  zIndex: 1,
+                                  background: rowBackground,
+                                  minWidth: 220,
+                                }}
+                              >
+                                <div style={{ display: "grid", gap: 4, minWidth: 0 }}>
+                                  <div
+                                    style={{
+                                      fontSize: 15,
+                                      fontWeight: 800,
+                                      color: "#0f172a",
+                                      whiteSpace: "normal",
+                                      overflowWrap: "anywhere",
+                                    }}
+                                  >
+                                    {item.cliente || "—"}
+                                  </div>
+                                  <div
+                                    style={{
+                                      fontSize: 12,
+                                      color: "#64748b",
+                                      whiteSpace: "normal",
+                                      overflowWrap: "anywhere",
+                                      lineHeight: 1.35,
+                                    }}
+                                  >
+                                    {item.nome_checklist || "—"}
+                                  </div>
+                                </div>
                               </td>
-                              <td style={{ padding: "12px 14px", verticalAlign: "top" }}>
-                                <div style={{ fontSize: 15, fontWeight: 800, color: "#0f172a" }}>
+                              <td style={{ padding: "14px 14px", verticalAlign: "top" }}>
+                                <div
+                                  style={{
+                                    fontSize: 15,
+                                    fontWeight: 800,
+                                    color: "#0f172a",
+                                    whiteSpace: "normal",
+                                    overflowWrap: "anywhere",
+                                    lineHeight: 1.35,
+                                  }}
+                                >
                                   {item.nome_checklist || "—"}
                                 </div>
                                 <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 6 }}>
@@ -3937,16 +4004,16 @@ export function DashboardCockpitPage({
                                   ) : null}
                                 </div>
                               </td>
-                              <td style={{ padding: "12px 14px", verticalAlign: "top", fontSize: 14, color: "#334155" }}>
+                              <td style={{ padding: "14px 14px", verticalAlign: "top", fontSize: 14, color: "#334155" }}>
                                 {item.proforma || "—"}
                               </td>
-                              <td style={{ padding: "12px 14px", verticalAlign: "top", fontSize: 14, color: "#334155" }}>
+                              <td style={{ padding: "14px 14px", verticalAlign: "top", fontSize: 14, color: "#334155" }}>
                                 {item.po || "—"}
                               </td>
-                              <td style={{ padding: "12px 14px", verticalAlign: "top", fontSize: 14, color: "#334155", whiteSpace: "nowrap" }}>
+                              <td style={{ padding: "14px 14px", verticalAlign: "top", fontSize: 14, color: "#334155", whiteSpace: "nowrap" }}>
                                 {keyDate ? new Date(keyDate).toLocaleDateString("it-IT") : "—"}
                               </td>
-                              <td style={{ padding: "12px 14px", verticalAlign: "top" }}>
+                              <td style={{ padding: "14px 14px", verticalAlign: "top" }}>
                                 <span
                                   style={{
                                     padding: "5px 10px",
@@ -3962,7 +4029,7 @@ export function DashboardCockpitPage({
                                   {projectStatus.label}
                                 </span>
                               </td>
-                              <td style={{ padding: "12px 14px", verticalAlign: "top" }}>
+                              <td style={{ padding: "14px 14px", verticalAlign: "top" }}>
                                 <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                                   {item.deadlineFlags.licenza === "SCADUTA" ? (
                                     <span style={{ padding: "4px 8px", borderRadius: 999, background: DASHBOARD_BADGE_COLORS.statusExpired.background, border: `1px solid ${DASHBOARD_BADGE_COLORS.statusExpired.border}`, color: DASHBOARD_BADGE_COLORS.statusExpired.color, fontWeight: 800, fontSize: 12 }}>
@@ -3987,7 +4054,7 @@ export function DashboardCockpitPage({
                                   ) : null}
                                 </div>
                               </td>
-                              <td style={{ padding: "12px 14px", verticalAlign: "top", textAlign: "right" }}>
+                              <td style={{ padding: "14px 14px", verticalAlign: "top", textAlign: "right" }}>
                                 <div style={{ display: "inline-flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end" }}>
                                   <Link
                                     href={`/checklists/${item.id}`}
