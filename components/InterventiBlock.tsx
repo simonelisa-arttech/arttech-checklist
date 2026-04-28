@@ -590,6 +590,7 @@ export default function InterventiBlock({
   const topScrollbarRef = useRef<HTMLDivElement | null>(null);
   const tableScrollRef = useRef<HTMLDivElement | null>(null);
   const [topScrollbarWidth, setTopScrollbarWidth] = useState(1410);
+  const [hoveredInterventoId, setHoveredInterventoId] = useState<string | null>(null);
   const [newLinkTitle, setNewLinkTitle] = useState("");
   const [newLinkUrl, setNewLinkUrl] = useState("");
   const [newReferenteId, setNewReferenteId] = useState("");
@@ -1206,7 +1207,7 @@ export default function InterventiBlock({
                   display: "grid",
                   gridTemplateColumns: INTERVENTI_TABLE_GRID,
                   columnGap: 8,
-                  padding: "6px 8px",
+                  padding: "8px 8px",
                   fontWeight: 800,
                   background: "#fafafa",
                   borderBottom: "1px solid #eee",
@@ -1215,35 +1216,67 @@ export default function InterventiBlock({
                   tableLayout: "fixed",
                 }}
               >
-                <div>Ticket / data</div>
+                <div
+                  style={{
+                    position: "sticky",
+                    left: 0,
+                    zIndex: 2,
+                    background: "#fafafa",
+                    paddingRight: 8,
+                  }}
+                >
+                  Ticket / data
+                </div>
                 <div style={{ whiteSpace: "nowrap" }}>Tipo</div>
                 <div style={{ whiteSpace: "nowrap" }}>Stato</div>
                 <div style={{ whiteSpace: "nowrap" }}>Proforma / codice</div>
                 <div style={{ whiteSpace: "nowrap" }}>Fatturazione</div>
                 <div style={{ whiteSpace: "nowrap" }}>AZIONI</div>
               </div>
-              {interventi.map((row) => {
+              {interventi.map((row, index) => {
                 const expanded = expandedInterventoId === row.id;
                 const editing = editInterventoId === row.id;
                 const stato = getInterventoStato(row);
                 const checklistMeta = getChecklistMeta(row, checklists);
+                const isHovered = hoveredInterventoId === row.id;
+                const rowBackground = isHovered ? "#f8fafc" : index % 2 === 0 ? "#ffffff" : "#fbfdff";
                 return (
-                  <div key={row.id} style={{ borderBottom: "1px solid #f3f4f6" }}>
+                  <div
+                    key={row.id}
+                    onMouseEnter={() => setHoveredInterventoId(row.id)}
+                    onMouseLeave={() => setHoveredInterventoId((current) => (current === row.id ? null : current))}
+                    style={{
+                      borderBottom: "1px solid #e2e8f0",
+                      background: rowBackground,
+                      transition: "background-color 120ms ease",
+                    }}
+                  >
                     <div
                       style={{
                         display: "grid",
                         gridTemplateColumns: INTERVENTI_TABLE_GRID,
                         columnGap: 8,
-                        padding: "6px 8px",
+                        padding: "9px 8px",
                         alignItems: "center",
                         fontSize: 12,
                         minWidth: INTERVENTI_TABLE_MIN_WIDTH,
                         tableLayout: "fixed",
                       }}
                     >
-                      <div style={{ display: "grid", gap: 4, minWidth: 0 }}>
+                      <div
+                        style={{
+                          display: "grid",
+                          gap: 5,
+                          minWidth: 0,
+                          position: "sticky",
+                          left: 0,
+                          zIndex: 1,
+                          background: rowBackground,
+                          paddingRight: 8,
+                        }}
+                      >
                         <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
-                          <span style={{ fontWeight: 700 }}>{row.ticket_no || "—"}</span>
+                          <span style={{ fontWeight: 800, color: "#0f172a" }}>{row.ticket_no || "—"}</span>
                           <span style={{ fontSize: 11, color: "#64748b" }}>
                             {row.data ? new Date(row.data).toLocaleDateString("it-IT") : "—"}
                           </span>
@@ -1253,7 +1286,8 @@ export default function InterventiBlock({
                             whiteSpace: "nowrap",
                             overflow: "hidden",
                             textOverflow: "ellipsis",
-                            fontWeight: 600,
+                            fontWeight: 700,
+                            color: "#1e293b",
                           }}
                           title={checklistMeta.nome || undefined}
                         >
