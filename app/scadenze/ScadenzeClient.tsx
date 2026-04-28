@@ -263,6 +263,7 @@ export default function ScadenzeClient() {
   const [error, setError] = useState<string | null>(null);
   const [scadenzaSort, setScadenzaSort] = useState<SortDirection>("asc");
   const [summaryFilter, setSummaryFilter] = useState<SummaryFilter>("all");
+  const [hoveredRowId, setHoveredRowId] = useState<string | null>(null);
 
   useEffect(() => {
     const nextFilters = buildFiltersFromSearchParams(searchParams);
@@ -646,22 +647,19 @@ export default function ScadenzeClient() {
           background: "white",
         }}
       >
-        <table style={{ width: "100%", minWidth: 1360, borderCollapse: "collapse", tableLayout: "fixed" }}>
+        <table style={{ width: "100%", minWidth: 980, borderCollapse: "collapse", tableLayout: "fixed" }}>
           <colgroup>
-            <col style={{ width: "9%" }} />
-            <col style={{ width: "11%" }} />
-            <col style={{ width: "16%" }} />
-            <col style={{ width: "16%" }} />
-            <col style={{ width: "10%" }} />
-            <col style={{ width: "20%" }} />
-            <col style={{ width: "12%" }} />
+            <col style={{ width: "17%" }} />
+            <col style={{ width: "29%" }} />
+            <col style={{ width: "22%" }} />
+            <col style={{ width: "14%" }} />
             <col style={{ width: "18%" }} />
           </colgroup>
           <thead>
             <tr style={{ textAlign: "left", fontSize: 12, opacity: 0.7 }}>
               <th
                 aria-sort={scadenzaSort === "asc" ? "ascending" : "descending"}
-                style={{ padding: "10px 12px" }}
+                style={{ padding: "12px 12px" }}
               >
                 <button
                   type="button"
@@ -680,49 +678,116 @@ export default function ScadenzeClient() {
                   Scadenza {scadenzaSort === "asc" ? "↑" : "↓"}
                 </button>
               </th>
-              <th style={{ padding: "10px 12px" }}>Giorni</th>
-              <th style={{ padding: "10px 12px" }}>Cliente</th>
-              <th style={{ padding: "10px 12px" }}>Progetto</th>
-              <th style={{ padding: "10px 12px" }}>Tipo</th>
-              <th style={{ padding: "10px 12px" }}>Riferimento</th>
-              <th style={{ padding: "10px 12px" }}>Stato workflow</th>
-              <th style={{ padding: "10px 12px" }}>Azioni</th>
+              <th
+                style={{
+                  padding: "12px 12px",
+                  position: "sticky",
+                  left: 0,
+                  zIndex: 2,
+                  background: "#fff",
+                }}
+              >
+                Cliente / progetto
+              </th>
+              <th style={{ padding: "12px 12px" }}>Tipo scadenza</th>
+              <th style={{ padding: "12px 12px" }}>Stato</th>
+              <th style={{ padding: "12px 12px" }}>Azioni</th>
             </tr>
           </thead>
           <tbody>
             {!loading && visibleRows.length === 0 && (
               <tr>
-                <td colSpan={8} style={{ padding: 16, textAlign: "center" }}>
+                <td colSpan={5} style={{ padding: 16, textAlign: "center" }}>
                   Nessuna scadenza trovata
                 </td>
               </tr>
             )}
-            {visibleRows.map((row) => (
+            {visibleRows.map((row, index) => {
+              const urgencyStyle = getScadenzaRowStyle(row.scadenza);
+              const isHovered = hoveredRowId === row.id;
+              const baseBackground = urgencyStyle.background || (index % 2 === 0 ? "#ffffff" : "#fbfdff");
+              const rowBackground = isHovered
+                ? urgencyStyle.background && urgencyStyle.background !== "white"
+                  ? urgencyStyle.background
+                  : "#f8fafc"
+                : baseBackground;
+              return (
               <tr
                 key={row.id}
+                onMouseEnter={() => setHoveredRowId(row.id)}
+                onMouseLeave={() => setHoveredRowId((current) => (current === row.id ? null : current))}
                 style={{
-                  borderTop: "1px solid #f1f1f1",
-                  ...getScadenzaRowStyle(row.scadenza),
+                  borderTop: "1px solid #dbe4ee",
+                  background: rowBackground,
+                  transition: "background-color 120ms ease",
                 }}
               >
-                <td style={{ padding: "10px 12px", verticalAlign: "top" }}>{formatDate(row.scadenza)}</td>
-                <td style={{ padding: "10px 12px", verticalAlign: "top", fontWeight: 600 }}>
-                  {renderDiffDays(row.scadenza)}
+                <td style={{ padding: "12px 12px", verticalAlign: "top" }}>
+                  <div style={{ display: "grid", gap: 4 }}>
+                    <div style={{ fontWeight: 700, color: "#0f172a", whiteSpace: "nowrap" }}>
+                      {formatDate(row.scadenza)}
+                    </div>
+                    <div style={{ fontSize: 12, color: "#64748b", fontWeight: 600 }}>{renderDiffDays(row.scadenza)}</div>
+                  </div>
                 </td>
-                <td style={{ padding: "10px 12px", verticalAlign: "top", wordBreak: "break-word" }}>
-                  {row.cliente || "—"}
+                <td
+                  style={{
+                    padding: "12px 12px",
+                    verticalAlign: "top",
+                    position: "sticky",
+                    left: 0,
+                    zIndex: 1,
+                    background: rowBackground,
+                    minWidth: 220,
+                  }}
+                >
+                  <div style={{ display: "grid", gap: 4, minWidth: 0 }}>
+                    <div
+                      style={{
+                        fontSize: 14,
+                        fontWeight: 800,
+                        color: "#0f172a",
+                        whiteSpace: "normal",
+                        overflowWrap: "anywhere",
+                        lineHeight: 1.35,
+                      }}
+                    >
+                      {row.cliente || "—"}
+                    </div>
+                    <div
+                      style={{
+                        fontSize: 12,
+                        color: "#64748b",
+                        whiteSpace: "normal",
+                        overflowWrap: "anywhere",
+                        lineHeight: 1.35,
+                      }}
+                    >
+                      {row.progetto || "—"}
+                    </div>
+                  </div>
                 </td>
-                <td style={{ padding: "10px 12px", verticalAlign: "top", wordBreak: "break-word" }}>
-                  {row.progetto || "—"}
+                <td style={{ padding: "12px 12px", verticalAlign: "top", minWidth: 0 }}>
+                  <div style={{ display: "grid", gap: 6, minWidth: 0 }}>
+                    <div>{renderTipoBadge(row.tipo)}</div>
+                    <div
+                      style={{
+                        fontSize: 12,
+                        color: "#475569",
+                        whiteSpace: "normal",
+                        overflowWrap: "anywhere",
+                        lineHeight: 1.35,
+                      }}
+                    >
+                      <span style={{ fontWeight: 600 }}>Rif:</span> {row.riferimento || "—"}
+                    </div>
+                  </div>
                 </td>
-                <td style={{ padding: "10px 12px", verticalAlign: "top" }}>{renderTipoBadge(row.tipo)}</td>
-                <td style={{ padding: "10px 12px", verticalAlign: "top", wordBreak: "break-word" }}>
-                  {row.riferimento || "—"}
-                </td>
-                <td style={{ padding: "10px 12px", verticalAlign: "top" }}>
+                <td style={{ padding: "12px 12px", verticalAlign: "top" }}>
                   {renderWorkflowBadge(row.workflow_stato)}
                 </td>
-                <td style={{ padding: "10px 12px", verticalAlign: "top", whiteSpace: "nowrap" }}>
+                <td style={{ padding: "12px 12px", verticalAlign: "top" }}>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                   {row.cliente ? (
                     <Link
                       href={`/clienti/${encodeURIComponent(row.cliente)}`}
@@ -734,6 +799,7 @@ export default function ScadenzeClient() {
                         background: "white",
                         textDecoration: "none",
                         color: "inherit",
+                        whiteSpace: "nowrap",
                       }}
                     >
                       Apri cliente
@@ -751,14 +817,16 @@ export default function ScadenzeClient() {
                         background: "white",
                         textDecoration: "none",
                         color: "inherit",
+                        whiteSpace: "nowrap",
                       }}
                     >
                       Apri progetto
                     </Link>
                   ) : null}
+                  </div>
                 </td>
               </tr>
-            ))}
+            )})}
           </tbody>
         </table>
       </div>
