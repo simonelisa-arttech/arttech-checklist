@@ -38,7 +38,7 @@ type CatalogItem = {
   attivo: boolean;
 };
 
-type PersonaleInternoOption = {
+type ReferenteArtTechOption = {
   id: string;
   nome: string;
 };
@@ -184,7 +184,7 @@ export default function NuovaChecklistPage() {
   const router = useRouter();
   const [catalogItems, setCatalogItems] = useState<CatalogItem[]>([]);
   const [deviceCatalogItems, setDeviceCatalogItems] = useState<CatalogItem[]>([]);
-  const [personaleInternoOptions, setPersonaleInternoOptions] = useState<PersonaleInternoOption[]>([]);
+  const [referenteArtTechOptions, setReferenteArtTechOptions] = useState<ReferenteArtTechOption[]>([]);
   const [currentOperatoreId, setCurrentOperatoreId] = useState<string>("");
 
   // campi testata
@@ -267,8 +267,8 @@ export default function NuovaChecklistPage() {
   }, [cliente, nomeChecklist, referenteArtTechId]);
   const referenteArtTechNome = useMemo(
     () =>
-      personaleInternoOptions.find((option) => option.id === referenteArtTechId)?.nome || "",
-    [personaleInternoOptions, referenteArtTechId]
+      referenteArtTechOptions.find((option) => option.id === referenteArtTechId)?.nome || "",
+    [referenteArtTechOptions, referenteArtTechId]
   );
   const m2Calcolati = useMemo(
     () => {
@@ -338,7 +338,7 @@ export default function NuovaChecklistPage() {
 
   useEffect(() => {
     (async () => {
-      const [catalogRes, deviceRes, personaleRes] = await Promise.all([
+      const [catalogRes, deviceRes, operatoriRes] = await Promise.all([
         dbFrom("catalog_items")
           .select("id, codice, descrizione, tipo, categoria, attivo")
           .eq("attivo", true)
@@ -348,12 +348,7 @@ export default function NuovaChecklistPage() {
           .eq("attivo", true)
           .ilike("codice", "EL-%")
           .order("descrizione", { ascending: true }),
-        dbFrom("personale")
-          .select("id,nome,cognome,tipo,attivo")
-          .eq("attivo", true)
-          .eq("tipo", "INTERNO")
-          .order("cognome", { ascending: true })
-          .order("nome", { ascending: true }),
+        fetch("/api/operatori", { credentials: "include" }),
       ]);
 
       if (catalogRes.error) {
@@ -366,21 +361,20 @@ export default function NuovaChecklistPage() {
       } else {
         setDeviceCatalogItems((((deviceRes.data as any[]) || []) as CatalogItem[]));
       }
-      if (personaleRes.error) {
-        console.error("Errore caricamento personale interno", personaleRes.error);
+      if (!operatoriRes.ok) {
+        console.error("Errore caricamento operatori per referente Art Tech", await operatoriRes.text());
       } else {
-        setPersonaleInternoOptions(
-          ((((personaleRes.data as any[]) || []) as Array<Record<string, any>>)
+        const payload = await operatoriRes.json().catch(() => ({}));
+        setReferenteArtTechOptions(
+          (((payload?.data as any[]) || []) as Array<Record<string, any>>)
+            .filter((row) => row?.attivo === true)
             .map((row) => {
               const id = String(row.id || "").trim();
-              const nome = [String(row.nome || "").trim(), String(row.cognome || "").trim()]
-                .filter(Boolean)
-                .join(" ")
-                .trim();
+              const nome = String(row.nome || "").trim();
               if (!id || !nome) return null;
               return { id, nome };
             })
-            .filter(Boolean) as PersonaleInternoOption[])
+            .filter(Boolean) as ReferenteArtTechOption[]
         );
       }
     })();
@@ -948,7 +942,7 @@ export default function NuovaChecklistPage() {
               style={{ width: "100%", padding: 10 }}
             >
               <option value="">Seleziona il referente Art Tech</option>
-              {personaleInternoOptions.map((option) => (
+              {referenteArtTechOptions.map((option) => (
                 <option key={option.id} value={option.id}>
                   {option.nome}
                 </option>

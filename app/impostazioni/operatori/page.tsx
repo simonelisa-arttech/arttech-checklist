@@ -37,6 +37,9 @@ const RUOLI = [
   "AMMINISTRAZIONE",
 ];
 
+const OPERATORI_GRID_COLUMNS =
+  "minmax(180px, 1.35fr) minmax(120px, 0.9fr) minmax(220px, 1.45fr) 84px 84px 94px 94px 94px 84px minmax(220px, 1fr)";
+
 const compactBooleanBadgeStyle = (enabled: boolean) =>
   ({
     display: "inline-flex",
@@ -612,13 +615,14 @@ export default function OperatoriPage() {
           <div
             style={{
               display: "grid",
-              gridTemplateColumns:
-                "minmax(180px, 1.35fr) minmax(120px, 0.9fr) minmax(220px, 1.45fr) 84px 84px 94px 94px 94px 84px minmax(220px, 1fr)",
+              gridTemplateColumns: OPERATORI_GRID_COLUMNS,
               padding: "10px 12px",
               fontWeight: 700,
               background: "#fafafa",
               borderBottom: "1px solid #eee",
               fontSize: 13,
+              gap: 8,
+              alignItems: "center",
             }}
           >
             <div>Nome</div>
@@ -640,8 +644,7 @@ export default function OperatoriPage() {
                 <div
                   style={{
                     display: "grid",
-                    gridTemplateColumns:
-                      "minmax(180px, 1.35fr) minmax(120px, 0.9fr) minmax(220px, 1.45fr) 84px 84px 94px 94px 94px 84px minmax(220px, 1fr)",
+                    gridTemplateColumns: OPERATORI_GRID_COLUMNS,
                     padding: "10px 12px",
                     borderBottom: "1px solid #f3f4f6",
                     alignItems: "center",

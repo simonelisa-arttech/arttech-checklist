@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import ConfigMancante from "@/components/ConfigMancante";
@@ -387,6 +388,7 @@ export default function OperatoreAttivitaPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [operatoreLabel, setOperatoreLabel] = useState<string>("");
+  const [canReturnToDashboard, setCanReturnToDashboard] = useState(false);
   const [personaleId, setPersonaleId] = useState<string | null>(null);
   const [monthlyWorkedMinutes, setMonthlyWorkedMinutes] = useState<number>(0);
   const [rows, setRows] = useState<TimelineRow[]>([]);
@@ -423,6 +425,13 @@ export default function OperatoreAttivitaPage() {
         if (!meRes.ok || !meData?.operatore?.id) {
           throw new Error(String(meData?.error || "Operatore non autenticato"));
         }
+        const ruolo = String(meData?.operatore?.ruolo || "").trim().toUpperCase();
+        setCanReturnToDashboard(
+          meData?.operatore?.can_access_backoffice === true ||
+            meData?.operatore?.can_access_impostazioni === true ||
+            ruolo === "ADMIN" ||
+            ruolo === "AMMINISTRAZIONE"
+        );
         if (meData?.operatore?.can_access_operator_app === false) {
           if (!active) return;
           setPersonaleId(null);
@@ -883,31 +892,53 @@ export default function OperatoreAttivitaPage() {
         style={{
           display: "flex",
           alignItems: "center",
+          justifyContent: "space-between",
           gap: 12,
           marginBottom: 18,
+          flexWrap: "wrap",
         }}
       >
-        <img
-          src="/at-logo.png"
-          alt="ART TECH"
-          style={{ height: 38, width: "auto", objectFit: "contain", flexShrink: 0 }}
-        />
-        <div style={{ display: "grid", gap: 2 }}>
-          <div
-            style={{
-              fontSize: 11,
-              fontWeight: 800,
-              letterSpacing: 0.5,
-              color: "#64748b",
-              textTransform: "uppercase",
-            }}
-          >
-            Art Tech
-          </div>
-          <div style={{ fontSize: 20, fontWeight: 900, color: "#0f172a", lineHeight: 1.05 }}>
-            APP OPERATORI
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <img
+            src="/at-logo.png"
+            alt="ART TECH"
+            style={{ height: 38, width: "auto", objectFit: "contain", flexShrink: 0 }}
+          />
+          <div style={{ display: "grid", gap: 2 }}>
+            <div
+              style={{
+                fontSize: 11,
+                fontWeight: 800,
+                letterSpacing: 0.5,
+                color: "#64748b",
+                textTransform: "uppercase",
+              }}
+            >
+              Art Tech
+            </div>
+            <div style={{ fontSize: 20, fontWeight: 900, color: "#0f172a", lineHeight: 1.05 }}>
+              APP OPERATORI
+            </div>
           </div>
         </div>
+        {canReturnToDashboard ? (
+          <Link
+            href="/"
+            style={{
+              padding: "8px 12px",
+              borderRadius: 10,
+              border: "1px solid #cbd5e1",
+              background: "white",
+              color: "#0f172a",
+              textDecoration: "none",
+              fontSize: 13,
+              fontWeight: 700,
+              whiteSpace: "nowrap",
+            }}
+          >
+            Torna alla dashboard
+          </Link>
+        ) : null}
       </div>
       <div style={{ display: "grid", gap: 14, marginBottom: 18 }}>
         <div>
