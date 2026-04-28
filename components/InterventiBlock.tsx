@@ -167,6 +167,9 @@ const FATTURAZIONE_MENU_OPTIONS = [
 ];
 
 const MODALITA_ATTIVITA_OPTIONS = ["ONSITE", "REMOTO"] as const;
+const INTERVENTI_TABLE_GRID =
+  "minmax(250px,1.8fr) 92px 100px minmax(170px,1fr) 130px minmax(240px,1.2fr)";
+const INTERVENTI_TABLE_MIN_WIDTH = 980;
 
 function renderInterventoBadge(label: "INCLUSO" | "EXTRA") {
   const bg = label === "INCLUSO" ? "#dcfce7" : "#fee2e2";
@@ -719,7 +722,7 @@ export default function InterventiBlock({
     if (!tableEl) return;
 
     const syncWidth = () => {
-      setTopScrollbarWidth(Math.max(tableEl.scrollWidth, 1410));
+      setTopScrollbarWidth(Math.max(tableEl.scrollWidth, INTERVENTI_TABLE_MIN_WIDTH));
     };
 
     syncWidth();
@@ -1201,26 +1204,21 @@ export default function InterventiBlock({
               <div
                 style={{
                   display: "grid",
-                  gridTemplateColumns:
-                    "90px minmax(180px,1fr) minmax(240px,1.5fr) 110px 90px 120px 150px 150px 130px 150px",
+                  gridTemplateColumns: INTERVENTI_TABLE_GRID,
                   columnGap: 8,
                   padding: "6px 8px",
                   fontWeight: 800,
                   background: "#fafafa",
                   borderBottom: "1px solid #eee",
                   fontSize: 12,
-                  minWidth: 1410,
+                  minWidth: INTERVENTI_TABLE_MIN_WIDTH,
                   tableLayout: "fixed",
                 }}
               >
-                <div style={{ whiteSpace: "nowrap" }}>Data</div>
-                <div style={{ whiteSpace: "nowrap" }}>PROGETTO</div>
-                <div>Descrizione</div>
-                <div style={{ whiteSpace: "nowrap" }}>Ticket n°</div>
+                <div>Ticket / data</div>
                 <div style={{ whiteSpace: "nowrap" }}>Tipo</div>
                 <div style={{ whiteSpace: "nowrap" }}>Stato</div>
-                <div style={{ whiteSpace: "nowrap" }}>Proforma</div>
-                <div style={{ whiteSpace: "nowrap" }}>Codice</div>
+                <div style={{ whiteSpace: "nowrap" }}>Proforma / codice</div>
                 <div style={{ whiteSpace: "nowrap" }}>Fatturazione</div>
                 <div style={{ whiteSpace: "nowrap" }}>AZIONI</div>
               </div>
@@ -1234,46 +1232,68 @@ export default function InterventiBlock({
                     <div
                       style={{
                         display: "grid",
-                        gridTemplateColumns:
-                          "90px minmax(180px,1fr) minmax(240px,1.5fr) 110px 90px 120px 150px 150px 130px 150px",
+                        gridTemplateColumns: INTERVENTI_TABLE_GRID,
                         columnGap: 8,
                         padding: "6px 8px",
                         alignItems: "center",
                         fontSize: 12,
-                        minWidth: 1410,
+                        minWidth: INTERVENTI_TABLE_MIN_WIDTH,
                         tableLayout: "fixed",
                       }}
                     >
-                      <div style={{ whiteSpace: "nowrap" }}>
-                        {row.data ? new Date(row.data).toLocaleDateString("it-IT") : "—"}
+                      <div style={{ display: "grid", gap: 4, minWidth: 0 }}>
+                        <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+                          <span style={{ fontWeight: 700 }}>{row.ticket_no || "—"}</span>
+                          <span style={{ fontSize: 11, color: "#64748b" }}>
+                            {row.data ? new Date(row.data).toLocaleDateString("it-IT") : "—"}
+                          </span>
+                        </div>
+                        <div
+                          style={{
+                            whiteSpace: "nowrap",
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            fontWeight: 600,
+                          }}
+                          title={checklistMeta.nome || undefined}
+                        >
+                          {checklistMeta.nome
+                            ? checklistMeta.nome
+                            : checklistMeta.id
+                              ? String(checklistMeta.id).slice(0, 8)
+                              : "—"}
+                        </div>
+                        <div
+                          style={{
+                            whiteSpace: "normal",
+                            overflowWrap: "anywhere",
+                            color: "#475569",
+                            fontSize: 11,
+                            lineHeight: 1.35,
+                          }}
+                        >
+                          {row.descrizione || "—"}
+                        </div>
                       </div>
-                      <div style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                        {checklistMeta.nome ? checklistMeta.nome : checklistMeta.id ? String(checklistMeta.id).slice(0, 8) : "—"}
-                      </div>
-                      <div style={{ display: "grid", gap: 6 }}>
-                        <div style={{ whiteSpace: "normal", overflowWrap: "anywhere" }}>{row.descrizione || "—"}</div>
-                        <OperativeNotesPanel
-                          compact
-                          title="Note operative"
-                          items={[
-                            {
-                              rowKind: "INTERVENTO",
-                              rowRefId: row.id,
-                              label: "Intervento",
-                            },
-                          ]}
-                        />
-                      </div>
-                      <div style={{ whiteSpace: "nowrap" }}>{row.ticket_no || "—"}</div>
                       <div style={{ display: "flex", flexDirection: "column", gap: 6, alignItems: "flex-start" }}>
                         {renderInterventoBadge(row.incluso ? "INCLUSO" : "EXTRA")}
                       </div>
                       <div style={{ whiteSpace: "nowrap" }}>{renderStatoInterventoBadge(stato)}</div>
-                      <div style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                        {row.proforma || checklistMeta.proforma || "—"}
-                      </div>
-                      <div style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                        {row.codice_magazzino || checklistMeta.codMag || "—"}
+                      <div style={{ display: "grid", gap: 4, minWidth: 0 }}>
+                        <div
+                          style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}
+                          title={row.proforma || checklistMeta.proforma || undefined}
+                        >
+                          <span style={{ fontSize: 11, color: "#64748b" }}>PF:</span>{" "}
+                          {row.proforma || checklistMeta.proforma || "—"}
+                        </div>
+                        <div
+                          style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}
+                          title={row.codice_magazzino || checklistMeta.codMag || undefined}
+                        >
+                          <span style={{ fontSize: 11, color: "#64748b" }}>COD:</span>{" "}
+                          {row.codice_magazzino || checklistMeta.codMag || "—"}
+                        </div>
                       </div>
                       <div style={{ display: "flex", flexDirection: "column", gap: 6, whiteSpace: "nowrap" }}>
                         {getEsitoFatturazione(row) ? (
@@ -1290,10 +1310,9 @@ export default function InterventiBlock({
                       <div
                         style={{
                           display: "flex",
-                          flexDirection: "column",
+                          flexWrap: "wrap",
                           gap: 6,
-                          alignItems: "stretch",
-                          whiteSpace: "nowrap",
+                          alignItems: "center",
                           minWidth: 0,
                         }}
                       >
@@ -1306,8 +1325,7 @@ export default function InterventiBlock({
                             border: "1px solid #d1d5db",
                             background: "#f8fafc",
                             cursor: "pointer",
-                            width: "100%",
-                            whiteSpace: "nowrap",
+                            minWidth: 0,
                             fontSize: 12,
                           }}
                           title="Apri allegati intervento"
@@ -1323,8 +1341,7 @@ export default function InterventiBlock({
                             border: "1px solid #ddd",
                             background: "white",
                             cursor: "pointer",
-                            width: "100%",
-                            whiteSpace: "nowrap",
+                            minWidth: 0,
                             fontSize: 12,
                           }}
                         >
@@ -1345,8 +1362,7 @@ export default function InterventiBlock({
                               border: "1px solid #111",
                               background: "white",
                               cursor: "pointer",
-                              width: "100%",
-                              whiteSpace: "nowrap",
+                              minWidth: 0,
                               fontSize: 12,
                             }}
                           >
@@ -1363,8 +1379,7 @@ export default function InterventiBlock({
                               border: "1px solid #111",
                               background: "white",
                               cursor: "pointer",
-                              width: "100%",
-                              whiteSpace: "nowrap",
+                              minWidth: 0,
                               fontSize: 12,
                             }}
                           >
@@ -1380,8 +1395,7 @@ export default function InterventiBlock({
                             border: "1px solid #ddd",
                             background: "white",
                             cursor: "pointer",
-                            width: "100%",
-                            whiteSpace: "nowrap",
+                            minWidth: 0,
                             fontSize: 12,
                           }}
                         >
@@ -1396,8 +1410,7 @@ export default function InterventiBlock({
                             border: "1px solid #ddd",
                             background: "white",
                             cursor: "pointer",
-                            width: "100%",
-                            whiteSpace: "nowrap",
+                            minWidth: 0,
                             fontSize: 12,
                           }}
                         >
@@ -1704,6 +1717,33 @@ export default function InterventiBlock({
                     >
                       Chiudi
                     </button>
+                  </div>
+                  <div style={{ marginTop: 12 }}>
+                    <div
+                      style={{
+                        display: "grid",
+                        gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+                        gap: 10,
+                        fontSize: 13,
+                      }}
+                    >
+                      <div>
+                        <div style={{ fontWeight: 700, marginBottom: 4 }}>Ticket</div>
+                        <div>{row.ticket_no || "—"}</div>
+                      </div>
+                      <div>
+                        <div style={{ fontWeight: 700, marginBottom: 4 }}>Tipo</div>
+                        <div>{row.incluso ? "INCLUSO" : "EXTRA"}</div>
+                      </div>
+                      <div>
+                        <div style={{ fontWeight: 700, marginBottom: 4 }}>Proforma</div>
+                        <div>{row.proforma || checklistMeta.proforma || "—"}</div>
+                      </div>
+                      <div>
+                        <div style={{ fontWeight: 700, marginBottom: 4 }}>Codice</div>
+                        <div>{row.codice_magazzino || checklistMeta.codMag || "—"}</div>
+                      </div>
+                    </div>
                   </div>
                   <div style={{ marginTop: 12 }}>
                     <div style={{ fontWeight: 700, marginBottom: 6 }}>Descrizione</div>
