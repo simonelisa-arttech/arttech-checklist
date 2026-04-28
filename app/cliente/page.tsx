@@ -8,6 +8,8 @@ type ClienteMe = {
   cliente_id: string;
   email: string;
   attivo: boolean;
+  impersonation?: boolean;
+  impersonated_by_operatore_id?: string | null;
 };
 
 type ClienteProgetto = {
@@ -97,13 +99,26 @@ export default function ClientePortalPage() {
   const [scadenze, setScadenze] = useState<ClienteScadenza[]>([]);
   const [documenti, setDocumenti] = useState<ClienteDocumento[]>([]);
   const [openingDocumentId, setOpeningDocumentId] = useState<string | null>(null);
+  const [impersonationToken, setImpersonationToken] = useState("");
+  const clienteApiSuffix = impersonationToken
+    ? `?impersonation_token=${encodeURIComponent(impersonationToken)}`
+    : "";
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const token = new URLSearchParams(window.location.search).get("impersonation_token");
+    setImpersonationToken(String(token || "").trim());
+  }, []);
 
   async function openDocumento(documentId: string) {
     try {
       setOpeningDocumentId(documentId);
-      const res = await fetch(`/api/cliente/documenti/${encodeURIComponent(documentId)}/download`, {
-        credentials: "include",
-      });
+      const res = await fetch(
+        `/api/cliente/documenti/${encodeURIComponent(documentId)}/download${clienteApiSuffix}`,
+        {
+          credentials: "include",
+        }
+      );
       const data = await res.json().catch(() => ({}));
       if (!res.ok || !data?.url) {
         throw new Error(String(data?.error || "Errore apertura documento"));
@@ -125,10 +140,10 @@ export default function ClientePortalPage() {
         setError(null);
 
         const [meRes, progettiRes, scadenzeRes, documentiRes] = await Promise.all([
-          fetch("/api/cliente/me", { credentials: "include" }),
-          fetch("/api/cliente/progetti", { credentials: "include" }),
-          fetch("/api/cliente/scadenze", { credentials: "include" }),
-          fetch("/api/cliente/documenti", { credentials: "include" }),
+          fetch(`/api/cliente/me${clienteApiSuffix}`, { credentials: "include" }),
+          fetch(`/api/cliente/progetti${clienteApiSuffix}`, { credentials: "include" }),
+          fetch(`/api/cliente/scadenze${clienteApiSuffix}`, { credentials: "include" }),
+          fetch(`/api/cliente/documenti${clienteApiSuffix}`, { credentials: "include" }),
         ]);
 
         const [meData, progettiData, scadenzeData, documentiData] = await Promise.all([
@@ -153,7 +168,16 @@ export default function ClientePortalPage() {
 
         if (!active) return;
 
-        setMe((meData?.cliente as ClienteMe) || null);
+        setMe(
+          meData?.cliente
+            ? ({
+                ...(meData.cliente as ClienteMe),
+                impersonation: meData?.impersonation === true,
+                impersonated_by_operatore_id:
+                  String(meData?.impersonated_by_operatore_id || "").trim() || null,
+              } as ClienteMe)
+            : null
+        );
         setProgetti(((progettiData?.progetti as ClienteProgetto[]) || []).filter(Boolean));
         setScadenze(((scadenzeData?.scadenze as ClienteScadenza[]) || []).filter(Boolean));
         setDocumenti(((documentiData?.documenti as ClienteDocumento[]) || []).filter(Boolean));
@@ -168,7 +192,7 @@ export default function ClientePortalPage() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [clienteApiSuffix]);
 
   const clienteLabel = useMemo(() => {
     const firstProjectCliente = progetti.find((item) => String(item.cliente || "").trim())?.cliente;
@@ -253,6 +277,22 @@ export default function ClientePortalPage() {
             }}
           >
             {error}
+          </div>
+        ) : null}
+
+        {me?.impersonation ? (
+          <div
+            style={{
+              border: "1px solid #fde68a",
+              background: "#fffbeb",
+              color: "#92400e",
+              borderRadius: 16,
+              padding: 14,
+              fontSize: 14,
+              fontWeight: 700,
+            }}
+          >
+            Stai visualizzando l’area cliente come operatore interno
           </div>
         ) : null}
 
