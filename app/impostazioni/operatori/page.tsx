@@ -38,7 +38,7 @@ const RUOLI = [
 ];
 
 const OPERATORI_GRID_COLUMNS =
-  "minmax(180px, 1.35fr) minmax(120px, 0.9fr) minmax(220px, 1.45fr) 84px 84px 94px 94px 94px 84px minmax(220px, 1fr)";
+  "minmax(220px, 1.65fr) minmax(130px, 0.9fr) minmax(210px, 1.1fr) minmax(210px, 1.1fr) minmax(200px, 1fr)";
 
 const compactBooleanBadgeStyle = (enabled: boolean) =>
   ({
@@ -436,6 +436,38 @@ export default function OperatoriPage() {
     );
   }
 
+  function renderBooleanSetting(
+    label: string,
+    checked: boolean,
+    onChange: (next: boolean) => void,
+    ariaLabel: string
+  ) {
+    return (
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 10,
+          minWidth: 0,
+        }}
+      >
+        <span
+          style={{
+            fontSize: 12,
+            fontWeight: 700,
+            color: "#475569",
+            whiteSpace: "normal",
+            overflowWrap: "anywhere",
+          }}
+        >
+          {label}
+        </span>
+        {renderBooleanCell(checked, onChange, ariaLabel)}
+      </div>
+    );
+  }
+
   return (
     <div style={{ maxWidth: 1100, margin: "40px auto", padding: 16 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
@@ -608,8 +640,7 @@ export default function OperatoriPage() {
           style={{
             border: "1px solid #eee",
             borderRadius: 12,
-            overflowX: "auto",
-            paddingBottom: 6,
+            overflow: "hidden",
           }}
         >
           <div
@@ -625,15 +656,10 @@ export default function OperatoriPage() {
               alignItems: "center",
             }}
           >
-            <div>Nome</div>
+            <div>Operatore</div>
             <div>Ruolo</div>
-            <div>Email</div>
-            <div>Attivo</div>
-            <div>Alert</div>
-            <div>Notif.</div>
-            <div>Impost.</div>
-            <div>Backoffice</div>
-            <div>App</div>
+            <div>Accessi</div>
+            <div>Notifiche</div>
             <div>Azioni</div>
           </div>
           {rows.length === 0 ? (
@@ -651,15 +677,35 @@ export default function OperatoriPage() {
                     gap: 8,
                   }}
                 >
-                  <input
-                    value={row.nome}
-                    onChange={(e) => updateRow(idx, { nome: e.target.value })}
-                    style={{ width: "100%", padding: 8, minWidth: 0 }}
-                  />
+                  <div style={{ display: "grid", gap: 8, minWidth: 0 }}>
+                    <input
+                      value={row.nome}
+                      onChange={(e) => updateRow(idx, { nome: e.target.value })}
+                      placeholder="Nome operatore"
+                      style={{ width: "100%", padding: 8, minWidth: 0 }}
+                    />
+                    <input
+                      value={row.email}
+                      onChange={(e) => updateRow(idx, { email: e.target.value })}
+                      placeholder="Email"
+                      style={{
+                        width: "100%",
+                        padding: 8,
+                        minWidth: 0,
+                        overflowWrap: "anywhere",
+                      }}
+                    />
+                  </div>
                   <select
                     value={row.ruolo}
                     onChange={(e) => updateRow(idx, { ruolo: e.target.value })}
-                    style={{ width: "100%", padding: 8, minWidth: 0 }}
+                    style={{
+                      width: "100%",
+                      padding: 8,
+                      minWidth: 0,
+                      whiteSpace: "normal",
+                      overflowWrap: "anywhere",
+                    }}
                   >
                     <option value="">—</option>
                     {RUOLI.map((r) => (
@@ -668,38 +714,47 @@ export default function OperatoriPage() {
                       </option>
                     ))}
                   </select>
-                  <input
-                    value={row.email}
-                    onChange={(e) => updateRow(idx, { email: e.target.value })}
-                    style={{ width: "100%", padding: 8, minWidth: 0 }}
-                  />
-                  {renderBooleanCell(row.attivo, (next) => updateRow(idx, { attivo: next }), "Attivo")}
-                  {renderBooleanCell(
-                    Boolean(row.alert_enabled),
-                    (next) => updateRow(idx, { alert_enabled: next }),
-                    "Alert attivi"
-                  )}
-                  {renderBooleanCell(
-                    row.riceve_notifiche !== false,
-                    (next) => updateRow(idx, { riceve_notifiche: next }),
-                    "Riceve notifiche"
-                  )}
-                  {renderBooleanCell(
-                    row.can_access_impostazioni === true,
-                    (next) => updateRow(idx, { can_access_impostazioni: next }),
-                    "Accesso impostazioni"
-                  )}
-                  {renderBooleanCell(
-                    row.can_access_backoffice === true,
-                    (next) => updateRow(idx, { can_access_backoffice: next }),
-                    "Accesso backoffice"
-                  )}
-                  {renderBooleanCell(
-                    row.can_access_operator_app !== false,
-                    (next) => updateRow(idx, { can_access_operator_app: next }),
-                    "Accesso app operatori"
-                  )}
-                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <div style={{ display: "grid", gap: 8, minWidth: 0 }}>
+                    {renderBooleanSetting(
+                      "Impost.",
+                      row.can_access_impostazioni === true,
+                      (next) => updateRow(idx, { can_access_impostazioni: next }),
+                      "Accesso impostazioni"
+                    )}
+                    {renderBooleanSetting(
+                      "Backoffice",
+                      row.can_access_backoffice === true,
+                      (next) => updateRow(idx, { can_access_backoffice: next }),
+                      "Accesso backoffice"
+                    )}
+                    {renderBooleanSetting(
+                      "App operatori",
+                      row.can_access_operator_app !== false,
+                      (next) => updateRow(idx, { can_access_operator_app: next }),
+                      "Accesso app operatori"
+                    )}
+                  </div>
+                  <div style={{ display: "grid", gap: 8, minWidth: 0 }}>
+                    {renderBooleanSetting(
+                      "Attivo",
+                      row.attivo,
+                      (next) => updateRow(idx, { attivo: next }),
+                      "Attivo"
+                    )}
+                    {renderBooleanSetting(
+                      "Alert",
+                      Boolean(row.alert_enabled),
+                      (next) => updateRow(idx, { alert_enabled: next }),
+                      "Alert attivi"
+                    )}
+                    {renderBooleanSetting(
+                      "Notif.",
+                      row.riceve_notifiche !== false,
+                      (next) => updateRow(idx, { riceve_notifiche: next }),
+                      "Riceve notifiche"
+                    )}
+                  </div>
+                  <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
                     <button
                       type="button"
                       onClick={() => saveRowByIndex(idx)}
