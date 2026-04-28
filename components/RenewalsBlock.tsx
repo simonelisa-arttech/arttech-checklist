@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 
 type AnyRow = any;
 
@@ -77,7 +77,8 @@ export default function RenewalsBlock({
   tagliandoModalita,
   rinnovoStati,
 }: Props) {
-  const tableGrid = "88px minmax(230px,1.6fr) 130px 140px 140px 120px minmax(430px,1.9fr)";
+  const tableGrid = "minmax(250px,1.8fr) minmax(180px,1.2fr) 130px 170px minmax(260px,1.3fr)";
+  const [hoveredRowId, setHoveredRowId] = useState<string | null>(null);
 
   return (
     <>
@@ -102,25 +103,33 @@ export default function RenewalsBlock({
             style={{
               display: "grid",
               gridTemplateColumns: tableGrid,
-              padding: "10px 12px",
+              padding: "12px 12px",
               fontWeight: 800,
               background: "#fafafa",
               borderBottom: "1px solid #eee",
               fontSize: 12,
               columnGap: 10,
-              minWidth: 1320,
+              minWidth: 980,
             }}
           >
-            <div style={{ textAlign: "center" }}>Tipo</div>
-            <div style={{ textAlign: "center" }}>Riferimento</div>
+            <div
+              style={{
+                position: "sticky",
+                left: 0,
+                zIndex: 2,
+                background: "#fafafa",
+                paddingRight: 8,
+              }}
+            >
+              Cliente / Progetto
+            </div>
+            <div>Tipo rinnovo</div>
             <div style={{ textAlign: "center" }}>Scadenza</div>
             <div style={{ textAlign: "center" }}>Stato</div>
-            <div style={{ textAlign: "center" }}>Ultimo invio</div>
-            <div style={{ textAlign: "center" }}>Modalità</div>
             <div style={{ textAlign: "center" }}>Azioni</div>
           </div>
 
-          {rows.map((r) => {
+          {rows.map((r, index) => {
             const checklist = r.checklist_id ? checklistById?.get(r.checklist_id) : null;
             const checklistName = checklist?.nome_checklist ?? r.checklist_id?.slice(0, 8);
             const stato = getWorkflowStato(r);
@@ -155,6 +164,9 @@ export default function RenewalsBlock({
             const lastSentTooltip = alertStats
               ? `Totale invii: ${alertStats.n_avvisi}\nUltimo invio: ${lastSent}`
               : "Nessun invio";
+            const rowKey = String(r.id || r.key || "");
+            const isHovered = hoveredRowId === rowKey;
+            const rowBackground = isHovered ? "#f8fafc" : index % 2 === 0 ? "#ffffff" : "#fbfdff";
 
             return (
               <div
@@ -162,31 +174,84 @@ export default function RenewalsBlock({
                 data-testid="renewal-row"
                 data-item-tipo={String(r.item_tipo || r.tipo || "").toUpperCase()}
                 data-source={String(r.source || "")}
+                onMouseEnter={() => setHoveredRowId(rowKey)}
+                onMouseLeave={() => setHoveredRowId((current) => (current === rowKey ? null : current))}
                 style={{
                   display: "grid",
                   gridTemplateColumns: tableGrid,
-                  padding: "10px 12px",
-                  borderBottom: "1px solid #f3f4f6",
+                  padding: "12px 12px",
+                  borderBottom: "1px solid #dbe4ee",
                   alignItems: "center",
                   fontSize: 12,
                   columnGap: 10,
-                  minWidth: 1320,
+                  minWidth: 980,
+                  background: rowBackground,
+                  transition: "background-color 120ms ease",
                 }}
               >
-                <div style={{ textAlign: "center" }}>{String(r.item_tipo || r.tipo || "—").toUpperCase()}</div>
-                <div style={{ display: "flex", flexDirection: "column", gap: 4, alignItems: "center", textAlign: "center" }}>
-                  <div>{r.riferimento ?? r.descrizione ?? "—"}</div>
+                <div
+                  style={{
+                    display: "grid",
+                    gap: 4,
+                    minWidth: 0,
+                    position: "sticky",
+                    left: 0,
+                    zIndex: 1,
+                    background: rowBackground,
+                    paddingRight: 8,
+                  }}
+                >
+                  <div
+                    style={{
+                      fontSize: 14,
+                      fontWeight: 800,
+                      color: "#0f172a",
+                      whiteSpace: "normal",
+                      overflowWrap: "anywhere",
+                      lineHeight: 1.35,
+                    }}
+                  >
+                    {r.cliente || cliente || "—"}
+                  </div>
+                  <div
+                    style={{
+                      fontSize: 12,
+                      color: "#64748b",
+                      whiteSpace: "normal",
+                      overflowWrap: "anywhere",
+                      lineHeight: 1.35,
+                    }}
+                  >
+                    {checklistName || "—"}
+                  </div>
                   {r.checklist_id && (
-                    <Link href={`/checklists/${r.checklist_id}`} style={{ fontSize: 11, color: "#2563eb", textDecoration: "none" }}>
-                      PROGETTO: {checklistName ?? r.checklist_id.slice(0, 8)}
+                    <Link
+                      href={`/checklists/${r.checklist_id}`}
+                      style={{ fontSize: 11, color: "#2563eb", textDecoration: "none", whiteSpace: "normal" }}
+                    >
+                      Apri progetto
                     </Link>
                   )}
+                </div>
+                <div style={{ display: "grid", gap: 6, minWidth: 0 }}>
+                  <div>{renderRinnovoStatoBadge(String(r.item_tipo || r.tipo || "—").toUpperCase())}</div>
+                  <div
+                    style={{
+                      fontSize: 12,
+                      color: "#475569",
+                      whiteSpace: "normal",
+                      overflowWrap: "anywhere",
+                      lineHeight: 1.35,
+                    }}
+                  >
+                    <span style={{ fontWeight: 600 }}>Rif:</span> {r.riferimento ?? r.descrizione ?? "—"}
+                  </div>
                 </div>
                 <div style={{ display: "flex", flexDirection: "column", gap: 6, alignItems: "center", textAlign: "center" }}>
                   <div>{r.scadenza ? new Date(r.scadenza).toLocaleDateString() : "—"}</div>
                   {renderScadenzaBadge(r.scadenza)}
                 </div>
-                <div style={{ overflow: "visible", display: "flex", justifyContent: "center" }}>
+                <div style={{ overflow: "visible", display: "grid", gap: 6, justifyItems: "center", textAlign: "center" }}>
                   <div data-testid="workflow-badge">
                     {isTagliando
                       ? renderTagliandoStatoBadge(r.stato)
@@ -198,20 +263,17 @@ export default function RenewalsBlock({
                         })
                       : renderRinnovoStatoBadge(stato)}
                   </div>
-                </div>
-                <div title={lastSentTooltip} style={{ textAlign: "center", display: "flex", justifyContent: "center" }}>
-                  {lastSent}
-                </div>
-                <div style={{ display: "flex", justifyContent: "center" }}>
-                  {isTagliando ? renderModalitaBadge(r.modalita) : "—"}
+                  <div title={lastSentTooltip} style={{ fontSize: 11, color: "#64748b" }}>
+                    {lastSent}
+                  </div>
+                  <div>{isTagliando ? renderModalitaBadge(r.modalita) : "—"}</div>
                 </div>
                 <div
                   data-testid="workflow-actions-btn"
                   style={{
-                    display: "grid",
-                    gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+                    display: "flex",
+                    flexWrap: "wrap",
                     justifyContent: "center",
-                    alignContent: "center",
                     gap: 6,
                     width: "100%",
                   }}
@@ -226,7 +288,7 @@ export default function RenewalsBlock({
                         disabled={!canStage1}
                         style={{
                           padding: "0 6px",
-                          width: "100%",
+                          minWidth: 84,
                           height: 38,
                           borderRadius: 6,
                           border: "1px solid #111",
@@ -254,7 +316,7 @@ export default function RenewalsBlock({
                           disabled={!canStage2}
                           style={{
                             padding: "0 6px",
-                            width: "100%",
+                            minWidth: 84,
                             height: 38,
                             borderRadius: 6,
                             border: "1px solid #111",
@@ -280,7 +342,7 @@ export default function RenewalsBlock({
                           disabled={!canFatturato}
                           style={{
                             padding: "0 6px",
-                            width: "100%",
+                            minWidth: 84,
                             height: 38,
                             borderRadius: 6,
                             border: "1px solid #ddd",
@@ -309,7 +371,7 @@ export default function RenewalsBlock({
                           disabled={!canConfirm}
                           style={{
                             padding: "0 6px",
-                            width: "100%",
+                            minWidth: 84,
                             height: 38,
                             borderRadius: 6,
                             border: "1px solid #ddd",
@@ -334,7 +396,7 @@ export default function RenewalsBlock({
                           disabled={!canNonRinnovato}
                           style={{
                             padding: "0 6px",
-                            width: "100%",
+                            minWidth: 84,
                             height: 38,
                             borderRadius: 6,
                             border: "1px solid #ddd",
@@ -357,7 +419,7 @@ export default function RenewalsBlock({
                         onClick={() => onEdit(r)}
                         style={{
                           padding: "0 6px",
-                          width: "100%",
+                          minWidth: 84,
                           height: 38,
                           borderRadius: 6,
                           border: "1px solid #111",
