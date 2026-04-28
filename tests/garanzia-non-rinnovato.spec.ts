@@ -5,9 +5,7 @@ const clientePath = process.env.E2E_CLIENTE_PATH || "/clienti/CLIENTE_E2E";
 test("GARANZIA può diventare NON_RINNOVATO senza errori", async ({ page }) => {
   await page.goto(clientePath);
 
-  await expect(page.getByText(/Scadenze.*rinnovi/i).first()).toBeVisible();
-
-  const fullManagement = page.getByText("Gestione completa scadenze e rinnovi").first();
+  const fullManagement = page.getByText(/Gestione completa scadenze e rinnovi/i).first();
   await expect(fullManagement).toBeVisible();
   await fullManagement.click();
 
