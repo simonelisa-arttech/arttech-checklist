@@ -38,6 +38,7 @@ export default function ClientiPage() {
   >({});
   const [portalActionKey, setPortalActionKey] = useState<string | null>(null);
   const [openActionsClienteId, setOpenActionsClienteId] = useState<string | null>(null);
+  const [canImpersonateCliente, setCanImpersonateCliente] = useState(false);
   const debounceRef = useRef<number | null>(null);
 
   useEffect(() => {
@@ -127,6 +128,23 @@ export default function ClientiPage() {
       active = false;
     };
   }, [rows]);
+
+  useEffect(() => {
+    let active = true;
+    void (async () => {
+      try {
+        const res = await fetch("/api/admin/me", { credentials: "include" });
+        if (!active) return;
+        setCanImpersonateCliente(res.ok);
+      } catch {
+        if (!active) return;
+        setCanImpersonateCliente(false);
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (!openActionsClienteId) return;
@@ -385,6 +403,37 @@ export default function ClientiPage() {
                             {portalActionKey === `create:${String(row.id || "")}`
                               ? "Creazione..."
                               : "Crea credenziali area cliente"}
+                          </button>
+                        ) : null}
+                        {canImpersonateCliente ? (
+                          <button
+                            type="button"
+                            disabled={portalActionKey === `impersonate:${String(row.id || "")}`}
+                            onClick={async () => {
+                              try {
+                                setOpenActionsClienteId(null);
+                                setPortalActionKey(`impersonate:${String(row.id || "")}`);
+                                const res = await fetch("/api/clienti/portal-impersonation", {
+                                  method: "POST",
+                                  headers: { "Content-Type": "application/json" },
+                                  credentials: "include",
+                                  body: JSON.stringify({ cliente_id: row.id }),
+                                });
+                                const json = await res.json().catch(() => ({}));
+                                if (!res.ok || !json?.url) {
+                                  alert(json?.error || "Errore apertura area cliente");
+                                  return;
+                                }
+                                window.open(String(json.url), "_blank", "noopener,noreferrer");
+                              } finally {
+                                setPortalActionKey(null);
+                              }
+                            }}
+                            style={menuItemStyle}
+                          >
+                            {portalActionKey === `impersonate:${String(row.id || "")}`
+                              ? "Apro area cliente..."
+                              : "Accedi come cliente"}
                           </button>
                         ) : null}
                         {portalAccessByClienteId[String(row.id || "")] ? (
