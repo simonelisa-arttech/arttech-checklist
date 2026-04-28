@@ -8244,7 +8244,7 @@ function buildFormData(c: Checklist): FormData {
                   borderRadius: 12,
                   background: "white",
                   display: "grid",
-                  gridTemplateColumns: "minmax(220px,1.4fr) minmax(180px,1fr) minmax(200px,1fr) minmax(180px,1fr) auto",
+                  gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
                   gap: 10,
                   alignItems: "end",
                 }}
@@ -8325,7 +8325,7 @@ function buildFormData(c: Checklist): FormData {
                   <div
                     style={{
                       display: "grid",
-                      gridTemplateColumns: "minmax(220px,1.4fr) minmax(160px,1fr) minmax(220px,1fr) minmax(180px,1fr)",
+                      gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
                       gap: 10,
                       padding: "10px 12px",
                       fontWeight: 700,
@@ -8343,7 +8343,7 @@ function buildFormData(c: Checklist): FormData {
                       key={referente.id}
                       style={{
                         display: "grid",
-                        gridTemplateColumns: "minmax(220px,1.4fr) minmax(160px,1fr) minmax(220px,1fr) minmax(180px,1fr)",
+                        gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
                         gap: 10,
                         padding: "10px 12px",
                         borderBottom: "1px solid #f5f5f5",
@@ -8376,7 +8376,7 @@ function buildFormData(c: Checklist): FormData {
               borderRadius: 12,
               background: "white",
               display: "grid",
-              gridTemplateColumns: "180px 1fr auto",
+              gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
               gap: 10,
               alignItems: "end",
             }}
@@ -8430,7 +8430,7 @@ function buildFormData(c: Checklist): FormData {
               <div
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "2fr 140px 160px 220px 220px",
+                  gridTemplateColumns: "minmax(220px,1.4fr) minmax(180px,1fr) minmax(180px,1fr) auto",
                   padding: "10px 12px",
                   fontWeight: 700,
                   borderBottom: "1px solid #eee",
@@ -8438,8 +8438,7 @@ function buildFormData(c: Checklist): FormData {
                 }}
               >
                 <div>Nome file</div>
-                <div>Tipo</div>
-                <div>Data upload</div>
+                <div>Tipo / upload</div>
                 <div>Visibilita cliente</div>
                 <div>Azioni</div>
               </div>
@@ -8448,16 +8447,21 @@ function buildFormData(c: Checklist): FormData {
                   key={d.id}
                   style={{
                     display: "grid",
-                    gridTemplateColumns: "2fr 140px 160px 220px 220px",
+                    gridTemplateColumns: "minmax(220px,1.4fr) minmax(180px,1fr) minmax(180px,1fr) auto",
                     padding: "10px 12px",
                     borderBottom: "1px solid #f5f5f5",
                     alignItems: "center",
                     fontSize: 13,
+                    gap: 10,
                   }}
                 >
-                  <div>{d.filename}</div>
-                  <div>{d.tipo || "—"}</div>
-                  <div>{d.uploaded_at ? new Date(d.uploaded_at).toLocaleString() : "—"}</div>
+                  <div style={{ overflowWrap: "anywhere" }}>{d.filename}</div>
+                  <div style={{ display: "grid", gap: 4 }}>
+                    <div>{d.tipo || "—"}</div>
+                    <div style={{ fontSize: 12, opacity: 0.7 }}>
+                      {d.uploaded_at ? new Date(d.uploaded_at).toLocaleString() : "—"}
+                    </div>
+                  </div>
                   <div>
                     <label style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 12 }}>
                       <input
@@ -8996,11 +9000,10 @@ function buildFormData(c: Checklist): FormData {
                 overflowY: "hidden",
               }}
             >
-              <div style={{ minWidth: 1180 }}>
                 <div
                   style={{
                     display: "grid",
-                    gridTemplateColumns: "180px 130px 120px 130px 240px 260px 220px",
+                    gridTemplateColumns: "minmax(160px,1.1fr) minmax(160px,1fr) minmax(180px,1fr) minmax(220px,1.4fr) auto",
                     gap: 10,
                     padding: "10px 12px",
                     fontWeight: 700,
@@ -9009,10 +9012,8 @@ function buildFormData(c: Checklist): FormData {
                   }}
                 >
                   <div>Tipo / Piano</div>
-                  <div>Scadenza</div>
-                  <div>Stato</div>
-                  <div>Intestata</div>
-                  <div>Note</div>
+                  <div>Scadenza / Stato</div>
+                  <div>Intestata / Note</div>
                   <div>Riferimento</div>
                   <div>Azioni</div>
                 </div>
@@ -9022,7 +9023,7 @@ function buildFormData(c: Checklist): FormData {
                     key={l.id}
                     style={{
                       display: "grid",
-                      gridTemplateColumns: "180px 130px 120px 130px 240px 260px 220px",
+                      gridTemplateColumns: "minmax(160px,1.1fr) minmax(160px,1fr) minmax(180px,1fr) minmax(220px,1.4fr) auto",
                       gap: 10,
                       padding: "10px 12px",
                       borderBottom: "1px solid #f5f5f5",
@@ -9054,82 +9055,90 @@ function buildFormData(c: Checklist): FormData {
                     )}
                   </div>
                   <div>
-                    {editMode && editingLicenzaId === l.id ? (
-                      <input
-                        type="date"
-                        value={editingLicenza?.scadenza ?? ""}
-                        onChange={(e) =>
-                          setEditingLicenza((prev) =>
-                            prev ? { ...prev, scadenza: e.target.value } : prev
-                          )
-                        }
-                        style={{ width: "100%", padding: 6 }}
-                      />
-                    ) : l.scadenza ? (
-                      new Date(l.scadenza).toLocaleDateString()
-                    ) : (
-                      "—"
-                    )}
+                    <div style={{ display: "grid", gap: 6 }}>
+                      <div>
+                        {editMode && editingLicenzaId === l.id ? (
+                          <input
+                            type="date"
+                            value={editingLicenza?.scadenza ?? ""}
+                            onChange={(e) =>
+                              setEditingLicenza((prev) =>
+                                prev ? { ...prev, scadenza: e.target.value } : prev
+                              )
+                            }
+                            style={{ width: "100%", padding: 6 }}
+                          />
+                        ) : l.scadenza ? (
+                          new Date(l.scadenza).toLocaleDateString()
+                        ) : (
+                          "—"
+                        )}
+                      </div>
+                      <div>
+                        {editMode && editingLicenzaId === l.id ? (
+                          <select
+                            value={editingLicenza?.stato ?? "attiva"}
+                            onChange={(e) =>
+                              setEditingLicenza((prev) =>
+                                prev
+                                  ? {
+                                      ...prev,
+                                      stato: e.target.value as "attiva" | "disattivata",
+                                    }
+                                  : prev
+                              )
+                            }
+                            style={{ width: "100%", padding: 6 }}
+                          >
+                            <option value="attiva">ATTIVA</option>
+                            <option value="disattivata">DISATTIVATA</option>
+                          </select>
+                        ) : (
+                          renderBadge(getLicenzaStatusLabel(l))
+                        )}
+                      </div>
+                    </div>
                   </div>
                   <div>
-                    {editMode && editingLicenzaId === l.id ? (
-                      <select
-                        value={editingLicenza?.stato ?? "attiva"}
-                        onChange={(e) =>
-                          setEditingLicenza((prev) =>
-                            prev
-                              ? {
-                                  ...prev,
-                                  stato: e.target.value as "attiva" | "disattivata",
-                                }
-                              : prev
-                          )
-                        }
-                        style={{ width: "100%", padding: 6 }}
-                      >
-                        <option value="attiva">ATTIVA</option>
-                        <option value="disattivata">DISATTIVATA</option>
-                      </select>
-                    ) : (
-                      renderBadge(getLicenzaStatusLabel(l))
-                    )}
-                  </div>
-                  <div>
-                    {editMode && editingLicenzaId === l.id ? (
-                      <select
-                        value={editingLicenza?.intestata_a ?? "CLIENTE"}
-                        onChange={(e) =>
-                          setEditingLicenza((prev) =>
-                            prev ? { ...prev, intestata_a: e.target.value } : prev
-                          )
-                        }
-                        style={{ width: "100%", padding: 6 }}
-                      >
-                        <option value="CLIENTE">Cliente</option>
-                        <option value="ART_TECH">Art Tech</option>
-                      </select>
-                    ) : (
-                      l.intestata_a === "ART_TECH"
-                        ? "Art Tech"
-                        : l.intestata_a
-                        ? "Cliente"
-                        : "—"
-                    )}
-                  </div>
-                  <div>
-                    {editMode && editingLicenzaId === l.id ? (
-                      <input
-                        value={editingLicenza?.note ?? ""}
-                        onChange={(e) =>
-                          setEditingLicenza((prev) =>
-                            prev ? { ...prev, note: e.target.value } : prev
-                          )
-                        }
-                        style={{ width: "100%", padding: 6 }}
-                      />
-                    ) : (
-                      l.note ?? "—"
-                    )}
+                    <div style={{ display: "grid", gap: 6 }}>
+                      <div>
+                        {editMode && editingLicenzaId === l.id ? (
+                          <select
+                            value={editingLicenza?.intestata_a ?? "CLIENTE"}
+                            onChange={(e) =>
+                              setEditingLicenza((prev) =>
+                                prev ? { ...prev, intestata_a: e.target.value } : prev
+                              )
+                            }
+                            style={{ width: "100%", padding: 6 }}
+                          >
+                            <option value="CLIENTE">Cliente</option>
+                            <option value="ART_TECH">Art Tech</option>
+                          </select>
+                        ) : l.intestata_a === "ART_TECH" ? (
+                          "Art Tech"
+                        ) : l.intestata_a ? (
+                          "Cliente"
+                        ) : (
+                          "—"
+                        )}
+                      </div>
+                      <div style={{ overflowWrap: "anywhere" }}>
+                        {editMode && editingLicenzaId === l.id ? (
+                          <input
+                            value={editingLicenza?.note ?? ""}
+                            onChange={(e) =>
+                              setEditingLicenza((prev) =>
+                                prev ? { ...prev, note: e.target.value } : prev
+                              )
+                            }
+                            style={{ width: "100%", padding: 6 }}
+                          />
+                        ) : (
+                          l.note ?? "—"
+                        )}
+                      </div>
+                    </div>
                   </div>
                   <div>
                     {editMode && editingLicenzaId === l.id ? (
@@ -9186,9 +9195,11 @@ function buildFormData(c: Checklist): FormData {
                         />
                       </div>
                     ) : (
-                      [l.ref_univoco, l.telefono, l.intestatario, l.gestore, l.fornitore]
-                        .filter(Boolean)
-                        .join(" · ") || "—"
+                      <div style={{ overflowWrap: "anywhere" }}>
+                        {[l.ref_univoco, l.telefono, l.intestatario, l.gestore, l.fornitore]
+                          .filter(Boolean)
+                          .join(" · ") || "—"}
+                      </div>
                     )}
                   </div>
                   <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
@@ -9261,7 +9272,6 @@ function buildFormData(c: Checklist): FormData {
                   </div>
                   </div>
                 ))}
-              </div>
             </div>
           )}
 
@@ -9284,7 +9294,7 @@ function buildFormData(c: Checklist): FormData {
               <div
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "2fr 1fr 2fr 1fr 120px",
+                  gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
                   gap: 10,
                   alignItems: "end",
                 }}
@@ -9352,7 +9362,7 @@ function buildFormData(c: Checklist): FormData {
               <div
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "2fr 2fr 2fr 2fr 2fr",
+                  gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
                   gap: 10,
                 }}
               >
@@ -9499,11 +9509,10 @@ function buildFormData(c: Checklist): FormData {
                   background: "white",
                 }}
               >
-                <div style={{ minWidth: 980 }}>
                   <div
                     style={{
                       display: "grid",
-                      gridTemplateColumns: "160px 120px 180px 160px 140px 140px 120px 180px",
+                      gridTemplateColumns: "minmax(180px,1.2fr) minmax(180px,1.1fr) minmax(180px,1fr) auto",
                       gap: 10,
                       padding: "10px 12px",
                       fontWeight: 700,
@@ -9511,13 +9520,9 @@ function buildFormData(c: Checklist): FormData {
                       background: "#fafafa",
                     }}
                   >
-                    <div>Numero telefono</div>
-                    <div>Operatore</div>
-                    <div>Piano attivo</div>
-                    <div>Device installato</div>
-                    <div>Scadenza effettiva</div>
-                    <div>Ultima ricarica</div>
-                    <div>Stato SIM</div>
+                    <div>SIM / operatore</div>
+                    <div>Piano / device</div>
+                    <div>Scadenze / stato</div>
                     <div>Azioni</div>
                   </div>
 
@@ -9533,22 +9538,28 @@ function buildFormData(c: Checklist): FormData {
                         key={row.id}
                         style={{
                           display: "grid",
-                          gridTemplateColumns: "160px 120px 180px 160px 140px 140px 120px 180px",
+                          gridTemplateColumns: "minmax(180px,1.2fr) minmax(180px,1.1fr) minmax(180px,1fr) auto",
                           gap: 10,
                           padding: "10px 12px",
                           borderBottom: "1px solid #f5f5f5",
-                          alignItems: "center",
+                          alignItems: "start",
                           fontSize: 13,
                         }}
                       >
-                        <div style={{ fontWeight: 700 }}>{row.numero_telefono || "—"}</div>
-                        <div>{row.operatore || "—"}</div>
-                        <div>{row.piano_attivo || "—"}</div>
-                        <div>{row.device_installato || "—"}</div>
-                        <div>{formatLocalDateLabel(effectiveScadenza)}</div>
-                        <div>{formatLocalDateLabel(latestRecharge?.data_ricarica)}</div>
-                        <div>{renderProjectSimStateBadge(simState)}</div>
-                        <div>
+                        <div style={{ display: "grid", gap: 4 }}>
+                          <div style={{ fontWeight: 700 }}>{row.numero_telefono || "—"}</div>
+                          <div>{row.operatore || "—"}</div>
+                        </div>
+                        <div style={{ display: "grid", gap: 4 }}>
+                          <div>{row.piano_attivo || "—"}</div>
+                          <div style={{ opacity: 0.8 }}>{row.device_installato || "—"}</div>
+                        </div>
+                        <div style={{ display: "grid", gap: 4 }}>
+                          <div>Scadenza: {formatLocalDateLabel(effectiveScadenza)}</div>
+                          <div>Ultima ricarica: {formatLocalDateLabel(latestRecharge?.data_ricarica)}</div>
+                          <div>{renderProjectSimStateBadge(simState)}</div>
+                        </div>
+                        <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
                           <button
                             type="button"
                             onClick={() => removeSimFromProject(row.id)}
@@ -9568,7 +9579,6 @@ function buildFormData(c: Checklist): FormData {
                       </div>
                     );
                   })}
-                </div>
               </div>
             )}
         </>,
@@ -9632,7 +9642,7 @@ function buildFormData(c: Checklist): FormData {
               <div
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "1fr 160px 180px minmax(220px, 1.2fr) 220px",
+                  gridTemplateColumns: "minmax(220px,1.2fr) 160px 180px minmax(240px,1.3fr)",
                   gap: 12,
                   fontSize: 12,
                   opacity: 0.6,
@@ -9642,8 +9652,7 @@ function buildFormData(c: Checklist): FormData {
                 <div></div>
                 <div>Stato</div>
                 <div>Azioni</div>
-                <div>Note</div>
-                <div style={{ textAlign: "right" }}>Ultima modifica da</div>
+                <div>Note / Ultima modifica</div>
               </div>
 
               {tasks
@@ -9665,10 +9674,10 @@ function buildFormData(c: Checklist): FormData {
                     key={t.id}
                     style={{
                       display: "grid",
-                      gridTemplateColumns: "1fr 160px 180px minmax(220px, 1.2fr) 220px",
+                      gridTemplateColumns: "minmax(220px,1.2fr) 160px 180px minmax(240px,1.3fr)",
                       gap: 12,
                       padding: "6px 0",
-                      alignItems: "center",
+                      alignItems: "start",
                     }}
                   >
                     <div style={{ display: "flex", alignItems: "center", gap: 8, minWidth: 0 }}>
@@ -9845,24 +9854,22 @@ function buildFormData(c: Checklist): FormData {
                         );
                       })()}
                     </div>
-                    <div
-                      style={{
-                        justifySelf: "end",
-                        textAlign: "right",
-                        fontSize: 12,
-                        opacity: 0.7,
-                      }}
-                    >
+                    <div style={{ minWidth: 0 }}>
                       {t.updated_at ? (
-                        <>
+                        <div
+                          style={{
+                            marginTop: 8,
+                            fontSize: 12,
+                            opacity: 0.7,
+                            overflowWrap: "anywhere",
+                          }}
+                        >
                           <div>
                             ✔ {t.operatori?.nome ?? operatoriMap.get(t.updated_by_operatore || "") ?? "—"}
                           </div>
                           <div>{new Date(t.updated_at).toLocaleString()}</div>
-                        </>
-                      ) : (
-                        "—"
-                      )}
+                        </div>
+                      ) : null}
                     </div>
                   </div>
                     );
