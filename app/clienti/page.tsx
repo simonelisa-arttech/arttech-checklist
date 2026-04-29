@@ -3,6 +3,7 @@
 import type { CSSProperties } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import ClienteModal, { ClienteRecord } from "@/components/ClienteModal";
 import ConfigMancante from "@/components/ConfigMancante";
 import { isSupabaseConfigured } from "@/lib/supabaseClient";
@@ -24,6 +25,7 @@ export default function ClientiPage() {
     return <ConfigMancante />;
   }
 
+  const router = useRouter();
   const [query, setQuery] = useState("");
   const [debounced, setDebounced] = useState("");
   const [rows, setRows] = useState<ClienteRecord[]>([]);
@@ -450,6 +452,18 @@ export default function ClientiPage() {
                             {portalActionKey === `impersonate:${String(row.id || "")}`
                               ? "Apro area cliente..."
                               : "Accedi come cliente"}
+                          </button>
+                        ) : null}
+                        {canManagePortalAccess ? (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setOpenActionsClienteId(null);
+                              router.push(`/clienti/${encodeURIComponent(String(row.id || ""))}/area-cliente`);
+                            }}
+                            style={menuItemStyle}
+                          >
+                            Configura area cliente
                           </button>
                         ) : null}
                         {canManagePortalAccess && portalAccessByClienteId[String(row.id || "")] ? (
