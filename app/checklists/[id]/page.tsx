@@ -119,6 +119,24 @@ type Checklist = {
   updated_by?: string | null;
   created_by_name?: string | null;
   updated_by_name?: string | null;
+  impianti?: ChecklistImpianto[];
+};
+
+type ChecklistImpianto = {
+  id?: string;
+  checklist_id?: string | null;
+  position?: number | null;
+  impianto_codice?: string | null;
+  impianto_descrizione?: string | null;
+  tipo_impianto?: string | null;
+  tipo_struttura?: string | null;
+  impianto_indirizzo?: string | null;
+  passo?: string | null;
+  dimensioni?: string | null;
+  impianto_quantita?: number | null;
+  numero_facce?: number | null;
+  m2_calcolati?: number | null;
+  note?: string | null;
 };
 
 type ChecklistItem = {
@@ -270,6 +288,41 @@ function isOptionalClienteAnagraficaColumnReadError(error: any) {
     isMissingClienteScadenzeDeliveryModeColumnError(error) ||
     isMissingClienteEmailSecondarieColumnError(error)
   );
+}
+
+function buildLegacyChecklistImpianto(checklist: Checklist): ChecklistImpianto[] {
+  const hasLegacyImpiantoData = [
+    checklist.impianto_codice,
+    checklist.impianto_descrizione,
+    checklist.tipo_impianto,
+    checklist.tipo_struttura,
+    checklist.impianto_indirizzo,
+    checklist.passo,
+    checklist.dimensioni,
+    checklist.impianto_quantita,
+    checklist.numero_facce,
+    checklist.m2_calcolati,
+  ].some((value) => value != null && String(value).trim() !== "");
+
+  if (!hasLegacyImpiantoData) return [];
+
+  return [
+    {
+      checklist_id: checklist.id,
+      position: 0,
+      impianto_codice: checklist.impianto_codice,
+      impianto_descrizione: checklist.impianto_descrizione,
+      tipo_impianto: checklist.tipo_impianto,
+      tipo_struttura: checklist.tipo_struttura,
+      impianto_indirizzo: checklist.impianto_indirizzo,
+      passo: checklist.passo,
+      dimensioni: checklist.dimensioni,
+      impianto_quantita: checklist.impianto_quantita,
+      numero_facce: checklist.numero_facce,
+      m2_calcolati: checklist.m2_calcolati,
+      note: null,
+    },
+  ];
 }
 
 type ChecklistTaskDocument = {
@@ -3713,6 +3766,18 @@ function buildFormData(c: Checklist): FormData {
       return;
     }
 
+    const { data: impiantiData, error: impiantiErr } = await db<any[]>({
+      table: "checklist_impianti",
+      op: "select",
+      select:
+        "id, checklist_id, position, impianto_codice, impianto_descrizione, tipo_impianto, tipo_struttura, impianto_indirizzo, passo, dimensioni, impianto_quantita, numero_facce, m2_calcolati, note",
+      filter: { checklist_id: id },
+      order: [{ col: "position", asc: true }],
+    });
+    if (impiantiErr) {
+      console.error("Errore caricamento checklist_impianti", impiantiErr);
+    }
+
     if (!catalogLoaded) {
       if (isPerfEnabled()) console.time(`[perf][checklist][load#${loadSeq}] db catalog_items`);
       const { data: catalogData, error: catalogErr } = await db<any[]>({
@@ -3742,6 +3807,14 @@ function buildFormData(c: Checklist): FormData {
     }
 
     const headChecklist = head as Checklist;
+    const impiantiRows = ((impiantiData || []) as ChecklistImpianto[]).filter(Boolean);
+    headChecklist.impianti =
+      impiantiRows.length > 0 ? impiantiRows : buildLegacyChecklistImpianto(headChecklist);
+    console.log("[checklist][impianti]", {
+      checklistId: id,
+      source: impiantiRows.length > 0 ? "checklist_impianti" : "legacy_checklist",
+      impianti: headChecklist.impianti,
+    });
     // Preferisci sempre la denominazione completa dell'anagrafica cliente per la UI progetto.
     if (headChecklist.cliente_id) {
       const { data: anagraficaRows } = await db<any[]>({
