@@ -61,6 +61,18 @@ type ClienteDocumento = {
   data: string | null;
 };
 
+type ClienteIntervento = {
+  id: string;
+  checklist_id: string | null;
+  progetto_nome?: string | null;
+  titolo?: string | null;
+  descrizione?: string | null;
+  tipo?: string | null;
+  stato?: string | null;
+  data_intervento?: string | null;
+  note?: string | null;
+};
+
 function renderPill(
   label: string,
   colors: { border: string; background: string; color: string }
@@ -145,6 +157,7 @@ export default function ClientePortalPage() {
   const [progetti, setProgetti] = useState<ClienteProgetto[]>([]);
   const [scadenze, setScadenze] = useState<ClienteScadenza[]>([]);
   const [documenti, setDocumenti] = useState<ClienteDocumento[]>([]);
+  const [interventi, setInterventi] = useState<ClienteIntervento[]>([]);
   const [openingDocumentId, setOpeningDocumentId] = useState<string | null>(null);
   const [impersonationToken, setImpersonationToken] = useState("");
   const clienteApiSuffix = impersonationToken
@@ -186,18 +199,20 @@ export default function ClientePortalPage() {
         setLoading(true);
         setError(null);
 
-        const [meRes, progettiRes, scadenzeRes, documentiRes] = await Promise.all([
+        const [meRes, progettiRes, scadenzeRes, documentiRes, interventiRes] = await Promise.all([
           fetch(`/api/cliente/me${clienteApiSuffix}`, { credentials: "include" }),
           fetch(`/api/cliente/progetti${clienteApiSuffix}`, { credentials: "include" }),
           fetch(`/api/cliente/scadenze${clienteApiSuffix}`, { credentials: "include" }),
           fetch(`/api/cliente/documenti${clienteApiSuffix}`, { credentials: "include" }),
+          fetch(`/api/cliente/interventi${clienteApiSuffix}`, { credentials: "include" }),
         ]);
 
-        const [meData, progettiData, scadenzeData, documentiData] = await Promise.all([
+        const [meData, progettiData, scadenzeData, documentiData, interventiData] = await Promise.all([
           meRes.json().catch(() => ({})),
           progettiRes.json().catch(() => ({})),
           scadenzeRes.json().catch(() => ({})),
           documentiRes.json().catch(() => ({})),
+          interventiRes.json().catch(() => ({})),
         ]);
 
         if (!meRes.ok) {
@@ -211,6 +226,9 @@ export default function ClientePortalPage() {
         }
         if (!documentiRes.ok) {
           throw new Error(String(documentiData?.error || "Errore caricamento documenti cliente"));
+        }
+        if (!interventiRes.ok) {
+          throw new Error(String(interventiData?.error || "Errore caricamento interventi cliente"));
         }
 
         if (!active) return;
@@ -250,6 +268,7 @@ export default function ClientePortalPage() {
         setProgetti(((progettiData?.progetti as ClienteProgetto[]) || []).filter(Boolean));
         setScadenze(((scadenzeData?.scadenze as ClienteScadenza[]) || []).filter(Boolean));
         setDocumenti(((documentiData?.documenti as ClienteDocumento[]) || []).filter(Boolean));
+        setInterventi(((interventiData?.interventi as ClienteIntervento[]) || []).filter(Boolean));
       } catch (err: any) {
         if (!active) return;
         setError(String(err?.message || err || "Errore caricamento area cliente"));
@@ -429,7 +448,11 @@ export default function ClientePortalPage() {
               <div style={{ fontSize: 14, color: "#64748b" }}>Nessun progetto disponibile.</div>
             ) : (
               <div style={{ display: "grid", gap: 10 }}>
-                {progetti.map((progetto) => (
+                {progetti.map((progetto) => {
+                  const projectInterventi = interventi.filter(
+                    (item) => String(item.checklist_id || "").trim() === progetto.id
+                  );
+                  return (
                   <div
                     key={progetto.id}
                     style={{
@@ -481,8 +504,33 @@ export default function ClientePortalPage() {
                         </div>
                       </div>
                     ) : null}
+                    {effectiveSettings.show_interventi && projectInterventi.length > 0 ? (
+                      <div style={{ display: "grid", gap: 6 }}>
+                        <div style={{ fontSize: 12, fontWeight: 800, color: "#475569" }}>
+                          Interventi
+                        </div>
+                        <div style={{ display: "grid", gap: 4 }}>
+                          {projectInterventi.map((intervento) => (
+                            <div
+                              key={intervento.id}
+                              style={{
+                                fontSize: 13,
+                                color: "#334155",
+                                lineHeight: 1.45,
+                                overflowWrap: "anywhere",
+                              }}
+                            >
+                              {formatDateLabel(intervento.data_intervento)} •{" "}
+                              {String(intervento.tipo || intervento.titolo || "Intervento").trim()} •{" "}
+                              {String(intervento.stato || "—").trim().toUpperCase()}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
                   </div>
-                ))}
+                  );
+                })}
               </div>
             )
           )
