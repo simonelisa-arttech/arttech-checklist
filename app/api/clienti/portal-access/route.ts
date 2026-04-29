@@ -2,7 +2,7 @@ export const runtime = "nodejs";
 
 import { randomBytes } from "crypto";
 import { NextResponse } from "next/server";
-import { requireAdmin } from "@/lib/adminAuth";
+import { requireClientPortalManager } from "@/lib/adminAuth";
 
 function isValidEmail(value?: string | null) {
   const email = String(value || "").trim().toLowerCase();
@@ -31,7 +31,7 @@ function normalizeClienteIdsParam(value: string | null) {
 }
 
 export async function GET(request: Request) {
-  const auth = await requireAdmin(request);
+  const auth = await requireClientPortalManager(request);
   if (!auth.ok) return auth.response;
 
   const clienteIds = normalizeClienteIdsParam(new URL(request.url).searchParams.get("cliente_ids"));
@@ -54,7 +54,7 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const auth = await requireAdmin(request);
+  const auth = await requireClientPortalManager(request);
   if (!auth.ok) return auth.response;
 
   let body: { cliente_id?: string };
@@ -155,7 +155,7 @@ export async function POST(request: Request) {
 }
 
 export async function PATCH(request: Request) {
-  const auth = await requireAdmin(request);
+  const auth = await requireClientPortalManager(request);
   if (!auth.ok) return auth.response;
 
   let body: { cliente_id?: string; action?: string };

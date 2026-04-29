@@ -39,6 +39,7 @@ export default function ClientiPage() {
   const [portalActionKey, setPortalActionKey] = useState<string | null>(null);
   const [openActionsClienteId, setOpenActionsClienteId] = useState<string | null>(null);
   const [canImpersonateCliente, setCanImpersonateCliente] = useState(false);
+  const [canManagePortalAccess, setCanManagePortalAccess] = useState(false);
   const debounceRef = useRef<number | null>(null);
 
   useEffect(() => {
@@ -133,12 +134,23 @@ export default function ClientiPage() {
     let active = true;
     void (async () => {
       try {
-        const res = await fetch("/api/admin/me", { credentials: "include" });
+        const [adminRes, operatoreRes] = await Promise.all([
+          fetch("/api/admin/me", { credentials: "include" }),
+          fetch("/api/me-operatore", { credentials: "include" }),
+        ]);
+        const operatoreJson = await operatoreRes.json().catch(() => ({}));
         if (!active) return;
-        setCanImpersonateCliente(res.ok);
+        const operatore = operatoreJson?.operatore || {};
+        setCanImpersonateCliente(adminRes.ok);
+        setCanManagePortalAccess(
+          adminRes.ok ||
+            operatore?.can_access_impostazioni === true ||
+            operatore?.can_access_backoffice === true
+        );
       } catch {
         if (!active) return;
         setCanImpersonateCliente(false);
+        setCanManagePortalAccess(false);
       }
     })();
     return () => {
@@ -358,7 +370,7 @@ export default function ClientiPage() {
                         >
                           {row.attivo === false ? "Riattiva" : "Disattiva"}
                         </button>
-                        {!portalAccessByClienteId[String(row.id || "")]?.attivo ? (
+                        {canManagePortalAccess && !portalAccessByClienteId[String(row.id || "")]?.attivo ? (
                           <button
                             type="button"
                             disabled={portalActionKey === `create:${String(row.id || "")}`}
@@ -374,7 +386,11 @@ export default function ClientiPage() {
                                 });
                                 const json = await res.json().catch(() => ({}));
                                 if (!res.ok || !json?.ok) {
-                                  alert(json?.error || "Errore creazione credenziali cliente");
+                                  alert(
+                                    json?.error === "Forbidden"
+                                      ? "Non hai i permessi per creare credenziali area cliente."
+                                      : json?.error || "Errore creazione credenziali cliente"
+                                  );
                                   return;
                                 }
 
@@ -436,7 +452,7 @@ export default function ClientiPage() {
                               : "Accedi come cliente"}
                           </button>
                         ) : null}
-                        {portalAccessByClienteId[String(row.id || "")] ? (
+                        {canManagePortalAccess && portalAccessByClienteId[String(row.id || "")] ? (
                           <button
                             type="button"
                             disabled={portalActionKey === `reset:${String(row.id || "")}`}
@@ -455,7 +471,11 @@ export default function ClientiPage() {
                                 });
                                 const json = await res.json().catch(() => ({}));
                                 if (!res.ok || !json?.ok) {
-                                  alert(json?.error || "Errore rigenerazione password cliente");
+                                  alert(
+                                    json?.error === "Forbidden"
+                                      ? "Non hai i permessi per gestire le credenziali area cliente."
+                                      : json?.error || "Errore rigenerazione password cliente"
+                                  );
                                   return;
                                 }
                                 alert(
@@ -476,7 +496,7 @@ export default function ClientiPage() {
                               : "Rigenera password"}
                           </button>
                         ) : null}
-                        {portalAccessByClienteId[String(row.id || "")]?.attivo ? (
+                        {canManagePortalAccess && portalAccessByClienteId[String(row.id || "")]?.attivo ? (
                           <button
                             type="button"
                             disabled={portalActionKey === `deactivate:${String(row.id || "")}`}
@@ -495,7 +515,11 @@ export default function ClientiPage() {
                                 });
                                 const json = await res.json().catch(() => ({}));
                                 if (!res.ok || !json?.ok) {
-                                  alert(json?.error || "Errore disattivazione accesso cliente");
+                                  alert(
+                                    json?.error === "Forbidden"
+                                      ? "Non hai i permessi per gestire le credenziali area cliente."
+                                      : json?.error || "Errore disattivazione accesso cliente"
+                                  );
                                   return;
                                 }
                                 setPortalAccessByClienteId((prev) => ({

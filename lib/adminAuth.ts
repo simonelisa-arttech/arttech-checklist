@@ -162,6 +162,15 @@ export async function requireOperatore(request: Request): Promise<RequireOperato
   return resolveOperatoreAuth(request);
 }
 
+function canManageClientPortal(operatore: OperatoreAuthRow) {
+  return (
+    operatore.attivo !== false &&
+    (isAdminRole(operatore.ruolo) ||
+      operatore.can_access_impostazioni === true ||
+      operatore.can_access_backoffice === true)
+  );
+}
+
 export async function requireAdmin(request: Request): Promise<RequireAdminOk | RequireAdminErr> {
   const auth = await resolveOperatoreAuth(request);
   if (!auth.ok) return auth;
@@ -177,4 +186,17 @@ export async function requireAdmin(request: Request): Promise<RequireAdminOk | R
     user: auth.user,
     operatore: auth.operatore,
   };
+}
+
+export async function requireClientPortalManager(
+  request: Request
+): Promise<RequireOperatoreOk | RequireAdminErr> {
+  const auth = await resolveOperatoreAuth(request);
+  if (!auth.ok) return auth;
+
+  if (!canManageClientPortal(auth.operatore)) {
+    return unauthorized("Forbidden", 403);
+  }
+
+  return auth;
 }
