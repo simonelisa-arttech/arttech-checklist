@@ -23,6 +23,7 @@ type Props = {
   expandedSaasNoteId: string | null;
   setExpandedSaasNoteId: (value: any) => void;
   onOpenProject: (projectId: string) => void;
+  onDuplicateProject: (projectId: string) => void;
   onDeleteProject: (projectId: string) => void;
   getChecklistM2: (row: any) => number | null;
   renderDashboardAddressCell: (value?: string | null) => React.ReactNode;
@@ -68,6 +69,7 @@ export default function DashboardProjectsSection({
   expandedSaasNoteId,
   setExpandedSaasNoteId,
   onOpenProject,
+  onDuplicateProject,
   onDeleteProject,
   getChecklistM2,
   renderDashboardAddressCell,
@@ -731,6 +733,23 @@ export default function DashboardProjectsSection({
                         }}
                       >
                         Apri
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onDuplicateProject(c.id);
+                        }}
+                        style={{
+                          padding: "6px 10px",
+                          borderRadius: 8,
+                          border: "1px solid #4f46e5",
+                          background: "white",
+                          color: "#4f46e5",
+                          cursor: "pointer",
+                        }}
+                      >
+                        Duplica
                       </button>
                       <button
                         type="button"

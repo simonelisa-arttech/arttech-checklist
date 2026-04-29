@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import ConfigMancante from "@/components/ConfigMancante";
 import DashboardProjectsSection from "@/components/dashboard/DashboardProjectsSection";
+import { dbFrom } from "@/lib/clientDbBroker";
 import {
   getProjectPresentation,
   PROJECT_STATUS_FILTER_OPTIONS,
@@ -454,6 +455,22 @@ function getSortRaw(row: Checklist, key: SortKey) {
   return (row as any)[key];
 }
 
+function isChecklistDuplicateError(error: any) {
+  const msg = `${error?.message || ""}`.toLowerCase();
+  const code = `${error?.code || ""}`.toLowerCase();
+  return code === "23505" || msg.includes("duplicate key") || msg.includes("already exists");
+}
+
+function buildDuplicateChecklistName(value?: string | null) {
+  const base = String(value || "").trim() || "Progetto";
+  const stamp = new Date()
+    .toISOString()
+    .slice(0, 16)
+    .replace("T", " ")
+    .replace(":", "-");
+  return `${base} (copia ${stamp})`;
+}
+
 export default function DashboardEstesaPage() {
   if (!isSupabaseConfigured) {
     return <ConfigMancante />;
@@ -764,6 +781,174 @@ export default function DashboardEstesaPage() {
     await load();
   }
 
+  async function duplicateChecklist(checklistId: string) {
+    const source = allProjects.find((row) => row.id === checklistId);
+    if (!source) {
+      alert("Progetto non trovato");
+      return;
+    }
+
+    const ok = window.confirm("Duplicare questo PROGETTO?");
+    if (!ok) return;
+
+    try {
+      const [operatoreRes, itemsRes, tasksRes, impiantiRes] = await Promise.all([
+        fetch("/api/me-operatore", { credentials: "include" }).then((res) => res.json().catch(() => ({}))),
+        dbFrom("checklist_items")
+          .select("codice, descrizione, quantita, note")
+          .eq("checklist_id", checklistId)
+          .order("created_at", { ascending: true }),
+        dbFrom("checklist_tasks")
+          .select("sezione, ordine, titolo, target, task_template_id")
+          .eq("checklist_id", checklistId)
+          .order("sezione", { ascending: true })
+          .order("ordine", { ascending: true }),
+        dbFrom("checklist_impianti")
+          .select(
+            [
+              "position",
+              "impianto_codice",
+              "impianto_descrizione",
+              "tipo_impianto",
+              "tipo_struttura",
+              "impianto_indirizzo",
+              "passo",
+              "dimensioni",
+              "impianto_quantita",
+              "numero_facce",
+              "m2_calcolati",
+              "note",
+            ].join(", ")
+          )
+          .eq("checklist_id", checklistId)
+          .order("position", { ascending: true }),
+      ]);
+
+      if (itemsRes.error) throw new Error(itemsRes.error.message || "Errore caricamento righe progetto");
+      if (tasksRes.error) throw new Error(tasksRes.error.message || "Errore caricamento task progetto");
+      if (impiantiRes.error) throw new Error(impiantiRes.error.message || "Errore caricamento impianti progetto");
+
+      const operatore = operatoreRes?.operatore || {};
+      const operatoreId = String(operatore?.id || "").trim() || null;
+      const operatoreNome = String(operatore?.nome || "").trim() || null;
+
+      const payloadChecklist = {
+        cliente: source.cliente,
+        cliente_id: source.cliente_id ?? null,
+        nome_checklist: buildDuplicateChecklistName(source.nome_checklist),
+        proforma: source.proforma ?? null,
+        po: source.po ?? null,
+        magazzino_importazione: source.magazzino_importazione ?? null,
+        created_by_operatore: operatoreId,
+        updated_by_operatore: operatoreId,
+        created_by: operatoreNome,
+        updated_by: operatoreNome,
+        saas_piano: null,
+        saas_scadenza: null,
+        saas_note: null,
+        saas_tipo: null,
+        tipo_saas: null,
+        data_prevista: source.data_prevista ?? null,
+        data_tassativa: source.data_tassativa ?? null,
+        stato_progetto: "IN_CORSO",
+        data_installazione_reale: null,
+        noleggio_vendita: source.noleggio_vendita ?? null,
+        tipo_struttura: source.tipo_struttura ?? null,
+        passo: source.passo ?? null,
+        tipo_impianto: source.tipo_impianto ?? null,
+        impianto_indirizzo: source.impianto_indirizzo ?? null,
+        impianto_codice: source.impianto_codice ?? null,
+        impianto_descrizione: source.impianto_descrizione ?? null,
+        dimensioni: source.dimensioni ?? null,
+        impianto_quantita: source.impianto_quantita ?? 1,
+        numero_facce: source.numero_facce ?? 1,
+        m2_calcolati: source.m2_calcolati ?? getChecklistM2(source),
+        m2_inclusi: source.m2_inclusi ?? getChecklistM2(source),
+        m2_allocati: source.m2_allocati ?? null,
+        garanzia_scadenza: null,
+        note: source.note ?? null,
+        tipo_struttura_legacy: undefined,
+        fine_noleggio: source.fine_noleggio ?? null,
+        data_disinstallazione: source.data_disinstallazione ?? null,
+        mercato: source.mercato ?? null,
+        modello: source.modello ?? null,
+      } as Record<string, any>;
+
+      delete payloadChecklist.tipo_struttura_legacy;
+
+      const { data: created, error: createErr } = await dbFrom("checklists")
+        .insert(payloadChecklist)
+        .select("id")
+        .single();
+
+      if (createErr) {
+        if (isChecklistDuplicateError(createErr)) {
+          throw new Error("Esiste già un progetto duplicato con questo nome");
+        }
+        throw new Error(createErr.message || "Errore duplicazione progetto");
+      }
+
+      const newChecklistId = String(created?.id || "").trim();
+      if (!newChecklistId) {
+        throw new Error("ID nuova checklist non ricevuto");
+      }
+
+      const payloadItems = ((itemsRes.data as any[]) || []).map((item) => ({
+        checklist_id: newChecklistId,
+        codice: item?.codice ?? null,
+        descrizione: item?.descrizione ?? null,
+        quantita: item?.quantita ?? null,
+        note: item?.note ?? null,
+      }));
+      if (payloadItems.length > 0) {
+        const { error } = await dbFrom("checklist_items").insert(payloadItems);
+        if (error) throw new Error(error.message || "Errore duplicazione righe progetto");
+      }
+
+      const payloadTasks = ((tasksRes.data as any[]) || []).map((task) => ({
+        checklist_id: newChecklistId,
+        sezione: task?.sezione ?? null,
+        ordine: task?.ordine ?? null,
+        titolo: task?.titolo ?? null,
+        target: task?.target ?? null,
+        task_template_id: task?.task_template_id ?? null,
+        stato: "DA_FARE",
+        note: null,
+        updated_at: null,
+        updated_by_operatore: null,
+      }));
+      if (payloadTasks.length > 0) {
+        const { error } = await dbFrom("checklist_tasks").insert(payloadTasks);
+        if (error) throw new Error(error.message || "Errore duplicazione task progetto");
+      }
+
+      const payloadImpianti = ((impiantiRes.data as any[]) || []).map((impianto, index) => ({
+        checklist_id: newChecklistId,
+        position: Number.isFinite(Number(impianto?.position)) ? Number(impianto.position) : index,
+        impianto_codice: impianto?.impianto_codice ?? null,
+        impianto_descrizione: impianto?.impianto_descrizione ?? null,
+        tipo_impianto: impianto?.tipo_impianto ?? null,
+        tipo_struttura: impianto?.tipo_struttura ?? null,
+        impianto_indirizzo: impianto?.impianto_indirizzo ?? null,
+        passo: impianto?.passo ?? null,
+        dimensioni: impianto?.dimensioni ?? null,
+        impianto_quantita: impianto?.impianto_quantita ?? 1,
+        numero_facce: impianto?.numero_facce ?? 1,
+        m2_calcolati: impianto?.m2_calcolati ?? null,
+        note: impianto?.note ?? null,
+      }));
+      if (payloadImpianti.length > 0) {
+        const { error } = await dbFrom("checklist_impianti").insert(payloadImpianti);
+        if (error) throw new Error(error.message || "Errore duplicazione impianti progetto");
+      }
+
+      await load();
+      router.push(`/checklists/${newChecklistId}`);
+    } catch (err: any) {
+      alert(String(err?.message || err || "Errore duplicazione progetto"));
+    }
+  }
+
   return (
     <div style={{ maxWidth: 1100, margin: "24px auto", padding: 16, paddingBottom: 60 }}>
       <div style={{ display: "flex", alignItems: "flex-start", gap: 16, flexWrap: "wrap", marginBottom: 18 }}>
@@ -807,6 +992,7 @@ export default function DashboardEstesaPage() {
         expandedSaasNoteId={expandedSaasNoteId}
         setExpandedSaasNoteId={setExpandedSaasNoteId}
         onOpenProject={(projectId) => router.push(`/checklists/${projectId}`)}
+        onDuplicateProject={duplicateChecklist}
         onDeleteProject={backupAndDeleteChecklist}
         getChecklistM2={getChecklistM2}
         renderDashboardAddressCell={renderDashboardAddressCell}
