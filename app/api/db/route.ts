@@ -41,6 +41,12 @@ const TABLE_RULES: Record<
     orderCols: ["updated_at", "created_at"],
     requiredEqAnyOf: ["id", "singleton_key"],
   },
+  clienti_area_cliente_settings: {
+    ops: ["select", "insert", "update", "upsert"],
+    filterCols: ["id", "cliente_id"],
+    orderCols: ["updated_at", "created_at"],
+    requiredEqAnyOf: ["id", "cliente_id"],
+  },
   checklist_items: {
     ops: ["select", "insert", "update", "delete", "upsert"],
     filterCols: ["id", "checklist_id"],
