@@ -169,6 +169,13 @@ export default function LogoutButton() {
               Doc sicurezza
             </Link>
             <Link
+              href="/impostazioni/area-cliente"
+              style={dropdownLinkStyle}
+              onClick={closeDropdownOnNavigation}
+            >
+              Area Cliente
+            </Link>
+            <Link
               href="/impostazioni/checklist-attivita"
               style={dropdownLinkStyle}
               onClick={closeDropdownOnNavigation}
