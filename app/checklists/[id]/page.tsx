@@ -4633,6 +4633,76 @@ function buildFormData(c: Checklist): FormData {
     );
   }
 
+  async function salvaImpianti(checklistId: string) {
+    const normalizedImpianti = impianti
+      .map((imp) => ({
+        impianto_descrizione: String(imp.impianto_descrizione || "").trim() || null,
+        tipo_impianto: String(imp.tipo_impianto || "").trim() || null,
+        tipo_struttura: String(imp.tipo_struttura || "").trim() || null,
+        impianto_indirizzo: String(imp.impianto_indirizzo || "").trim() || null,
+        passo: String(imp.passo || "").trim() || null,
+        dimensioni: String(imp.dimensioni || "").trim() || null,
+        impianto_quantita:
+          Number.isFinite(Number(imp.impianto_quantita)) && Number(imp.impianto_quantita) > 0
+            ? Math.floor(Number(imp.impianto_quantita))
+            : 1,
+        numero_facce:
+          Number.isFinite(Number(imp.numero_facce)) && Number(imp.numero_facce) > 0
+            ? Math.floor(Number(imp.numero_facce))
+            : 1,
+        note: String(imp.note || "").trim() || null,
+      }))
+      .filter((imp) =>
+        [
+          imp.impianto_descrizione,
+          imp.tipo_impianto,
+          imp.tipo_struttura,
+          imp.impianto_indirizzo,
+          imp.passo,
+          imp.dimensioni,
+          imp.note,
+          imp.impianto_quantita,
+          imp.numero_facce,
+        ].some((value) => value != null && String(value).trim() !== "")
+      );
+
+    const { error: deleteErr } = await dbFrom("checklist_impianti")
+      .delete()
+      .eq("checklist_id", checklistId);
+    if (deleteErr) {
+      throw new Error(
+        logSupabaseError("delete checklist_impianti", deleteErr) ||
+          "Errore eliminazione impianti checklist"
+      );
+    }
+
+    if (normalizedImpianti.length === 0) {
+      return;
+    }
+
+    const payload = normalizedImpianti.map((imp, index) => ({
+      checklist_id: checklistId,
+      position: index,
+      impianto_descrizione: imp.impianto_descrizione,
+      tipo_impianto: imp.tipo_impianto,
+      tipo_struttura: imp.tipo_struttura,
+      impianto_indirizzo: imp.impianto_indirizzo,
+      passo: imp.passo,
+      dimensioni: imp.dimensioni,
+      impianto_quantita: imp.impianto_quantita,
+      numero_facce: imp.numero_facce,
+      note: imp.note,
+    }));
+
+    const { error: insertErr } = await dbFrom("checklist_impianti").insert(payload);
+    if (insertErr) {
+      throw new Error(
+        logSupabaseError("insert checklist_impianti", insertErr) ||
+          "Errore salvataggio impianti checklist"
+      );
+    }
+  }
+
   const renderCronoOperativiSection = (
     title: string,
     attachmentTitle: string,
@@ -6130,6 +6200,29 @@ function buildFormData(c: Checklist): FormData {
         ? Number(formData.impianto_quantita)
         : 1;
     const m2Calcolati = baseM2 == null ? null : baseM2 * qty;
+    const shouldSaveMultiImpianti =
+      String(formData.noleggio_vendita || "").trim().toUpperCase() === "NOLEGGIO";
+    const primoImpianto = shouldSaveMultiImpianti
+      ? impianti[0] ?? buildEmptyChecklistImpianto()
+      : null;
+    const primoImpiantoDimensioni = primoImpianto ? String(primoImpianto.dimensioni || "").trim() : "";
+    const primoImpiantoNumeroFacce =
+      primoImpianto &&
+      Number.isFinite(Number(primoImpianto.numero_facce)) &&
+      Number(primoImpianto.numero_facce) > 0
+        ? Math.floor(Number(primoImpianto.numero_facce))
+        : 1;
+    const primoImpiantoQuantita =
+      primoImpianto &&
+      Number.isFinite(Number(primoImpianto.impianto_quantita)) &&
+      Number(primoImpianto.impianto_quantita) > 0
+        ? Math.floor(Number(primoImpianto.impianto_quantita))
+        : 1;
+    const primoImpiantoM2Base = primoImpianto
+      ? calcM2FromDimensioni(primoImpiantoDimensioni, primoImpiantoNumeroFacce)
+      : null;
+    const primoImpiantoM2Calcolati =
+      primoImpiantoM2Base == null ? null : primoImpiantoM2Base * primoImpiantoQuantita;
 
     const payload = {
       cliente: formData.cliente.trim() ? formData.cliente.trim() : null,
@@ -6153,8 +6246,8 @@ function buildFormData(c: Checklist): FormData {
       saas_stato: formData.saas_stato.trim() ? formData.saas_stato.trim() : null,
       saas_note: formData.saas_note.trim() ? formData.saas_note.trim() : null,
       tipo_saas: null,
-      m2_calcolati: m2Calcolati ?? null,
-      m2_inclusi: m2Calcolati ?? null,
+      m2_calcolati: shouldSaveMultiImpianti ? primoImpiantoM2Calcolati ?? null : m2Calcolati ?? null,
+      m2_inclusi: shouldSaveMultiImpianti ? primoImpiantoM2Calcolati ?? null : m2Calcolati ?? null,
       m2_allocati: null,
       updated_by_operatore: operatoreId,
       updated_by: currentOperatoreDisplayName,
@@ -6164,32 +6257,48 @@ function buildFormData(c: Checklist): FormData {
       data_tassativa: formData.data_tassativa.trim()
         ? formData.data_tassativa.trim()
         : null,
-      tipo_impianto: formData.tipo_impianto.trim()
-        ? formData.tipo_impianto.trim()
-        : null,
+      tipo_impianto: shouldSaveMultiImpianti
+        ? String(primoImpianto?.tipo_impianto || "").trim() || null
+        : formData.tipo_impianto.trim()
+          ? formData.tipo_impianto.trim()
+          : null,
       impianto_indirizzo: formData.impianto_indirizzo.trim()
         ? formData.impianto_indirizzo.trim()
         : null,
       impianto_codice: formData.impianto_codice.trim()
         ? formData.impianto_codice.trim()
         : null,
-      impianto_descrizione: formData.impianto_descrizione.trim()
-        ? formData.impianto_descrizione.trim()
-        : null,
-      dimensioni: formData.dimensioni.trim() ? formData.dimensioni.trim() : null,
-      impianto_quantita:
-        Number.isFinite(Number(formData.impianto_quantita)) && Number(formData.impianto_quantita) > 0
+      impianto_descrizione: shouldSaveMultiImpianti
+        ? String(primoImpianto?.impianto_descrizione || "").trim() || null
+        : formData.impianto_descrizione.trim()
+          ? formData.impianto_descrizione.trim()
+          : null,
+      dimensioni: shouldSaveMultiImpianti
+        ? primoImpiantoDimensioni || null
+        : formData.dimensioni.trim()
+          ? formData.dimensioni.trim()
+          : null,
+      impianto_quantita: shouldSaveMultiImpianti
+        ? primoImpiantoQuantita
+        : Number.isFinite(Number(formData.impianto_quantita)) && Number(formData.impianto_quantita) > 0
           ? Number(formData.impianto_quantita)
           : 1,
-      numero_facce:
-        Number.isFinite(Number(formData.numero_facce)) && Number(formData.numero_facce) > 0
+      numero_facce: shouldSaveMultiImpianti
+        ? primoImpiantoNumeroFacce
+        : Number.isFinite(Number(formData.numero_facce)) && Number(formData.numero_facce) > 0
           ? Number(formData.numero_facce)
           : 1,
-      passo: formData.passo.trim() ? formData.passo.trim() : null,
+      passo: shouldSaveMultiImpianti
+        ? String(primoImpianto?.passo || "").trim() || null
+        : formData.passo.trim()
+          ? formData.passo.trim()
+          : null,
       note: formData.note.trim() ? formData.note.trim() : null,
-      tipo_struttura: formData.tipo_struttura.trim()
-        ? formData.tipo_struttura.trim()
-        : null,
+      tipo_struttura: shouldSaveMultiImpianti
+        ? String(primoImpianto?.tipo_struttura || "").trim() || null
+        : formData.tipo_struttura.trim()
+          ? formData.tipo_struttura.trim()
+          : null,
       noleggio_vendita: formData.noleggio_vendita.trim()
         ? formData.noleggio_vendita.trim()
         : null,
@@ -6300,6 +6409,15 @@ function buildFormData(c: Checklist): FormData {
       alert(
         "Checklist salvata. Il link Drive magazzino non e' stato salvato: colonna non disponibile nello schema cache / ambiente non migrato."
       );
+    }
+
+    if (shouldSaveMultiImpianti) {
+      try {
+        await salvaImpianti(id);
+      } catch (err: any) {
+        alert(String(err?.message || err || "Errore salvataggio impianti checklist"));
+        return;
+      }
     }
 
     const normalizedRows = rows

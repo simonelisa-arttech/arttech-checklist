@@ -42,7 +42,7 @@ const TABLE_RULES: Record<
     requiredEqAnyOf: ["id", "checklist_id"],
   },
   checklist_impianti: {
-    ops: ["select"],
+    ops: ["select", "insert", "delete"],
     filterCols: ["id", "checklist_id"],
     orderCols: ["position", "created_at", "updated_at"],
     requiredEqAnyOf: ["id", "checklist_id"],
