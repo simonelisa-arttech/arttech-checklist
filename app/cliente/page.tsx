@@ -29,6 +29,17 @@ type ClienteProgetto = {
   nome_checklist: string | null;
   noleggio_vendita: string | null;
   stato_progetto: string | null;
+  impianti?: ClienteImpianto[];
+};
+
+type ClienteImpianto = {
+  id?: string;
+  position?: number | null;
+  impianto_quantita?: number | null;
+  dimensioni?: string | null;
+  passo?: string | null;
+  tipo_impianto?: string | null;
+  impianto_descrizione?: string | null;
 };
 
 type ClienteScadenza = {
@@ -80,6 +91,19 @@ function formatDateLabel(value?: string | null) {
   const date = new Date(raw);
   if (!Number.isFinite(date.getTime())) return raw.slice(0, 10) || "—";
   return date.toLocaleDateString("it-IT");
+}
+
+function formatImpiantoSummary(impianto?: ClienteImpianto) {
+  if (!impianto) return "Impianto non specificato";
+  const parts = [
+    Number.isFinite(Number(impianto.impianto_quantita)) && Number(impianto.impianto_quantita) > 0
+      ? `${Number(impianto.impianto_quantita)}x`
+      : null,
+    String(impianto.dimensioni || "").trim() || null,
+    String(impianto.passo || "").trim() || null,
+    String(impianto.tipo_impianto || "").trim() || null,
+  ].filter(Boolean);
+  return parts.length > 0 ? parts.join(" • ") : "Impianto non specificato";
 }
 
 function sectionShell(title: string, subtitle: string, content: React.ReactNode) {
@@ -434,6 +458,29 @@ export default function ClientePortalPage() {
                           })
                         : null}
                     </div>
+                    {effectiveSettings.show_impianti &&
+                    Array.isArray(progetto.impianti) &&
+                    progetto.impianti.length > 0 ? (
+                      <div style={{ display: "grid", gap: 6 }}>
+                        <div style={{ fontSize: 12, fontWeight: 800, color: "#475569" }}>
+                          Impianti
+                        </div>
+                        <div style={{ display: "grid", gap: 4 }}>
+                          {progetto.impianti.map((impianto, index) => (
+                            <div
+                              key={impianto.id || `${progetto.id}-impianto-${index}`}
+                              style={{
+                                fontSize: 13,
+                                color: "#334155",
+                                lineHeight: 1.4,
+                              }}
+                            >
+                              {formatImpiantoSummary(impianto)}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
                   </div>
                 ))}
               </div>
