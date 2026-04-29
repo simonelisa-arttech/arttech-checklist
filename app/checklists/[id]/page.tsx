@@ -325,6 +325,17 @@ function buildLegacyChecklistImpianto(checklist: Checklist): ChecklistImpianto[]
   ];
 }
 
+function buildEmptyChecklistImpianto(): ChecklistImpianto {
+  return {
+    impianto_quantita: 1,
+    dimensioni: "",
+    passo: "",
+    tipo_impianto: "",
+    tipo_struttura: "",
+    note: "",
+  };
+}
+
 type ChecklistTaskDocument = {
   id: string;
   checklist_id: string;
@@ -1455,6 +1466,7 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
   const [loading, setLoading] = useState(true);
   const [checklist, setChecklist] = useState<Checklist | null>(null);
   const [formData, setFormData] = useState<FormData | null>(null);
+  const [impianti, setImpianti] = useState<ChecklistImpianto[]>([]);
   const [originalData, setOriginalData] = useState<FormData | null>(null);
   const [editMode, setEditMode] = useState(false);
   const [dimensioniLocal, setDimensioniLocal] = useState("");
@@ -1998,6 +2010,15 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
   useEffect(() => {
     setDimensioniLocal(formData?.dimensioni ?? "");
   }, [formData?.dimensioni]);
+
+  useEffect(() => {
+    if (!checklist) return;
+    if (Array.isArray(checklist.impianti) && checklist.impianti.length > 0) {
+      setImpianti(checklist.impianti);
+      return;
+    }
+    setImpianti([buildEmptyChecklistImpianto()]);
+  }, [checklist]);
 
   function normalizeAlertTasks(input: any) {
     if (!input) {
@@ -4590,6 +4611,27 @@ function buildFormData(c: Checklist): FormData {
   const isNoleggioProject = isNoleggioValue(
     editMode && formData ? formData.noleggio_vendita : checklist.noleggio_vendita
   );
+
+  function addImpianto() {
+    setImpianti((prev) => [...prev, buildEmptyChecklistImpianto()]);
+  }
+
+  function removeImpianto(index: number) {
+    setImpianti((prev) => {
+      const next = prev.filter((_, idx) => idx !== index);
+      return next.length > 0 ? next : [buildEmptyChecklistImpianto()];
+    });
+  }
+
+  function updateImpianto(
+    index: number,
+    field: keyof ChecklistImpianto,
+    value: string | number | null
+  ) {
+    setImpianti((prev) =>
+      prev.map((impianto, idx) => (idx === index ? { ...impianto, [field]: value } : impianto))
+    );
+  }
 
   const renderCronoOperativiSection = (
     title: string,
@@ -8241,6 +8283,162 @@ function buildFormData(c: Checklist): FormData {
           </div>
         </div>
       )}
+      {isNoleggioProject ? (
+        <div
+          style={{
+            border: "1px solid #eee",
+            borderRadius: 12,
+            padding: 12,
+            background: "white",
+            marginTop: 12,
+            display: "grid",
+            gap: 10,
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              flexWrap: "wrap",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 10,
+            }}
+          >
+            <div style={{ fontWeight: 800 }}>IMPIANTI NOLEGGIO</div>
+            <button
+              type="button"
+              onClick={addImpianto}
+              style={{
+                padding: "8px 12px",
+                borderRadius: 10,
+                border: "1px solid #d1d5db",
+                background: "white",
+                cursor: "pointer",
+                fontSize: 13,
+                fontWeight: 700,
+              }}
+            >
+              + Aggiungi impianto
+            </button>
+          </div>
+
+          {impianti.map((imp, index) => (
+            <div
+              key={imp.id || index}
+              style={{
+                border: "1px solid #eee",
+                borderRadius: 10,
+                padding: 12,
+                background: "#fafafa",
+                display: "grid",
+                gap: 10,
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  flexWrap: "wrap",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  gap: 10,
+                }}
+              >
+                <div style={{ fontWeight: 700 }}>Impianto #{index + 1}</div>
+                <button
+                  type="button"
+                  onClick={() => removeImpianto(index)}
+                  style={{
+                    padding: "6px 10px",
+                    borderRadius: 8,
+                    border: "1px solid #fecaca",
+                    background: "#fff1f2",
+                    color: "#b91c1c",
+                    cursor: "pointer",
+                    fontSize: 12,
+                    fontWeight: 700,
+                  }}
+                >
+                  Rimuovi
+                </button>
+              </div>
+
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+                  gap: 10,
+                }}
+              >
+                <label style={{ display: "grid", gap: 6, fontSize: 13 }}>
+                  <span>Quantità</span>
+                  <input
+                    type="number"
+                    min={1}
+                    step={1}
+                    value={
+                      Number.isFinite(Number(imp.impianto_quantita)) &&
+                      Number(imp.impianto_quantita) > 0
+                        ? Number(imp.impianto_quantita)
+                        : 1
+                    }
+                    onChange={(e) => {
+                      const next = Number(e.target.value);
+                      updateImpianto(
+                        index,
+                        "impianto_quantita",
+                        Number.isFinite(next) && next > 0 ? Math.floor(next) : 1
+                      );
+                    }}
+                    style={{ width: "100%", padding: 10 }}
+                  />
+                </label>
+
+                <label style={{ display: "grid", gap: 6, fontSize: 13 }}>
+                  <span>Dimensioni</span>
+                  <input
+                    value={String(imp.dimensioni || "")}
+                    placeholder="es. 3x2"
+                    onChange={(e) => updateImpianto(index, "dimensioni", e.target.value)}
+                    style={{ width: "100%", padding: 10 }}
+                  />
+                </label>
+
+                <label style={{ display: "grid", gap: 6, fontSize: 13 }}>
+                  <span>Passo</span>
+                  <input
+                    value={String(imp.passo || "")}
+                    placeholder="es. P2.6"
+                    onChange={(e) => updateImpianto(index, "passo", e.target.value)}
+                    style={{ width: "100%", padding: 10 }}
+                  />
+                </label>
+
+                <label style={{ display: "grid", gap: 6, fontSize: 13 }}>
+                  <span>Tipo</span>
+                  <select
+                    value={String(imp.tipo_impianto || "")}
+                    onChange={(e) => updateImpianto(index, "tipo_impianto", e.target.value)}
+                    style={{ width: "100%", padding: 10 }}
+                  >
+                    <option value="">—</option>
+                    <option value="INDOOR">Indoor</option>
+                    <option value="OUTDOOR">Outdoor</option>
+                  </select>
+                </label>
+
+                <label style={{ display: "grid", gap: 6, fontSize: 13 }}>
+                  <span>Note</span>
+                  <input
+                    value={String(imp.note || "")}
+                    onChange={(e) => updateImpianto(index, "note", e.target.value)}
+                    style={{ width: "100%", padding: 10 }}
+                  />
+                </label>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : null}
       {renderLazySection(
         "section-dati-operativi",
         "Dati operativi / cronoprogramma",
