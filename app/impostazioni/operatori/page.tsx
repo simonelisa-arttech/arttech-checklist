@@ -38,7 +38,7 @@ const RUOLI = [
 ];
 
 const OPERATORI_GRID_COLUMNS =
-  "minmax(220px, 1.65fr) minmax(130px, 0.9fr) minmax(210px, 1.1fr) minmax(210px, 1.1fr) minmax(200px, 1fr)";
+  "minmax(220px, 2fr) minmax(160px, 1.5fr) minmax(150px, 1.2fr) minmax(150px, 1.2fr) minmax(200px, 1fr)";
 
 const compactBooleanBadgeStyle = (enabled: boolean) =>
   ({
@@ -703,8 +703,8 @@ export default function OperatoriPage() {
                       width: "100%",
                       padding: 8,
                       minWidth: 0,
-                      whiteSpace: "normal",
                       overflowWrap: "anywhere",
+                      wordBreak: "break-word",
                     }}
                   >
                     <option value="">—</option>
