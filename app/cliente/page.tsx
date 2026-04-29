@@ -73,6 +73,16 @@ type ClienteIntervento = {
   note?: string | null;
 };
 
+type ClienteRinnovo = {
+  id: string;
+  checklist_id: string | null;
+  progetto_nome?: string | null;
+  tipo?: string | null;
+  descrizione?: string | null;
+  data_scadenza?: string | null;
+  stato?: string | null;
+};
+
 function renderPill(
   label: string,
   colors: { border: string; background: string; color: string }
@@ -158,6 +168,7 @@ export default function ClientePortalPage() {
   const [scadenze, setScadenze] = useState<ClienteScadenza[]>([]);
   const [documenti, setDocumenti] = useState<ClienteDocumento[]>([]);
   const [interventi, setInterventi] = useState<ClienteIntervento[]>([]);
+  const [rinnovi, setRinnovi] = useState<ClienteRinnovo[]>([]);
   const [openingDocumentId, setOpeningDocumentId] = useState<string | null>(null);
   const [impersonationToken, setImpersonationToken] = useState("");
   const clienteApiSuffix = impersonationToken
@@ -199,20 +210,22 @@ export default function ClientePortalPage() {
         setLoading(true);
         setError(null);
 
-        const [meRes, progettiRes, scadenzeRes, documentiRes, interventiRes] = await Promise.all([
+        const [meRes, progettiRes, scadenzeRes, documentiRes, interventiRes, rinnoviRes] = await Promise.all([
           fetch(`/api/cliente/me${clienteApiSuffix}`, { credentials: "include" }),
           fetch(`/api/cliente/progetti${clienteApiSuffix}`, { credentials: "include" }),
           fetch(`/api/cliente/scadenze${clienteApiSuffix}`, { credentials: "include" }),
           fetch(`/api/cliente/documenti${clienteApiSuffix}`, { credentials: "include" }),
           fetch(`/api/cliente/interventi${clienteApiSuffix}`, { credentials: "include" }),
+          fetch(`/api/cliente/rinnovi${clienteApiSuffix}`, { credentials: "include" }),
         ]);
 
-        const [meData, progettiData, scadenzeData, documentiData, interventiData] = await Promise.all([
+        const [meData, progettiData, scadenzeData, documentiData, interventiData, rinnoviData] = await Promise.all([
           meRes.json().catch(() => ({})),
           progettiRes.json().catch(() => ({})),
           scadenzeRes.json().catch(() => ({})),
           documentiRes.json().catch(() => ({})),
           interventiRes.json().catch(() => ({})),
+          rinnoviRes.json().catch(() => ({})),
         ]);
 
         if (!meRes.ok) {
@@ -229,6 +242,9 @@ export default function ClientePortalPage() {
         }
         if (!interventiRes.ok) {
           throw new Error(String(interventiData?.error || "Errore caricamento interventi cliente"));
+        }
+        if (!rinnoviRes.ok) {
+          throw new Error(String(rinnoviData?.error || "Errore caricamento rinnovi cliente"));
         }
 
         if (!active) return;
@@ -269,6 +285,7 @@ export default function ClientePortalPage() {
         setScadenze(((scadenzeData?.scadenze as ClienteScadenza[]) || []).filter(Boolean));
         setDocumenti(((documentiData?.documenti as ClienteDocumento[]) || []).filter(Boolean));
         setInterventi(((interventiData?.interventi as ClienteIntervento[]) || []).filter(Boolean));
+        setRinnovi(((rinnoviData?.rinnovi as ClienteRinnovo[]) || []).filter(Boolean));
       } catch (err: any) {
         if (!active) return;
         setError(String(err?.message || err || "Errore caricamento area cliente"));
@@ -452,6 +469,9 @@ export default function ClientePortalPage() {
                   const projectInterventi = interventi.filter(
                     (item) => String(item.checklist_id || "").trim() === progetto.id
                   );
+                  const projectRinnovi = rinnovi.filter(
+                    (item) => String(item.checklist_id || "").trim() === progetto.id
+                  );
                   return (
                   <div
                     key={progetto.id}
@@ -523,6 +543,30 @@ export default function ClientePortalPage() {
                               {formatDateLabel(intervento.data_intervento)} •{" "}
                               {String(intervento.tipo || intervento.titolo || "Intervento").trim()} •{" "}
                               {String(intervento.stato || "—").trim().toUpperCase()}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
+                    {effectiveSettings.show_rinnovi && projectRinnovi.length > 0 ? (
+                      <div style={{ display: "grid", gap: 6 }}>
+                        <div style={{ fontSize: 12, fontWeight: 800, color: "#475569" }}>
+                          Rinnovi
+                        </div>
+                        <div style={{ display: "grid", gap: 4 }}>
+                          {projectRinnovi.map((rinnovo) => (
+                            <div
+                              key={rinnovo.id}
+                              style={{
+                                fontSize: 13,
+                                color: "#334155",
+                                lineHeight: 1.45,
+                                overflowWrap: "anywhere",
+                              }}
+                            >
+                              {formatDateLabel(rinnovo.data_scadenza)} •{" "}
+                              {String(rinnovo.tipo || rinnovo.descrizione || "Rinnovo").trim()} •{" "}
+                              {String(rinnovo.stato || "—").trim().toUpperCase()}
                             </div>
                           ))}
                         </div>
