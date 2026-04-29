@@ -1457,9 +1457,10 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
   };
   const mainSectionTitleStyle: CSSProperties = {
     margin: 0,
-    fontSize: 30,
-    fontWeight: 900,
+    fontSize: 26,
+    fontWeight: 800,
     letterSpacing: 0.2,
+    lineHeight: 1.15,
   };
   const router = useRouter();
   const [id, setId] = useState<string | null>(null);
@@ -1655,6 +1656,7 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
   }>({ scadenza: "", fatturazione: "INCLUSO", note: "" });
   const [projectRinnovi, setProjectRinnovi] = useState<ProjectRinnovoRow[]>([]);
   const [projectTagliandoSaving, setProjectTagliandoSaving] = useState(false);
+  const newClienteReferenteNomeRef = useRef<HTMLInputElement | null>(null);
   const [projectRenewalEdit, setProjectRenewalEdit] = useState<{
     row: ProjectRenewalRow;
     scadenza: string;
@@ -8657,10 +8659,34 @@ function buildFormData(c: Checklist): FormData {
         <>
           {!checklist?.cliente_id ? (
             <div style={{ opacity: 0.75 }}>
-              Collega prima un cliente al progetto per gestire i referenti.
+              Per aggiungere referenti cliente, seleziona o verifica l’anagrafica cliente collegata al progetto.
             </div>
           ) : (
             <>
+              <div
+                style={{
+                  display: "flex",
+                  justifyContent: "flex-end",
+                  marginBottom: 12,
+                }}
+              >
+                <button
+                  type="button"
+                  onClick={() => newClienteReferenteNomeRef.current?.focus()}
+                  style={{
+                    padding: "8px 12px",
+                    borderRadius: 10,
+                    border: "1px solid #d1d5db",
+                    background: "white",
+                    cursor: "pointer",
+                    fontSize: 13,
+                    fontWeight: 700,
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  + Aggiungi referente
+                </button>
+              </div>
               <div
                 style={{
                   marginBottom: 12,
@@ -8677,6 +8703,7 @@ function buildFormData(c: Checklist): FormData {
                 <label>
                   Nome<br />
                   <input
+                    ref={newClienteReferenteNomeRef}
                     value={newClienteReferente.nome}
                     onChange={(e) =>
                       setNewClienteReferente((prev) => ({ ...prev, nome: e.target.value }))

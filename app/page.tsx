@@ -3976,6 +3976,31 @@ export function DashboardCockpitPage({
                                   >
                                     {item.nome_checklist || "—"}
                                   </div>
+                                  <div
+                                    style={{
+                                      display: "flex",
+                                      gap: 8,
+                                      flexWrap: "wrap",
+                                      marginTop: 6,
+                                      fontSize: 12,
+                                      fontWeight: 700,
+                                    }}
+                                  >
+                                    <Link
+                                      href={`/checklists/${item.id}`}
+                                      style={{ color: "#2563eb", textDecoration: "underline" }}
+                                    >
+                                      Apri progetto
+                                    </Link>
+                                    {item.cliente ? (
+                                      <Link
+                                        href={`/clienti/${encodeURIComponent(item.cliente)}`}
+                                        style={{ color: "#2563eb", textDecoration: "underline" }}
+                                      >
+                                        Apri cliente
+                                      </Link>
+                                    ) : null}
+                                  </div>
                                 </div>
                               </td>
                               <td style={{ padding: "14px 14px", verticalAlign: "top" }}>
