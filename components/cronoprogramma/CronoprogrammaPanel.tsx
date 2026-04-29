@@ -276,7 +276,9 @@ function renderStructuredReportBlock(comment: CronoComment, report: StructuredRe
 
 function getBudgetDeltaSummary(stimatoMinuti: number | null, realeMinuti: number | null) {
   if (!Number.isFinite(Number(stimatoMinuti)) || stimatoMinuti == null) return null;
-  const actual = Number.isFinite(Number(realeMinuti)) && realeMinuti != null ? Math.round(Number(realeMinuti)) : 0;
+  const actual =
+    Number.isFinite(Number(realeMinuti)) && realeMinuti != null ? Math.round(Number(realeMinuti)) : 0;
+  if (actual <= 0) return null;
   const estimated = Math.round(Number(stimatoMinuti));
   const deltaMinuti = actual - estimated;
   const absoluteDelta = Math.abs(deltaMinuti);
@@ -379,6 +381,9 @@ export default function CronoprogrammaPanel({
   const [timeBudgetByKey, setTimeBudgetByKey] = useState<Record<string, TimeBudgetSummary>>({});
   const [liveNowMs, setLiveNowMs] = useState(() => Date.now());
   const [outcomeFilter, setOutcomeFilter] = useState<OutcomeFilter>("TUTTI");
+  const [manualActualOpenKey, setManualActualOpenKey] = useState<string | null>(null);
+  const [manualActualHoursByKey, setManualActualHoursByKey] = useState<Record<string, string>>({});
+  const [manualActualSavingKey, setManualActualSavingKey] = useState<string | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -559,6 +564,64 @@ export default function CronoprogrammaPanel({
       console.error("Errore timbratura cronoprogramma", err);
     } finally {
       setTimbraturaLoadingKey((prev) => (prev === key ? null : prev));
+    }
+  }
+
+  async function handleSaveManualActual(row: TimelineRow, key: string) {
+    try {
+      const rawValue = String(manualActualHoursByKey[key] || "").trim().replace(",", ".");
+      const parsedHours = Number(rawValue);
+      if (!Number.isFinite(parsedHours) || parsedHours <= 0) return;
+      const minutes = Math.round(parsedHours * 60);
+      if (minutes <= 0) return;
+
+      setManualActualSavingKey(key);
+      const res = await fetch("/api/cronoprogramma", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          action: "set_tempo_reale",
+          row_kind: row.kind,
+          row_ref_id: row.row_ref_id,
+          durata_effettiva_minuti: minutes,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        console.error("Errore salvataggio tempo reale cronoprogramma", data);
+        window.alert(String(data?.error || "Errore salvataggio tempo reale"));
+        return;
+      }
+
+      setTimeBudgetByKey((prev) => ({
+        ...prev,
+        [key]: {
+          ...(prev[key] || { stimatoMinuti: null, realeMinuti: null, liveStartedAt: [] }),
+          realeMinuti:
+            Number.isFinite(Number(data?.durata_effettiva_minuti)) && Number(data?.durata_effettiva_minuti) > 0
+              ? Number(data.durata_effettiva_minuti)
+              : minutes,
+          liveStartedAt: [],
+        },
+      }));
+      setTimbraturaStateByKey((prev) => ({
+        ...prev,
+        [key]:
+          String(data?.activity_state || "").trim().toUpperCase() === "COMPLETATA"
+            ? "COMPLETATA"
+            : prev[key] || "NON_INIZIATA",
+      }));
+      setManualActualOpenKey((prev) => (prev === key ? null : prev));
+      setManualActualHoursByKey((prev) => ({
+        ...prev,
+        [key]: rawValue,
+      }));
+    } catch (err) {
+      console.error("Errore salvataggio tempo reale cronoprogramma", err);
+      window.alert("Errore salvataggio tempo reale");
+    } finally {
+      setManualActualSavingKey((prev) => (prev === key ? null : prev));
     }
   }
 
@@ -798,6 +861,10 @@ export default function CronoprogrammaPanel({
               const displayedActualMinutes = getDisplayedActualMinutes(timeBudget, liveNowMs);
               const liveElapsedMs = getLiveElapsedMs(timeBudget.liveStartedAt, liveNowMs);
               const budgetDelta = getBudgetDeltaSummary(timeBudget.stimatoMinuti, displayedActualMinutes);
+              const hasRealMinutes = displayedActualMinutes > 0;
+              const manualActualOpen = manualActualOpenKey === key;
+              const manualActualSaving = manualActualSavingKey === key;
+              const manualActualValue = manualActualHoursByKey[key] ?? "";
 
               return (
                 <div
@@ -864,9 +931,80 @@ export default function CronoprogrammaPanel({
                         </div>
                         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", fontSize: 12, color: "#475569" }}>
                           <span>Stimato: {formatMinutesCompact(timeBudget.stimatoMinuti)}</span>
-                          <span>Reale: {formatMinutesCompact(displayedActualMinutes)}</span>
-                          <span>Delta: {budgetDelta?.deltaLabel || "—"}</span>
-                          {budgetDelta?.badge || null}
+                          {hasRealMinutes ? <span>Reale: {formatMinutesCompact(displayedActualMinutes)}</span> : null}
+                          {hasRealMinutes ? <span>Delta: {budgetDelta?.deltaLabel || "—"}</span> : null}
+                          {hasRealMinutes ? budgetDelta?.badge || null : null}
+                          {!hasRealMinutes ? (
+                            manualActualOpen ? (
+                              <span
+                                onClick={(e) => e.stopPropagation()}
+                                style={{ display: "inline-flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}
+                              >
+                                <input
+                                  type="number"
+                                  min="0"
+                                  step="0.25"
+                                  value={manualActualValue}
+                                  onChange={(e) =>
+                                    setManualActualHoursByKey((prev) => ({ ...prev, [key]: e.target.value }))
+                                  }
+                                  placeholder="Ore"
+                                  style={{
+                                    width: 88,
+                                    padding: "6px 8px",
+                                    borderRadius: 10,
+                                    border: "1px solid #d1d5db",
+                                    background: "white",
+                                  }}
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => void handleSaveManualActual(r, key)}
+                                  disabled={manualActualSaving || !String(manualActualValue).trim()}
+                                  style={{
+                                    padding: "6px 10px",
+                                    borderRadius: 999,
+                                    border: "1px solid #93c5fd",
+                                    background: "#dbeafe",
+                                    color: "#1d4ed8",
+                                    fontSize: 12,
+                                    fontWeight: 700,
+                                    cursor:
+                                      manualActualSaving || !String(manualActualValue).trim()
+                                        ? "not-allowed"
+                                        : "pointer",
+                                    opacity: manualActualSaving || !String(manualActualValue).trim() ? 0.7 : 1,
+                                  }}
+                                >
+                                  {manualActualSaving ? "Salvataggio..." : "Salva"}
+                                </button>
+                              </span>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setManualActualOpenKey(key);
+                                  setManualActualHoursByKey((prev) => ({
+                                    ...prev,
+                                    [key]: prev[key] ?? "",
+                                  }));
+                                }}
+                                style={{
+                                  padding: "6px 10px",
+                                  borderRadius: 999,
+                                  border: "1px solid #cbd5e1",
+                                  background: "white",
+                                  color: "#0f172a",
+                                  fontSize: 12,
+                                  fontWeight: 700,
+                                  cursor: "pointer",
+                                }}
+                              >
+                                Inserisci tempo impiegato
+                              </button>
+                            )
+                          ) : null}
                         </div>
                         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
                           {timbraturaState === "IN_CORSO"
@@ -999,10 +1137,12 @@ export default function CronoprogrammaPanel({
                           Stimato {formatMinutesCompact(timeBudget.stimatoMinuti)}
                         </div>
                         <div style={{ fontSize: 12, color: "#64748b" }}>
-                          Reale {formatMinutesCompact(displayedActualMinutes)}
+                          {hasRealMinutes
+                            ? `Reale ${formatMinutesCompact(displayedActualMinutes)}`
+                            : "Reale —"}
                         </div>
                         <div style={{ fontSize: 12, color: "#64748b" }}>
-                          {budgetDelta ? budgetDelta.deltaLabel : "Delta —"}
+                          {hasRealMinutes && budgetDelta ? budgetDelta.deltaLabel : "Delta —"}
                         </div>
                       </div>
                     </div>

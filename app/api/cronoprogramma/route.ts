@@ -1300,6 +1300,78 @@ export async function POST(request: Request) {
     });
   }
 
+  if (action === "set_tempo_reale") {
+    const rowKind = String(body?.row_kind || "").trim().toUpperCase();
+    const rowRefId = String(body?.row_ref_id || "").trim();
+    const durataEffettivaMinuti = cleanNonNegativeInteger(body?.durata_effettiva_minuti);
+    if (!isValidRowKind(rowKind) || !isUuidLike(rowRefId)) {
+      return NextResponse.json({ error: "row_kind/row_ref_id non validi" }, { status: 400 });
+    }
+    if (!Number.isFinite(Number(durataEffettivaMinuti)) || Number(durataEffettivaMinuti) <= 0) {
+      return NextResponse.json({ error: "Tempo reale non valido" }, { status: 400 });
+    }
+
+    const { data: openTimbrature, error: openErr } = await supabaseAdmin
+      .from("cronoprogramma_timbrature")
+      .select("id")
+      .eq("row_kind", rowKind)
+      .eq("row_ref_id", rowRefId)
+      .in("stato", ["IN_CORSO", "IN_PAUSA"]);
+
+    if (openErr) {
+      return NextResponse.json({ error: openErr.message }, { status: 500 });
+    }
+    if ((openTimbrature || []).length > 0) {
+      return NextResponse.json(
+        { error: "Chiudi prima eventuali timbrature attive o in pausa" },
+        { status: 409 }
+      );
+    }
+
+    let personaleId: string | null = null;
+    try {
+      personaleId = await loadOperatorePersonaleId(supabaseAdmin, operatore.id);
+    } catch (err: any) {
+      return NextResponse.json(
+        { error: String(err?.message || "Errore caricamento personale operatore") },
+        { status: 500 }
+      );
+    }
+
+    const now = new Date();
+    const startedAt = new Date(now.getTime() - Number(durataEffettivaMinuti) * 60000).toISOString();
+    const endedAt = now.toISOString();
+
+    const { data: createdTimbratura, error: insertErr } = await supabaseAdmin
+      .from("cronoprogramma_timbrature")
+      .insert({
+        row_kind: rowKind,
+        row_ref_id: rowRefId,
+        operatore_id: operatore.id,
+        personale_id: personaleId,
+        started_at: startedAt,
+        ended_at: endedAt,
+        stato: "COMPLETATA",
+        durata_effettiva_minuti: Number(durataEffettivaMinuti),
+        updated_at: endedAt,
+      })
+      .select("id")
+      .single();
+
+    if (insertErr || !createdTimbratura?.id) {
+      return NextResponse.json(
+        { error: insertErr?.message || "Tempo reale non salvato" },
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json({
+      ok: true,
+      durata_effettiva_minuti: Number(durataEffettivaMinuti),
+      activity_state: "COMPLETATA",
+    });
+  }
+
   if (action === "add_comment") {
     const rowKind = String(body?.row_kind || "").trim().toUpperCase();
     const rowRefId = String(body?.row_ref_id || "").trim();
