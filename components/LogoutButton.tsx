@@ -159,6 +159,9 @@ export default function LogoutButton() {
             <Link href="/impostazioni/operatori" style={dropdownLinkStyle} onClick={closeDropdownOnNavigation}>
               Anagrafica operatori
             </Link>
+            <Link href="/clienti" style={dropdownLinkStyle} onClick={closeDropdownOnNavigation}>
+              Anagrafica clienti
+            </Link>
             <Link href="/impostazioni/personale" style={dropdownLinkStyle} onClick={closeDropdownOnNavigation}>
               Personale
             </Link>
