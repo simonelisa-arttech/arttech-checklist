@@ -511,7 +511,9 @@ export default function CronoprogrammaPanel({
             ? "IN_CORSO"
             : action === "pause_timbratura"
               ? "IN_PAUSA"
-              : "COMPLETATA",
+              : String(data?.activity_state || "").trim().toUpperCase() === "NON_INIZIATA"
+                ? "NON_INIZIATA"
+                : "COMPLETATA",
       }));
       if (action === "start_timbratura" || action === "pause_timbratura" || action === "resume_timbratura") {
         setTimeBudgetByKey((prev) => {
