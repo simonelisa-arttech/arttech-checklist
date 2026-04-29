@@ -8,6 +8,17 @@ type ClienteMe = {
   cliente_id: string;
   email: string;
   attivo: boolean;
+  settings?: {
+    show_progetti: boolean;
+    show_riepilogo_progetto: boolean;
+    show_impianti: boolean;
+    show_scadenze: boolean;
+    show_rinnovi: boolean;
+    show_tagliandi: boolean;
+    show_interventi: boolean;
+    show_documenti: boolean;
+    show_cronoprogramma: boolean;
+  };
   impersonation?: boolean;
   impersonated_by_operatore_id?: string | null;
 };
@@ -91,6 +102,18 @@ function sectionShell(title: string, subtitle: string, content: React.ReactNode)
   );
 }
 
+const DEFAULT_PORTAL_SETTINGS = {
+  show_progetti: true,
+  show_riepilogo_progetto: true,
+  show_impianti: true,
+  show_scadenze: true,
+  show_rinnovi: false,
+  show_tagliandi: false,
+  show_interventi: false,
+  show_documenti: true,
+  show_cronoprogramma: false,
+} as const;
+
 export default function ClientePortalPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -172,6 +195,28 @@ export default function ClientePortalPage() {
           meData?.cliente
             ? ({
                 ...(meData.cliente as ClienteMe),
+                settings: {
+                  show_progetti:
+                    meData?.settings?.show_progetti ?? DEFAULT_PORTAL_SETTINGS.show_progetti,
+                  show_riepilogo_progetto:
+                    meData?.settings?.show_riepilogo_progetto ??
+                    DEFAULT_PORTAL_SETTINGS.show_riepilogo_progetto,
+                  show_impianti:
+                    meData?.settings?.show_impianti ?? DEFAULT_PORTAL_SETTINGS.show_impianti,
+                  show_scadenze:
+                    meData?.settings?.show_scadenze ?? DEFAULT_PORTAL_SETTINGS.show_scadenze,
+                  show_rinnovi:
+                    meData?.settings?.show_rinnovi ?? DEFAULT_PORTAL_SETTINGS.show_rinnovi,
+                  show_tagliandi:
+                    meData?.settings?.show_tagliandi ?? DEFAULT_PORTAL_SETTINGS.show_tagliandi,
+                  show_interventi:
+                    meData?.settings?.show_interventi ?? DEFAULT_PORTAL_SETTINGS.show_interventi,
+                  show_documenti:
+                    meData?.settings?.show_documenti ?? DEFAULT_PORTAL_SETTINGS.show_documenti,
+                  show_cronoprogramma:
+                    meData?.settings?.show_cronoprogramma ??
+                    DEFAULT_PORTAL_SETTINGS.show_cronoprogramma,
+                },
                 impersonation: meData?.impersonation === true,
                 impersonated_by_operatore_id:
                   String(meData?.impersonated_by_operatore_id || "").trim() || null,
@@ -204,6 +249,13 @@ export default function ClientePortalPage() {
       "Area cliente"
     );
   }, [progetti, scadenze]);
+
+  const effectiveSettings = me?.settings || DEFAULT_PORTAL_SETTINGS;
+  const visibleSectionsCount = [
+    effectiveSettings.show_progetti,
+    effectiveSettings.show_scadenze,
+    effectiveSettings.show_documenti,
+  ].filter(Boolean).length;
 
   if (!isSupabaseConfigured) {
     return <ConfigMancante />;
@@ -321,15 +373,30 @@ export default function ClientePortalPage() {
           </div>
         ) : null}
 
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
-            gap: 18,
-            alignItems: "start",
-          }}
-        >
-          {sectionShell(
+        {visibleSectionsCount === 0 ? (
+          <div
+            style={{
+              border: "1px solid #e5e7eb",
+              borderRadius: 16,
+              background: "white",
+              padding: 18,
+              color: "#475569",
+              fontSize: 14,
+            }}
+          >
+            Nessun contenuto disponibile al momento. Contatta Art Tech per maggiori informazioni.
+          </div>
+        ) : (
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))",
+              gap: 18,
+              alignItems: "start",
+            }}
+          >
+          {effectiveSettings.show_progetti
+            ? sectionShell(
             "Progetti",
             "I progetti associati al tuo account cliente.",
             loading ? (
@@ -371,9 +438,11 @@ export default function ClientePortalPage() {
                 ))}
               </div>
             )
-          )}
+          )
+            : null}
 
-          {sectionShell(
+          {effectiveSettings.show_scadenze
+            ? sectionShell(
             "Scadenze",
             "Licenze, rinnovi, garanzie e tagliandi del tuo perimetro.",
             loading ? (
@@ -416,9 +485,11 @@ export default function ClientePortalPage() {
                 ))}
               </div>
             )
-          )}
+          )
+            : null}
 
-          {sectionShell(
+          {effectiveSettings.show_documenti
+            ? sectionShell(
             "Documenti",
             "Solo documenti e allegati marcati come visibili al cliente.",
             loading ? (
@@ -476,8 +547,10 @@ export default function ClientePortalPage() {
                 ))}
               </div>
             )
-          )}
-        </div>
+          )
+            : null}
+          </div>
+        )}
       </div>
     </div>
   );
