@@ -38,7 +38,7 @@ const RUOLI = [
 ];
 
 const OPERATORI_GRID_COLUMNS =
-  "minmax(220px, 2fr) minmax(160px, 1.5fr) minmax(150px, 1.2fr) minmax(150px, 1.2fr) minmax(200px, 1fr)";
+  "minmax(220px, 2fr) minmax(180px, 1.6fr) minmax(120px, 0.9fr) minmax(120px, 0.9fr) minmax(180px, 1fr)";
 
 const compactBooleanBadgeStyle = (enabled: boolean) =>
   ({
@@ -415,27 +415,6 @@ export default function OperatoriPage() {
     await loadOperatori();
   }
 
-  function renderBooleanCell(
-    checked: boolean,
-    onChange: (next: boolean) => void,
-    ariaLabel: string
-  ) {
-    return (
-      <label
-        style={{
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          gap: 6,
-          minWidth: 0,
-        }}
-      >
-        <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} aria-label={ariaLabel} />
-        <span style={compactBooleanBadgeStyle(checked)}>{checked ? "SI" : "NO"}</span>
-      </label>
-    );
-  }
-
   function renderBooleanSetting(
     label: string,
     checked: boolean,
@@ -445,16 +424,26 @@ export default function OperatoriPage() {
     return (
       <div
         style={{
-          display: "flex",
+          display: "grid",
+          gridTemplateColumns: "auto auto auto",
           alignItems: "center",
-          justifyContent: "space-between",
-          gap: 10,
+          justifyContent: "start",
+          gap: "6px 8px",
           minWidth: 0,
+          marginBottom: 2,
+          fontSize: 14,
         }}
       >
+        <input
+          type="checkbox"
+          checked={checked}
+          onChange={(e) => onChange(e.target.checked)}
+          aria-label={ariaLabel}
+          style={{ margin: 0 }}
+        />
         <span
           style={{
-            fontSize: 12,
+            fontSize: 12.5,
             fontWeight: 700,
             color: "#475569",
             whiteSpace: "normal",
@@ -463,7 +452,7 @@ export default function OperatoriPage() {
         >
           {label}
         </span>
-        {renderBooleanCell(checked, onChange, ariaLabel)}
+        <span style={compactBooleanBadgeStyle(checked)}>{checked ? "SI" : "NO"}</span>
       </div>
     );
   }
@@ -722,19 +711,19 @@ export default function OperatoriPage() {
                       "Attivo"
                     )}
                     {renderBooleanSetting(
-                      "Impost.",
+                      "Imp.",
                       row.can_access_impostazioni === true,
                       (next) => updateRow(idx, { can_access_impostazioni: next }),
                       "Accesso impostazioni"
                     )}
                     {renderBooleanSetting(
-                      "Backoffice",
+                      "Back",
                       row.can_access_backoffice === true,
                       (next) => updateRow(idx, { can_access_backoffice: next }),
                       "Accesso backoffice"
                     )}
                     {renderBooleanSetting(
-                      "App operatori",
+                      "App",
                       row.can_access_operator_app !== false,
                       (next) => updateRow(idx, { can_access_operator_app: next }),
                       "Accesso app operatori"
