@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState, type MouseEvent } from "react";
+import { useEffect, useRef, useState, type MouseEvent } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 import { canAccessSettingsRole } from "@/lib/adminRoles";
@@ -47,6 +47,7 @@ const dropdownLinkStyle = {
 };
 
 function closeDropdownOnNavigation(event: MouseEvent<HTMLElement>) {
+  window.dispatchEvent(new CustomEvent("close-app-dropdowns"));
   const details = event.currentTarget.closest("details");
   if (details instanceof HTMLDetailsElement) {
     details.open = false;
@@ -56,6 +57,7 @@ function closeDropdownOnNavigation(event: MouseEvent<HTMLElement>) {
 export default function LogoutButton() {
   const router = useRouter();
   const pathname = usePathname();
+  const settingsDetailsRef = useRef<HTMLDetailsElement | null>(null);
   const [operatoreLabel, setOperatoreLabel] = useState("");
   const [canAccessSettings, setCanAccessSettings] = useState(false);
 
@@ -92,6 +94,33 @@ export default function LogoutButton() {
     return () => controller.abort();
   }, [pathname]);
 
+  useEffect(() => {
+    const handleCloseAll = () => {
+      if (settingsDetailsRef.current) settingsDetailsRef.current.open = false;
+    };
+    const handleOpen = (event: Event) => {
+      const source = (event as CustomEvent<{ source?: string }>).detail?.source;
+      if (source !== "settings" && settingsDetailsRef.current) {
+        settingsDetailsRef.current.open = false;
+      }
+    };
+    const handlePointerDown = (event: globalThis.MouseEvent) => {
+      const target = event.target as Node | null;
+      if (settingsDetailsRef.current && target && !settingsDetailsRef.current.contains(target)) {
+        settingsDetailsRef.current.open = false;
+      }
+    };
+
+    window.addEventListener("close-app-dropdowns", handleCloseAll);
+    window.addEventListener("open-app-dropdown", handleOpen as EventListener);
+    document.addEventListener("mousedown", handlePointerDown);
+    return () => {
+      window.removeEventListener("close-app-dropdowns", handleCloseAll);
+      window.removeEventListener("open-app-dropdown", handleOpen as EventListener);
+      document.removeEventListener("mousedown", handlePointerDown);
+    };
+  }, []);
+
   if (pathname === "/login") return null;
 
   return (
@@ -110,7 +139,18 @@ export default function LogoutButton() {
         </div>
       ) : null}
       {canAccessSettings ? (
-        <details style={{ position: "relative" }}>
+        <details
+          ref={settingsDetailsRef}
+          style={{ position: "relative" }}
+          onToggle={(event) => {
+            const details = event.currentTarget;
+            if (details.open) {
+              window.dispatchEvent(
+                new CustomEvent("open-app-dropdown", { detail: { source: "settings" } })
+              );
+            }
+          }}
+        >
           <summary style={dropdownTriggerStyle}>Impostazioni</summary>
           <div style={dropdownPanelStyle}>
             <Link href="/impostazioni" style={dropdownLinkStyle} onClick={closeDropdownOnNavigation}>

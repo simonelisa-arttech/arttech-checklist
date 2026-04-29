@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import type { CSSProperties, MouseEvent } from "react";
+import { useEffect, useRef, type CSSProperties, type MouseEvent } from "react";
 import LogoutButton from "@/components/LogoutButton";
 
 const dropdownTriggerStyle: CSSProperties = {
@@ -46,6 +46,7 @@ const dropdownLinkStyle: CSSProperties = {
 };
 
 function closeDropdownOnNavigation(event: MouseEvent<HTMLElement>) {
+  window.dispatchEvent(new CustomEvent("close-app-dropdowns"));
   const details = event.currentTarget.closest("details");
   if (details instanceof HTMLDetailsElement) {
     details.open = false;
@@ -54,7 +55,35 @@ function closeDropdownOnNavigation(event: MouseEvent<HTMLElement>) {
 
 export default function AppShellHeader() {
   const pathname = usePathname();
+  const menuDetailsRef = useRef<HTMLDetailsElement | null>(null);
   const hiddenShellPaths = new Set(["/login", "/reset-password", "/auth/callback", "/operatori"]);
+
+  useEffect(() => {
+    const handleCloseAll = () => {
+      if (menuDetailsRef.current) menuDetailsRef.current.open = false;
+    };
+    const handleOpen = (event: Event) => {
+      const source = (event as CustomEvent<{ source?: string }>).detail?.source;
+      if (source !== "menu" && menuDetailsRef.current) {
+        menuDetailsRef.current.open = false;
+      }
+    };
+    const handlePointerDown = (event: globalThis.MouseEvent) => {
+      const target = event.target as Node | null;
+      if (menuDetailsRef.current && target && !menuDetailsRef.current.contains(target)) {
+        menuDetailsRef.current.open = false;
+      }
+    };
+
+    window.addEventListener("close-app-dropdowns", handleCloseAll);
+    window.addEventListener("open-app-dropdown", handleOpen as EventListener);
+    document.addEventListener("mousedown", handlePointerDown);
+    return () => {
+      window.removeEventListener("close-app-dropdowns", handleCloseAll);
+      window.removeEventListener("open-app-dropdown", handleOpen as EventListener);
+      document.removeEventListener("mousedown", handlePointerDown);
+    };
+  }, []);
 
   if (hiddenShellPaths.has(pathname)) {
     return null;
@@ -84,7 +113,18 @@ export default function AppShellHeader() {
           aria-label="Navigazione principale"
           style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}
         >
-          <details style={{ position: "relative" }}>
+          <details
+            ref={menuDetailsRef}
+            style={{ position: "relative" }}
+            onToggle={(event) => {
+              const details = event.currentTarget;
+              if (details.open) {
+                window.dispatchEvent(
+                  new CustomEvent("open-app-dropdown", { detail: { source: "menu" } })
+                );
+              }
+            }}
+          >
             <summary style={dropdownTriggerStyle}>Menu</summary>
             <div style={dropdownPanelStyle}>
               <Link href="/dashboard" style={dropdownLinkStyle} onClick={closeDropdownOnNavigation}>
