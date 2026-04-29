@@ -136,19 +136,19 @@ export default function ClientiPage() {
     let active = true;
     void (async () => {
       try {
-        const [adminRes, operatoreRes] = await Promise.all([
-          fetch("/api/admin/me", { credentials: "include" }),
-          fetch("/api/me-operatore", { credentials: "include" }),
-        ]);
+        const operatoreRes = await fetch("/api/me-operatore", { credentials: "include" });
         const operatoreJson = await operatoreRes.json().catch(() => ({}));
         if (!active) return;
         const operatore = operatoreJson?.operatore || {};
-        setCanImpersonateCliente(adminRes.ok);
-        setCanManagePortalAccess(
-          adminRes.ok ||
-            operatore?.can_access_impostazioni === true ||
-            operatore?.can_access_backoffice === true
-        );
+        const canManage =
+          operatoreRes.ok &&
+          (operatore?.can_access_impostazioni === true ||
+            operatore?.can_access_backoffice === true ||
+            ["ADMIN", "AMMINISTRAZIONE"].includes(
+              String(operatore?.ruolo || "").trim().toUpperCase()
+            ));
+        setCanImpersonateCliente(canManage);
+        setCanManagePortalAccess(canManage);
       } catch {
         if (!active) return;
         setCanImpersonateCliente(false);
@@ -400,16 +400,15 @@ export default function ClientiPage() {
                                   ...prev,
                                   [String(row.id || "")]: {
                                     id: json?.accesso?.id ? String(json.accesso.id) : undefined,
-                                    email: String(json?.credenziali?.email || row.email || "").trim() || null,
+                                    email: String(json?.accesso?.email || row.email || "").trim() || null,
                                     attivo: true,
                                   },
                                 }));
 
                                 alert(
                                   [
-                                    "Credenziali area cliente create.",
-                                    `Email: ${String(json?.credenziali?.email || row.email || "—")}`,
-                                    `Password temporanea: ${String(json?.credenziali?.password_temporanea || "—")}`,
+                                    "Credenziali area cliente create e inviate.",
+                                    `Email: ${String(json?.accesso?.email || row.email || "—")}`,
                                   ].join("\n")
                                 );
                               } finally {
@@ -420,7 +419,7 @@ export default function ClientiPage() {
                           >
                             {portalActionKey === `create:${String(row.id || "")}`
                               ? "Creazione..."
-                              : "Crea credenziali area cliente"}
+                              : "Crea + invia credenziali"}
                           </button>
                         ) : null}
                         {canImpersonateCliente ? (
@@ -439,7 +438,11 @@ export default function ClientiPage() {
                                 });
                                 const json = await res.json().catch(() => ({}));
                                 if (!res.ok || !json?.url) {
-                                  alert(json?.error || "Errore apertura area cliente");
+                                  alert(
+                                    json?.error === "Forbidden"
+                                      ? "Non hai i permessi per usare la modalità assistenza cliente."
+                                      : json?.error || "Errore apertura area cliente"
+                                  );
                                   return;
                                 }
                                 window.open(String(json.url), "_blank", "noopener,noreferrer");
@@ -488,15 +491,14 @@ export default function ClientiPage() {
                                   alert(
                                     json?.error === "Forbidden"
                                       ? "Non hai i permessi per gestire le credenziali area cliente."
-                                      : json?.error || "Errore rigenerazione password cliente"
+                                      : json?.error || "Errore invio credenziali cliente"
                                   );
                                   return;
                                 }
                                 alert(
                                   [
-                                    "Password temporanea rigenerata.",
-                                    `Email: ${String(json?.credenziali?.email || row.email || "—")}`,
-                                    `Password temporanea: ${String(json?.credenziali?.password_temporanea || "—")}`,
+                                    "Credenziali area cliente reinviate.",
+                                    `Email: ${String(json?.accesso?.email || row.email || "—")}`,
                                   ].join("\n")
                                 );
                               } finally {
@@ -507,7 +509,7 @@ export default function ClientiPage() {
                           >
                             {portalActionKey === `reset:${String(row.id || "")}`
                               ? "Rigenero..."
-                              : "Rigenera password"}
+                              : "Reinvia credenziali"}
                           </button>
                         ) : null}
                         {canManagePortalAccess && portalAccessByClienteId[String(row.id || "")]?.attivo ? (

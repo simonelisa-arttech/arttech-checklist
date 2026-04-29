@@ -2,7 +2,7 @@ export const runtime = "nodejs";
 
 import crypto from "crypto";
 import { NextResponse } from "next/server";
-import { requireAdmin } from "@/lib/adminAuth";
+import { requireClientPortalManager } from "@/lib/adminAuth";
 
 function normalizeClientIp(request: Request) {
   const forwardedFor = request.headers.get("x-forwarded-for");
@@ -21,7 +21,7 @@ function isUuid(value: string) {
 }
 
 export async function POST(request: Request) {
-  const auth = await requireAdmin(request);
+  const auth = await requireClientPortalManager(request);
   if (!auth.ok) return auth.response;
 
   let body: { cliente_id?: string } | null = null;

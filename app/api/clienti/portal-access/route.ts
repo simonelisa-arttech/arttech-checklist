@@ -3,6 +3,7 @@ export const runtime = "nodejs";
 import { randomBytes } from "crypto";
 import { NextResponse } from "next/server";
 import { requireClientPortalManager } from "@/lib/adminAuth";
+import { sendEmail } from "@/lib/email";
 
 function isValidEmail(value?: string | null) {
   const email = String(value || "").trim().toLowerCase();
@@ -17,6 +18,44 @@ function generateTemporaryPassword(length = 16) {
     password += alphabet[bytes[i] % alphabet.length];
   }
   return password;
+}
+
+function getSiteUrl() {
+  return (
+    process.env.NEXT_PUBLIC_SITE_URL ||
+    process.env.NEXT_PUBLIC_APP_URL ||
+    "https://atsystem.arttechworld.com"
+  ).replace(/\/+$/, "");
+}
+
+async function sendClientePortalCredentialsEmail(input: {
+  email: string;
+  clienteDenominazione?: string | null;
+  temporaryPassword: string;
+}) {
+  const nomeCliente = String(input.clienteDenominazione || "cliente").trim();
+  const loginUrl = `${getSiteUrl()}/login`;
+  await sendEmail({
+    to: input.email,
+    subject: "Credenziali area cliente - AT SYSTEM",
+    text: [
+      `Ciao ${nomeCliente},`,
+      "",
+      "sono state predisposte le tue credenziali per l'area cliente AT SYSTEM.",
+      `Email: ${input.email}`,
+      `Password temporanea: ${input.temporaryPassword}`,
+      `Accedi da: ${loginUrl}`,
+      "",
+      "Ti consigliamo di cambiare la password al primo accesso.",
+    ].join("\n"),
+    html: [
+      `<p>Ciao ${nomeCliente},</p>`,
+      "<p>sono state predisposte le tue credenziali per l'area cliente AT SYSTEM.</p>",
+      `<p><strong>Email:</strong> ${input.email}<br /><strong>Password temporanea:</strong> ${input.temporaryPassword}</p>`,
+      `<p><a href="${loginUrl}">Accedi all'area cliente</a></p>`,
+      "<p>Ti consigliamo di cambiare la password al primo accesso.</p>",
+    ].join(""),
+  });
 }
 
 function normalizeClienteIdsParam(value: string | null) {
@@ -140,6 +179,19 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: insertAccessErr.message }, { status: 500 });
   }
 
+  try {
+    await sendClientePortalCredentialsEmail({
+      email,
+      clienteDenominazione: cliente.denominazione || null,
+      temporaryPassword,
+    });
+  } catch (emailErr: any) {
+    return NextResponse.json(
+      { error: emailErr?.message || "Errore invio credenziali area cliente" },
+      { status: 500 }
+    );
+  }
+
   return NextResponse.json({
     ok: true,
     accesso: insertedAccess || {
@@ -149,7 +201,7 @@ export async function POST(request: Request) {
     },
     credenziali: {
       email,
-      password_temporanea: temporaryPassword,
+      delivery: "sent",
     },
   });
 }
@@ -216,12 +268,34 @@ export async function PATCH(request: Request) {
     return NextResponse.json({ error: "Email accesso cliente non valida" }, { status: 400 });
   }
 
+  const { data: cliente, error: clienteErr } = await auth.adminClient
+    .from("clienti_anagrafica")
+    .select("id, denominazione")
+    .eq("id", clienteId)
+    .maybeSingle();
+  if (clienteErr) {
+    return NextResponse.json({ error: clienteErr.message }, { status: 500 });
+  }
+
   const temporaryPassword = generateTemporaryPassword();
   const { error: resetErr } = await auth.adminClient.auth.admin.updateUserById(userId, {
     password: temporaryPassword,
   });
   if (resetErr) {
     return NextResponse.json({ error: resetErr.message }, { status: 500 });
+  }
+
+  try {
+    await sendClientePortalCredentialsEmail({
+      email,
+      clienteDenominazione: cliente?.denominazione || null,
+      temporaryPassword,
+    });
+  } catch (emailErr: any) {
+    return NextResponse.json(
+      { error: emailErr?.message || "Errore invio credenziali area cliente" },
+      { status: 500 }
+    );
   }
 
   return NextResponse.json({
@@ -234,7 +308,7 @@ export async function PATCH(request: Request) {
     },
     credenziali: {
       email,
-      password_temporanea: temporaryPassword,
+      delivery: "sent",
     },
   });
 }

@@ -116,12 +116,21 @@ export default function ClienteAreaClienteSettingsPage({
     void (async () => {
       setLoadingAccess(true);
       try {
-        const res = await fetch("/api/admin/me", {
+        const res = await fetch("/api/me-operatore", {
           cache: "no-store",
           credentials: "include",
         });
+        const json = await res.json().catch(() => ({}));
         if (!active) return;
-        setCanAccess(res.ok);
+        const operatore = json?.operatore || {};
+        setCanAccess(
+          res.ok &&
+            (operatore?.can_access_impostazioni === true ||
+              operatore?.can_access_backoffice === true ||
+              ["ADMIN", "AMMINISTRAZIONE"].includes(
+                String(operatore?.ruolo || "").trim().toUpperCase()
+              ))
+        );
       } catch {
         if (!active) return;
         setCanAccess(false);

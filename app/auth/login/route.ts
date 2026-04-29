@@ -55,6 +55,49 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Utente autenticato non valido" }, { status: 500 });
   }
 
+  const ruoloPortale = String((data.user as any)?.user_metadata?.ruolo_portale || "")
+    .trim()
+    .toUpperCase();
+  const { data: existingClientePortalAccess, error: clientePortalErr } = await adminClient
+    .from("clienti_portale_auth")
+    .select("id, cliente_id, user_id, attivo")
+    .or(`user_id.eq.${authUserId},email.eq.${emailNorm}`)
+    .limit(1)
+    .maybeSingle();
+
+  if (clientePortalErr) {
+    return NextResponse.json(
+      { error: `Errore verifica accesso cliente: ${clientePortalErr.message}` },
+      { status: 500 }
+    );
+  }
+
+  const isClientePortalUser =
+    ruoloPortale === "CLIENTE" ||
+    Boolean(existingClientePortalAccess?.id);
+
+  if (isClientePortalUser) {
+    const response = NextResponse.json({ ok: true });
+    const secure = process.env.NODE_ENV === "production";
+
+    response.cookies.set("sb-access-token", data.session.access_token, {
+      httpOnly: true,
+      secure,
+      sameSite: "lax",
+      path: "/",
+      maxAge: data.session.expires_in ?? 3600,
+    });
+    response.cookies.set("sb-refresh-token", data.session.refresh_token, {
+      httpOnly: true,
+      secure,
+      sameSite: "lax",
+      path: "/",
+      maxAge: REFRESH_TOKEN_MAX_AGE,
+    });
+
+    return response;
+  }
+
   const { data: existingByEmail, error: byEmailErr } = await adminClient
     .from("operatori")
     .select("id, user_id, nome, ruolo, email")
