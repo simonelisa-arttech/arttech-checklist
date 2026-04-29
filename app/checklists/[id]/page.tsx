@@ -8555,6 +8555,42 @@ function buildFormData(c: Checklist): FormData {
               </div>
             </div>
           ))}
+
+          <div
+            style={{
+              borderTop: "1px solid #e5e7eb",
+              paddingTop: 10,
+              display: "grid",
+              gap: 8,
+            }}
+          >
+            <div style={{ fontWeight: 800, fontSize: 13 }}>RIEPILOGO IMPIANTI</div>
+            <div style={{ display: "grid", gap: 6 }}>
+              {impianti.map((imp, index) => {
+                const parts = [
+                  `${Number(imp.impianto_quantita) > 0 ? Number(imp.impianto_quantita) : 1}x`,
+                  String(imp.dimensioni || "").trim(),
+                  String(imp.passo || "").trim(),
+                  String(imp.tipo_impianto || "").trim(),
+                ].filter(Boolean);
+                return (
+                  <div
+                    key={`summary-${imp.id || index}`}
+                    style={{
+                      fontSize: 13,
+                      lineHeight: 1.45,
+                      color: "#374151",
+                      marginBottom: 2,
+                      wordBreak: "break-word",
+                    }}
+                  >
+                    <span style={{ fontWeight: 700, color: "#111827" }}>#{index + 1} → </span>
+                    {parts.length > 0 ? parts.join(" • ") : "Impianto da completare"}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
         </div>
       ) : null}
       {renderLazySection(
