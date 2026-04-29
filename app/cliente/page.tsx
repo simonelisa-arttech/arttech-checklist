@@ -288,11 +288,36 @@ export default function ClientePortalPage() {
               color: "#92400e",
               borderRadius: 16,
               padding: 14,
-              fontSize: 14,
-              fontWeight: 700,
+              display: "flex",
+              flexWrap: "wrap",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 12,
             }}
           >
-            Stai visualizzando l’area cliente come operatore interno
+            <div style={{ fontSize: 14, fontWeight: 700, maxWidth: 760 }}>
+              Modalità assistenza: stai visualizzando l’area cliente come operatore interno. Il
+              cliente non vede questo banner.
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                window.location.assign("/clienti");
+              }}
+              style={{
+                padding: "8px 12px",
+                borderRadius: 10,
+                border: "1px solid #f59e0b",
+                background: "white",
+                color: "#92400e",
+                fontSize: 13,
+                fontWeight: 700,
+                cursor: "pointer",
+                whiteSpace: "nowrap",
+              }}
+            >
+              Esci assistenza
+            </button>
           </div>
         ) : null}
 
