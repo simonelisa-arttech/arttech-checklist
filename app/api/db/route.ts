@@ -35,6 +35,12 @@ const TABLE_RULES: Record<
     orderCols: ["created_at", "updated_at", "data_prevista", "data_tassativa"],
     requiredEqAnyOf: ["id", "cliente_id"],
   },
+  area_cliente_settings_global: {
+    ops: ["select", "update", "upsert"],
+    filterCols: ["id", "singleton_key"],
+    orderCols: ["updated_at", "created_at"],
+    requiredEqAnyOf: ["id", "singleton_key"],
+  },
   checklist_items: {
     ops: ["select", "insert", "update", "delete", "upsert"],
     filterCols: ["id", "checklist_id"],
