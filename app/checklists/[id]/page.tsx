@@ -4578,7 +4578,33 @@ function buildFormData(c: Checklist): FormData {
   }
 
   if (loading) return <div style={{ padding: 20 }}>Caricamento…</div>;
-  if (error) return <div style={{ padding: 20, color: "crimson" }}>{error}</div>;
+  if (error) {
+    return (
+      <div style={{ padding: 24 }}>
+        <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 8 }}>
+          Si è verificato un problema nel caricamento del progetto
+        </div>
+
+        <div style={{ fontSize: 14, color: "#6b7280", marginBottom: 16 }}>
+          Ricarica la pagina o contatta il supporto se il problema persiste.
+        </div>
+
+        <button
+          onClick={() => window.location.reload()}
+          style={{
+            padding: "8px 14px",
+            borderRadius: 6,
+            background: "#111827",
+            color: "white",
+            border: "none",
+            cursor: "pointer",
+          }}
+        >
+          Ricarica pagina
+        </button>
+      </div>
+    );
+  }
   if (!checklist) return <div style={{ padding: 20 }}>Checklist non trovata</div>;
   if (!formData) return <div style={{ padding: 20 }}>Caricamento progetto…</div>;
 
