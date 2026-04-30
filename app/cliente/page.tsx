@@ -655,16 +655,73 @@ export default function ClientePortalPage() {
                                 fattura.numero_fattura || fattura.fatturato_il || fattura.data_intervento || "row"
                               }`}
                               style={{
-                                fontSize: 13,
-                                color: "#334155",
-                                lineHeight: 1.45,
-                                overflowWrap: "anywhere",
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "space-between",
+                                gap: 10,
                               }}
                             >
-                              {formatDateLabel(fattura.fatturato_il || fattura.data_intervento)} • Intervento
-                              {String(fattura.numero_fattura || "").trim()
-                                ? ` • Fattura ${String(fattura.numero_fattura).trim()}`
-                                : ""}
+                              <div
+                                style={{
+                                  fontSize: 13,
+                                  color: "#334155",
+                                  lineHeight: 1.45,
+                                  overflowWrap: "anywhere",
+                                  flex: 1,
+                                  minWidth: 0,
+                                }}
+                              >
+                                {formatDateLabel(fattura.fatturato_il || fattura.data_intervento)} • Intervento
+                                {String(fattura.numero_fattura || "").trim()
+                                  ? ` • Fattura ${String(fattura.numero_fattura).trim()}`
+                                  : ""}
+                              </div>
+                              {String(fattura.numero_fattura || "").trim() ? (
+                                <a
+                                  href={`/api/cliente/fatture/${encodeURIComponent(
+                                    String(fattura.numero_fattura).trim()
+                                  )}`}
+                                  style={{
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                    padding: "6px 10px",
+                                    borderRadius: 10,
+                                    border: "1px solid #cbd5e1",
+                                    background: "white",
+                                    color: "#0f172a",
+                                    fontSize: 12,
+                                    fontWeight: 700,
+                                    textDecoration: "none",
+                                    whiteSpace: "nowrap",
+                                    flexShrink: 0,
+                                  }}
+                                >
+                                  Scarica
+                                </a>
+                              ) : (
+                                <button
+                                  type="button"
+                                  disabled
+                                  style={{
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                    padding: "6px 10px",
+                                    borderRadius: 10,
+                                    border: "1px solid #e5e7eb",
+                                    background: "#f8fafc",
+                                    color: "#94a3b8",
+                                    fontSize: 12,
+                                    fontWeight: 700,
+                                    whiteSpace: "nowrap",
+                                    flexShrink: 0,
+                                    cursor: "not-allowed",
+                                  }}
+                                >
+                                  Scarica
+                                </button>
+                              )}
                             </div>
                           ))}
                         </div>
