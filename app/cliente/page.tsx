@@ -30,6 +30,7 @@ type ClienteProgetto = {
   noleggio_vendita: string | null;
   stato_progetto: string | null;
   impianti?: ClienteImpianto[];
+  fatture_emesse?: ClienteFatturaEmessa[];
 };
 
 type ClienteImpianto = {
@@ -40,6 +41,13 @@ type ClienteImpianto = {
   passo?: string | null;
   tipo_impianto?: string | null;
   impianto_descrizione?: string | null;
+};
+
+type ClienteFatturaEmessa = {
+  data_intervento?: string | null;
+  descrizione?: string | null;
+  numero_fattura?: string | null;
+  fatturato_il?: string | null;
 };
 
 type ClienteScadenza = {
@@ -508,6 +516,9 @@ export default function ClientePortalPage() {
                   const projectTagliandi = tagliandi.filter(
                     (item) => String(item.checklist_id || "").trim() === progetto.id
                   );
+                  const projectFattureEmesse = Array.isArray(progetto.fatture_emesse)
+                    ? progetto.fatture_emesse
+                    : [];
                   return (
                   <div
                     key={progetto.id}
@@ -627,6 +638,33 @@ export default function ClientePortalPage() {
                               {formatDateLabel(tagliando.data_scadenza)} •{" "}
                               {String(tagliando.tipo || tagliando.descrizione || "Tagliando").trim()} •{" "}
                               {String(tagliando.stato || "—").trim().toUpperCase()}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
+                    {effectiveSettings.show_documenti && projectFattureEmesse.length > 0 ? (
+                      <div style={{ display: "grid", gap: 6 }}>
+                        <div style={{ fontSize: 12, fontWeight: 800, color: "#475569" }}>
+                          Fatture emesse
+                        </div>
+                        <div style={{ display: "grid", gap: 4 }}>
+                          {projectFattureEmesse.map((fattura, index) => (
+                            <div
+                              key={`${progetto.id}-fattura-${index}-${
+                                fattura.numero_fattura || fattura.fatturato_il || fattura.data_intervento || "row"
+                              }`}
+                              style={{
+                                fontSize: 13,
+                                color: "#334155",
+                                lineHeight: 1.45,
+                                overflowWrap: "anywhere",
+                              }}
+                            >
+                              {formatDateLabel(fattura.fatturato_il || fattura.data_intervento)} • Intervento
+                              {String(fattura.numero_fattura || "").trim()
+                                ? ` • Fattura ${String(fattura.numero_fattura).trim()}`
+                                : ""}
                             </div>
                           ))}
                         </div>

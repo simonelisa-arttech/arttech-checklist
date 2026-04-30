@@ -14,6 +14,13 @@ type ClienteImpiantoRow = {
   impianto_descrizione?: string | null;
 };
 
+type ClienteFatturaEmessaRow = {
+  data_intervento?: string | null;
+  descrizione?: string | null;
+  numero_fattura?: string | null;
+  fatturato_il?: string | null;
+};
+
 export async function GET(request: Request) {
   const auth = await resolveClientePortalAuth(request);
   if (!auth.ok) return auth.response;
@@ -58,6 +65,7 @@ export async function GET(request: Request) {
     .filter(Boolean);
 
   let impiantiByChecklistId = new Map<string, ClienteImpiantoRow[]>();
+  let fattureByChecklistId = new Map<string, ClienteFatturaEmessaRow[]>();
   if (projectIds.length > 0) {
     const { data: impiantiRows, error: impiantiErr } = await auth.adminClient
       .from("checklist_impianti")
@@ -97,6 +105,32 @@ export async function GET(request: Request) {
       map.set(checklistId, prev);
       return map;
     }, new Map<string, ClienteImpiantoRow[]>());
+
+    const { data: fattureRows, error: fattureErr } = await auth.adminClient
+      .from("saas_interventi")
+      .select(["checklist_id", "data", "descrizione", "numero_fattura", "fatturato_il"].join(", "))
+      .in("checklist_id", projectIds)
+      .eq("esito_fatturazione", "FATTURATO")
+      .order("fatturato_il", { ascending: false, nullsFirst: false })
+      .order("data", { ascending: false, nullsFirst: false });
+
+    if (fattureErr) {
+      return NextResponse.json({ error: fattureErr.message }, { status: 500 });
+    }
+
+    fattureByChecklistId = (fattureRows || []).reduce((map, row: any) => {
+      const checklistId = String(row?.checklist_id || "").trim();
+      if (!checklistId) return map;
+      const prev = map.get(checklistId) || [];
+      prev.push({
+        data_intervento: row?.data ?? null,
+        descrizione: row?.descrizione ?? null,
+        numero_fattura: row?.numero_fattura ?? null,
+        fatturato_il: row?.fatturato_il ?? null,
+      });
+      map.set(checklistId, prev);
+      return map;
+    }, new Map<string, ClienteFatturaEmessaRow[]>());
   }
 
   const progetti = (data || []).map((row: any) => ({
@@ -121,6 +155,7 @@ export async function GET(request: Request) {
               impianto_descrizione: row?.impianto_descrizione ?? null,
             },
           ],
+    fatture_emesse: fattureByChecklistId.get(String(row?.id || "").trim()) || [],
   }));
 
   return NextResponse.json({
