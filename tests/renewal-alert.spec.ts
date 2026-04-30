@@ -5,7 +5,9 @@ const clientePath = process.env.E2E_CLIENTE_PATH || "/clienti/CLIENTE_E2E";
 test("Invio avviso aggiorna stato a AVVISATO (E2E seed)", async ({ page }) => {
   await page.goto(clientePath);
 
-  const fullManagement = page.getByText(/Gestione completa scadenze e rinnovi/i).first();
+  const fullManagement = page
+    .getByText(/apri gestione completa scadenze e rinnovi/i)
+    .first();
   await expect(fullManagement).toBeVisible();
   await fullManagement.click();
 
