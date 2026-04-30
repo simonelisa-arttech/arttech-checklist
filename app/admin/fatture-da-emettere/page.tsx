@@ -40,6 +40,7 @@ function diffDays(fromIso: string, toIso: string) {
 
 export default function FattureDaEmetterePage() {
   const [activeTab, setActiveTab] = useState<"progetti" | "interventi">("progetti");
+  const [search, setSearch] = useState("");
   const [rows, setRows] = useState<FatturaDaEmettereRow[]>([]);
   const [interventiRows, setInterventiRows] = useState<FatturaInterventoRow[]>([]);
   const [loading, setLoading] = useState(true);
@@ -85,6 +86,31 @@ export default function FattureDaEmetterePage() {
     today.setHours(0, 0, 0, 0);
     return today.toISOString().slice(0, 10);
   }, []);
+
+  const filteredData = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    if (!query) {
+      return activeTab === "progetti" ? rows : interventiRows;
+    }
+
+    if (activeTab === "progetti") {
+      return rows.filter((row) => {
+        return (
+          row.cliente?.toLowerCase().includes(query) ||
+          row.nome_checklist?.toLowerCase().includes(query)
+        );
+      });
+    }
+
+    return interventiRows.filter((row) => {
+      return (
+        row.cliente?.toLowerCase().includes(query) ||
+        row.progetto_nome?.toLowerCase().includes(query) ||
+        row.descrizione?.toLowerCase().includes(query) ||
+        row.ticket_no?.toLowerCase().includes(query)
+      );
+    });
+  }, [activeTab, interventiRows, rows, search]);
 
   async function markInterventoFatturato(row: FatturaInterventoRow) {
     try {
@@ -166,12 +192,28 @@ export default function FattureDaEmetterePage() {
         })}
       </div>
 
+      <div style={{ marginBottom: 12 }}>
+        <input
+          type="text"
+          placeholder="Cerca cliente, progetto, ticket..."
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+          style={{
+            width: "100%",
+            maxWidth: 420,
+            padding: "8px 10px",
+            borderRadius: 6,
+            border: "1px solid #ccc",
+          }}
+        />
+      </div>
+
       {error ? <div style={{ marginBottom: 12, fontSize: 13, color: "#b91c1c" }}>{error}</div> : null}
 
       {loading ? (
         <div>Caricamento…</div>
       ) : activeTab === "progetti" ? (
-        rows.length === 0 ? (
+        filteredData.length === 0 ? (
         <div>Nessuna fattura da emettere.</div>
       ) : (
         <div style={{ border: "1px solid #e5e7eb", borderRadius: 14, overflow: "hidden", background: "white" }}>
@@ -193,7 +235,7 @@ export default function FattureDaEmetterePage() {
             <div>Apri</div>
           </div>
 
-          {rows.map((row) => {
+          {(filteredData as FatturaDaEmettereRow[]).map((row) => {
             const daysSinceCompletion =
               row.data_installazione && row.data_installazione <= todayIso
                 ? diffDays(row.data_installazione, todayIso)
@@ -243,7 +285,7 @@ export default function FattureDaEmetterePage() {
           })}
         </div>
       )
-      ) : interventiRows.length === 0 ? (
+      ) : filteredData.length === 0 ? (
         <div>Nessun intervento da fatturare.</div>
       ) : (
         <div style={{ border: "1px solid #e5e7eb", borderRadius: 14, overflow: "hidden", background: "white" }}>
@@ -266,7 +308,7 @@ export default function FattureDaEmetterePage() {
             <div>Azioni</div>
           </div>
 
-          {interventiRows.map((row) => (
+          {(filteredData as FatturaInterventoRow[]).map((row) => (
             <div
               key={row.id}
               style={{
