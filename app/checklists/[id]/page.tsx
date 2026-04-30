@@ -4577,37 +4577,6 @@ function buildFormData(c: Checklist): FormData {
     );
   }
 
-  if (loading) return <div style={{ padding: 20 }}>Caricamento…</div>;
-  if (error) {
-    return (
-      <div style={{ padding: 24 }}>
-        <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 8 }}>
-          Si è verificato un problema nel caricamento del progetto
-        </div>
-
-        <div style={{ fontSize: 14, color: "#6b7280", marginBottom: 16 }}>
-          Ricarica la pagina o contatta il supporto se il problema persiste.
-        </div>
-
-        <button
-          onClick={() => window.location.reload()}
-          style={{
-            padding: "8px 14px",
-            borderRadius: 6,
-            background: "#111827",
-            color: "white",
-            border: "none",
-            cursor: "pointer",
-          }}
-        >
-          Ricarica pagina
-        </button>
-      </div>
-    );
-  }
-  if (!checklist) return <div style={{ padding: 20 }}>Checklist non trovata</div>;
-  if (!formData) return <div style={{ padding: 20 }}>Caricamento progetto…</div>;
-
   const projectSimRows = projectSims
     .slice()
     .sort((a, b) =>
@@ -4701,7 +4670,7 @@ function buildFormData(c: Checklist): FormData {
         `${String(item.codice || "").trim()} — ${String(item.descrizione || "—").trim() || "—"}`,
     }));
   const isNoleggioProject = isNoleggioValue(
-    editMode && formData ? formData.noleggio_vendita : checklist.noleggio_vendita
+    editMode && formData ? formData.noleggio_vendita : checklist?.noleggio_vendita
   );
 
   function addImpianto() {
@@ -5207,13 +5176,13 @@ function buildFormData(c: Checklist): FormData {
   const serialiControllo = assetSerials.filter((s) => s.tipo === "CONTROLLO");
   const serialiModuli = assetSerials.filter((s) => s.tipo === "MODULO_LED");
   const m2Persisted = (() => {
-    const base = calcM2FromDimensioni(checklist.dimensioni, checklist.numero_facce ?? 1);
+    const base = calcM2FromDimensioni(checklist?.dimensioni ?? null, checklist?.numero_facce ?? 1);
     const qty =
-      Number.isFinite(Number(checklist.impianto_quantita)) && Number(checklist.impianto_quantita) > 0
-        ? Number(checklist.impianto_quantita)
+      Number.isFinite(Number(checklist?.impianto_quantita)) && Number(checklist?.impianto_quantita) > 0
+        ? Number(checklist?.impianto_quantita)
         : 1;
     if (base != null) return base * qty;
-    if (typeof checklist.m2_calcolati === "number" && Number.isFinite(checklist.m2_calcolati)) {
+    if (typeof checklist?.m2_calcolati === "number" && Number.isFinite(checklist.m2_calcolati)) {
       return checklist.m2_calcolati;
     }
     return null;
@@ -7202,6 +7171,42 @@ function buildFormData(c: Checklist): FormData {
       )}
     </div>
   );
+
+  const shouldShowLoading = loading;
+  const shouldShowError = Boolean(error);
+  const shouldShowMissingChecklist = !checklist;
+  const shouldShowMissingFormData = !formData;
+
+  if (shouldShowLoading) return <div style={{ padding: 20 }}>Caricamento…</div>;
+  if (shouldShowError) {
+    return (
+      <div style={{ padding: 24 }}>
+        <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 8 }}>
+          Si è verificato un problema nel caricamento del progetto
+        </div>
+
+        <div style={{ fontSize: 14, color: "#6b7280", marginBottom: 16 }}>
+          Ricarica la pagina o contatta il supporto se il problema persiste.
+        </div>
+
+        <button
+          onClick={() => window.location.reload()}
+          style={{
+            padding: "8px 14px",
+            borderRadius: 6,
+            background: "#111827",
+            color: "white",
+            border: "none",
+            cursor: "pointer",
+          }}
+        >
+          Ricarica pagina
+        </button>
+      </div>
+    );
+  }
+  if (shouldShowMissingChecklist) return <div style={{ padding: 20 }}>Checklist non trovata</div>;
+  if (shouldShowMissingFormData) return <div style={{ padding: 20 }}>Caricamento progetto…</div>;
 
   const accessoriRicambiBlock = (
     <div style={mainSectionStyle}>
