@@ -1430,6 +1430,7 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
     { id: "section-licenze", label: "Licenze" },
     { id: "section-sim", label: "SIM" },
     { id: "section-interventi", label: "Interventi" },
+    { id: "section-fatture-emesse", label: "Fatture emesse" },
     { id: "section-foto-video", label: "Foto / Video" },
     { id: "section-checklist-operativa", label: "Check list operativa" },
   ] as const;
@@ -1443,6 +1444,7 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
     "section-licenze": false,
     "section-sim": false,
     "section-interventi": false,
+    "section-fatture-emesse": false,
     "section-foto-video": false,
     "section-checklist-operativa": false,
   });
@@ -2173,15 +2175,27 @@ function buildFormData(c: Checklist): FormData {
   async function loadProjectInterventi(checklistId: string) {
     let res = await dbFrom("saas_interventi")
       .select(
-        "id, cliente, checklist_id, contratto_id, ticket_no, data, data_tassativa, descrizione, incluso, proforma, codice_magazzino, fatturazione_stato, stato_intervento, esito_fatturazione, chiuso_il, chiuso_da_operatore, alert_fattura_last_sent_at, alert_fattura_last_sent_by, numero_fattura, fatturato_il, note, note_tecniche, created_at, checklist:checklists(id, nome_checklist, proforma, magazzino_importazione)"
+        "id, cliente, checklist_id, contratto_id, ticket_no, data, data_tassativa, descrizione, incluso, proforma, codice_magazzino, fatturazione_stato, stato_intervento, esito_fatturazione, chiuso_il, chiuso_da_operatore, alert_fattura_last_sent_at, alert_fattura_last_sent_by, numero_fattura, fatturato_il, note_amministrazione, note, note_tecniche, created_at, checklist:checklists(id, nome_checklist, proforma, magazzino_importazione)"
       )
       .eq("checklist_id", checklistId)
       .order("data", { ascending: false });
 
+    if (res.error && String(res.error.message || "").toLowerCase().includes("note_amministrazione")) {
+      res = await dbFrom("saas_interventi")
+        .select(
+          "id, cliente, checklist_id, contratto_id, ticket_no, data, data_tassativa, descrizione, incluso, proforma, codice_magazzino, fatturazione_stato, stato_intervento, esito_fatturazione, chiuso_il, chiuso_da_operatore, alert_fattura_last_sent_at, alert_fattura_last_sent_by, numero_fattura, fatturato_il, note, note_tecniche, created_at, checklist:checklists(id, nome_checklist, proforma, magazzino_importazione)"
+        )
+        .eq("checklist_id", checklistId)
+        .order("data", { ascending: false });
+      if (!res.error) {
+        res.data = ((res.data || []) as any[]).map((r) => ({ ...r, note_amministrazione: null }));
+      }
+    }
+
     if (res.error && String(res.error.message || "").toLowerCase().includes("data_tassativa")) {
       res = await dbFrom("saas_interventi")
         .select(
-          "id, cliente, checklist_id, contratto_id, ticket_no, data, descrizione, incluso, proforma, codice_magazzino, fatturazione_stato, stato_intervento, esito_fatturazione, chiuso_il, chiuso_da_operatore, alert_fattura_last_sent_at, alert_fattura_last_sent_by, numero_fattura, fatturato_il, note, note_tecniche, created_at, checklist:checklists(id, nome_checklist, proforma, magazzino_importazione)"
+          "id, cliente, checklist_id, contratto_id, ticket_no, data, descrizione, incluso, proforma, codice_magazzino, fatturazione_stato, stato_intervento, esito_fatturazione, chiuso_il, chiuso_da_operatore, alert_fattura_last_sent_at, alert_fattura_last_sent_by, numero_fattura, fatturato_il, note_amministrazione, note, note_tecniche, created_at, checklist:checklists(id, nome_checklist, proforma, magazzino_importazione)"
         )
         .eq("checklist_id", checklistId)
         .order("data", { ascending: false });
@@ -2192,7 +2206,7 @@ function buildFormData(c: Checklist): FormData {
     if (res.error && String(res.error.message || "").toLowerCase().includes("ticket_no")) {
       res = await dbFrom("saas_interventi")
         .select(
-          "id, cliente, checklist_id, contratto_id, data, data_tassativa, descrizione, incluso, proforma, codice_magazzino, fatturazione_stato, stato_intervento, esito_fatturazione, chiuso_il, chiuso_da_operatore, alert_fattura_last_sent_at, alert_fattura_last_sent_by, numero_fattura, fatturato_il, note, note_tecniche, created_at, checklist:checklists(id, nome_checklist, proforma, magazzino_importazione)"
+          "id, cliente, checklist_id, contratto_id, data, data_tassativa, descrizione, incluso, proforma, codice_magazzino, fatturazione_stato, stato_intervento, esito_fatturazione, chiuso_il, chiuso_da_operatore, alert_fattura_last_sent_at, alert_fattura_last_sent_by, numero_fattura, fatturato_il, note_amministrazione, note, note_tecniche, created_at, checklist:checklists(id, nome_checklist, proforma, magazzino_importazione)"
         )
         .eq("checklist_id", checklistId)
         .order("data", { ascending: false });
@@ -5160,6 +5174,7 @@ function buildFormData(c: Checklist): FormData {
       (sectionId === "section-scadenze-rinnovi" && lazyDataLoaded.rinnovi && lazyDataLoaded.licenze) ||
       (sectionId === "section-sim" && lazyDataLoaded.sims) ||
       (sectionId === "section-interventi" && lazyDataLoaded.interventi) ||
+      (sectionId === "section-fatture-emesse" && lazyDataLoaded.interventi) ||
       (sectionId === "section-checklist-operativa" && lazyDataLoaded.checklistOperativa) ||
       sectionId === "section-foto-video";
     if (alreadyLoaded) return;
@@ -5188,6 +5203,8 @@ function buildFormData(c: Checklist): FormData {
         setLazyDataLoaded((prev) => ({ ...prev, sims: true }));
       } else if (sectionId === "section-interventi") {
         await loadProjectInterventiSection(id, checklist);
+      } else if (sectionId === "section-fatture-emesse") {
+        await loadProjectInterventiSection(id, checklist);
       } else if (sectionId === "section-checklist-operativa") {
         await loadChecklistOperativaSection(id);
       }
@@ -5195,7 +5212,11 @@ function buildFormData(c: Checklist): FormData {
       const message = String(e?.message || "Errore caricamento sezione");
       if (sectionId === "section-licenze" || sectionId === "section-servizi") {
         setLicenzeError(message);
-      } else if (sectionId === "section-scadenze-rinnovi" || sectionId === "section-interventi") {
+      } else if (
+        sectionId === "section-scadenze-rinnovi" ||
+        sectionId === "section-interventi" ||
+        sectionId === "section-fatture-emesse"
+      ) {
         setProjectInterventiError(message);
       } else if (sectionId === "section-sim") {
         setProjectSimsError(message);
@@ -7064,6 +7085,50 @@ function buildFormData(c: Checklist): FormData {
       openBulkAlertModal={openProjectBulkInterventoAlertModal}
       reopenIntervento={reopenInterventoRow}
     />
+  );
+
+  const projectFattureEmesseList = useMemo(
+    () => projectInterventi.filter((row) => getProjectEsitoFatturazione(row) === "FATTURATO"),
+    [projectInterventi]
+  );
+
+  const projectFattureEmesseBlock = (
+    <div style={{ display: "grid", gap: 10 }}>
+      {projectFattureEmesseList.length === 0 ? (
+        <div style={{ opacity: 0.7 }}>Nessuna fattura emessa per questo progetto.</div>
+      ) : (
+        <div
+          style={{
+            border: "1px solid #eee",
+            borderRadius: 10,
+            background: "white",
+            overflow: "hidden",
+          }}
+        >
+          {projectFattureEmesseList.map((row) => (
+            <div
+              key={row.id}
+              style={{
+                display: "grid",
+                gap: 4,
+                padding: "12px 14px",
+                borderTop: "1px solid #f3f4f6",
+              }}
+            >
+              <div style={{ fontWeight: 700 }}>
+                {formatLocalDateLabel(row.fatturato_il || row.data)} • {row.descrizione || "Intervento"}
+                {row.numero_fattura ? ` • Fattura ${row.numero_fattura}` : ""}
+              </div>
+              {row.note_amministrazione ? (
+                <div style={{ fontSize: 12, opacity: 0.8, whiteSpace: "pre-wrap" }}>
+                  {row.note_amministrazione}
+                </div>
+              ) : null}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
   );
 
   const accessoriRicambiBlock = (
@@ -10048,6 +10113,13 @@ function buildFormData(c: Checklist): FormData {
         "Interventi",
         projectInterventiBlock,
         { style: { marginTop: 12 }, loadingLabel: "Caricamento interventi..." }
+      )}
+
+      {renderLazySection(
+        "section-fatture-emesse",
+        "Fatture emesse",
+        projectFattureEmesseBlock,
+        { style: { marginTop: 12 }, loadingLabel: "Caricamento fatture emesse..." }
       )}
 
       {renderLazySection(
