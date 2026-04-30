@@ -325,6 +325,32 @@ function buildLegacyChecklistImpianto(checklist: Checklist): ChecklistImpianto[]
   ];
 }
 
+function normalizeChecklistImpianto(value: unknown, checklistId?: string | null): ChecklistImpianto | null {
+  const row = value && typeof value === "object" ? (value as Record<string, unknown>) : null;
+  if (!row) return null;
+  const id = String(row.id || "").trim();
+  const impiantoQuantita = Number(row.impianto_quantita);
+  const numeroFacce = Number(row.numero_facce);
+  const m2Calcolati = Number(row.m2_calcolati);
+  return {
+    ...(id ? { id } : {}),
+    checklist_id: String(row.checklist_id || checklistId || "").trim() || null,
+    position: Number.isFinite(Number(row.position)) ? Number(row.position) : null,
+    impianto_codice: String(row.impianto_codice || "").trim() || null,
+    impianto_descrizione: String(row.impianto_descrizione || "").trim() || null,
+    tipo_impianto: String(row.tipo_impianto || "").trim() || null,
+    tipo_struttura: String(row.tipo_struttura || "").trim() || null,
+    impianto_indirizzo: String(row.impianto_indirizzo || "").trim() || null,
+    passo: String(row.passo || "").trim() || null,
+    dimensioni: String(row.dimensioni || "").trim() || null,
+    impianto_quantita:
+      Number.isFinite(impiantoQuantita) && impiantoQuantita > 0 ? Math.floor(impiantoQuantita) : 1,
+    numero_facce: Number.isFinite(numeroFacce) && numeroFacce > 0 ? Math.floor(numeroFacce) : 1,
+    m2_calcolati: Number.isFinite(m2Calcolati) ? m2Calcolati : null,
+    note: String(row.note || "").trim() || null,
+  };
+}
+
 function buildEmptyChecklistImpianto(): ChecklistImpianto {
   return {
     impianto_quantita: 1,
@@ -2019,7 +2045,10 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
   useEffect(() => {
     if (!checklist) return;
     if (Array.isArray(checklist.impianti) && checklist.impianti.length > 0) {
-      setImpianti(checklist.impianti);
+      const normalizedImpianti = checklist.impianti
+        .map((row) => normalizeChecklistImpianto(row, checklist.id))
+        .filter(Boolean) as ChecklistImpianto[];
+      setImpianti(normalizedImpianti.length > 0 ? normalizedImpianti : [buildEmptyChecklistImpianto()]);
       return;
     }
     setImpianti([buildEmptyChecklistImpianto()]);
@@ -3721,38 +3750,39 @@ function buildFormData(c: Checklist): FormData {
     setError(null);
     setItemsError(null);
 
-    const debug =
-      typeof window !== "undefined" &&
-      new URLSearchParams(window.location.search).get("debug") === "1";
-    if (isPerfEnabled()) console.time(`[perf][checklist][load#${loadSeq}] fetch head`);
-    perfCountFetch("GET /api/checklists/:id");
-    const headRes = await fetch(`/api/checklists/${id}${debug ? "?debug=1" : ""}`);
-    const headJson = await headRes.json().catch(() => ({}));
-    if (isPerfEnabled()) console.timeEnd(`[perf][checklist][load#${loadSeq}] fetch head`);
-    const head = headJson?.data as any;
-    const err1 = headRes.ok ? null : { message: headJson?.error || "Errore caricamento checklist" };
+    try {
+      const debug =
+        typeof window !== "undefined" &&
+        new URLSearchParams(window.location.search).get("debug") === "1";
+      if (isPerfEnabled()) console.time(`[perf][checklist][load#${loadSeq}] fetch head`);
+      perfCountFetch("GET /api/checklists/:id");
+      const headRes = await fetch(`/api/checklists/${id}${debug ? "?debug=1" : ""}`);
+      const headJson = await headRes.json().catch(() => ({}));
+      if (isPerfEnabled()) console.timeEnd(`[perf][checklist][load#${loadSeq}] fetch head`);
+      const head = headJson?.data as any;
+      const err1 = headRes.ok ? null : { message: headJson?.error || "Errore caricamento checklist" };
 
-    if (err1) {
-      setError("Errore caricamento checklist: " + err1.message);
-      setLoading(false);
-      return;
-    }
+      if (err1) {
+        setError("Errore caricamento checklist: " + err1.message);
+        setLoading(false);
+        return;
+      }
 
-    if (isPerfEnabled()) console.time(`[perf][checklist][load#${loadSeq}] db checklist_items`);
-    const { data: items, error: err2 } = await db<any[]>({
-      table: "checklist_items",
-      op: "select",
-      select: "*",
-      filter: { checklist_id: id },
-      order: [{ col: "created_at", asc: true }],
-    });
-    if (isPerfEnabled()) console.timeEnd(`[perf][checklist][load#${loadSeq}] db checklist_items`);
+      if (isPerfEnabled()) console.time(`[perf][checklist][load#${loadSeq}] db checklist_items`);
+      const { data: items, error: err2 } = await db<any[]>({
+        table: "checklist_items",
+        op: "select",
+        select: "*",
+        filter: { checklist_id: id },
+        order: [{ col: "created_at", asc: true }],
+      });
+      if (isPerfEnabled()) console.timeEnd(`[perf][checklist][load#${loadSeq}] db checklist_items`);
 
-    if (err2) {
-      setError("Errore caricamento righe: " + err2.message);
-      setLoading(false);
-      return;
-    }
+      if (err2) {
+        setError("Errore caricamento righe: " + err2.message);
+        setLoading(false);
+        return;
+      }
 
     if (isPerfEnabled()) console.time(`[perf][checklist][load#${loadSeq}] eager datasets`);
     perfCountFetch("GET /api/checklists/:id/documents");
@@ -3847,15 +3877,21 @@ function buildFormData(c: Checklist): FormData {
       if (isPerfEnabled()) console.timeEnd(`[perf][checklist][load#${loadSeq}] db catalog_items`);
     }
 
-    const headChecklist = head as Checklist;
-    const impiantiRows = ((impiantiData || []) as ChecklistImpianto[]).filter(Boolean);
-    headChecklist.impianti =
-      impiantiRows.length > 0 ? impiantiRows : buildLegacyChecklistImpianto(headChecklist);
-    console.log("[checklist][impianti]", {
-      checklistId: id,
-      source: impiantiRows.length > 0 ? "checklist_impianti" : "legacy_checklist",
-      impianti: headChecklist.impianti,
-    });
+      const headChecklist = (head || {}) as Checklist;
+      const impiantiRows = ((impiantiData || []) as unknown[])
+        .map((row) => normalizeChecklistImpianto(row, id))
+        .filter(Boolean) as ChecklistImpianto[];
+      headChecklist.impianti =
+        impiantiRows.length > 0
+          ? impiantiRows
+          : buildLegacyChecklistImpianto(headChecklist)
+              .map((row) => normalizeChecklistImpianto(row, id))
+              .filter(Boolean) as ChecklistImpianto[];
+      console.log("[checklist][impianti]", {
+        checklistId: id,
+        source: impiantiRows.length > 0 ? "checklist_impianti" : "legacy_checklist",
+        impianti: headChecklist.impianti,
+      });
     // Preferisci sempre la denominazione completa dell'anagrafica cliente per la UI progetto.
     if (headChecklist.cliente_id) {
       const { data: anagraficaRows } = await db<any[]>({
@@ -3923,77 +3959,86 @@ function buildFormData(c: Checklist): FormData {
       );
     }
 
-    setChecklist(headChecklist);
-    setRows(mappedRows);
-    setOriginalRowIds((items || []).map((r) => r.id));
-    setDocuments((docsData || []) as ChecklistDocument[]);
-    setClienteReferenti([]);
-    setClienteReferentiError(null);
-    setNewClienteReferente({ nome: "", telefono: "", email: "", ruolo: "" });
-    setAssetSerials((serialsData || []) as AssetSerial[]);
-    setTasks([]);
-    setLicenze([]);
-    setProjectTagliandi([]);
-    setProjectRinnovi([]);
-    setTaskDocuments([]);
-    setTaskAttachmentsById(new Map());
-    setTaskCommentsById({});
-    setLastAlertByTask(new Map());
-    setContrattoUltra(null);
-    setContrattoUltraNome(null);
-    setProjectInterventi([]);
-    setProjectInterventoAttachmentCounts(new Map());
-    setProjectSims([]);
-    setProjectSimRechargesById({});
-    setFreeProjectSims([]);
-    setProjectSimsError(null);
-    setProjectInterventiError(null);
-    setProjectInterventiNotice(null);
-    setProjectAlertStatsMap(new Map());
-    setCronoOperativiMeta(null);
-    setCronoOperativiForm(EMPTY_CRONO_OPERATIVI);
-    setCronoDisinstallazioneMeta(null);
-    setCronoDisinstallazioneForm(EMPTY_CRONO_OPERATIVI);
-    setExpandedSections(emptyExpandedSections());
-    setLazySectionLoading(emptyExpandedSections());
-    setLazyDataLoaded({
-      cronoOperativi: false,
-      referenti: false,
-      services: false,
-      licenze: false,
-      rinnovi: false,
-      sims: false,
-      interventi: false,
-      checklistOperativa: false,
-    });
-
-    const nextForm = buildFormData(headChecklist);
-    setFormData(nextForm);
-    setOriginalData(nextForm);
-    setNewProjectIntervento(
-      buildEmptyProjectInterventoForm(
-        headChecklist.proforma || "",
-        splitMagazzinoFields(
-          headChecklist.magazzino_importazione,
-          headChecklist.magazzino_drive_url
-        ).codice
-      )
-    );
-    if (isPerfEnabled()) {
-      console.info(`[perf][checklist] ready`, {
-        loadSeq,
-        counts: {
-          tasks: 0,
-          licenze: 0,
-          tagliandi: 0,
-          rinnovi_servizi: 0,
-          rinnovi: 0,
-          documents: (docsData || []).length,
-        },
+      setChecklist(headChecklist);
+      setRows(mappedRows);
+      setOriginalRowIds((items || []).map((r) => r.id));
+      setDocuments((docsData || []) as ChecklistDocument[]);
+      setClienteReferenti([]);
+      setClienteReferentiError(null);
+      setNewClienteReferente({ nome: "", telefono: "", email: "", ruolo: "" });
+      setAssetSerials((serialsData || []) as AssetSerial[]);
+      setTasks([]);
+      setLicenze([]);
+      setProjectTagliandi([]);
+      setProjectRinnovi([]);
+      setTaskDocuments([]);
+      setTaskAttachmentsById(new Map());
+      setTaskCommentsById({});
+      setLastAlertByTask(new Map());
+      setContrattoUltra(null);
+      setContrattoUltraNome(null);
+      setProjectInterventi([]);
+      setProjectInterventoAttachmentCounts(new Map());
+      setProjectSims([]);
+      setProjectSimRechargesById({});
+      setFreeProjectSims([]);
+      setProjectSimsError(null);
+      setProjectInterventiError(null);
+      setProjectInterventiNotice(null);
+      setProjectAlertStatsMap(new Map());
+      setCronoOperativiMeta(null);
+      setCronoOperativiForm(EMPTY_CRONO_OPERATIVI);
+      setCronoDisinstallazioneMeta(null);
+      setCronoDisinstallazioneForm(EMPTY_CRONO_OPERATIVI);
+      setExpandedSections(emptyExpandedSections());
+      setLazySectionLoading(emptyExpandedSections());
+      setLazyDataLoaded({
+        cronoOperativi: false,
+        referenti: false,
+        services: false,
+        licenze: false,
+        rinnovi: false,
+        sims: false,
+        interventi: false,
+        checklistOperativa: false,
       });
-      console.timeEnd(loadLabel);
+
+      const nextForm = buildFormData(headChecklist);
+      setFormData(nextForm);
+      setOriginalData(nextForm);
+      setNewProjectIntervento(
+        buildEmptyProjectInterventoForm(
+          headChecklist.proforma || "",
+          splitMagazzinoFields(
+            headChecklist.magazzino_importazione,
+            headChecklist.magazzino_drive_url
+          ).codice
+        )
+      );
+      if (isPerfEnabled()) {
+        console.info(`[perf][checklist] ready`, {
+          loadSeq,
+          counts: {
+            tasks: 0,
+            licenze: 0,
+            tagliandi: 0,
+            rinnovi_servizi: 0,
+            rinnovi: 0,
+            documents: (docsData || []).length,
+          },
+        });
+        console.timeEnd(loadLabel);
+      }
+      setLoading(false);
+    } catch (err: any) {
+      console.error("[checklist][load] crash-safe fallback", {
+        checklistId: id,
+        message: String(err?.message || err || "Errore caricamento checklist"),
+        err,
+      });
+      setError(String(err?.message || err || "Errore caricamento checklist"));
+      setLoading(false);
     }
-    setLoading(false);
   }
 
   async function associateFreeSimToProject() {
@@ -4535,6 +4580,7 @@ function buildFormData(c: Checklist): FormData {
   if (loading) return <div style={{ padding: 20 }}>Caricamento…</div>;
   if (error) return <div style={{ padding: 20, color: "crimson" }}>{error}</div>;
   if (!checklist) return <div style={{ padding: 20 }}>Checklist non trovata</div>;
+  if (!formData) return <div style={{ padding: 20 }}>Caricamento progetto…</div>;
 
   const projectSimRows = projectSims
     .slice()
