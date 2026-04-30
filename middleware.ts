@@ -16,6 +16,7 @@ const ASSET_PREFIXES = ["/_next", "/images"];
 const ASSET_FILE_RE =
   /\.(?:png|jpg|jpeg|gif|svg|webp|ico|css|js|map|txt|xml|woff|woff2|ttf|eot)$/i;
 const SIM_SYNC_PATH = "/api/sim/sync-from-licenses";
+const CLIENT_PORTAL_PATH = "/cliente";
 
 type SimSyncAuthDebugReason =
   | "access-token-missing"
@@ -85,6 +86,8 @@ export async function middleware(req: NextRequest) {
   );
 
   const res = NextResponse.next();
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
   let currentUserId: string | null = null;
   const {
     data: { user },
@@ -93,6 +96,16 @@ export async function middleware(req: NextRequest) {
   currentUserId = user?.id ?? null;
 
   if (user) {
+    if (serviceRoleKey) {
+      const portalRedirect = await getClientPortalRedirectIfNeeded({
+        pathname,
+        nextUrl: req.nextUrl,
+        userId: user.id,
+        supabaseUrl,
+        serviceRoleKey,
+      });
+      if (portalRedirect) return portalRedirect;
+    }
     return res;
   }
 
@@ -118,6 +131,32 @@ export async function middleware(req: NextRequest) {
         path: "/",
         maxAge: REFRESH_TOKEN_MAX_AGE,
       });
+      if (currentUserId && serviceRoleKey) {
+        const portalRedirect = await getClientPortalRedirectIfNeeded({
+          pathname,
+          nextUrl: req.nextUrl,
+          userId: currentUserId,
+          supabaseUrl,
+          serviceRoleKey,
+        });
+        if (portalRedirect) {
+          portalRedirect.cookies.set("sb-access-token", data.session.access_token, {
+            httpOnly: true,
+            secure,
+            sameSite: "lax",
+            path: "/",
+            maxAge: data.session.expires_in ?? 3600,
+          });
+          portalRedirect.cookies.set("sb-refresh-token", data.session.refresh_token, {
+            httpOnly: true,
+            secure,
+            sameSite: "lax",
+            path: "/",
+            maxAge: REFRESH_TOKEN_MAX_AGE,
+          });
+          return portalRedirect;
+        }
+      }
       return res;
     }
 
@@ -148,3 +187,49 @@ export const config = {
     "/:path*",
   ],
 };
+
+async function getClientPortalRedirectIfNeeded({
+  pathname,
+  nextUrl,
+  userId,
+  supabaseUrl,
+  serviceRoleKey,
+}: {
+  pathname: string;
+  nextUrl: NextRequest["nextUrl"];
+  userId: string;
+  supabaseUrl: string;
+  serviceRoleKey: string;
+}) {
+  if (
+    pathname.startsWith(CLIENT_PORTAL_PATH) ||
+    pathname.startsWith("/login") ||
+    pathname.startsWith("/auth/")
+  ) {
+    return null;
+  }
+
+  const adminClient = createClient(supabaseUrl, serviceRoleKey, {
+    auth: {
+      persistSession: false,
+      autoRefreshToken: false,
+    },
+  });
+
+  const { data: clientePortalAccess, error } = await adminClient
+    .from("clienti_portale_auth")
+    .select("id")
+    .eq("user_id", userId)
+    .eq("attivo", true)
+    .limit(1)
+    .maybeSingle();
+
+  if (error || !clientePortalAccess?.id) {
+    return null;
+  }
+
+  const redirectUrl = nextUrl.clone();
+  redirectUrl.pathname = CLIENT_PORTAL_PATH;
+  redirectUrl.search = "";
+  return NextResponse.redirect(redirectUrl);
+}

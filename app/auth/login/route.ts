@@ -77,7 +77,7 @@ export async function POST(request: NextRequest) {
     Boolean(existingClientePortalAccess?.id);
 
   if (isClientePortalUser) {
-    const response = NextResponse.json({ ok: true });
+    const response = NextResponse.json({ ok: true, redirectTo: "/cliente" });
     const secure = process.env.NODE_ENV === "production";
 
     response.cookies.set("sb-access-token", data.session.access_token, {

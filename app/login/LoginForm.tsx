@@ -34,18 +34,19 @@ export default function LoginForm({ redirectTo }: LoginFormProps) {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ email, password }),
     });
+    const data = await res.json().catch(() => ({} as { error?: string; redirectTo?: string }));
 
     setLoading(false);
 
     if (!res.ok) {
-      const data = await res.json().catch(() => ({}));
       const message = data?.error || "Credenziali non valide";
       console.error("Login server-side error:", message);
       setError(message);
       return;
     }
 
-    router.replace(effectiveRedirectTo);
+    const serverRedirectTo = String(data?.redirectTo || "").trim();
+    router.replace(serverRedirectTo || effectiveRedirectTo);
     router.refresh();
   }
 

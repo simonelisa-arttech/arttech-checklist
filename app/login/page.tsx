@@ -50,7 +50,9 @@ export default async function LoginPage({
           <div style={{ fontSize: 30, fontWeight: 800, color: "#111827", lineHeight: 1.1 }}>
             AT SYSTEM
           </div>
-          <div style={{ fontSize: 14, color: "#6b7280" }}>Accesso area operativa</div>
+          <div style={{ fontSize: 14, color: "#6b7280" }}>
+            Clienti: area cliente. Operatori: dashboard interna.
+          </div>
         </div>
         <LoginForm redirectTo={redirectTo} />
       </div>
