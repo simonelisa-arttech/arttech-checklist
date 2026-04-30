@@ -19,6 +19,10 @@ type DbRequest = {
   onConflict?: string;
 };
 
+function applyEqOrIsNull(query: any, key: string, value: string | number | boolean | null) {
+  return value === null ? query.is(key, null) : query.eq(key, value);
+}
+
 const TABLE_RULES: Record<
   string,
   {
@@ -516,7 +520,7 @@ export async function POST(request: Request) {
       return invalid("Invalid select clause");
     }
     let q: any = supabaseAdmin.from(table).select(select);
-    for (const [k, v] of Object.entries(filter)) q = q.eq(k, v);
+    for (const [k, v] of Object.entries(filter)) q = applyEqOrIsNull(q, k, v);
     for (const [k, v] of Object.entries(filterIn)) q = q.in(k, v as any[]);
     for (const o of order) q = q.order(o.col, { ascending: o.asc !== false });
     if (normalizedLimit > 0) q = q.limit(normalizedLimit);
@@ -541,7 +545,7 @@ export async function POST(request: Request) {
       ) {
         const retrySelect = stripSelectColumn(select, "cliente_id");
         let retryQ: any = supabaseAdmin.from(table).select(retrySelect);
-        for (const [k, v] of Object.entries(filter)) retryQ = retryQ.eq(k, v);
+        for (const [k, v] of Object.entries(filter)) retryQ = applyEqOrIsNull(retryQ, k, v);
         for (const [k, v] of Object.entries(filterIn)) retryQ = retryQ.in(k, v as any[]);
         for (const o of order) retryQ = retryQ.order(o.col, { ascending: o.asc !== false });
         if (normalizedLimit > 0) retryQ = retryQ.limit(normalizedLimit);
@@ -558,7 +562,7 @@ export async function POST(request: Request) {
       ) {
         const retrySelect = stripSelectColumn(select, "cliente");
         let retryQ: any = supabaseAdmin.from(table).select(retrySelect);
-        for (const [k, v] of Object.entries(filter)) retryQ = retryQ.eq(k, v);
+        for (const [k, v] of Object.entries(filter)) retryQ = applyEqOrIsNull(retryQ, k, v);
         for (const [k, v] of Object.entries(filterIn)) retryQ = retryQ.in(k, v as any[]);
         for (const o of order) retryQ = retryQ.order(o.col, { ascending: o.asc !== false });
         if (normalizedLimit > 0) retryQ = retryQ.limit(normalizedLimit);
@@ -586,7 +590,7 @@ export async function POST(request: Request) {
           retrySelect = stripSelectColumn(retrySelect, "scadenze_delivery_mode");
         }
         let retryQ: any = supabaseAdmin.from(table).select(retrySelect || "*");
-        for (const [k, v] of Object.entries(filter)) retryQ = retryQ.eq(k, v);
+        for (const [k, v] of Object.entries(filter)) retryQ = applyEqOrIsNull(retryQ, k, v);
         for (const [k, v] of Object.entries(filterIn)) retryQ = retryQ.in(k, v as any[]);
         for (const o of order) retryQ = retryQ.order(o.col, { ascending: o.asc !== false });
         if (normalizedLimit > 0) retryQ = retryQ.limit(normalizedLimit);
@@ -608,7 +612,7 @@ export async function POST(request: Request) {
       ) {
         const retrySelect = stripSelectColumn(select, "riferimento");
         let retryQ: any = supabaseAdmin.from(table).select(retrySelect);
-        for (const [k, v] of Object.entries(filter)) retryQ = retryQ.eq(k, v);
+        for (const [k, v] of Object.entries(filter)) retryQ = applyEqOrIsNull(retryQ, k, v);
         for (const [k, v] of Object.entries(filterIn)) retryQ = retryQ.in(k, v as any[]);
         for (const o of order) retryQ = retryQ.order(o.col, { ascending: o.asc !== false });
         if (normalizedLimit > 0) retryQ = retryQ.limit(normalizedLimit);
@@ -673,7 +677,7 @@ export async function POST(request: Request) {
     if (!payload) return invalid("Missing payload");
     if (Object.keys(filter).length === 0) return invalid("Update requires at least one eq filter");
     let q: any = supabaseAdmin.from(table).update(payload);
-    for (const [k, v] of Object.entries(filter)) q = q.eq(k, v);
+    for (const [k, v] of Object.entries(filter)) q = applyEqOrIsNull(q, k, v);
     const { data, error } = await q.select("*");
       if (error) return dbFailure(table, op, filter, error.message);
     return NextResponse.json({ ok: true, data });
@@ -682,7 +686,7 @@ export async function POST(request: Request) {
     if (op === "delete") {
     if (Object.keys(filter).length === 0) return invalid("Delete requires at least one eq filter");
     let q: any = supabaseAdmin.from(table).delete();
-    for (const [k, v] of Object.entries(filter)) q = q.eq(k, v);
+    for (const [k, v] of Object.entries(filter)) q = applyEqOrIsNull(q, k, v);
     const { data, error } = await q.select("*");
       if (error) return dbFailure(table, op, filter, error.message);
     return NextResponse.json({ ok: true, data });
