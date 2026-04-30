@@ -23,6 +23,22 @@ type SectionRow = {
   pct_complessivo: number | null;
 };
 
+type InterventoBillingRow = {
+  id: string;
+  checklist_id: string | null;
+  data: string | null;
+  data_tassativa?: string | null;
+  descrizione: string | null;
+  ticket_no?: string | null;
+  esito_fatturazione: string | null;
+  note_amministrazione?: string | null;
+  checklist?: {
+    id: string | null;
+    cliente: string | null;
+    nome_checklist: string | null;
+  } | null;
+};
+
 function toIsoDay(value?: string | null) {
   const raw = String(value || "").trim();
   if (!raw) return null;
@@ -48,6 +64,108 @@ function isCompletedTask(stato?: string | null) {
 export async function GET(request: Request) {
   const auth = await requireOperatore(request);
   if (!auth.ok) return auth.response;
+  const url = new URL(request.url);
+  const type = String(url.searchParams.get("type") || "progetti").trim().toLowerCase();
+
+  if (type === "interventi") {
+    let interventiRes: any = await auth.adminClient
+      .from("saas_interventi")
+      .select(
+        "id, checklist_id, ticket_no, data, data_tassativa, descrizione, esito_fatturazione, note_amministrazione, checklist:checklists(id, cliente, nome_checklist)"
+      )
+      .eq("stato_intervento", "CHIUSO")
+      .eq("esito_fatturazione", "DA_FATTURARE")
+      .order("data_tassativa", { ascending: true, nullsFirst: false })
+      .order("data", { ascending: true, nullsFirst: false });
+
+    if (
+      interventiRes.error &&
+      String(interventiRes.error.message || "").toLowerCase().includes("note_amministrazione")
+    ) {
+      interventiRes = await auth.adminClient
+        .from("saas_interventi")
+        .select(
+          "id, checklist_id, ticket_no, data, data_tassativa, descrizione, esito_fatturazione, checklist:checklists(id, cliente, nome_checklist)"
+        )
+        .eq("stato_intervento", "CHIUSO")
+        .eq("esito_fatturazione", "DA_FATTURARE")
+        .order("data_tassativa", { ascending: true, nullsFirst: false })
+        .order("data", { ascending: true, nullsFirst: false });
+      if (!interventiRes.error) {
+        interventiRes.data = ((interventiRes.data || []) as any[]).map((row) => ({
+          ...row,
+          note_amministrazione: null,
+        }));
+      }
+    }
+
+    if (
+      interventiRes.error &&
+      String(interventiRes.error.message || "").toLowerCase().includes("data_tassativa")
+    ) {
+      interventiRes = await auth.adminClient
+        .from("saas_interventi")
+        .select(
+          "id, checklist_id, ticket_no, data, descrizione, esito_fatturazione, note_amministrazione, checklist:checklists(id, cliente, nome_checklist)"
+        )
+        .eq("stato_intervento", "CHIUSO")
+        .eq("esito_fatturazione", "DA_FATTURARE")
+        .order("data", { ascending: true, nullsFirst: false });
+      if (!interventiRes.error) {
+        interventiRes.data = ((interventiRes.data || []) as any[]).map((row) => ({
+          ...row,
+          data_tassativa: null,
+        }));
+      }
+    }
+
+    if (
+      interventiRes.error &&
+      String(interventiRes.error.message || "").toLowerCase().includes("ticket_no")
+    ) {
+      interventiRes = await auth.adminClient
+        .from("saas_interventi")
+        .select(
+          "id, checklist_id, data, data_tassativa, descrizione, esito_fatturazione, note_amministrazione, checklist:checklists(id, cliente, nome_checklist)"
+        )
+        .eq("stato_intervento", "CHIUSO")
+        .eq("esito_fatturazione", "DA_FATTURARE")
+        .order("data_tassativa", { ascending: true, nullsFirst: false })
+        .order("data", { ascending: true, nullsFirst: false });
+      if (!interventiRes.error) {
+        interventiRes.data = ((interventiRes.data || []) as any[]).map((row) => ({
+          ...row,
+          ticket_no: null,
+        }));
+      }
+    }
+
+    if (interventiRes.error) {
+      return NextResponse.json({ error: interventiRes.error.message }, { status: 500 });
+    }
+
+    const result = ((interventiRes.data || []) as InterventoBillingRow[])
+      .map((row) => ({
+        id: row.id,
+        checklist_id: row.checklist?.id || row.checklist_id || null,
+        cliente: row.checklist?.cliente || "—",
+        progetto_nome: row.checklist?.nome_checklist || "—",
+        descrizione: row.descrizione || "—",
+        data_intervento: toIsoDay(row.data_tassativa) || toIsoDay(row.data),
+        esito_fatturazione: row.esito_fatturazione || "DA_FATTURARE",
+        note_amministrazione: row.note_amministrazione || null,
+        ticket_no: row.ticket_no || null,
+      }))
+      .sort((a, b) => {
+        const byDate = String(a.data_intervento || "").localeCompare(String(b.data_intervento || ""));
+        if (byDate !== 0) return byDate;
+        return `${a.cliente} ${a.progetto_nome} ${a.descrizione}`.localeCompare(
+          `${b.cliente} ${b.progetto_nome} ${b.descrizione}`
+        );
+      });
+
+    return NextResponse.json(result);
+  }
 
   const { data: checklists, error: checklistsErr } = await auth.adminClient
     .from("checklists")
@@ -124,4 +242,33 @@ export async function GET(request: Request) {
     });
 
   return NextResponse.json(result);
+}
+
+export async function PATCH(request: Request) {
+  const auth = await requireOperatore(request);
+  if (!auth.ok) return auth.response;
+
+  const body = await request.json().catch(() => ({} as any));
+  const action = String(body?.action || "").trim().toLowerCase();
+  const id = String(body?.id || "").trim();
+
+  if (action !== "mark_fatturato" || !id) {
+    return NextResponse.json({ error: "Richiesta non valida" }, { status: 400 });
+  }
+
+  const nowIso = new Date().toISOString();
+  const { error } = await auth.adminClient
+    .from("saas_interventi")
+    .update({
+      esito_fatturazione: "FATTURATO",
+      fatturazione_stato: "FATTURATO",
+      fatturato_il: nowIso,
+    })
+    .eq("id", id);
+
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+
+  return NextResponse.json({ ok: true, id, fatturato_il: nowIso });
 }

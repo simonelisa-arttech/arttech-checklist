@@ -11,6 +11,18 @@ type FatturaDaEmettereRow = {
   percentuale_completamento: number;
 };
 
+type FatturaInterventoRow = {
+  id: string;
+  checklist_id: string | null;
+  cliente: string;
+  progetto_nome: string;
+  descrizione: string;
+  data_intervento: string | null;
+  esito_fatturazione: string;
+  note_amministrazione: string | null;
+  ticket_no: string | null;
+};
+
 function formatDate(value?: string | null) {
   if (!value) return "—";
   const date = new Date(value);
@@ -27,9 +39,12 @@ function diffDays(fromIso: string, toIso: string) {
 }
 
 export default function FattureDaEmetterePage() {
+  const [activeTab, setActiveTab] = useState<"progetti" | "interventi">("progetti");
   const [rows, setRows] = useState<FatturaDaEmettereRow[]>([]);
+  const [interventiRows, setInterventiRows] = useState<FatturaInterventoRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [savingInterventoId, setSavingInterventoId] = useState<string | null>(null);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -38,7 +53,7 @@ export default function FattureDaEmetterePage() {
       try {
         setLoading(true);
         setError(null);
-        const res = await fetch("/api/fatture/da-emettere", {
+        const res = await fetch(`/api/fatture/da-emettere?type=${activeTab}`, {
           signal: controller.signal,
           credentials: "include",
         });
@@ -46,11 +61,16 @@ export default function FattureDaEmetterePage() {
         if (!res.ok || !Array.isArray(data)) {
           throw new Error(data?.error || "Errore caricamento fatture da emettere");
         }
-        setRows(data as FatturaDaEmettereRow[]);
+        if (activeTab === "progetti") {
+          setRows(data as FatturaDaEmettereRow[]);
+        } else {
+          setInterventiRows(data as FatturaInterventoRow[]);
+        }
       } catch (err: any) {
         if (err?.name === "AbortError") return;
         setError(String(err?.message || "Errore caricamento fatture da emettere"));
-        setRows([]);
+        if (activeTab === "progetti") setRows([]);
+        else setInterventiRows([]);
       } finally {
         setLoading(false);
       }
@@ -58,7 +78,7 @@ export default function FattureDaEmetterePage() {
 
     void load();
     return () => controller.abort();
-  }, []);
+  }, [activeTab]);
 
   const todayIso = useMemo(() => {
     const today = new Date();
@@ -66,13 +86,40 @@ export default function FattureDaEmetterePage() {
     return today.toISOString().slice(0, 10);
   }, []);
 
+  async function markInterventoFatturato(row: FatturaInterventoRow) {
+    try {
+      setSavingInterventoId(row.id);
+      setError(null);
+      const res = await fetch("/api/fatture/da-emettere", {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          id: row.id,
+          action: "mark_fatturato",
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        throw new Error(data?.error || "Errore aggiornamento fatturazione intervento");
+      }
+      setInterventiRows((prev) => prev.filter((item) => item.id !== row.id));
+    } catch (err: any) {
+      setError(String(err?.message || "Errore aggiornamento fatturazione intervento"));
+    } finally {
+      setSavingInterventoId(null);
+    }
+  }
+
   return (
     <div style={{ maxWidth: 1100, margin: "24px auto", padding: 16, paddingBottom: 60 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 18, flexWrap: "wrap" }}>
         <div>
           <h1 style={{ margin: 0, fontSize: 34, whiteSpace: "nowrap" }}>FATTURE DA EMETTERE</h1>
           <div style={{ marginTop: 4, fontSize: 13, opacity: 0.7 }}>
-            Progetti completati e non ancora esclusi dalla gestione fatturazione.
+            {activeTab === "progetti"
+              ? "Progetti completati e non ancora esclusi dalla gestione fatturazione."
+              : "Interventi chiusi che risultano ancora da fatturare."}
           </div>
         </div>
         <Link
@@ -92,11 +139,39 @@ export default function FattureDaEmetterePage() {
         </Link>
       </div>
 
+      <div style={{ display: "flex", gap: 8, marginBottom: 14, flexWrap: "wrap" }}>
+        {[
+          { key: "progetti" as const, label: "Progetti" },
+          { key: "interventi" as const, label: "Interventi" },
+        ].map((tab) => {
+          const active = activeTab === tab.key;
+          return (
+            <button
+              key={tab.key}
+              type="button"
+              onClick={() => setActiveTab(tab.key)}
+              style={{
+                padding: "8px 12px",
+                borderRadius: 10,
+                border: active ? "1px solid #111827" : "1px solid #d1d5db",
+                background: active ? "#111827" : "white",
+                color: active ? "white" : "#111827",
+                fontWeight: 700,
+                cursor: "pointer",
+              }}
+            >
+              {tab.label}
+            </button>
+          );
+        })}
+      </div>
+
       {error ? <div style={{ marginBottom: 12, fontSize: 13, color: "#b91c1c" }}>{error}</div> : null}
 
       {loading ? (
         <div>Caricamento…</div>
-      ) : rows.length === 0 ? (
+      ) : activeTab === "progetti" ? (
+        rows.length === 0 ? (
         <div>Nessuna fattura da emettere.</div>
       ) : (
         <div style={{ border: "1px solid #e5e7eb", borderRadius: 14, overflow: "hidden", background: "white" }}>
@@ -166,6 +241,91 @@ export default function FattureDaEmetterePage() {
               </div>
             );
           })}
+        </div>
+      )
+      ) : interventiRows.length === 0 ? (
+        <div>Nessun intervento da fatturare.</div>
+      ) : (
+        <div style={{ border: "1px solid #e5e7eb", borderRadius: 14, overflow: "hidden", background: "white" }}>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "0.9fr 1.2fr 1.2fr 1.5fr 1.4fr 0.9fr",
+              gap: 12,
+              padding: "12px 14px",
+              background: "#f9fafb",
+              borderBottom: "1px solid #e5e7eb",
+              fontWeight: 700,
+            }}
+          >
+            <div>Data</div>
+            <div>Cliente</div>
+            <div>Progetto</div>
+            <div>Descrizione</div>
+            <div>Note amministrazione</div>
+            <div>Azioni</div>
+          </div>
+
+          {interventiRows.map((row) => (
+            <div
+              key={row.id}
+              style={{
+                display: "grid",
+                gridTemplateColumns: "0.9fr 1.2fr 1.2fr 1.5fr 1.4fr 0.9fr",
+                gap: 12,
+                padding: "12px 14px",
+                borderTop: "1px solid #f3f4f6",
+                alignItems: "center",
+              }}
+            >
+              <div>{formatDate(row.data_intervento)}</div>
+              <div>{row.cliente}</div>
+              <div style={{ fontWeight: 600 }}>{row.progetto_nome}</div>
+              <div>
+                <div>{row.descrizione}</div>
+                {row.ticket_no ? (
+                  <div style={{ fontSize: 12, opacity: 0.7 }}>Ticket: {row.ticket_no}</div>
+                ) : null}
+              </div>
+              <div style={{ fontSize: 13, whiteSpace: "pre-wrap" }}>{row.note_amministrazione || "—"}</div>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <button
+                  type="button"
+                  onClick={() => markInterventoFatturato(row)}
+                  disabled={savingInterventoId === row.id}
+                  style={{
+                    padding: "6px 10px",
+                    borderRadius: 8,
+                    border: "1px solid #111",
+                    background: "white",
+                    color: "inherit",
+                    fontWeight: 600,
+                    cursor: savingInterventoId === row.id ? "default" : "pointer",
+                    opacity: savingInterventoId === row.id ? 0.6 : 1,
+                  }}
+                >
+                  Segna come fatturato
+                </button>
+                {row.checklist_id ? (
+                  <Link
+                    href={`/checklists/${row.checklist_id}`}
+                    style={{
+                      display: "inline-block",
+                      padding: "6px 10px",
+                      borderRadius: 8,
+                      border: "1px solid #d1d5db",
+                      background: "white",
+                      textDecoration: "none",
+                      color: "inherit",
+                      fontWeight: 600,
+                    }}
+                  >
+                    Apri
+                  </Link>
+                ) : null}
+              </div>
+            </div>
+          ))}
         </div>
       )}
     </div>
