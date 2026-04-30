@@ -1791,6 +1791,7 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
   const [projectCloseInterventoId, setProjectCloseInterventoId] = useState<string | null>(null);
   const [projectCloseEsito, setProjectCloseEsito] = useState("");
   const [projectCloseNote, setProjectCloseNote] = useState("");
+  const [projectCloseNoteAmministrazione, setProjectCloseNoteAmministrazione] = useState("");
   const [projectCloseError, setProjectCloseError] = useState<string | null>(null);
   const [newProjectIntervento, setNewProjectIntervento] = useState<ProjectInterventoForm>(
     buildEmptyProjectInterventoForm()
@@ -2708,6 +2709,7 @@ function buildFormData(c: Checklist): FormData {
     }
     const current = projectInterventi.find((row) => row.id === projectCloseInterventoId);
     const noteTrim = projectCloseNote.trim();
+    const noteAmministrazioneTrim = projectCloseNoteAmministrazione.trim();
     let noteTecniche = current?.note_tecniche ?? "";
     if (noteTrim) {
       noteTecniche = noteTecniche ? `${noteTecniche}\nChiusura: ${noteTrim}` : `Chiusura: ${noteTrim}`;
@@ -2720,6 +2722,7 @@ function buildFormData(c: Checklist): FormData {
         chiuso_il: new Date().toISOString(),
         chiuso_da_operatore: currentOperatoreId || null,
         note_tecniche: noteTecniche || null,
+        note_amministrazione: noteAmministrazioneTrim || null,
       })
       .eq("id", projectCloseInterventoId);
     if (error) {
@@ -2733,6 +2736,7 @@ function buildFormData(c: Checklist): FormData {
     setProjectCloseInterventoId(null);
     setProjectCloseEsito("");
     setProjectCloseNote("");
+    setProjectCloseNoteAmministrazione("");
     setProjectCloseError(null);
   }
 
@@ -7020,6 +7024,8 @@ function buildFormData(c: Checklist): FormData {
       setCloseEsito={setProjectCloseEsito}
       closeNote={projectCloseNote}
       setCloseNote={setProjectCloseNote}
+      closeNoteAmministrazione={projectCloseNoteAmministrazione}
+      setCloseNoteAmministrazione={setProjectCloseNoteAmministrazione}
       closeError={projectCloseError}
       setCloseError={setProjectCloseError}
       confirmCloseIntervento={confirmProjectCloseIntervento}

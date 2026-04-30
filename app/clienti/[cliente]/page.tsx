@@ -1300,6 +1300,7 @@ export default function ClientePage({
   const [closeInterventoId, setCloseInterventoId] = useState<string | null>(null);
   const [closeEsito, setCloseEsito] = useState("");
   const [closeNote, setCloseNote] = useState("");
+  const [closeNoteAmministrazione, setCloseNoteAmministrazione] = useState("");
   const [closeError, setCloseError] = useState<string | null>(null);
   const [lastAlertByIntervento, setLastAlertByIntervento] = useState<
     Map<string, { toOperatoreId: string | null; toNome: string | null; createdAt: string }>
@@ -4363,6 +4364,7 @@ export default function ClientePage({
     }
     const intervento = interventi.find((x) => x.id === closeInterventoId);
     const noteTrim = closeNote.trim();
+    const noteAmministrazioneTrim = closeNoteAmministrazione.trim();
     let noteTecniche = intervento?.note_tecniche ?? "";
     if (noteTrim) {
       noteTecniche = noteTecniche
@@ -4377,6 +4379,7 @@ export default function ClientePage({
       chiuso_il: new Date().toISOString(),
       chiuso_da_operatore: currentOperatoreId ?? null,
       note_tecniche: noteTecniche ? noteTecniche : null,
+      note_amministrazione: noteAmministrazioneTrim || null,
     };
 
     const { error: updErr } = await dbFrom("saas_interventi")
@@ -4396,6 +4399,7 @@ export default function ClientePage({
     setCloseInterventoId(null);
     setCloseEsito("");
     setCloseNote("");
+    setCloseNoteAmministrazione("");
     setCloseError(null);
   }
 
@@ -8272,6 +8276,8 @@ ${rinnovi30ggBreakdown.debugSample
               setCloseEsito={setCloseEsito}
               closeNote={closeNote}
               setCloseNote={setCloseNote}
+              closeNoteAmministrazione={closeNoteAmministrazione}
+              setCloseNoteAmministrazione={setCloseNoteAmministrazione}
               closeError={closeError}
               setCloseError={setCloseError}
               confirmCloseIntervento={confirmCloseIntervento}

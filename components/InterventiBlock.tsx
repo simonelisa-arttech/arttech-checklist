@@ -118,6 +118,8 @@ type Props = {
   setCloseEsito: (value: string) => void;
   closeNote: string;
   setCloseNote: (value: string) => void;
+  closeNoteAmministrazione: string;
+  setCloseNoteAmministrazione: (value: string) => void;
   closeError: string | null;
   setCloseError: (value: string | null) => void;
   confirmCloseIntervento: () => void;
@@ -546,6 +548,8 @@ export default function InterventiBlock({
   setCloseEsito,
   closeNote,
   setCloseNote,
+  closeNoteAmministrazione,
+  setCloseNoteAmministrazione,
   closeError,
   setCloseError,
   confirmCloseIntervento,
@@ -1388,6 +1392,7 @@ export default function InterventiBlock({
                               setCloseInterventoId(row.id);
                               setCloseEsito("DA_FATTURARE");
                               setCloseNote("");
+                              setCloseNoteAmministrazione("");
                               setCloseError(null);
                             }}
                             style={{
@@ -1877,8 +1882,18 @@ export default function InterventiBlock({
                 </select>
               </label>
               <label style={{ display: "block", marginBottom: 10 }}>
-                Note (opzionale)<br />
+                Note tecniche<br />
                 <textarea value={closeNote} onChange={(e) => setCloseNote(e.target.value)} rows={3} style={{ width: "100%", padding: 8 }} />
+              </label>
+              <label style={{ display: "block", marginBottom: 10 }}>
+                Note per amministrazione<br />
+                <textarea
+                  value={closeNoteAmministrazione}
+                  onChange={(e) => setCloseNoteAmministrazione(e.target.value)}
+                  rows={3}
+                  placeholder="Note per amministrazione (fatturazione, extra, anomalie...)"
+                  style={{ width: "100%", padding: 8 }}
+                />
               </label>
             </div>
             <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
