@@ -329,7 +329,22 @@ export default function FattureDaEmetterePage() {
                   <div style={{ fontSize: 12, opacity: 0.7 }}>Ticket: {row.ticket_no}</div>
                 ) : null}
               </div>
-              <div style={{ fontSize: 13, whiteSpace: "pre-wrap" }}>{row.note_amministrazione || "—"}</div>
+              <div
+                title={row.note_amministrazione || undefined}
+                style={{
+                  fontSize: 12,
+                  color: "#374151",
+                  maxWidth: 240,
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  display: "-webkit-box",
+                  WebkitLineClamp: 2,
+                  WebkitBoxOrient: "vertical",
+                  lineHeight: 1.35,
+                }}
+              >
+                {row.note_amministrazione || "—"}
+              </div>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
                 <button
                   type="button"
