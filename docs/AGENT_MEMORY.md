@@ -1,6 +1,6 @@
 # AGENT MEMORY — AT SYSTEM / arttech-checklist
 
-Ultimo aggiornamento: 2026-04-27
+Ultimo aggiornamento: 2026-05-04
 
 ## Identita' progetto
 
@@ -130,6 +130,16 @@ Domini principali:
 - KPI cliccabili
 - card SaaS e Art Tech Events con filtro clienti
 - form rapidi Home gia' estesi con dati operativi principali
+
+### SIM
+- in `app/sim/page.tsx` il campo `Progetto associato` e' navigabile
+- SIM associata:
+  - nome progetto cliccabile
+  - link rapido `Vai al progetto ->`
+- SIM libera:
+  - CTA `Associa a progetto ->`
+  - redirect dashboard con `focus=sim-association`
+  - `sim_id` aggiunto solo per SIM persistite
 
 ## Regole pratiche per nuovi agenti/chat
 

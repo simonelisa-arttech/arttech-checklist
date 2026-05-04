@@ -50,6 +50,14 @@ type RechargeModalState = {
   inAbbonamento: boolean;
 };
 
+type ProjectAssociationInfo = {
+  checklistId?: string | null;
+  project: ChecklistProjectRow | null;
+  fallbackLabel: string;
+  simId?: string | null;
+  isPersisted?: boolean;
+};
+
 function normalizeText(value?: string | null) {
   return String(value || "")
     .trim()
@@ -323,6 +331,76 @@ function renderRechargeBillingBadge(value?: string | null) {
     >
       {raw || "—"}
     </span>
+  );
+}
+
+function buildSimAssociationHref(simId?: string | null, isPersisted = false) {
+  const params = new URLSearchParams({ focus: "sim-association" });
+  if (isPersisted && simId) {
+    params.set("sim_id", simId);
+  }
+  return `/?${params.toString()}`;
+}
+
+function renderProjectAssociation({
+  checklistId,
+  project,
+  fallbackLabel,
+  simId,
+  isPersisted = false,
+}: ProjectAssociationInfo) {
+  const trimmedChecklistId = String(checklistId || "").trim();
+  const projectName = String(project?.nome_checklist || "").trim();
+  const projectHref = trimmedChecklistId ? `/checklists/${trimmedChecklistId}` : "";
+  const associationHref = buildSimAssociationHref(simId, isPersisted);
+  const isAssociated = Boolean(trimmedChecklistId);
+
+  return (
+    <div style={{ display: "grid", gap: 4 }}>
+      <div style={{ color: "#111827" }}>
+        {isAssociated ? (
+          projectName ? (
+            <Link
+              href={projectHref}
+              style={{ color: "#111827", textDecoration: "none", fontWeight: 600 }}
+            >
+              {projectName}
+            </Link>
+          ) : (
+            fallbackLabel
+          )
+        ) : (
+          fallbackLabel
+        )}
+      </div>
+      {isAssociated ? (
+        <Link
+          href={projectHref}
+          style={{
+            width: "fit-content",
+            fontSize: 12,
+            fontWeight: 600,
+            color: "#475569",
+            textDecoration: "none",
+          }}
+        >
+          Vai al progetto →
+        </Link>
+      ) : (
+        <Link
+          href={associationHref}
+          style={{
+            width: "fit-content",
+            fontSize: 12,
+            fontWeight: 600,
+            color: "#2563eb",
+            textDecoration: "none",
+          }}
+        >
+          Associa a progetto →
+        </Link>
+      )}
+    </div>
   );
 }
 
@@ -1320,8 +1398,8 @@ export default function SimPage() {
                         <div
                           style={{
                             minHeight: 42,
-                            display: "flex",
-                            alignItems: "center",
+                            display: "grid",
+                            alignContent: "center",
                             padding: "0 12px",
                             borderRadius: 10,
                             border: "1px solid #e5e7eb",
@@ -1329,7 +1407,13 @@ export default function SimPage() {
                             color: "#374151",
                           }}
                         >
-                          {projectLabel}
+                          {renderProjectAssociation({
+                            checklistId,
+                            project,
+                            fallbackLabel: projectLabel,
+                            simId: rowId,
+                            isPersisted: Boolean(row.id && !row.isNew),
+                          })}
                         </div>
                       </div>
                     </div>
@@ -1643,7 +1727,13 @@ export default function SimPage() {
                           </div>
                           <div style={{ display: "grid", gap: 6 }}>
                             <div style={{ fontSize: 12, color: "#6b7280" }}>Progetto associato</div>
-                            <div>{projectLabel}</div>
+                            {renderProjectAssociation({
+                              checklistId,
+                              project,
+                              fallbackLabel: projectLabel,
+                              simId: rowId,
+                              isPersisted: Boolean(row.id && !row.isNew),
+                            })}
                           </div>
                           <div style={{ display: "grid", gap: 6 }}>
                             <div style={{ fontSize: 12, color: "#6b7280" }}>Device installato</div>

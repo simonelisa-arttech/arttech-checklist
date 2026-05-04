@@ -1,6 +1,6 @@
 # Handoff Context — AT SYSTEM (arttech-checklist)
 
-Ultimo aggiornamento: 2026-04-27 10:27 CEST
+Ultimo aggiornamento: 2026-05-04 10:27 CEST
 
 ## Stato attuale del progetto
 
@@ -123,8 +123,19 @@ Lo stato corrente e' buono: i flussi critici principali sono stati stabilizzati 
   - `Clienti` compatto -> `/clienti-cockpit`
   - `App operatori` -> `/operatori`
 
+### 10. UX SIM / progetto associato
+- pagina `app/sim/page.tsx` ora rende utilizzabile il campo `Progetto associato`
+- SIM associata:
+  - nome progetto cliccabile
+  - link secondario `Vai al progetto ->` verso `/checklists/{checklist_id}`
+- SIM libera:
+  - CTA `Associa a progetto ->`
+  - redirect verso `/?focus=sim-association`
+  - se la SIM e' persistita aggiunge anche `sim_id`
+
 ## Commit recenti importanti
 
+- `PENDING` feat(sim): improve project association UX with direct navigation
 - `53cf0a1` feat(dashboard): extend quick activity and intervention creation with operational staffing, vehicles and notes
 - `5361f62` fix(renewals): ensure correct conditional rendering and validation for manual email mode in alert modal
 - `01760c7` feat(billing): add overdue unpaid section and exclude those items from due billing list
