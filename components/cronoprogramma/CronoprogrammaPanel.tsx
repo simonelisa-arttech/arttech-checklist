@@ -915,8 +915,25 @@ export default function CronoprogrammaPanel({
                             ? renderPill("CONFLITTO", { bg: "#fff1f2", border: "#fca5a5", color: "#b91c1c" }, "⚠")
                             : null}
                         </div>
-                        <div style={{ fontWeight: 800, fontSize: 16, color: "#111827" }}>
-                          {r.progetto || "Attività cronoprogramma"}
+                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                          <div style={{ fontWeight: 800, fontSize: 16, color: "#111827" }}>
+                            {r.progetto || "Attività cronoprogramma"}
+                          </div>
+                          {r.checklist_id ? (
+                            <Link
+                              href={`/checklists/${r.checklist_id}`}
+                              onClick={(e) => e.stopPropagation()}
+                              style={{
+                                fontSize: 12,
+                                fontWeight: 600,
+                                color: "#2563eb",
+                                textDecoration: "none",
+                                whiteSpace: "nowrap",
+                              }}
+                            >
+                              Apri progetto →
+                            </Link>
+                          ) : null}
                         </div>
                         <div style={{ display: "flex", gap: 10, flexWrap: "wrap", fontSize: 13, color: "#475569" }}>
                           {r.kind === "INTERVENTO" ? (
