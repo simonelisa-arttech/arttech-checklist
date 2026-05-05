@@ -213,9 +213,10 @@ function mapSlotRow(row: any) {
 }
 
 function toOperativiSlotPayload(input: OperativiSlotInput, position: number) {
+  const { durata_giorni: _legacyDurataGiorni, ...slotPayload } = toOperativiPayload(input);
   return {
     position,
-    ...toOperativiPayload(input),
+    ...slotPayload,
   };
 }
 
@@ -535,7 +536,7 @@ export async function POST(request: Request) {
       const res = await supabaseAdmin
         .from("cronoprogramma_meta_slots")
         .select(
-          "row_kind, row_ref_id, position, data_inizio, durata_giorni, durata_prevista_minuti, modalita_attivita, personale_previsto, personale_ids, mezzi, descrizione_attivita, indirizzo, orario, referente_cliente_nome, referente_cliente_contatto, commerciale_art_tech_nome, commerciale_art_tech_contatto"
+          "row_kind, row_ref_id, position, data_inizio, durata_prevista_minuti, modalita_attivita, personale_previsto, personale_ids, mezzi, descrizione_attivita, indirizzo, orario, referente_cliente_nome, referente_cliente_contatto, commerciale_art_tech_nome, commerciale_art_tech_contatto"
         )
         .in("row_ref_id", rowIds)
         .in("row_kind", rowKinds as any)
@@ -897,7 +898,7 @@ export async function POST(request: Request) {
           .from("cronoprogramma_meta_slots")
           .insert(insertPayload)
           .select(
-            "position, data_inizio, durata_giorni, durata_prevista_minuti, modalita_attivita, personale_previsto, personale_ids, mezzi, descrizione_attivita, indirizzo, orario, referente_cliente_nome, referente_cliente_contatto, commerciale_art_tech_nome, commerciale_art_tech_contatto"
+            "position, data_inizio, durata_prevista_minuti, modalita_attivita, personale_previsto, personale_ids, mezzi, descrizione_attivita, indirizzo, orario, referente_cliente_nome, referente_cliente_contatto, commerciale_art_tech_nome, commerciale_art_tech_contatto"
           )
           .order("position", { ascending: true });
 
