@@ -143,11 +143,13 @@ export async function POST(request: Request) {
 
   let rinnovo: Record<string, any> | null = null;
 
-  if ((existingRinnovo as RinnovoRow | null)?.id) {
+  const existingRinnovoId = String((existingRinnovo as RinnovoRow | null)?.id || "").trim();
+
+  if (existingRinnovoId) {
     const { data, error } = await supabase
       .from("rinnovi_servizi")
       .update(rinnovoPayload)
-      .eq("id", existingRinnovo.id)
+      .eq("id", existingRinnovoId)
       .select("*")
       .single();
 

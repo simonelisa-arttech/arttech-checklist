@@ -54,8 +54,8 @@ type ProjectAssociationInfo = {
   checklistId?: string | null;
   project: ChecklistProjectRow | null;
   fallbackLabel: string;
-  simId?: string | null;
-  isPersisted?: boolean;
+  onAssociateClick?: (() => void) | null;
+  associateDisabled?: boolean;
 };
 
 function normalizeText(value?: string | null) {
@@ -334,25 +334,16 @@ function renderRechargeBillingBadge(value?: string | null) {
   );
 }
 
-function buildSimAssociationHref(simId?: string | null, isPersisted = false) {
-  const params = new URLSearchParams({ focus: "sim-association" });
-  if (isPersisted && simId) {
-    params.set("sim_id", simId);
-  }
-  return `/?${params.toString()}`;
-}
-
 function renderProjectAssociation({
   checklistId,
   project,
   fallbackLabel,
-  simId,
-  isPersisted = false,
+  onAssociateClick,
+  associateDisabled = false,
 }: ProjectAssociationInfo) {
   const trimmedChecklistId = String(checklistId || "").trim();
   const projectName = String(project?.nome_checklist || "").trim();
   const projectHref = trimmedChecklistId ? `/checklists/${trimmedChecklistId}` : "";
-  const associationHref = buildSimAssociationHref(simId, isPersisted);
   const isAssociated = Boolean(trimmedChecklistId);
 
   return (
@@ -387,18 +378,25 @@ function renderProjectAssociation({
           Vai al progetto →
         </Link>
       ) : (
-        <Link
-          href={associationHref}
+        <button
+          type="button"
+          onClick={onAssociateClick || undefined}
+          disabled={associateDisabled}
           style={{
             width: "fit-content",
             fontSize: 12,
             fontWeight: 600,
             color: "#2563eb",
             textDecoration: "none",
+            padding: 0,
+            border: "none",
+            background: "transparent",
+            cursor: associateDisabled ? "not-allowed" : "pointer",
+            opacity: associateDisabled ? 0.5 : 1,
           }}
         >
           Associa a progetto →
-        </Link>
+        </button>
       )}
     </div>
   );
@@ -431,6 +429,12 @@ export default function SimPage() {
   const [savingRechargeKey, setSavingRechargeKey] = useState<string | null>(null);
   const [rechargeModal, setRechargeModal] = useState<RechargeModalState | null>(null);
   const [billingFocusSimId, setBillingFocusSimId] = useState<string | null>(null);
+  const [isAssociateModalOpen, setIsAssociateModalOpen] = useState(false);
+  const [selectedSim, setSelectedSim] = useState<SimCardRow | null>(null);
+  const [projectSearch, setProjectSearch] = useState("");
+  const [projectResults, setProjectResults] = useState<ChecklistProjectRow[]>([]);
+  const [loadingProjects, setLoadingProjects] = useState(false);
+  const [associating, setAssociating] = useState(false);
   useEffect(() => {
     let active = true;
     (async () => {
@@ -661,6 +665,57 @@ export default function SimPage() {
     return () => window.cancelAnimationFrame(frame);
   }, [billingFocusSimId, expandedSimId, editingSimId]);
 
+  useEffect(() => {
+    if (!isAssociateModalOpen) return;
+
+    const query = projectSearch.trim();
+    if (!query) {
+      setProjectResults([]);
+      setLoadingProjects(false);
+      return;
+    }
+
+    let active = true;
+    const timeoutId = window.setTimeout(async () => {
+      setLoadingProjects(true);
+      try {
+        const res = await fetch(`/api/dashboard?q=${encodeURIComponent(query)}`, {
+          method: "GET",
+          cache: "no-store",
+          credentials: "include",
+        });
+        const json = await res.json().catch(() => ({} as any));
+        if (!res.ok || json?.ok === false) {
+          throw new Error(String(json?.error || "Errore ricerca progetti"));
+        }
+        if (!active) return;
+        const normalizedQuery = normalizeText(query);
+        const nextResults = (((json?.data?.checklists as any[]) || []) as Array<Record<string, any>>)
+          .map((row) => ({
+            id: String(row.id || "").trim(),
+            nome_checklist: String(row.nome_checklist || "").trim(),
+            cliente: String(row.cliente || "").trim(),
+          }))
+          .filter((row) => row.id && row.nome_checklist)
+          .filter((row) => normalizeText(row.nome_checklist).includes(normalizedQuery))
+          .sort((a, b) => a.nome_checklist.localeCompare(b.nome_checklist, "it"))
+          .slice(0, 12);
+        setProjectResults(nextResults);
+      } catch (err: any) {
+        if (!active) return;
+        setProjectResults([]);
+        window.alert(String(err?.message || "Errore ricerca progetti"));
+      } finally {
+        if (active) setLoadingProjects(false);
+      }
+    }, 250);
+
+    return () => {
+      active = false;
+      window.clearTimeout(timeoutId);
+    };
+  }, [isAssociateModalOpen, projectSearch]);
+
   function createTempId(prefix: string) {
     return `${prefix}-${Math.random().toString(36).slice(2, 10)}`;
   }
@@ -751,6 +806,72 @@ export default function SimPage() {
     setExpandedSimId(tempId);
     setNotice(null);
     setError(null);
+  }
+
+  function openAssociateModal(row: SimCardRow) {
+    const simId = String(row.id || "").trim();
+    if (!simId || row.isNew) {
+      window.alert("Salva prima la SIM per poterla associare a un progetto.");
+      return;
+    }
+    setSelectedSim(row);
+    setProjectSearch("");
+    setProjectResults([]);
+    setIsAssociateModalOpen(true);
+    setNotice(null);
+    setError(null);
+  }
+
+  function closeAssociateModal(force = false) {
+    if (associating && !force) return;
+    setIsAssociateModalOpen(false);
+    setSelectedSim(null);
+    setProjectSearch("");
+    setProjectResults([]);
+    setLoadingProjects(false);
+  }
+
+  async function associateSimToProject(project: ChecklistProjectRow) {
+    const simId = String(selectedSim?.id || "").trim();
+    const checklistId = String(project.id || "").trim();
+    if (!simId || !checklistId) {
+      window.alert("Seleziona una SIM e un progetto validi.");
+      return;
+    }
+
+    setAssociating(true);
+    try {
+      const res = await fetch("/api/sim/associate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          sim_id: simId,
+          checklist_id: checklistId,
+        }),
+      });
+      const json = await res.json().catch(() => ({} as any));
+      if (!res.ok || json?.ok === false) {
+        throw new Error(String(json?.error || "Errore associazione SIM"));
+      }
+
+      const nextChecklistId = String(json?.sim?.checklist_id || checklistId);
+      setRows((prev) =>
+        prev.map((row) =>
+          String(row.id || "").trim() === simId ? { ...row, checklist_id: nextChecklistId } : row
+        )
+      );
+      setProjectByChecklistId((prev) => ({
+        ...prev,
+        [checklistId]: project,
+      }));
+      setNotice("SIM associata al progetto.");
+      closeAssociateModal(true);
+    } catch (err: any) {
+      window.alert(String(err?.message || "Errore associazione SIM"));
+    } finally {
+      setAssociating(false);
+    }
   }
 
   function cancelEdit(row: SimCardRow) {
@@ -1411,8 +1532,8 @@ export default function SimPage() {
                             checklistId,
                             project,
                             fallbackLabel: projectLabel,
-                            simId: rowId,
-                            isPersisted: Boolean(row.id && !row.isNew),
+                            onAssociateClick: () => openAssociateModal(row),
+                            associateDisabled: associating || !Boolean(row.id && !row.isNew),
                           })}
                         </div>
                       </div>
@@ -1731,8 +1852,8 @@ export default function SimPage() {
                               checklistId,
                               project,
                               fallbackLabel: projectLabel,
-                              simId: rowId,
-                              isPersisted: Boolean(row.id && !row.isNew),
+                              onAssociateClick: () => openAssociateModal(row),
+                              associateDisabled: associating || !Boolean(row.id && !row.isNew),
                             })}
                           </div>
                           <div style={{ display: "grid", gap: 6 }}>
@@ -2073,6 +2194,142 @@ export default function SimPage() {
               >
                 {savingRechargeKey === rechargeModal.simId ? "Salvataggio..." : "Salva ricarica"}
               </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {isAssociateModalOpen && selectedSim ? (
+        <div
+          onClick={() => closeAssociateModal()}
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(15, 23, 42, 0.45)",
+            display: "grid",
+            placeItems: "center",
+            padding: 16,
+            zIndex: 70,
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: "min(680px, 100%)",
+              maxHeight: "90vh",
+              overflowY: "auto",
+              background: "#fff",
+              borderRadius: 18,
+              border: "1px solid #e5e7eb",
+              boxShadow: "0 24px 80px rgba(15, 23, 42, 0.18)",
+              padding: 20,
+              display: "grid",
+              gap: 16,
+            }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "flex-start" }}>
+              <div style={{ display: "grid", gap: 4 }}>
+                <div style={{ fontSize: 20, fontWeight: 800 }}>Associa SIM a progetto</div>
+                <div style={{ fontSize: 13, color: "#6b7280" }}>
+                  Cerca un progetto e collega direttamente la SIM selezionata.
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => closeAssociateModal()}
+                disabled={associating}
+                style={{
+                  height: 36,
+                  padding: "0 12px",
+                  borderRadius: 10,
+                  border: "1px solid #d1d5db",
+                  background: "#fff",
+                  color: "#111827",
+                  fontWeight: 700,
+                  cursor: associating ? "wait" : "pointer",
+                }}
+              >
+                Chiudi
+              </button>
+            </div>
+
+            <div
+              style={{
+                display: "grid",
+                gap: 4,
+                padding: 14,
+                borderRadius: 12,
+                border: "1px solid #e5e7eb",
+                background: "#f8fafc",
+              }}
+            >
+              <div style={{ fontSize: 12, color: "#6b7280" }}>SIM selezionata</div>
+              <div style={{ fontWeight: 700 }}>
+                {selectedSim.numero_telefono || selectedSim.intestatario || "SIM"}
+              </div>
+              <div style={{ fontSize: 13, color: "#475569" }}>
+                {[selectedSim.operatore, selectedSim.piano_attivo].filter(Boolean).join(" · ") || "Nessun dettaglio aggiuntivo"}
+              </div>
+            </div>
+
+            <label style={{ display: "grid", gap: 6, fontSize: 13, fontWeight: 600 }}>
+              Cerca progetto
+              <input
+                value={projectSearch}
+                onChange={(e) => setProjectSearch(e.target.value)}
+                placeholder="Cerca progetto..."
+                disabled={associating}
+                style={{ width: "100%", padding: "10px 12px", borderRadius: 10, border: "1px solid #d1d5db" }}
+              />
+            </label>
+
+            <div style={{ display: "grid", gap: 8 }}>
+              {loadingProjects ? (
+                <div style={{ fontSize: 13, color: "#6b7280" }}>Ricerca progetti in corso...</div>
+              ) : !projectSearch.trim() ? (
+                <div style={{ fontSize: 13, color: "#6b7280" }}>Digita il nome del progetto da associare.</div>
+              ) : projectResults.length === 0 ? (
+                <div style={{ fontSize: 13, color: "#6b7280" }}>Nessun progetto trovato.</div>
+              ) : (
+                projectResults.map((project) => (
+                  <div
+                    key={project.id}
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "minmax(0, 1fr) auto",
+                      gap: 12,
+                      alignItems: "center",
+                      padding: "12px 14px",
+                      borderRadius: 12,
+                      border: "1px solid #e5e7eb",
+                      background: "#fff",
+                    }}
+                  >
+                    <div style={{ display: "grid", gap: 4 }}>
+                      <div style={{ fontWeight: 700 }}>{project.nome_checklist || "—"}</div>
+                      <div style={{ fontSize: 13, color: "#6b7280" }}>{project.cliente || "—"}</div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => associateSimToProject(project)}
+                      disabled={associating}
+                      style={{
+                        height: 38,
+                        padding: "0 14px",
+                        borderRadius: 10,
+                        border: "1px solid #0f172a",
+                        background: "#0f172a",
+                        color: "#fff",
+                        fontWeight: 800,
+                        cursor: associating ? "wait" : "pointer",
+                        opacity: associating ? 0.7 : 1,
+                      }}
+                    >
+                      {associating ? "Associazione..." : "Associa"}
+                    </button>
+                  </div>
+                ))
+              )}
             </div>
           </div>
         </div>
