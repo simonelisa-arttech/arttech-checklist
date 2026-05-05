@@ -448,7 +448,7 @@ type ProjectInterventoForm = {
   descrizione: string;
   ticket_no: string;
   incluso: boolean;
-  checklist_impianto_id: string;
+  checklist_impianto_id: string | null;
   proforma: string;
   codice_magazzino: string;
   fatturazione_stato: string;
@@ -466,7 +466,7 @@ function buildEmptyProjectInterventoForm(
     descrizione: "",
     ticket_no: "",
     incluso: true,
-    checklist_impianto_id: "",
+    checklist_impianto_id: null,
     proforma,
     codice_magazzino: codiceMagazzino,
     fatturazione_stato: "DA_FATTURARE",
@@ -2189,9 +2189,8 @@ function buildFormData(c: Checklist): FormData {
   }
 
   function buildProjectInterventoForm(it: InterventoRow): ProjectInterventoForm {
-    const checklistImpiantoId = String(
-      ((it as ProjectInterventoRow).checklist_impianto_id || "")
-    ).trim();
+    const checklistImpiantoId =
+      String(((it as ProjectInterventoRow).checklist_impianto_id || "")).trim() || null;
     return {
       data: toDateInput(it.data),
       data_tassativa: toDateInput(it.data_tassativa),
@@ -7020,7 +7019,7 @@ function buildFormData(c: Checklist): FormData {
         ticketNo: newProjectIntervento.ticket_no,
         incluso: newProjectIntervento.incluso,
         checklistId: id || "",
-        checklistImpiantoId: newProjectIntervento.checklist_impianto_id,
+        checklistImpiantoId: newProjectIntervento.checklist_impianto_id || "",
         proforma: newProjectIntervento.proforma,
         codiceMagazzino: newProjectIntervento.codice_magazzino,
       fatturazioneStato:
@@ -7053,7 +7052,7 @@ function buildFormData(c: Checklist): FormData {
           descrizione: value.descrizione,
           ticket_no: value.ticketNo,
           incluso: value.incluso,
-          checklist_impianto_id: value.checklistImpiantoId,
+          checklist_impianto_id: value.checklistImpiantoId || null,
           proforma: value.proforma,
           codice_magazzino: value.codiceMagazzino,
           fatturazione_stato: value.fatturazioneStato,
@@ -7124,7 +7123,7 @@ function buildFormData(c: Checklist): FormData {
                 descrizione: value.descrizione,
                 ticket_no: value.ticketNo,
                 incluso: value.incluso,
-                checklist_impianto_id: value.checklistImpiantoId,
+                checklist_impianto_id: value.checklistImpiantoId || null,
                 proforma: value.proforma,
                 codice_magazzino: value.codiceMagazzino,
                 fatturazione_stato: value.fatturazioneStato,
