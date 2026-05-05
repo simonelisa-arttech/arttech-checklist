@@ -32,14 +32,18 @@ function normalizeString(value?: string | null) {
   return String(value || "").trim();
 }
 
-function buildRiferimento(sim: Pick<SimRow, "numero_telefono" | "intestatario">) {
-  return normalizeString(sim.numero_telefono) || normalizeString(sim.intestatario) || "SIM";
-}
-
 function buildDescrizione(
-  sim: Pick<SimRow, "operatore" | "piano_attivo" | "device_installato">
+  sim: Pick<
+    SimRow,
+    "numero_telefono" | "intestatario" | "operatore" | "piano_attivo" | "device_installato"
+  >
 ) {
-  const parts = [sim.operatore, sim.piano_attivo, sim.device_installato]
+  const parts = [
+    normalizeString(sim.numero_telefono) || normalizeString(sim.intestatario) || "SIM",
+    sim.operatore,
+    sim.piano_attivo,
+    sim.device_installato,
+  ]
     .map((value) => normalizeString(value))
     .filter(Boolean);
   return parts.length > 0 ? parts.join(" · ") : null;
@@ -126,7 +130,6 @@ export async function POST(request: Request) {
     checklist_id: checklistId,
     cliente,
     scadenza: updatedSim.data_scadenza || null,
-    riferimento: buildRiferimento(updatedSim as SimRow),
     descrizione: buildDescrizione(updatedSim as SimRow),
   };
 
