@@ -5,11 +5,10 @@ const clientePath = process.env.E2E_CLIENTE_PATH || "/clienti/CLIENTE_E2E";
 test("GARANZIA può diventare NON_RINNOVATO senza errori", async ({ page }) => {
   await page.goto(clientePath);
 
-  const fullManagement = page
-    .getByRole("button", { name: /scadenze e rinnovi/i })
-    .first();
-  await expect(fullManagement).toBeVisible();
-  await fullManagement.click();
+  const tab = page.getByTestId("tab-scadenze-rinnovi");
+  await tab.scrollIntoViewIfNeeded();
+  await expect(tab).toBeVisible();
+  await tab.click();
 
   const table = page.getByTestId("renewals-table");
   await expect(table).toBeVisible();

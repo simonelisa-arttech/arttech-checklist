@@ -10,7 +10,7 @@ export default defineConfig({
   webServer: process.env.PLAYWRIGHT_BASE_URL
     ? undefined
     : {
-        command: "npm run dev",
+        command: "E2E=1 NEXT_PUBLIC_E2E=1 npm run dev",
         port: 3000,
         timeout: 120_000,
         reuseExistingServer: true,

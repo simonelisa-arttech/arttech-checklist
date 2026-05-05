@@ -7895,7 +7895,10 @@ ${rinnovi30ggBreakdown.debugSample
           open={showFullRinnoviManagement}
           onToggle={(e) => setShowFullRinnoviManagement(e.currentTarget.open)}
         >
-          <summary style={{ cursor: "pointer", fontWeight: 700 }}>
+          <summary
+            data-testid="tab-scadenze-rinnovi"
+            style={{ cursor: "pointer", fontWeight: 700 }}
+          >
             {showFullRinnoviManagement
               ? "Nascondi gestione completa scadenze e rinnovi"
               : "Apri gestione completa scadenze e rinnovi"}

@@ -7489,6 +7489,11 @@ function buildFormData(c: Checklist): FormData {
           <button
             key={section.id}
             type="button"
+            data-testid={
+              section.id === "section-scadenze-rinnovi"
+                ? "tab-scadenze-rinnovi"
+                : undefined
+            }
             onClick={() => openProjectSection(section.id)}
             style={{
               padding: "7px 12px",
