@@ -20,8 +20,8 @@
     "resend": "^6.9.1"
   },
   "devDependencies": {
+    "@playwright/test": "^1.59.1",
     "@tailwindcss/postcss": "^4.1.18",
-    "@playwright/test": "^1.54.2",
     "@types/react": "19.2.7",
     "@types/react-dom": "^19.2.0",
     "autoprefixer": "^10.4.23",
