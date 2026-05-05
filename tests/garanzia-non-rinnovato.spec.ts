@@ -6,7 +6,7 @@ test("GARANZIA può diventare NON_RINNOVATO senza errori", async ({ page }) => {
   await page.goto(clientePath);
 
   const fullManagement = page
-    .getByText(/apri gestione completa scadenze e rinnovi/i)
+    .getByRole("button", { name: /scadenze e rinnovi/i })
     .first();
   await expect(fullManagement).toBeVisible();
   await fullManagement.click();
