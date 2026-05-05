@@ -1645,15 +1645,21 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
     () => buildClienteEmailList(checklistClienteEmail, checklistClienteEmailSecondarie),
     [checklistClienteEmail, checklistClienteEmailSecondarie]
   );
-  const currentOperatoreDisplayName = useMemo(() => {
-    const fromMap = normalizeOperatoreDisplayValue(operatoriMap.get(currentOperatoreId || "") || null);
+  function resolveOperatoreDisplayNameById(operatoreId?: string | null) {
+    const normalizedOperatoreId = String(operatoreId || "").trim();
+    if (!normalizedOperatoreId) return null;
+    const fromMap = normalizeOperatoreDisplayValue(operatoriMap.get(normalizedOperatoreId) || null);
     if (fromMap) return fromMap;
-    const currentAlertOperatore = alertOperatori.find((row) => row.id === currentOperatoreId) || null;
+    const currentAlertOperatore =
+      alertOperatori.find((row) => row.id === normalizedOperatoreId) || null;
     const fromAlertName = normalizeOperatoreDisplayValue(currentAlertOperatore?.nome ?? null);
     if (fromAlertName) return fromAlertName;
     const fromAlertEmail = normalizeOperatoreDisplayValue(currentAlertOperatore?.email ?? null);
     if (fromAlertEmail) return fromAlertEmail;
     return null;
+  }
+  const currentOperatoreDisplayName = useMemo(() => {
+    return resolveOperatoreDisplayNameById(currentOperatoreId);
   }, [alertOperatori, currentOperatoreId, operatoriMap]);
   const [alertFormError, setAlertFormError] = useState<string | null>(null);
   const [alertNotice, setAlertNotice] = useState<string | null>(null);
@@ -6261,6 +6267,8 @@ function buildFormData(c: Checklist): FormData {
       alert(err?.message || "Operatore non associato");
       return;
     }
+    const updatedByDisplayName =
+      resolveOperatoreDisplayNameById(operatoreId) ?? currentOperatoreDisplayName ?? null;
 
     const baseM2 = calcM2FromDimensioni(formData.dimensioni, formData.numero_facce);
     const qty =
@@ -6318,7 +6326,7 @@ function buildFormData(c: Checklist): FormData {
       m2_inclusi: shouldSaveMultiImpianti ? primoImpiantoM2Calcolati ?? null : m2Calcolati ?? null,
       m2_allocati: null,
       updated_by_operatore: operatoreId,
-      updated_by: currentOperatoreDisplayName,
+      updated_by: updatedByDisplayName,
       data_prevista: formData.data_prevista.trim()
         ? formData.data_prevista.trim()
         : null,
