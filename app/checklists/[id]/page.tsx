@@ -1113,6 +1113,22 @@ function getExpiryStatus(value?: string | null): "ATTIVA" | "SCADUTA" | "—" {
   return dt < today ? "SCADUTA" : "ATTIVA";
 }
 
+function hasChecklistImpiantiData(list: ChecklistImpianto[]) {
+  return list.some((imp) =>
+    [
+      imp.impianto_descrizione,
+      imp.tipo_impianto,
+      imp.tipo_struttura,
+      imp.impianto_indirizzo,
+      imp.passo,
+      imp.dimensioni,
+      imp.note,
+      imp.impianto_quantita,
+      imp.numero_facce,
+    ].some((value) => value != null && String(value).trim() !== "")
+  );
+}
+
 function renderBadge(label: string) {
   const upper = label.toUpperCase();
   let bg = "#e5e7eb";
@@ -6276,8 +6292,7 @@ function buildFormData(c: Checklist): FormData {
         ? Number(formData.impianto_quantita)
         : 1;
     const m2Calcolati = baseM2 == null ? null : baseM2 * qty;
-    const shouldSaveMultiImpianti =
-      String(formData.noleggio_vendita || "").trim().toUpperCase() === "NOLEGGIO";
+    const shouldSaveMultiImpianti = hasChecklistImpiantiData(impianti);
     const primoImpianto = shouldSaveMultiImpianti
       ? impianti[0] ?? buildEmptyChecklistImpianto()
       : null;
@@ -8564,8 +8579,7 @@ function buildFormData(c: Checklist): FormData {
           </div>
         </div>
       )}
-      {isNoleggioProject ? (
-        <div
+      <div
           style={{
             border: "1px solid #eee",
             borderRadius: 12,
@@ -8580,12 +8594,12 @@ function buildFormData(c: Checklist): FormData {
             style={{
               display: "flex",
               flexWrap: "wrap",
-              alignItems: "center",
-              justifyContent: "space-between",
-              gap: 10,
-            }}
-          >
-            <div style={{ fontWeight: 800 }}>IMPIANTI NOLEGGIO</div>
+            alignItems: "center",
+            justifyContent: "space-between",
+            gap: 10,
+          }}
+        >
+            <div style={{ fontWeight: 800 }}>IMPIANTI</div>
             <button
               type="button"
               onClick={addImpianto}
@@ -8755,7 +8769,6 @@ function buildFormData(c: Checklist): FormData {
             </div>
           </div>
         </div>
-      ) : null}
       {renderLazySection(
         "section-dati-operativi",
         "Dati operativi / cronoprogramma",
