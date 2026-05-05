@@ -62,7 +62,9 @@ import {
   normalizeOperativiDate,
 } from "@/lib/operativiSchedule";
 import {
+  getProjectKindLabel,
   getProjectStatusOptionsForContext,
+  getProjectStatusKind,
   getProjectPresentation,
   isChecklistOperativaCompletedFromTasks,
   normalizeProjectStatusForStorage,
@@ -1605,12 +1607,7 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
   const projectEditStatusOptions = useMemo(
     () =>
       getProjectStatusOptionsForContext("projectEdit", {
-        projectKind:
-          String(formData?.noleggio_vendita || checklist?.noleggio_vendita || "")
-            .trim()
-            .toUpperCase() === "NOLEGGIO"
-            ? "NOLEGGIO"
-            : "VENDITA",
+        projectKind: getProjectStatusKind(formData?.noleggio_vendita || checklist?.noleggio_vendita),
         allowClosed: checklistIsClosed,
       }),
     [checklist?.noleggio_vendita, checklistIsClosed, formData?.noleggio_vendita]
@@ -7700,17 +7697,7 @@ function buildFormData(c: Checklist): FormData {
             />
             <FieldRow
               label="Noleggio / Vendita / Service"
-              view={
-                isNoleggioValue(checklist.noleggio_vendita) ||
-                String(checklist.noleggio_vendita || "").trim().toUpperCase() === "VENDITA"
-                  ? getProjectPresentation({
-                      stato_progetto: checklist.stato_progetto,
-                      checklistCompleted: checklistIsClosed,
-                      noleggio_vendita: checklist.noleggio_vendita,
-                      data_disinstallazione: checklist.data_disinstallazione,
-                    }).projectKind
-                  : checklist.noleggio_vendita || "—"
-              }
+              view={getProjectKindLabel(checklist.noleggio_vendita)}
               edit={
                 isEdit ? (
                   <select
@@ -7724,6 +7711,7 @@ function buildFormData(c: Checklist): FormData {
                     <option value="NOLEGGIO">NOLEGGIO</option>
                     <option value="VENDITA">VENDITA</option>
                     <option value="SERVICE">SERVICE</option>
+                    <option value="PROFIT_SHARING">Profit sharing</option>
                     <option value="ALTRO">ALTRO</option>
                   </select>
                 ) : undefined

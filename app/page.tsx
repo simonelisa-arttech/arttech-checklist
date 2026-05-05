@@ -7,7 +7,11 @@ import ConfigMancante from "@/components/ConfigMancante";
 import CronoprogrammaPanel from "@/components/cronoprogramma/CronoprogrammaPanel";
 import Toast from "@/components/Toast";
 import { calcM2FromDimensioni } from "@/lib/parseDimensioni";
-import { getProjectPresentation, PROJECT_STATUS_FILTER_OPTIONS } from "@/lib/projectStatus";
+import {
+  getProjectPresentation,
+  normalizeProjectKindValue,
+  PROJECT_STATUS_FILTER_OPTIONS,
+} from "@/lib/projectStatus";
 import { isSupabaseConfigured, supabase } from "@/lib/supabaseClient";
 import { dbFrom } from "@/lib/clientDbBroker";
 import { storageUpload } from "@/lib/clientStorageApi";
@@ -4168,13 +4172,17 @@ export function DashboardCockpitPage({
                                 padding: "4px 8px",
                                 borderRadius: 999,
                                 background:
-                                  projectPresentation.projectKind === "NOLEGGIO" ? "#eff6ff" : "#f8fafc",
+                                  normalizeProjectKindValue(item.noleggio_vendita) === "NOLEGGIO"
+                                    ? "#eff6ff"
+                                    : "#f8fafc",
                                 border:
-                                  projectPresentation.projectKind === "NOLEGGIO"
+                                  normalizeProjectKindValue(item.noleggio_vendita) === "NOLEGGIO"
                                     ? "1px solid #bfdbfe"
                                     : "1px solid #e2e8f0",
                                 color:
-                                  projectPresentation.projectKind === "NOLEGGIO" ? "#1d4ed8" : "#64748b",
+                                  normalizeProjectKindValue(item.noleggio_vendita) === "NOLEGGIO"
+                                    ? "#1d4ed8"
+                                    : "#64748b",
                                 fontSize: 11,
                                 fontWeight: 800,
                                 whiteSpace: "nowrap",

@@ -6,7 +6,7 @@ export type RawProjectStatus =
   | "OPERATIVO"
   | "CHIUSO";
 
-export type ProjectKind = "VENDITA" | "NOLEGGIO";
+export type ProjectStatusKind = "VENDITA" | "NOLEGGIO";
 export type ProjectDisplayStatus =
   | "IN_LAVORAZIONE"
   | "CONSEGNATO"
@@ -62,7 +62,7 @@ export const PROJECT_STATUS_FILTER_OPTIONS: Record<
 
 export function getProjectStatusOptionsForContext(
   context: keyof typeof PROJECT_STATUS_FILTER_OPTIONS,
-  options?: { projectKind?: ProjectKind | null; allowClosed?: boolean }
+  options?: { projectKind?: ProjectStatusKind | null; allowClosed?: boolean }
 ) {
   const projectKind = options?.projectKind ?? null;
   const allowClosed = options?.allowClosed ?? false;
@@ -102,6 +102,24 @@ function parseLocalDay(value?: string | null): Date | null {
 
 function isNoleggioValue(value?: string | null) {
   return normalizeUpper(value) === "NOLEGGIO";
+}
+
+export function normalizeProjectKindValue(value?: string | null): string | null {
+  const raw = normalizeUpper(value);
+  if (!raw) return null;
+  if (raw === "PROFIT SHARING") return "PROFIT_SHARING";
+  return raw;
+}
+
+export function getProjectStatusKind(value?: string | null): ProjectStatusKind {
+  return isNoleggioValue(value) ? "NOLEGGIO" : "VENDITA";
+}
+
+export function getProjectKindLabel(value?: string | null) {
+  const normalized = normalizeProjectKindValue(value);
+  if (!normalized) return "—";
+  if (normalized === "PROFIT_SHARING") return "Profit sharing";
+  return normalized.replace(/_/g, " ");
 }
 
 export function normalizeProjectStatusValue(value?: string | null): RawProjectStatus | null {
@@ -145,7 +163,7 @@ export function getEffectiveProjectStatus(input: {
   const raw = normalizeProjectStatusValue(input.stato_progetto);
   const isClosed =
     input.checklistCompleted === true || isChecklistOperativaCompletedFromPercent(input.pct_complessivo);
-  const projectKind: ProjectKind = isNoleggioValue(input.noleggio_vendita) ? "NOLEGGIO" : "VENDITA";
+  const projectKind = getProjectStatusKind(input.noleggio_vendita);
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const venditaDate = parseLocalDay(input.data_prevista);
@@ -202,12 +220,13 @@ export function getProjectPresentation(input: {
 }): {
   effectiveStatus: RawProjectStatus | null;
   displayStatus: ProjectDisplayStatus | null;
-  projectKind: ProjectKind;
+  projectKind: string;
   isNoleggioInCorso: boolean;
 } {
   const effectiveStatus = getEffectiveProjectStatus(input);
   const raw = normalizeUpper(input.stato_progetto);
-  const projectKind: ProjectKind = isNoleggioValue(input.noleggio_vendita) ? "NOLEGGIO" : "VENDITA";
+  const projectKind = getProjectKindLabel(input.noleggio_vendita);
+  const projectStatusKind = getProjectStatusKind(input.noleggio_vendita);
   const today = new Date();
   today.setHours(0, 0, 0, 0);
   const noleggioStart = parseLocalDay(input.data_inizio) || parseLocalDay(input.data_prevista);
@@ -216,7 +235,7 @@ export function getProjectPresentation(input: {
     parseLocalDay(input.fine_noleggio) ||
     parseLocalDay(input.data_disinstallazione);
   const isNoleggioInCorso =
-    projectKind === "NOLEGGIO" &&
+    projectStatusKind === "NOLEGGIO" &&
     effectiveStatus !== "CHIUSO" &&
     effectiveStatus !== "RIENTRATO" &&
     raw !== "ANNULLATO" &&

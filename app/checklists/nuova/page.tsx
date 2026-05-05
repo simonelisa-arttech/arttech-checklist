@@ -11,7 +11,7 @@ import { isSupabaseConfigured, supabase } from "@/lib/supabaseClient";
 import { dbFrom } from "@/lib/clientDbBroker";
 import { calcM2FromDimensioni } from "@/lib/parseDimensioni";
 import { isMissingMagazzinoDriveColumnError, splitMagazzinoFields } from "@/lib/magazzino";
-import { getProjectStatusOptionsForContext } from "@/lib/projectStatus";
+import { getProjectStatusKind, getProjectStatusOptionsForContext } from "@/lib/projectStatus";
 
 type ChecklistItem = {
   codice: string;
@@ -207,8 +207,7 @@ export default function NuovaChecklistPage() {
   const projectEditStatusOptions = useMemo(
     () =>
       getProjectStatusOptionsForContext("projectEdit", {
-        projectKind:
-          String(noleggioVendita || "").trim().toUpperCase() === "NOLEGGIO" ? "NOLEGGIO" : "VENDITA",
+        projectKind: getProjectStatusKind(noleggioVendita),
         allowClosed: false,
       }),
     [noleggioVendita]
@@ -1410,6 +1409,7 @@ export default function NuovaChecklistPage() {
               <option value="NOLEGGIO">NOLEGGIO</option>
               <option value="VENDITA">VENDITA</option>
               <option value="SERVICE">SERVICE</option>
+              <option value="PROFIT_SHARING">Profit sharing</option>
               <option value="ALTRO">ALTRO</option>
             </select>
           </label>
