@@ -15,7 +15,10 @@ import Link from "next/link";
 import ConfigMancante from "@/components/ConfigMancante";
 import ClientiCombobox from "@/components/ClientiCombobox";
 import AttachmentsPanel from "@/components/AttachmentsPanel";
-import InterventiBlock, { type PendingInterventoLink } from "@/components/InterventiBlock";
+import InterventiBlock, {
+  type InterventiImpiantoOption,
+  type PendingInterventoLink,
+} from "@/components/InterventiBlock";
 import PersonaleMultiSelect from "@/components/PersonaleMultiSelect";
 import OperativeNotesPanel from "@/components/OperativeNotesPanel";
 import RenewalsAlertModal from "@/components/RenewalsAlertModal";
@@ -137,6 +140,10 @@ type ChecklistImpianto = {
   numero_facce?: number | null;
   m2_calcolati?: number | null;
   note?: string | null;
+};
+
+type ProjectInterventoRow = InterventoRow & {
+  checklist_impianto_id?: string | null;
 };
 
 type ChecklistItem = {
@@ -325,6 +332,20 @@ function buildLegacyChecklistImpianto(checklist: Checklist): ChecklistImpianto[]
   ];
 }
 
+function formatChecklistImpiantoLabel(impianto: ChecklistImpianto, index: number) {
+  const position = Number.isFinite(Number(impianto.position)) ? Number(impianto.position) + 1 : index + 1;
+  const quantita =
+    Number.isFinite(Number(impianto.impianto_quantita)) && Number(impianto.impianto_quantita) > 0
+      ? `${Math.floor(Number(impianto.impianto_quantita))}x`
+      : null;
+  const dimensioni = String(impianto.dimensioni || "").trim() || null;
+  const passoRaw = String(impianto.passo || "").trim();
+  const passo = passoRaw ? (passoRaw.toUpperCase().startsWith("P") ? passoRaw : `P${passoRaw}`) : null;
+  const tipo = String(impianto.tipo_impianto || "").trim() || null;
+  const parts = [quantita, dimensioni, passo, tipo].filter(Boolean);
+  return parts.length > 0 ? `Impianto #${position} — ${parts.join(" • ")}` : `Impianto #${position}`;
+}
+
 function normalizeChecklistImpianto(value: unknown, checklistId?: string | null): ChecklistImpianto | null {
   const row = value && typeof value === "object" ? (value as Record<string, unknown>) : null;
   if (!row) return null;
@@ -427,6 +448,7 @@ type ProjectInterventoForm = {
   descrizione: string;
   ticket_no: string;
   incluso: boolean;
+  checklist_impianto_id: string;
   proforma: string;
   codice_magazzino: string;
   fatturazione_stato: string;
@@ -444,6 +466,7 @@ function buildEmptyProjectInterventoForm(
     descrizione: "",
     ticket_no: "",
     incluso: true,
+    checklist_impianto_id: "",
     proforma,
     codice_magazzino: codiceMagazzino,
     fatturazione_stato: "DA_FATTURARE",
@@ -2166,12 +2189,16 @@ function buildFormData(c: Checklist): FormData {
   }
 
   function buildProjectInterventoForm(it: InterventoRow): ProjectInterventoForm {
+    const checklistImpiantoId = String(
+      ((it as ProjectInterventoRow).checklist_impianto_id || "")
+    ).trim();
     return {
       data: toDateInput(it.data),
       data_tassativa: toDateInput(it.data_tassativa),
       descrizione: String(it.descrizione || ""),
       ticket_no: String(it.ticket_no || ""),
       incluso: Boolean(it.incluso),
+      checklist_impianto_id: checklistImpiantoId,
       proforma: String(it.proforma || ""),
       codice_magazzino: String(it.codice_magazzino || ""),
       fatturazione_stato: getCanonicalInterventoEsitoFatturazione(it) || "DA_FATTURARE",
@@ -2226,7 +2253,7 @@ function buildFormData(c: Checklist): FormData {
   async function loadProjectInterventi(checklistId: string) {
     let res = await dbFrom("saas_interventi")
       .select(
-        "id, cliente, checklist_id, contratto_id, ticket_no, data, data_tassativa, descrizione, incluso, proforma, codice_magazzino, fatturazione_stato, stato_intervento, esito_fatturazione, chiuso_il, chiuso_da_operatore, alert_fattura_last_sent_at, alert_fattura_last_sent_by, numero_fattura, fatturato_il, note_amministrazione, note, note_tecniche, created_at, checklist:checklists(id, nome_checklist, proforma, magazzino_importazione)"
+        "id, cliente, checklist_id, checklist_impianto_id, contratto_id, ticket_no, data, data_tassativa, descrizione, incluso, proforma, codice_magazzino, fatturazione_stato, stato_intervento, esito_fatturazione, chiuso_il, chiuso_da_operatore, alert_fattura_last_sent_at, alert_fattura_last_sent_by, numero_fattura, fatturato_il, note_amministrazione, note, note_tecniche, created_at, checklist:checklists(id, nome_checklist, proforma, magazzino_importazione)"
       )
       .eq("checklist_id", checklistId)
       .order("data", { ascending: false });
@@ -2234,7 +2261,7 @@ function buildFormData(c: Checklist): FormData {
     if (res.error && String(res.error.message || "").toLowerCase().includes("note_amministrazione")) {
       res = await dbFrom("saas_interventi")
         .select(
-          "id, cliente, checklist_id, contratto_id, ticket_no, data, data_tassativa, descrizione, incluso, proforma, codice_magazzino, fatturazione_stato, stato_intervento, esito_fatturazione, chiuso_il, chiuso_da_operatore, alert_fattura_last_sent_at, alert_fattura_last_sent_by, numero_fattura, fatturato_il, note, note_tecniche, created_at, checklist:checklists(id, nome_checklist, proforma, magazzino_importazione)"
+          "id, cliente, checklist_id, checklist_impianto_id, contratto_id, ticket_no, data, data_tassativa, descrizione, incluso, proforma, codice_magazzino, fatturazione_stato, stato_intervento, esito_fatturazione, chiuso_il, chiuso_da_operatore, alert_fattura_last_sent_at, alert_fattura_last_sent_by, numero_fattura, fatturato_il, note, note_tecniche, created_at, checklist:checklists(id, nome_checklist, proforma, magazzino_importazione)"
         )
         .eq("checklist_id", checklistId)
         .order("data", { ascending: false });
@@ -2246,7 +2273,7 @@ function buildFormData(c: Checklist): FormData {
     if (res.error && String(res.error.message || "").toLowerCase().includes("data_tassativa")) {
       res = await dbFrom("saas_interventi")
         .select(
-          "id, cliente, checklist_id, contratto_id, ticket_no, data, descrizione, incluso, proforma, codice_magazzino, fatturazione_stato, stato_intervento, esito_fatturazione, chiuso_il, chiuso_da_operatore, alert_fattura_last_sent_at, alert_fattura_last_sent_by, numero_fattura, fatturato_il, note_amministrazione, note, note_tecniche, created_at, checklist:checklists(id, nome_checklist, proforma, magazzino_importazione)"
+          "id, cliente, checklist_id, checklist_impianto_id, contratto_id, ticket_no, data, descrizione, incluso, proforma, codice_magazzino, fatturazione_stato, stato_intervento, esito_fatturazione, chiuso_il, chiuso_da_operatore, alert_fattura_last_sent_at, alert_fattura_last_sent_by, numero_fattura, fatturato_il, note_amministrazione, note, note_tecniche, created_at, checklist:checklists(id, nome_checklist, proforma, magazzino_importazione)"
         )
         .eq("checklist_id", checklistId)
         .order("data", { ascending: false });
@@ -2257,7 +2284,7 @@ function buildFormData(c: Checklist): FormData {
     if (res.error && String(res.error.message || "").toLowerCase().includes("ticket_no")) {
       res = await dbFrom("saas_interventi")
         .select(
-          "id, cliente, checklist_id, contratto_id, data, data_tassativa, descrizione, incluso, proforma, codice_magazzino, fatturazione_stato, stato_intervento, esito_fatturazione, chiuso_il, chiuso_da_operatore, alert_fattura_last_sent_at, alert_fattura_last_sent_by, numero_fattura, fatturato_il, note_amministrazione, note, note_tecniche, created_at, checklist:checklists(id, nome_checklist, proforma, magazzino_importazione)"
+          "id, cliente, checklist_id, checklist_impianto_id, contratto_id, data, data_tassativa, descrizione, incluso, proforma, codice_magazzino, fatturazione_stato, stato_intervento, esito_fatturazione, chiuso_il, chiuso_da_operatore, alert_fattura_last_sent_at, alert_fattura_last_sent_by, numero_fattura, fatturato_il, note_amministrazione, note, note_tecniche, created_at, checklist:checklists(id, nome_checklist, proforma, magazzino_importazione)"
         )
         .eq("checklist_id", checklistId)
         .order("data", { ascending: false });
@@ -2266,7 +2293,7 @@ function buildFormData(c: Checklist): FormData {
       }
     }
     if (res.error) throw new Error(res.error.message || "Errore caricamento interventi progetto");
-    return ((res.data || []) as InterventoRow[]).filter(
+    return ((res.data || []) as ProjectInterventoRow[]).filter(
       (row) => String(row?.checklist_id || "") === String(checklistId)
     );
   }
@@ -2472,6 +2499,7 @@ function buildFormData(c: Checklist): FormData {
     const payload = {
       cliente: checklist.cliente,
       checklist_id: id,
+      checklist_impianto_id: newProjectIntervento.checklist_impianto_id || null,
       data: newProjectIntervento.data || new Date().toISOString().slice(0, 10),
       data_tassativa: newProjectIntervento.data_tassativa || null,
       ticket_no: newProjectIntervento.ticket_no.trim() || null,
@@ -2563,6 +2591,7 @@ function buildFormData(c: Checklist): FormData {
       data: projectInterventoEditForm.data || null,
       data_tassativa: projectInterventoEditForm.data_tassativa || null,
       ticket_no: projectInterventoEditForm.ticket_no.trim() || null,
+      checklist_impianto_id: projectInterventoEditForm.checklist_impianto_id || null,
       descrizione: projectInterventoEditForm.descrizione.trim() || null,
       tipo: projectInterventoEditForm.descrizione.trim() || null,
       incluso: Boolean(projectInterventoEditForm.incluso),
@@ -6931,6 +6960,21 @@ function buildFormData(c: Checklist): FormData {
     );
   }
 
+  const projectInterventoImpiantiOptions = useMemo<InterventiImpiantoOption[]>(
+    () =>
+      impianti
+        .map((impianto, index) => {
+          const impiantoId = String(impianto.id || "").trim();
+          if (!impiantoId) return null;
+          return {
+            id: impiantoId,
+            label: formatChecklistImpiantoLabel(impianto, index),
+          };
+        })
+        .filter(Boolean) as InterventiImpiantoOption[],
+    [impianti]
+  );
+
   const projectInterventiBlock = (
     <InterventiBlock
       checklists={
@@ -6948,6 +6992,7 @@ function buildFormData(c: Checklist): FormData {
             ]
           : []
       }
+      impianti={projectInterventoImpiantiOptions}
       interventi={projectInterventi}
       interventiInfo={projectInterventiNotice}
       interventiError={projectInterventiError}
@@ -6975,6 +7020,7 @@ function buildFormData(c: Checklist): FormData {
         ticketNo: newProjectIntervento.ticket_no,
         incluso: newProjectIntervento.incluso,
         checklistId: id || "",
+        checklistImpiantoId: newProjectIntervento.checklist_impianto_id,
         proforma: newProjectIntervento.proforma,
         codiceMagazzino: newProjectIntervento.codice_magazzino,
       fatturazioneStato:
@@ -7007,6 +7053,7 @@ function buildFormData(c: Checklist): FormData {
           descrizione: value.descrizione,
           ticket_no: value.ticketNo,
           incluso: value.incluso,
+          checklist_impianto_id: value.checklistImpiantoId,
           proforma: value.proforma,
           codice_magazzino: value.codiceMagazzino,
           fatturazione_stato: value.fatturazioneStato,
@@ -7041,6 +7088,7 @@ function buildFormData(c: Checklist): FormData {
         ticketNo: projectInterventoEditForm?.ticket_no || "",
         incluso: projectInterventoEditForm?.incluso ?? true,
         checklistId: id || "",
+        checklistImpiantoId: projectInterventoEditForm?.checklist_impianto_id || "",
         proforma: projectInterventoEditForm?.proforma || "",
         codiceMagazzino: projectInterventoEditForm?.codice_magazzino || "",
         fatturazioneStato:
@@ -7076,6 +7124,7 @@ function buildFormData(c: Checklist): FormData {
                 descrizione: value.descrizione,
                 ticket_no: value.ticketNo,
                 incluso: value.incluso,
+                checklist_impianto_id: value.checklistImpiantoId,
                 proforma: value.proforma,
                 codice_magazzino: value.codiceMagazzino,
                 fatturazione_stato: value.fatturazioneStato,

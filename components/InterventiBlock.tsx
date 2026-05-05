@@ -19,6 +19,11 @@ export type InterventiChecklistOption = {
   magazzino_importazione: string | null;
 };
 
+export type InterventiImpiantoOption = {
+  id: string;
+  label: string;
+};
+
 export type InterventiOperatore = {
   id: string;
   nome: string | null;
@@ -34,6 +39,7 @@ export type InterventoFormState = {
   ticketNo: string;
   incluso: boolean;
   checklistId: string;
+  checklistImpiantoId?: string;
   proforma: string;
   codiceMagazzino: string;
   fatturazioneStato: string;
@@ -83,6 +89,7 @@ type ChecklistReferentiContext = {
 
 type Props = {
   checklists: InterventiChecklistOption[];
+  impianti?: InterventiImpiantoOption[];
   interventi: InterventoRow[];
   interventiInfo: string | null;
   interventiError: string | null;
@@ -288,6 +295,19 @@ function getChecklistMeta(row: InterventoRow, checklists: InterventiChecklistOpt
     proforma: found?.proforma ?? null,
     codMag: found?.magazzino_importazione ?? null,
   };
+}
+
+function getChecklistImpiantoId(row: InterventoRow) {
+  return String((row as InterventoRow & { checklist_impianto_id?: string | null }).checklist_impianto_id || "").trim();
+}
+
+function getImpiantoLabel(
+  impianti: InterventiImpiantoOption[],
+  checklistImpiantoId?: string | null
+) {
+  const id = String(checklistImpiantoId || "").trim();
+  if (!id) return null;
+  return impianti.find((item) => item.id === id)?.label || null;
 }
 
 function renderOperativiFields(
@@ -513,6 +533,7 @@ function renderOperativiFields(
 
 export default function InterventiBlock({
   checklists,
+  impianti = [],
   interventi,
   interventiInfo,
   interventiError,
@@ -962,6 +983,23 @@ export default function InterventiBlock({
                 ))}
               </select>
             </label>
+            <label>
+              Impianto interessato<br />
+              <select
+                value={newIntervento.checklistImpiantoId || ""}
+                onChange={(e) =>
+                  setNewIntervento({ ...newIntervento, checklistImpiantoId: e.target.value })
+                }
+                style={{ width: "100%", padding: 8 }}
+              >
+                <option value="">Intervento generale progetto</option>
+                {impianti.map((impianto) => (
+                  <option key={impianto.id} value={impianto.id}>
+                    {impianto.label}
+                  </option>
+                ))}
+              </select>
+            </label>
             {newIntervento.statoIntervento === "CHIUSO" && newIntervento.fatturazioneStato === "FATTURATO" && (
               <>
                 <label>
@@ -1242,6 +1280,7 @@ export default function InterventiBlock({
                 const editing = editInterventoId === row.id;
                 const stato = getInterventoStato(row);
                 const checklistMeta = getChecklistMeta(row, checklists);
+                const impiantoLabel = getImpiantoLabel(impianti, getChecklistImpiantoId(row));
                 const isHovered = hoveredInterventoId === row.id;
                 const rowBackground = isHovered ? "#f8fafc" : index % 2 === 0 ? "#ffffff" : "#fbfdff";
                 return (
@@ -1301,6 +1340,20 @@ export default function InterventiBlock({
                               ? String(checklistMeta.id).slice(0, 8)
                               : "—"}
                         </div>
+                        {impiantoLabel ? (
+                          <div
+                            style={{
+                              fontSize: 11,
+                              color: "#475569",
+                              whiteSpace: "nowrap",
+                              overflow: "hidden",
+                              textOverflow: "ellipsis",
+                            }}
+                            title={impiantoLabel}
+                          >
+                            Impianto: {impiantoLabel}
+                          </div>
+                        ) : null}
                         <div
                           style={{
                             whiteSpace: "normal",
@@ -1567,6 +1620,26 @@ export default function InterventiBlock({
                               style={{ width: "100%", padding: 8 }}
                             />
                           </label>
+                          <label>
+                            Impianto interessato<br />
+                            <select
+                              value={editIntervento.checklistImpiantoId || ""}
+                              onChange={(e) =>
+                                setEditIntervento({
+                                  ...editIntervento,
+                                  checklistImpiantoId: e.target.value,
+                                })
+                              }
+                              style={{ width: "100%", padding: 8 }}
+                            >
+                              <option value="">Intervento generale progetto</option>
+                              {impianti.map((impianto) => (
+                                <option key={impianto.id} value={impianto.id}>
+                                  {impianto.label}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
                         </div>
                         <div
                           style={{
@@ -1733,6 +1806,7 @@ export default function InterventiBlock({
               const row = interventi.find((item) => item.id === expandedInterventoId);
               if (!row) return null;
               const checklistMeta = getChecklistMeta(row, checklists);
+              const impiantoLabel = getImpiantoLabel(impianti, getChecklistImpiantoId(row));
               return (
                 <>
                   <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
@@ -1782,6 +1856,12 @@ export default function InterventiBlock({
                         <div style={{ fontWeight: 700, marginBottom: 4 }}>Codice</div>
                         <div>{row.codice_magazzino || checklistMeta.codMag || "—"}</div>
                       </div>
+                      {impiantoLabel ? (
+                        <div>
+                          <div style={{ fontWeight: 700, marginBottom: 4 }}>Impianto</div>
+                          <div>{impiantoLabel}</div>
+                        </div>
+                      ) : null}
                     </div>
                   </div>
                   <div style={{ marginTop: 12 }}>
