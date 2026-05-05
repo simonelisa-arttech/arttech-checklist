@@ -22,6 +22,10 @@ export type InterventiChecklistOption = {
 export type InterventiImpiantoOption = {
   id: string;
   label: string;
+  indirizzo_impianto?: string | null;
+  dimensioni?: string | null;
+  passo?: string | null;
+  tipo_impianto?: string | null;
 };
 
 export type InterventiOperatore = {
@@ -308,6 +312,57 @@ function getImpiantoLabel(
   const id = String(checklistImpiantoId || "").trim();
   if (!id) return null;
   return impianti.find((item) => item.id === id)?.label || null;
+}
+
+function buildDescrizioneFromImpianto(impianto: InterventiImpiantoOption) {
+  const parts: string[] = [];
+  const dimensioni = String(impianto.dimensioni || "").trim();
+  const passo = String(impianto.passo || "").trim();
+  const tipoImpianto = String(impianto.tipo_impianto || "").trim();
+
+  if (dimensioni) parts.push(dimensioni);
+  if (passo) parts.push(passo);
+  if (tipoImpianto) parts.push(tipoImpianto);
+
+  if (parts.length === 0) {
+    const labelTail = String(impianto.label || "").split("—").slice(1).join("—").trim();
+    if (labelTail) return `Assistenza impianto ${labelTail}`;
+  }
+
+  return parts.length > 0 ? `Assistenza impianto ${parts.join(" • ")}` : "";
+}
+
+function applyImpiantoPrefill(
+  form: InterventoFormState,
+  selectedId: string,
+  impianti: InterventiImpiantoOption[]
+): InterventoFormState {
+  const normalizedId = String(selectedId || "").trim();
+  if (!normalizedId) {
+    return {
+      ...form,
+      checklistImpiantoId: "",
+    };
+  }
+
+  const impianto = impianti.find((item) => item.id === normalizedId);
+  if (!impianto) {
+    return {
+      ...form,
+      checklistImpiantoId: normalizedId,
+    };
+  }
+
+  const indirizzoImpianto = String(impianto.indirizzo_impianto || "").trim();
+  const descrizioneImpianto = buildDescrizioneFromImpianto(impianto);
+
+  return {
+    ...form,
+    checklistImpiantoId: normalizedId,
+    indirizzo: form.indirizzo || indirizzoImpianto || form.indirizzo,
+    descrizioneAttivita:
+      form.descrizioneAttivita || descrizioneImpianto || form.descrizioneAttivita,
+  };
 }
 
 function renderOperativiFields(
@@ -988,7 +1043,7 @@ export default function InterventiBlock({
               <select
                 value={newIntervento.checklistImpiantoId || ""}
                 onChange={(e) =>
-                  setNewIntervento({ ...newIntervento, checklistImpiantoId: e.target.value })
+                  setNewIntervento(applyImpiantoPrefill(newIntervento, e.target.value, impianti))
                 }
                 style={{ width: "100%", padding: 8 }}
               >
@@ -1625,10 +1680,9 @@ export default function InterventiBlock({
                             <select
                               value={editIntervento.checklistImpiantoId || ""}
                               onChange={(e) =>
-                                setEditIntervento({
-                                  ...editIntervento,
-                                  checklistImpiantoId: e.target.value,
-                                })
+                                setEditIntervento(
+                                  applyImpiantoPrefill(editIntervento, e.target.value, impianti)
+                                )
                               }
                               style={{ width: "100%", padding: 8 }}
                             >
