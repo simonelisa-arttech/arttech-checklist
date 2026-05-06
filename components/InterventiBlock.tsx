@@ -670,6 +670,7 @@ export default function InterventiBlock({
   const topScrollbarRef = useRef<HTMLDivElement | null>(null);
   const tableScrollRef = useRef<HTMLDivElement | null>(null);
   const [topScrollbarWidth, setTopScrollbarWidth] = useState(1410);
+  const [interventiFilter, setInterventiFilter] = useState<"all" | "general" | "impianto">("all");
   const [hoveredInterventoId, setHoveredInterventoId] = useState<string | null>(null);
   const [newLinkTitle, setNewLinkTitle] = useState("");
   const [newLinkUrl, setNewLinkUrl] = useState("");
@@ -682,6 +683,12 @@ export default function InterventiBlock({
     editIntervento.esitoFatturazione || editIntervento.fatturazioneStato || ""
   ).toUpperCase();
   const editInterventoIsFatturato = editInterventoEsitoFatturazione === "FATTURATO";
+  const filteredInterventi = interventi.filter((row) => {
+    const hasImpianto = Boolean(getChecklistImpiantoId(row));
+    if (interventiFilter === "general") return !hasImpianto;
+    if (interventiFilter === "impianto") return hasImpianto;
+    return true;
+  });
 
   function isHttpUrl(url: string) {
     return /^https?:\/\//i.test(String(url || "").trim());
@@ -1220,7 +1227,36 @@ export default function InterventiBlock({
           </div>
         </div>
 
-        {interventi.length === 0 ? (
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginTop: 10 }}>
+          {[
+            { key: "all" as const, label: "Tutti" },
+            { key: "general" as const, label: "Generali" },
+            { key: "impianto" as const, label: "Per impianto" },
+          ].map((filter) => {
+            const active = interventiFilter === filter.key;
+            return (
+              <button
+                key={filter.key}
+                type="button"
+                onClick={() => setInterventiFilter(filter.key)}
+                style={{
+                  padding: "5px 10px",
+                  borderRadius: 999,
+                  border: active ? "1px solid #0f172a" : "1px solid #cbd5e1",
+                  background: active ? "#0f172a" : "#fff",
+                  color: active ? "#fff" : "#334155",
+                  fontSize: 12,
+                  fontWeight: 700,
+                  cursor: "pointer",
+                }}
+              >
+                {filter.label}
+              </button>
+            );
+          })}
+        </div>
+
+        {filteredInterventi.length === 0 ? (
           <div style={{ opacity: 0.7, marginTop: 8 }}>Nessun intervento trovato</div>
         ) : (
           <>
@@ -1330,7 +1366,7 @@ export default function InterventiBlock({
                 <div style={{ whiteSpace: "nowrap" }}>Fatturazione</div>
                 <div style={{ whiteSpace: "nowrap" }}>AZIONI</div>
               </div>
-              {interventi.map((row, index) => {
+              {filteredInterventi.map((row, index) => {
                 const expanded = expandedInterventoId === row.id;
                 const editing = editInterventoId === row.id;
                 const stato = getInterventoStato(row);
