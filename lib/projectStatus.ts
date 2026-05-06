@@ -111,8 +111,13 @@ export function normalizeProjectKindValue(value?: string | null): string | null 
   return raw;
 }
 
+export function isRentalLikeProjectType(value?: string | null) {
+  const normalized = normalizeProjectKindValue(value);
+  return normalized === "NOLEGGIO" || normalized === "PROFIT_SHARING";
+}
+
 export function getProjectStatusKind(value?: string | null): ProjectStatusKind {
-  return isNoleggioValue(value) ? "NOLEGGIO" : "VENDITA";
+  return isRentalLikeProjectType(value) ? "NOLEGGIO" : "VENDITA";
 }
 
 export function getProjectKindLabel(value?: string | null) {

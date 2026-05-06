@@ -66,6 +66,7 @@ import {
   getProjectStatusOptionsForContext,
   getProjectStatusKind,
   getProjectPresentation,
+  isRentalLikeProjectType,
   isChecklistOperativaCompletedFromTasks,
   normalizeProjectStatusForStorage,
 } from "@/lib/projectStatus";
@@ -1082,7 +1083,7 @@ function updateSlot<
 }
 
 function isNoleggioValue(value?: string | null) {
-  return String(value || "").trim().toUpperCase() === "NOLEGGIO";
+  return isRentalLikeProjectType(value);
 }
 
 function getChecklistProjectStatusLabel(project: {
@@ -3345,6 +3346,7 @@ function buildFormData(c: Checklist): FormData {
       const res = await fetch("/api/cronoprogramma", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({
           action: "load",
           rows: ids.map((taskId) => ({ row_kind: "CHECKLIST_TASK", row_ref_id: taskId })),
@@ -3380,6 +3382,7 @@ function buildFormData(c: Checklist): FormData {
       const res = await fetch("/api/cronoprogramma", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({
           action: "add_comment",
           row_kind: "CHECKLIST_TASK",
@@ -3662,6 +3665,7 @@ function buildFormData(c: Checklist): FormData {
       const res = await fetch("/api/cronoprogramma", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({
           action: "load",
           rows: [
@@ -3724,6 +3728,7 @@ function buildFormData(c: Checklist): FormData {
       const res = await fetch("/api/cronoprogramma", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        credentials: "include",
         body: JSON.stringify({
           action: "set_operativi",
           row_kind: rowKind,
@@ -7582,7 +7587,7 @@ function buildFormData(c: Checklist): FormData {
               rowRefId: String(id || ""),
               label: "Installazione",
             },
-            ...(String(checklist.noleggio_vendita || "").trim().toUpperCase() === "NOLEGGIO"
+            ...(isRentalLikeProjectType(checklist.noleggio_vendita)
               ? [
                   {
                     rowKind: "DISINSTALLAZIONE" as const,

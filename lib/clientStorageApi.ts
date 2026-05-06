@@ -1,7 +1,5 @@
 "use client";
 
-import { isSupabaseConfigured, supabase } from "@/lib/supabaseClient";
-
 async function parseResponseSafe(res: Response) {
   const contentType = res.headers.get("content-type") || "";
   const text = await res.text().catch(() => "");
@@ -34,22 +32,26 @@ function buildReadableError(
 }
 
 export async function storageUpload(path: string, file: File) {
-  if (!isSupabaseConfigured) {
+  const form = new FormData();
+  form.set("path", path);
+  form.set("file", file);
+
+  const res = await fetch("/api/storage/checklist-documents", {
+    method: "POST",
+    credentials: "include",
+    body: form,
+  });
+  const parsed = await parseResponseSafe(res);
+  const json = parsed.json || {};
+
+  if (!res.ok || json?.ok === false) {
     return {
       error: {
-        message: "Upload error: Supabase client not configured",
-      },
-    };
-  }
-
-  const { error } = await supabase.storage
-    .from("checklist-documents")
-    .upload(path, file, { upsert: true, contentType: file.type || undefined });
-
-  if (error) {
-    return {
-      error: {
-        message: String(error.message || "Upload error"),
+        message: buildReadableError(
+          "Upload error",
+          { status: res.status, statusText: res.statusText },
+          parsed
+        ),
       },
     };
   }
