@@ -617,6 +617,9 @@ export default function SimPage() {
     const query = normalizeText(search);
     return rows.filter((row) => {
       const rowId = String(row.id || "");
+      const isEditingRow = editingSimId === rowId;
+      if (row.isNew && isEditingRow) return true;
+
       const latestRecharge = latestRechargeBySimId[rowId] || null;
       const simState = getSimOperationalState(row, latestRecharge);
       const checklistId = String(row.checklist_id || "").trim();
@@ -651,7 +654,17 @@ export default function SimPage() {
       );
       return haystack.includes(query);
     });
-  }, [rows, search, simStatusFilter, projectFilter, operatoreFilter, latestRechargeBillingFilter, latestRechargeBySimId, projectByChecklistId]);
+  }, [
+    rows,
+    search,
+    simStatusFilter,
+    projectFilter,
+    operatoreFilter,
+    latestRechargeBillingFilter,
+    latestRechargeBySimId,
+    projectByChecklistId,
+    editingSimId,
+  ]);
 
   useEffect(() => {
     if (!billingFocusSimId) return;
@@ -1003,6 +1016,9 @@ export default function SimPage() {
     });
     if (editingSimId === rowId) setEditingSimId(null);
     if (expandedSimId === rowId) setExpandedSimId(null);
+    if (billingFocusSimId === rowId) setBillingFocusSimId(null);
+    if (rechargeModal?.simId === rowId) setRechargeModal(null);
+    if (String(selectedSim?.id || "") === rowId) closeAssociateModal(true);
     setNotice("SIM eliminata.");
   }
 
