@@ -128,9 +128,15 @@ function getLatestRechargeRow(rows: SimRechargeRow[]) {
 }
 
 function getEffectiveSimScadenza(
-  row: Pick<SimCardRow, "data_attivazione" | "data_scadenza">,
+  row: Pick<SimCardRow, "data_attivazione" | "data_scadenza" | "in_abbonamento">,
   latestRecharge?: Pick<SimRechargeRow, "data_ricarica"> | null
 ) {
+  const explicitExpiry = String(row.data_scadenza || "").trim();
+  if (row.in_abbonamento) {
+    if (explicitExpiry) return explicitExpiry;
+    return row.data_attivazione ? addOneYearToDate(row.data_attivazione) : "";
+  }
+
   const activation = parseLocalDay(row.data_attivazione);
   const lastRecharge = parseLocalDay(latestRecharge?.data_ricarica);
   const baseDate =
@@ -145,11 +151,11 @@ function getEffectiveSimScadenza(
           : "";
 
   if (baseDate) return addOneYearToDate(baseDate);
-  return String(row.data_scadenza || "").trim();
+  return explicitExpiry;
 }
 
 function getSimOperationalState(
-  row: Pick<SimCardRow, "attiva" | "giorni_preavviso" | "data_attivazione" | "data_scadenza">,
+  row: Pick<SimCardRow, "attiva" | "giorni_preavviso" | "data_attivazione" | "data_scadenza" | "in_abbonamento">,
   latestRecharge?: Pick<SimRechargeRow, "data_ricarica"> | null
 ) {
   if (!row.attiva) return { stato: "OFF" as const, giorniDelta: null as number | null };
