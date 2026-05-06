@@ -139,6 +139,7 @@ type ChecklistImpianto = {
   impianto_indirizzo?: string | null;
   passo?: string | null;
   dimensioni?: string | null;
+  nit?: number | null;
   impianto_quantita?: number | null;
   numero_facce?: number | null;
   m2_calcolati?: number | null;
@@ -345,7 +346,11 @@ function formatChecklistImpiantoLabel(impianto: ChecklistImpianto, index: number
   const passoRaw = String(impianto.passo || "").trim();
   const passo = passoRaw ? (passoRaw.toUpperCase().startsWith("P") ? passoRaw : `P${passoRaw}`) : null;
   const tipo = String(impianto.tipo_impianto || "").trim() || null;
-  const parts = [quantita, dimensioni, passo, tipo].filter(Boolean);
+  const nit =
+    Number.isFinite(Number(impianto.nit)) && Number(impianto.nit) > 0
+      ? `${Math.floor(Number(impianto.nit))} nit`
+      : null;
+  const parts = [quantita, dimensioni, passo, tipo, nit].filter(Boolean);
   return parts.length > 0 ? `Impianto #${position} — ${parts.join(" • ")}` : `Impianto #${position}`;
 }
 
@@ -356,6 +361,7 @@ function normalizeChecklistImpianto(value: unknown, checklistId?: string | null)
   const impiantoQuantita = Number(row.impianto_quantita);
   const numeroFacce = Number(row.numero_facce);
   const m2Calcolati = Number(row.m2_calcolati);
+  const nit = Number(row.nit);
   return {
     ...(id ? { id } : {}),
     checklist_id: String(row.checklist_id || checklistId || "").trim() || null,
@@ -367,6 +373,7 @@ function normalizeChecklistImpianto(value: unknown, checklistId?: string | null)
     impianto_indirizzo: String(row.impianto_indirizzo || "").trim() || null,
     passo: String(row.passo || "").trim() || null,
     dimensioni: String(row.dimensioni || "").trim() || null,
+    nit: Number.isFinite(nit) && nit > 0 ? Math.floor(nit) : null,
     impianto_quantita:
       Number.isFinite(impiantoQuantita) && impiantoQuantita > 0 ? Math.floor(impiantoQuantita) : 1,
     numero_facce: Number.isFinite(numeroFacce) && numeroFacce > 0 ? Math.floor(numeroFacce) : 1,
@@ -380,6 +387,7 @@ function buildEmptyChecklistImpianto(): ChecklistImpianto {
     impianto_quantita: 1,
     dimensioni: "",
     passo: "",
+    nit: null,
     tipo_impianto: "",
     tipo_struttura: "",
     note: "",
@@ -1148,6 +1156,7 @@ function hasChecklistImpiantiData(list: ChecklistImpianto[]) {
       imp.impianto_indirizzo,
       imp.passo,
       imp.dimensioni,
+      imp.nit,
       imp.note,
       imp.impianto_quantita,
       imp.numero_facce,
@@ -3893,7 +3902,7 @@ function buildFormData(c: Checklist): FormData {
       table: "checklist_impianti",
       op: "select",
       select:
-        "id, checklist_id, position, impianto_codice, impianto_descrizione, tipo_impianto, tipo_struttura, impianto_indirizzo, passo, dimensioni, impianto_quantita, numero_facce, m2_calcolati, note",
+        "id, checklist_id, position, impianto_codice, impianto_descrizione, tipo_impianto, tipo_struttura, impianto_indirizzo, passo, dimensioni, nit, impianto_quantita, numero_facce, m2_calcolati, note",
       filter: { checklist_id: id },
       order: [{ col: "position", asc: true }],
     });
@@ -4755,6 +4764,7 @@ function buildFormData(c: Checklist): FormData {
         impianto_indirizzo: String(imp.impianto_indirizzo || "").trim() || null,
         passo: String(imp.passo || "").trim() || null,
         dimensioni: String(imp.dimensioni || "").trim() || null,
+        nit: Number.isFinite(Number(imp.nit)) && Number(imp.nit) > 0 ? Math.floor(Number(imp.nit)) : null,
         impianto_quantita:
           Number.isFinite(Number(imp.impianto_quantita)) && Number(imp.impianto_quantita) > 0
             ? Math.floor(Number(imp.impianto_quantita))
@@ -4773,6 +4783,7 @@ function buildFormData(c: Checklist): FormData {
           imp.impianto_indirizzo,
           imp.passo,
           imp.dimensioni,
+          imp.nit,
           imp.note,
           imp.impianto_quantita,
           imp.numero_facce,
@@ -4802,6 +4813,7 @@ function buildFormData(c: Checklist): FormData {
       impianto_indirizzo: imp.impianto_indirizzo,
       passo: imp.passo,
       dimensioni: imp.dimensioni,
+      nit: imp.nit,
       impianto_quantita: imp.impianto_quantita,
       numero_facce: imp.numero_facce,
       note: imp.note,
@@ -8750,6 +8762,27 @@ function buildFormData(c: Checklist): FormData {
                 </label>
 
                 <label style={{ display: "grid", gap: 6, fontSize: 13 }}>
+                  <span>NIT (luminosità)</span>
+                  <input
+                    type="number"
+                    min={0}
+                    step={1}
+                    value={imp.nit == null ? "" : String(imp.nit)}
+                    placeholder="es. 6500"
+                    onChange={(e) => {
+                      const raw = e.target.value.trim();
+                      const next = Number(raw);
+                      updateImpianto(
+                        index,
+                        "nit",
+                        raw && Number.isFinite(next) ? Math.max(0, Math.floor(next)) : null
+                      );
+                    }}
+                    style={{ width: "100%", padding: 10 }}
+                  />
+                </label>
+
+                <label style={{ display: "grid", gap: 6, fontSize: 13 }}>
                   <span>Tipo</span>
                   <select
                     value={String(imp.tipo_impianto || "")}
@@ -8785,6 +8818,10 @@ function buildFormData(c: Checklist): FormData {
             <div style={{ fontWeight: 800, fontSize: 13 }}>RIEPILOGO IMPIANTI</div>
             <div style={{ display: "grid", gap: 6 }}>
               {impianti.map((imp, index) => {
+                const nitLabel =
+                  Number.isFinite(Number(imp.nit)) && Number(imp.nit) > 0
+                    ? `${Math.floor(Number(imp.nit))} nit`
+                    : "—";
                 const parts = [
                   `${Number(imp.impianto_quantita) > 0 ? Number(imp.impianto_quantita) : 1}x`,
                   String(imp.dimensioni || "").trim(),
@@ -8804,6 +8841,7 @@ function buildFormData(c: Checklist): FormData {
                   >
                     <span style={{ fontWeight: 700, color: "#111827" }}>#{index + 1} → </span>
                     {parts.length > 0 ? parts.join(" • ") : "Impianto da completare"}
+                    <span style={{ color: "#6b7280" }}>{` • NIT: ${nitLabel}`}</span>
                   </div>
                 );
               })}
