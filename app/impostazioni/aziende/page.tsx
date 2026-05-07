@@ -840,6 +840,43 @@ function AziendePageContent() {
     setSavingKey(null);
   }
 
+  async function sendDocumentoAlert(row: AziendaDocumentoRow) {
+    const rowId = String(row.id || "").trim();
+    const aziendaId = String(row.azienda_id || "").trim();
+    if (!rowId || !aziendaId || row.isNew) return;
+
+    setSavingKey(`azienda-doc-alert:${rowId}`);
+    setError(null);
+    setNotice(null);
+
+    try {
+      const res = await fetch("/api/aziende/documenti/alert", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          azienda_id: aziendaId,
+          documento_id: rowId,
+        }),
+      });
+      const json = await res.json().catch(() => ({} as any));
+      if (!res.ok || json?.ok === false) {
+        throw new Error(String(json?.error || "Errore invio alert documento azienda"));
+      }
+      const recipients = Array.isArray(json?.to) ? json.to.join(", ") : "";
+      setNotice(
+        recipients
+          ? `Alert inviato a: ${recipients}`
+          : "Alert documento azienda inviato."
+      );
+      await loadData();
+    } catch (err: any) {
+      setError(String(err?.message || "Errore invio alert documento azienda"));
+    } finally {
+      setSavingKey(null);
+    }
+  }
+
   async function addDocumentType() {
     const nome = newDocumentTypeName.trim();
     if (!nome) {
@@ -1626,6 +1663,23 @@ function AziendePageContent() {
                                       >
                                         {savingKey === `azienda-doc:${doc.id || "new"}` ? "Salvataggio..." : "Salva documento"}
                                       </button>
+                                      {!doc.isNew ? (
+                                        <button
+                                          type="button"
+                                          onClick={() => void sendDocumentoAlert(doc)}
+                                          disabled={savingKey === `azienda-doc-alert:${rowId}`}
+                                          style={{
+                                            padding: "8px 12px",
+                                            borderRadius: 10,
+                                            border: "1px solid #d1d5db",
+                                            background: "white",
+                                            cursor: savingKey === `azienda-doc-alert:${rowId}` ? "wait" : "pointer",
+                                            opacity: savingKey === `azienda-doc-alert:${rowId}` ? 0.7 : 1,
+                                          }}
+                                        >
+                                          {savingKey === `azienda-doc-alert:${rowId}` ? "Invio..." : "Invia alert"}
+                                        </button>
+                                      ) : null}
                                       <button
                                         type="button"
                                         onClick={() => deleteDocumento(doc)}
@@ -1734,6 +1788,21 @@ function AziendePageContent() {
                                         }}
                                       >
                                         Modifica
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => void sendDocumentoAlert(doc)}
+                                        disabled={savingKey === `azienda-doc-alert:${rowId}`}
+                                        style={{
+                                          padding: "8px 12px",
+                                          borderRadius: 10,
+                                          border: "1px solid #d1d5db",
+                                          background: "white",
+                                          cursor: savingKey === `azienda-doc-alert:${rowId}` ? "wait" : "pointer",
+                                          opacity: savingKey === `azienda-doc-alert:${rowId}` ? 0.7 : 1,
+                                        }}
+                                      >
+                                        {savingKey === `azienda-doc-alert:${rowId}` ? "Invio..." : "Invia alert"}
                                       </button>
                                       {hasFileUrl ? (
                                         <button
