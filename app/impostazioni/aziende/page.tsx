@@ -14,6 +14,8 @@ type AziendaRow = {
   id?: string;
   ragione_sociale: string;
   partita_iva: string;
+  email: string;
+  email_avvisi_aggiuntivi: string;
   tipo: "INTERNA" | "ESTERNA";
   attiva: boolean;
   created_at?: string | null;
@@ -326,6 +328,8 @@ function AziendePageContent() {
         id: String(row.id || ""),
         ragione_sociale: String(row.ragione_sociale || ""),
         partita_iva: String(row.partita_iva || ""),
+        email: String(row.email || ""),
+        email_avvisi_aggiuntivi: String(row.email_avvisi_aggiuntivi || ""),
         tipo: String(row.tipo || "ESTERNA").toUpperCase() === "INTERNA" ? "INTERNA" : "ESTERNA",
         attiva: row.attiva !== false,
         created_at: row.created_at ?? null,
@@ -573,6 +577,8 @@ function AziendePageContent() {
         id: createTempId("azienda"),
         ragione_sociale: "",
         partita_iva: "",
+        email: "",
+        email_avvisi_aggiuntivi: "",
         tipo: "ESTERNA",
         attiva: true,
         isNew: true,
@@ -594,6 +600,16 @@ function AziendePageContent() {
       setError("La ragione sociale è obbligatoria.");
       return;
     }
+    const email = row.email.trim();
+    if (email && !email.includes("@")) {
+      setError("Email non valida.");
+      return;
+    }
+    const emailAvvisiAggiuntivi = row.email_avvisi_aggiuntivi.trim();
+    if (emailAvvisiAggiuntivi && !emailAvvisiAggiuntivi.includes("@")) {
+      setError("Email avvisi aggiuntivi non valide.");
+      return;
+    }
     setSavingKey(`azienda:${row.id || "new"}`);
     setError(null);
     setNotice(null);
@@ -601,6 +617,8 @@ function AziendePageContent() {
     const payload = {
       ragione_sociale: ragioneSociale,
       partita_iva: row.partita_iva.trim() || null,
+      email: email || null,
+      email_avvisi_aggiuntivi: emailAvvisiAggiuntivi || null,
       tipo: row.tipo === "INTERNA" ? "INTERNA" : "ESTERNA",
       attiva: row.attiva,
     };
@@ -1150,7 +1168,8 @@ function AziendePageContent() {
                     style={{
                       display: "grid",
                       gap: 12,
-                      gridTemplateColumns: "minmax(220px, 1.7fr) minmax(180px, 1fr) 180px 120px",
+                      gridTemplateColumns:
+                        "minmax(220px, 1.7fr) minmax(180px, 1fr) minmax(220px, 1.2fr) minmax(260px, 1.4fr) 180px 120px",
                       alignItems: "end",
                     }}
                   >
@@ -1167,6 +1186,26 @@ function AziendePageContent() {
                       <input
                         value={azienda.partita_iva}
                         onChange={(e) => updateAzienda(azienda.id, { partita_iva: e.target.value })}
+                        style={{ width: "100%", padding: 8, marginTop: 6 }}
+                      />
+                    </label>
+                    <label style={{ display: "block", fontSize: 12 }}>
+                      Email
+                      <input
+                        value={azienda.email}
+                        onChange={(e) => updateAzienda(azienda.id, { email: e.target.value })}
+                        placeholder="amministrazione@azienda.it"
+                        style={{ width: "100%", padding: 8, marginTop: 6 }}
+                      />
+                    </label>
+                    <label style={{ display: "block", fontSize: 12 }}>
+                      Email avvisi aggiuntivi
+                      <input
+                        value={azienda.email_avvisi_aggiuntivi}
+                        onChange={(e) =>
+                          updateAzienda(azienda.id, { email_avvisi_aggiuntivi: e.target.value })
+                        }
+                        placeholder="email separate da virgola"
                         style={{ width: "100%", padding: 8, marginTop: 6 }}
                       />
                     </label>
