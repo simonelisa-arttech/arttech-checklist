@@ -2,7 +2,6 @@ export const runtime = "nodejs";
 
 import { NextResponse } from "next/server";
 import { getSiteUrl, requireOperatore } from "@/lib/adminAuth";
-import { buildClienteEmailList } from "@/lib/clientiEmail";
 import { sendEmail } from "@/lib/email";
 
 const STORAGE_SCHEME = "storage://checklist-documents/";
@@ -11,6 +10,8 @@ type AlertRequestBody = {
   azienda_id?: string;
   documento_id?: string;
 };
+
+const SIMPLE_EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/i;
 
 function parseDateOnly(value?: string | null) {
   const raw = String(value || "").trim();
@@ -36,6 +37,35 @@ function getStoragePathFromDocumentUrl(value?: string | null) {
   const raw = String(value || "").trim();
   if (!raw.startsWith(STORAGE_SCHEME)) return "";
   return raw.slice(STORAGE_SCHEME.length);
+}
+
+function splitRecipientValues(...values: Array<string | null | undefined>) {
+  return values.flatMap((value) =>
+    String(value || "")
+      .split(/[\n,;]+/)
+      .map((part) => part.trim())
+      .filter(Boolean)
+  );
+}
+
+function normalizeRecipients(...values: Array<string | null | undefined>) {
+  const invalid: string[] = [];
+  const dedup = new Map<string, string>();
+
+  for (const entry of splitRecipientValues(...values)) {
+    const email = entry.trim();
+    if (!SIMPLE_EMAIL_REGEX.test(email)) {
+      invalid.push(email);
+      continue;
+    }
+    const key = email.toLowerCase();
+    if (!dedup.has(key)) dedup.set(key, email);
+  }
+
+  return {
+    valid: Array.from(dedup.values()),
+    invalid,
+  };
 }
 
 function computeDocumentoStatus(input: {
@@ -163,11 +193,20 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: false, error: "Documento azienda non trovato" }, { status: 404 });
     }
 
-    const recipients = buildClienteEmailList(
+    const recipients = normalizeRecipients(
       String(azienda.email || ""),
       String(azienda.email_avvisi_aggiuntivi || "")
     );
-    if (recipients.length === 0) {
+    if (recipients.invalid.length > 0) {
+      return NextResponse.json(
+        {
+          ok: false,
+          error: `Indirizzi email non validi: ${recipients.invalid.join(", ")}`,
+        },
+        { status: 400 }
+      );
+    }
+    if (recipients.valid.length === 0) {
       return NextResponse.json(
         { ok: false, error: "Nessun destinatario email configurato per l'azienda" },
         { status: 400 }
@@ -204,7 +243,7 @@ export async function POST(request: Request) {
     });
 
     await sendEmail({
-      to: recipients.join(","),
+      to: recipients.valid as any,
       subject: message.subject,
       text: message.text,
       html: message.html,
@@ -223,7 +262,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({
       ok: true,
-      to: recipients,
+      to: recipients.valid,
       status,
       subject: message.subject,
     });
