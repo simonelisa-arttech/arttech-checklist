@@ -792,6 +792,7 @@ export default function DashboardEstesaPage() {
     if (!ok) return;
 
     try {
+      const nowIso = new Date().toISOString();
       const [operatoreRes, itemsRes, tasksRes, impiantiRes] = await Promise.all([
         fetch("/api/me-operatore", { credentials: "include" }).then((res) => res.json().catch(() => ({}))),
         dbFrom("checklist_items")
@@ -914,8 +915,9 @@ export default function DashboardEstesaPage() {
         task_template_id: task?.task_template_id ?? null,
         stato: "DA_FARE",
         note: null,
-        updated_at: null,
-        updated_by_operatore: null,
+        created_at: nowIso,
+        updated_at: nowIso,
+        updated_by_operatore: operatoreId,
       }));
       if (payloadTasks.length > 0) {
         const { error } = await dbFrom("checklist_tasks").insert(payloadTasks);
