@@ -471,6 +471,120 @@ function buildDuplicateChecklistName(value?: string | null) {
   return `${base} (copia ${stamp})`;
 }
 
+function cleanInsertPayload<T extends Record<string, any>>(payload: T) {
+  return Object.fromEntries(
+    Object.entries(payload).filter(([key, value]) => key !== "id" && value !== undefined)
+  ) as T;
+}
+
+function buildDuplicatedChecklistPayload(
+  source: Checklist,
+  nowIso: string,
+  operatoreId: string | null,
+  operatoreNome: string | null
+) {
+  return cleanInsertPayload({
+    cliente: source.cliente,
+    cliente_id: source.cliente_id ?? null,
+    nome_checklist: buildDuplicateChecklistName(source.nome_checklist),
+    proforma: source.proforma ?? null,
+    po: source.po ?? null,
+    magazzino_importazione: source.magazzino_importazione ?? null,
+    created_at: nowIso,
+    updated_at: nowIso,
+    created_by_operatore: operatoreId,
+    updated_by_operatore: operatoreId,
+    created_by: operatoreNome,
+    updated_by: operatoreNome,
+    saas_piano: null,
+    saas_scadenza: null,
+    saas_note: null,
+    saas_tipo: null,
+    tipo_saas: null,
+    data_prevista: source.data_prevista ?? null,
+    data_tassativa: source.data_tassativa ?? null,
+    stato_progetto: "IN_CORSO",
+    data_installazione_reale: null,
+    noleggio_vendita: source.noleggio_vendita ?? null,
+    tipo_struttura: source.tipo_struttura ?? null,
+    passo: source.passo ?? null,
+    tipo_impianto: source.tipo_impianto ?? null,
+    impianto_indirizzo: source.impianto_indirizzo ?? null,
+    impianto_codice: source.impianto_codice ?? null,
+    impianto_descrizione: source.impianto_descrizione ?? null,
+    dimensioni: source.dimensioni ?? null,
+    impianto_quantita: source.impianto_quantita ?? 1,
+    numero_facce: source.numero_facce ?? 1,
+    m2_calcolati: source.m2_calcolati ?? getChecklistM2(source),
+    m2_inclusi: source.m2_inclusi ?? getChecklistM2(source),
+    m2_allocati: source.m2_allocati ?? null,
+    garanzia_scadenza: null,
+    note: source.note ?? null,
+    fine_noleggio: source.fine_noleggio ?? null,
+    data_disinstallazione: source.data_disinstallazione ?? null,
+    mercato: source.mercato ?? null,
+    modello: source.modello ?? null,
+  });
+}
+
+function buildDuplicatedItemPayload(item: Record<string, any>, checklistId: string, nowIso: string) {
+  return cleanInsertPayload({
+    checklist_id: checklistId,
+    codice: item?.codice ?? null,
+    descrizione: item?.descrizione ?? null,
+    quantita: item?.quantita ?? null,
+    note: item?.note ?? null,
+    created_at: nowIso,
+    updated_at: nowIso,
+  });
+}
+
+function buildDuplicatedTaskPayload(
+  task: Record<string, any>,
+  checklistId: string,
+  nowIso: string,
+  operatoreId: string
+) {
+  return cleanInsertPayload({
+    checklist_id: checklistId,
+    sezione: task?.sezione ?? null,
+    ordine: task?.ordine ?? null,
+    titolo: task?.titolo ?? null,
+    target: task?.target ?? null,
+    task_template_id: task?.task_template_id ?? null,
+    stato: "DA_FARE",
+    note: null,
+    created_at: nowIso,
+    updated_at: nowIso,
+    updated_by_operatore: operatoreId,
+  });
+}
+
+function buildDuplicatedImpiantoPayload(
+  impianto: Record<string, any>,
+  checklistId: string,
+  index: number,
+  nowIso: string
+) {
+  return cleanInsertPayload({
+    checklist_id: checklistId,
+    position: Number.isFinite(Number(impianto?.position)) ? Number(impianto.position) : index,
+    impianto_codice: impianto?.impianto_codice ?? null,
+    impianto_descrizione: impianto?.impianto_descrizione ?? null,
+    tipo_impianto: impianto?.tipo_impianto ?? null,
+    tipo_struttura: impianto?.tipo_struttura ?? null,
+    impianto_indirizzo: impianto?.impianto_indirizzo ?? null,
+    passo: impianto?.passo ?? null,
+    dimensioni: impianto?.dimensioni ?? null,
+    impianto_quantita: impianto?.impianto_quantita ?? 1,
+    numero_facce: impianto?.numero_facce ?? 1,
+    m2_calcolati: impianto?.m2_calcolati ?? null,
+    note: impianto?.note ?? null,
+    created_at: nowIso,
+    updated_at: nowIso,
+  });
+}
+
 export default function DashboardEstesaPage() {
   if (!isSupabaseConfigured) {
     return <ConfigMancante />;
@@ -832,50 +946,16 @@ export default function DashboardEstesaPage() {
       const operatore = operatoreRes?.operatore || {};
       const operatoreId = String(operatore?.id || "").trim() || null;
       const operatoreNome = String(operatore?.nome || "").trim() || null;
+      if (!operatoreId) {
+        throw new Error("Errore duplicazione progetto: operatore corrente non risolto");
+      }
 
-      const payloadChecklist = {
-        cliente: source.cliente,
-        cliente_id: source.cliente_id ?? null,
-        nome_checklist: buildDuplicateChecklistName(source.nome_checklist),
-        proforma: source.proforma ?? null,
-        po: source.po ?? null,
-        magazzino_importazione: source.magazzino_importazione ?? null,
-        created_by_operatore: operatoreId,
-        updated_by_operatore: operatoreId,
-        created_by: operatoreNome,
-        updated_by: operatoreNome,
-        saas_piano: null,
-        saas_scadenza: null,
-        saas_note: null,
-        saas_tipo: null,
-        tipo_saas: null,
-        data_prevista: source.data_prevista ?? null,
-        data_tassativa: source.data_tassativa ?? null,
-        stato_progetto: "IN_CORSO",
-        data_installazione_reale: null,
-        noleggio_vendita: source.noleggio_vendita ?? null,
-        tipo_struttura: source.tipo_struttura ?? null,
-        passo: source.passo ?? null,
-        tipo_impianto: source.tipo_impianto ?? null,
-        impianto_indirizzo: source.impianto_indirizzo ?? null,
-        impianto_codice: source.impianto_codice ?? null,
-        impianto_descrizione: source.impianto_descrizione ?? null,
-        dimensioni: source.dimensioni ?? null,
-        impianto_quantita: source.impianto_quantita ?? 1,
-        numero_facce: source.numero_facce ?? 1,
-        m2_calcolati: source.m2_calcolati ?? getChecklistM2(source),
-        m2_inclusi: source.m2_inclusi ?? getChecklistM2(source),
-        m2_allocati: source.m2_allocati ?? null,
-        garanzia_scadenza: null,
-        note: source.note ?? null,
-        tipo_struttura_legacy: undefined,
-        fine_noleggio: source.fine_noleggio ?? null,
-        data_disinstallazione: source.data_disinstallazione ?? null,
-        mercato: source.mercato ?? null,
-        modello: source.modello ?? null,
-      } as Record<string, any>;
-
-      delete payloadChecklist.tipo_struttura_legacy;
+      const payloadChecklist = buildDuplicatedChecklistPayload(
+        source,
+        nowIso,
+        operatoreId,
+        operatoreNome
+      );
 
       const { data: created, error: createErr } = await dbFrom("checklists")
         .insert(payloadChecklist)
@@ -886,7 +966,7 @@ export default function DashboardEstesaPage() {
         if (isChecklistDuplicateError(createErr)) {
           throw new Error("Esiste già un progetto duplicato con questo nome");
         }
-        throw new Error(createErr.message || "Errore duplicazione progetto");
+        throw new Error(`Errore duplicazione checklist: ${createErr.message || "insert fallito"}`);
       }
 
       const newChecklistId = String(created?.id || "").trim();
@@ -894,54 +974,28 @@ export default function DashboardEstesaPage() {
         throw new Error("ID nuova checklist non ricevuto");
       }
 
-      const payloadItems = ((itemsRes.data as any[]) || []).map((item) => ({
-        checklist_id: newChecklistId,
-        codice: item?.codice ?? null,
-        descrizione: item?.descrizione ?? null,
-        quantita: item?.quantita ?? null,
-        note: item?.note ?? null,
-      }));
+      const payloadItems = ((itemsRes.data as any[]) || []).map((item) =>
+        buildDuplicatedItemPayload(item, newChecklistId, nowIso)
+      );
       if (payloadItems.length > 0) {
         const { error } = await dbFrom("checklist_items").insert(payloadItems);
-        if (error) throw new Error(error.message || "Errore duplicazione righe progetto");
+        if (error) throw new Error(`Errore duplicazione checklist_items: ${error.message || "insert fallito"}`);
       }
 
-      const payloadTasks = ((tasksRes.data as any[]) || []).map((task) => ({
-        checklist_id: newChecklistId,
-        sezione: task?.sezione ?? null,
-        ordine: task?.ordine ?? null,
-        titolo: task?.titolo ?? null,
-        target: task?.target ?? null,
-        task_template_id: task?.task_template_id ?? null,
-        stato: "DA_FARE",
-        note: null,
-        created_at: nowIso,
-        updated_at: nowIso,
-        updated_by_operatore: operatoreId,
-      }));
+      const payloadTasks = ((tasksRes.data as any[]) || []).map((task) =>
+        buildDuplicatedTaskPayload(task, newChecklistId, nowIso, operatoreId)
+      );
       if (payloadTasks.length > 0) {
         const { error } = await dbFrom("checklist_tasks").insert(payloadTasks);
-        if (error) throw new Error(error.message || "Errore duplicazione task progetto");
+        if (error) throw new Error(`Errore duplicazione checklist_tasks: ${error.message || "insert fallito"}`);
       }
 
-      const payloadImpianti = ((impiantiRes.data as any[]) || []).map((impianto, index) => ({
-        checklist_id: newChecklistId,
-        position: Number.isFinite(Number(impianto?.position)) ? Number(impianto.position) : index,
-        impianto_codice: impianto?.impianto_codice ?? null,
-        impianto_descrizione: impianto?.impianto_descrizione ?? null,
-        tipo_impianto: impianto?.tipo_impianto ?? null,
-        tipo_struttura: impianto?.tipo_struttura ?? null,
-        impianto_indirizzo: impianto?.impianto_indirizzo ?? null,
-        passo: impianto?.passo ?? null,
-        dimensioni: impianto?.dimensioni ?? null,
-        impianto_quantita: impianto?.impianto_quantita ?? 1,
-        numero_facce: impianto?.numero_facce ?? 1,
-        m2_calcolati: impianto?.m2_calcolati ?? null,
-        note: impianto?.note ?? null,
-      }));
+      const payloadImpianti = ((impiantiRes.data as any[]) || []).map((impianto, index) =>
+        buildDuplicatedImpiantoPayload(impianto, newChecklistId, index, nowIso)
+      );
       if (payloadImpianti.length > 0) {
         const { error } = await dbFrom("checklist_impianti").insert(payloadImpianti);
-        if (error) throw new Error(error.message || "Errore duplicazione impianti progetto");
+        if (error) throw new Error(`Errore duplicazione checklist_impianti: ${error.message || "insert fallito"}`);
       }
 
       await load();
