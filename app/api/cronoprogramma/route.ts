@@ -118,6 +118,16 @@ function cleanUuidArray(values: unknown) {
   );
 }
 
+function isMissingColumnError(error: unknown, column: string) {
+  const message = String((error as any)?.message || "").toLowerCase();
+  const target = String(column || "").trim().toLowerCase();
+  return (
+    !!target &&
+    message.includes(target) &&
+    (message.includes("does not exist") || message.includes("column"))
+  );
+}
+
 function toOperativiPayload(input: OperativiInput) {
   const durataPrevistaMinuti =
     input?.durata_prevista_minuti !== undefined
@@ -871,6 +881,7 @@ export async function POST(request: Request) {
     }
 
     let slotsResponse: any[] | undefined;
+    let normalizedSlotsForSync: ReturnType<typeof toOperativiSlotPayload>[] | null = null;
     if (Array.isArray(body?.slots)) {
       const { error: deleteSlotsErr } = await supabaseAdmin
         .from("cronoprogramma_meta_slots")
@@ -889,6 +900,7 @@ export async function POST(request: Request) {
             index
           )
         );
+      normalizedSlotsForSync = normalizedSlots;
 
       if (normalizedSlots.length > 0) {
         const insertPayload = normalizedSlots.map((slot) => ({
@@ -912,6 +924,39 @@ export async function POST(request: Request) {
         slotsResponse = (insertedSlots || []).map((row) => mapSlotRow(row));
       } else {
         slotsResponse = [];
+      }
+    }
+
+    if (rowKind === "DISINSTALLAZIONE") {
+      const primaryDate =
+        normalizedSlotsForSync?.find((slot) => String(slot.data_inizio || "").trim())?.data_inizio ||
+        normalizeOperativiDate(body?.data_inizio) ||
+        null;
+
+      const { error: checklistSyncErr } = await supabaseAdmin
+        .from("checklists")
+        .update({ data_disinstallazione: primaryDate })
+        .eq("id", rowRefId);
+
+      if (checklistSyncErr && !isMissingColumnError(checklistSyncErr, "data_disinstallazione")) {
+        return NextResponse.json(
+          { error: `Errore sync checklists.data_disinstallazione: ${checklistSyncErr.message}` },
+          { status: 500 }
+        );
+      }
+
+      const { error: impiantiSyncErr } = await supabaseAdmin
+        .from("checklist_impianti")
+        .update({ data_disinstallazione: primaryDate })
+        .eq("checklist_id", rowRefId);
+
+      if (impiantiSyncErr && !isMissingColumnError(impiantiSyncErr, "data_disinstallazione")) {
+        return NextResponse.json(
+          {
+            error: `Errore sync checklist_impianti.data_disinstallazione: ${impiantiSyncErr.message}`,
+          },
+          { status: 500 }
+        );
       }
     }
 

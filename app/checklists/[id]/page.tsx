@@ -143,6 +143,7 @@ type ChecklistImpianto = {
   impianto_quantita?: number | null;
   numero_facce?: number | null;
   m2_calcolati?: number | null;
+  data_disinstallazione?: string | null;
   note?: string | null;
 };
 
@@ -331,6 +332,7 @@ function buildLegacyChecklistImpianto(checklist: Checklist): ChecklistImpianto[]
       impianto_quantita: checklist.impianto_quantita,
       numero_facce: checklist.numero_facce,
       m2_calcolati: checklist.m2_calcolati,
+      data_disinstallazione: checklist.data_disinstallazione,
       note: null,
     },
   ];
@@ -392,6 +394,7 @@ function normalizeChecklistImpianto(value: unknown, checklistId?: string | null)
       Number.isFinite(impiantoQuantita) && impiantoQuantita > 0 ? Math.floor(impiantoQuantita) : 1,
     numero_facce: Number.isFinite(numeroFacce) && numeroFacce > 0 ? Math.floor(numeroFacce) : 1,
     m2_calcolati: Number.isFinite(m2Calcolati) ? m2Calcolati : null,
+    data_disinstallazione: normalizeOperativiDate(row.data_disinstallazione) || null,
     note: String(row.note || "").trim() || null,
   };
 }
@@ -404,6 +407,7 @@ function buildEmptyChecklistImpianto(): ChecklistImpianto {
     nit: null,
     tipo_impianto: "",
     tipo_struttura: "",
+    data_disinstallazione: null,
     note: "",
   };
 }
@@ -1017,6 +1021,48 @@ function syncCronoOperativiLegacyFields(form: CronoOperativiFormState): CronoOpe
         : "",
     orario: firstSlot.orario || "",
   };
+}
+
+function hasCronoOperativiSlotDate(slot?: CronoOperativiSlot | null) {
+  return Boolean(String(slot?.data_inizio || "").trim());
+}
+
+function getFirstCronoOperativiSlotDate(form?: CronoOperativiFormState | null) {
+  if (!form) return "";
+  return (
+    form.slots.find((slot) => hasCronoOperativiSlotDate(slot))?.data_inizio ||
+    String(form.data_inizio || "").trim() ||
+    ""
+  );
+}
+
+function syncDisinstallazioneFormWithDate(
+  form: CronoOperativiFormState,
+  disinstallazioneDate: string
+) {
+  const normalizedDate = normalizeOperativiDate(disinstallazioneDate);
+  if (!normalizedDate) return syncCronoOperativiLegacyFields(form);
+
+  const normalizedForm = syncCronoOperativiLegacyFields(form);
+  const hasFilledSlots = normalizedForm.slots.some(
+    (slot) => slot.data_inizio || slot.durata_prevista_minuti != null || slot.orario
+  );
+  const nextSlots = hasFilledSlots
+    ? normalizedForm.slots.map((slot, index) =>
+        index === 0 ? { ...slot, data_inizio: normalizedDate } : slot
+      )
+    : [
+        {
+          ...createEmptyCronoOperativiSlot(),
+          data_inizio: normalizedDate,
+          durata_prevista_minuti: 0,
+        },
+      ];
+
+  return syncCronoOperativiLegacyFields({
+    ...normalizedForm,
+    slots: nextSlots,
+  });
 }
 
 function normalizeReferenteCliente(value: unknown): CronoReferenteCliente {
@@ -1829,6 +1875,29 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
   const [projectInterventoBulkLastSentAt, setProjectInterventoBulkLastSentAt] = useState<string | null>(null);
   const [projectInterventoBulkLastToOperatoreId, setProjectInterventoBulkLastToOperatoreId] = useState<string | null>(null);
   const [projectInterventoBulkLastMessage, setProjectInterventoBulkLastMessage] = useState<string | null>(null);
+  const lastDisinstallazioneFieldValuesRef = useRef({
+    data_disinstallazione: "",
+    fine_noleggio: "",
+  });
+  const cronoDisinstallazioneFallbackDate = useMemo(
+    () => getFirstCronoOperativiSlotDate(cronoDisinstallazioneForm),
+    [cronoDisinstallazioneForm]
+  );
+  const disinstallazioneReferenceDate = useMemo(
+    () =>
+      String(
+        formData?.data_disinstallazione ||
+          formData?.fine_noleggio ||
+          checklist?.data_disinstallazione ||
+          checklist?.fine_noleggio ||
+          ""
+      ).trim(),
+    [checklist?.data_disinstallazione, checklist?.fine_noleggio, formData?.data_disinstallazione, formData?.fine_noleggio]
+  );
+  const showDisinstallazioneCronoWarning = useMemo(
+    () => Boolean(disinstallazioneReferenceDate) && !Boolean(cronoDisinstallazioneFallbackDate),
+    [cronoDisinstallazioneFallbackDate, disinstallazioneReferenceDate]
+  );
   const estimatedCreatedByDisplay = useMemo(() => {
     const candidates: Array<{ name: string | null; at: string | null }> = [];
 
@@ -2119,6 +2188,44 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
     }
     setImpianti([buildEmptyChecklistImpianto()]);
   }, [checklist]);
+
+  useEffect(() => {
+    const nextDataDisinstallazione = String(formData?.data_disinstallazione || "").trim();
+    const nextFineNoleggio = String(formData?.fine_noleggio || "").trim();
+    if (!editMode) {
+      lastDisinstallazioneFieldValuesRef.current = {
+        data_disinstallazione: nextDataDisinstallazione,
+        fine_noleggio: nextFineNoleggio,
+      };
+      return;
+    }
+    if (!isNoleggioProject) {
+      return;
+    }
+    let nextDateToSync = "";
+    if (
+      nextDataDisinstallazione &&
+      nextDataDisinstallazione !== lastDisinstallazioneFieldValuesRef.current.data_disinstallazione
+    ) {
+      nextDateToSync = nextDataDisinstallazione;
+    } else if (
+      nextFineNoleggio &&
+      nextFineNoleggio !== lastDisinstallazioneFieldValuesRef.current.fine_noleggio
+    ) {
+      nextDateToSync = nextFineNoleggio;
+    }
+    lastDisinstallazioneFieldValuesRef.current = {
+      data_disinstallazione: nextDataDisinstallazione,
+      fine_noleggio: nextFineNoleggio,
+    };
+    if (!nextDateToSync) {
+      return;
+    }
+    setCronoDisinstallazioneForm((prev) => {
+      const next = syncDisinstallazioneFormWithDate(prev, nextDateToSync);
+      return JSON.stringify(prev) === JSON.stringify(next) ? prev : next;
+    });
+  }, [editMode, formData?.data_disinstallazione, formData?.fine_noleggio, isNoleggioProject]);
 
   function normalizeAlertTasks(input: any) {
     if (!input) {
@@ -3724,6 +3831,57 @@ function buildFormData(c: Checklist): FormData {
     }
   }
 
+  async function persistCronoOperativiForm(
+    checklistId: string,
+    rowKind: CronoOperativiRowKind,
+    form: CronoOperativiFormState
+  ) {
+    const normalizedForm = syncCronoOperativiLegacyFields(form);
+    const firstSlot = normalizedForm.slots[0] || createEmptyCronoOperativiSlot();
+    const durataPrevistaMinuti = firstSlot.durata_prevista_minuti;
+    const referentiCliente = normalizedForm.referenti_cliente.map((referente) => ({
+      ...(referente.id ? { id: referente.id } : {}),
+      nome: referente.nome,
+      contatto: referente.contatto,
+      ruolo: referente.ruolo,
+    }));
+    perfCountFetch("POST /api/cronoprogramma set_operativi");
+    const res = await fetch("/api/cronoprogramma", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({
+        action: "set_operativi",
+        row_kind: rowKind,
+        row_ref_id: checklistId,
+        ...normalizedForm,
+        slots: normalizedForm.slots.map((slot) => ({
+          ...(slot.id ? { id: slot.id } : {}),
+          data_inizio: slot.data_inizio,
+          durata_prevista_minuti: slot.durata_prevista_minuti,
+          durata_giorni:
+            slot.durata_prevista_minuti != null
+              ? estimatedMinutesToLegacyDays(slot.durata_prevista_minuti)
+              : null,
+          orario: slot.orario,
+        })),
+        referenti_cliente: referentiCliente,
+        referente_cliente_nome: referentiCliente[0]?.nome || "",
+        referente_cliente_contatto: referentiCliente[0]?.contatto || "",
+        durata_prevista_minuti: durataPrevistaMinuti,
+        durata_giorni: estimatedMinutesToLegacyDays(durataPrevistaMinuti),
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(String(data?.error || "Errore salvataggio dati operativi"));
+    }
+    return {
+      nextMeta: (data?.meta || null) as CronoOperativiMeta | null,
+      nextForm: extractCronoOperativi((data?.meta || null) as CronoOperativiMeta | null),
+    };
+  }
+
   async function saveCronoOperativiBlock(
     rowKind: CronoOperativiRowKind,
     form: CronoOperativiFormState,
@@ -3738,50 +3896,18 @@ function buildFormData(c: Checklist): FormData {
     setError(null);
     setNotice(null);
     try {
-      const normalizedForm = syncCronoOperativiLegacyFields(form);
-      const firstSlot = normalizedForm.slots[0] || createEmptyCronoOperativiSlot();
-      const durataPrevistaMinuti = firstSlot.durata_prevista_minuti;
-      const referentiCliente = form.referenti_cliente.map((referente) => ({
-        ...(referente.id ? { id: referente.id } : {}),
-        nome: referente.nome,
-        contatto: referente.contatto,
-        ruolo: referente.ruolo,
-      }));
-      perfCountFetch("POST /api/cronoprogramma set_operativi");
-      const res = await fetch("/api/cronoprogramma", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({
-          action: "set_operativi",
-          row_kind: rowKind,
-          row_ref_id: id,
-          ...normalizedForm,
-          slots: normalizedForm.slots.map((slot) => ({
-            ...(slot.id ? { id: slot.id } : {}),
-            data_inizio: slot.data_inizio,
-            durata_prevista_minuti: slot.durata_prevista_minuti,
-            durata_giorni:
-              slot.durata_prevista_minuti != null
-                ? estimatedMinutesToLegacyDays(slot.durata_prevista_minuti)
-                : null,
-            orario: slot.orario,
-          })),
-          referenti_cliente: referentiCliente,
-          referente_cliente_nome: referentiCliente[0]?.nome || "",
-          referente_cliente_contatto: referentiCliente[0]?.contatto || "",
-          durata_prevista_minuti: durataPrevistaMinuti,
-          durata_giorni: estimatedMinutesToLegacyDays(durataPrevistaMinuti),
-        }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        setError(String(data?.error || "Errore salvataggio dati operativi"));
-        return;
-      }
-      const nextMeta = (data?.meta || null) as CronoOperativiMeta | null;
+      const { nextMeta, nextForm } = await persistCronoOperativiForm(id, rowKind, form);
       setMeta(nextMeta);
-      setForm(extractCronoOperativi(nextMeta));
+      setForm(nextForm);
+      if (rowKind === "DISINSTALLAZIONE") {
+        const nextDate = getFirstCronoOperativiSlotDate(nextForm);
+        if (nextDate) {
+          setFormData((prev) => ({ ...prev, data_disinstallazione: nextDate }));
+          setChecklist((prev) =>
+            prev ? { ...prev, data_disinstallazione: nextDate } : prev
+          );
+        }
+      }
       setNotice("Dati operativi salvati.");
     } catch (e: any) {
       setError(String(e?.message || "Errore salvataggio dati operativi"));
@@ -3812,6 +3938,25 @@ function buildFormData(c: Checklist): FormData {
       setCronoDisinstallazioneMeta,
       setCronoDisinstallazioneForm
     );
+  }
+
+  async function syncDisinstallazioneCronoWithImpiantoDate(checklistId: string, dateValue: string) {
+    const normalizedDate = normalizeOperativiDate(dateValue);
+    if (!normalizedDate) return;
+    const nextSourceForm = syncDisinstallazioneFormWithDate(cronoDisinstallazioneForm, normalizedDate);
+    const { nextMeta, nextForm } = await persistCronoOperativiForm(
+      checklistId,
+      "DISINSTALLAZIONE",
+      nextSourceForm
+    );
+    setCronoDisinstallazioneMeta(nextMeta);
+    setCronoDisinstallazioneForm(nextForm);
+    setChecklist((prev) =>
+      prev ? { ...prev, data_disinstallazione: normalizedDate } : prev
+    );
+    setFormData((prev) => ({ ...prev, data_disinstallazione: normalizedDate }));
+    setCronoDisinstallazioneError(null);
+    setCronoDisinstallazioneNotice("Cronoprogramma disinstallazione sincronizzato.");
   }
 
   async function load(id: string) {
@@ -3912,14 +4057,35 @@ function buildFormData(c: Checklist): FormData {
       return;
     }
 
-    const { data: impiantiData, error: impiantiErr } = await db<any[]>({
+    let impiantiData: any[] | null = null;
+    let impiantiErr: any = null;
+    ({
+      data: impiantiData,
+      error: impiantiErr,
+    } = await db<any[]>({
       table: "checklist_impianti",
       op: "select",
       select:
-        "id, checklist_id, position, impianto_codice, impianto_descrizione, tipo_impianto, tipo_struttura, impianto_indirizzo, passo, dimensioni, nit, impianto_quantita, numero_facce, m2_calcolati, note",
+        "id, checklist_id, position, impianto_codice, impianto_descrizione, tipo_impianto, tipo_struttura, impianto_indirizzo, passo, dimensioni, nit, impianto_quantita, numero_facce, m2_calcolati, data_disinstallazione, note",
       filter: { checklist_id: id },
       order: [{ col: "position", asc: true }],
-    });
+    }));
+    if (
+      impiantiErr &&
+      String(impiantiErr.message || "").toLowerCase().includes("data_disinstallazione")
+    ) {
+      ({
+        data: impiantiData,
+        error: impiantiErr,
+      } = await db<any[]>({
+        table: "checklist_impianti",
+        op: "select",
+        select:
+          "id, checklist_id, position, impianto_codice, impianto_descrizione, tipo_impianto, tipo_struttura, impianto_indirizzo, passo, dimensioni, nit, impianto_quantita, numero_facce, m2_calcolati, note",
+        filter: { checklist_id: id },
+        order: [{ col: "position", asc: true }],
+      }));
+    }
     if (impiantiErr) {
       console.error("Errore caricamento checklist_impianti", impiantiErr);
     }
@@ -4830,10 +4996,19 @@ function buildFormData(c: Checklist): FormData {
       nit: imp.nit,
       impianto_quantita: imp.impianto_quantita,
       numero_facce: imp.numero_facce,
+      data_disinstallazione:
+        String(imp.data_disinstallazione || formData?.data_disinstallazione || "").trim() || null,
       note: imp.note,
     }));
 
-    const { error: insertErr } = await dbFrom("checklist_impianti").insert(payload);
+    let { error: insertErr } = await dbFrom("checklist_impianti").insert(payload);
+    if (
+      insertErr &&
+      String(insertErr.message || "").toLowerCase().includes("data_disinstallazione")
+    ) {
+      const legacyPayload = payload.map(({ data_disinstallazione: _skip, ...row }) => row);
+      ({ error: insertErr } = await dbFrom("checklist_impianti").insert(legacyPayload));
+    }
     if (insertErr) {
       throw new Error(
         logSupabaseError("insert checklist_impianti", insertErr) ||
@@ -4844,6 +5019,8 @@ function buildFormData(c: Checklist): FormData {
       ...imp,
       checklist_id: checklistId,
       position: index,
+      data_disinstallazione:
+        String(imp.data_disinstallazione || formData?.data_disinstallazione || "").trim() || null,
     }));
   }
 
@@ -4858,7 +5035,8 @@ function buildFormData(c: Checklist): FormData {
     meta: CronoOperativiMeta | null,
     errorMessage: string | null,
     notice: string | null,
-    fallbackStartDate: string
+    fallbackStartDate: string,
+    warningMessage?: string | null
   ) => (
     <div
       style={{
@@ -4870,6 +5048,21 @@ function buildFormData(c: Checklist): FormData {
     >
       <div style={{ display: "grid", gap: 8, marginBottom: 10 }}>
         <div style={{ fontWeight: 800 }}>{title}</div>
+        {warningMessage ? (
+          <div
+            style={{
+              padding: "8px 10px",
+              borderRadius: 10,
+              border: "1px solid #fdba74",
+              background: "#fff7ed",
+              color: "#9a3412",
+              fontSize: 12,
+              fontWeight: 700,
+            }}
+          >
+            {warningMessage}
+          </div>
+        ) : null}
         <SafetyComplianceBadge
           personaleText={form.personale_previsto}
           personaleIds={form.personale_ids}
@@ -6700,6 +6893,24 @@ function buildFormData(c: Checklist): FormData {
       );
     }
 
+    const disinstallazioneSyncDate = String(
+      getFirstCronoOperativiSlotDate(cronoDisinstallazioneForm) ||
+        formData.data_disinstallazione.trim() ||
+        formData.fine_noleggio.trim()
+    ).trim();
+    if (isNoleggioProject && disinstallazioneSyncDate) {
+      try {
+        await syncDisinstallazioneCronoWithImpiantoDate(id, disinstallazioneSyncDate);
+      } catch (err: any) {
+        alert(
+          String(
+            err?.message || err || "Errore sincronizzazione cronoprogramma disinstallazione"
+          )
+        );
+        return;
+      }
+    }
+
     setEditMode(false);
     await load(id);
   }
@@ -8211,8 +8422,10 @@ function buildFormData(c: Checklist): FormData {
               <FieldRow
                 label="Data disinstallazione"
                 view={
-                  checklist.data_disinstallazione
-                    ? new Date(checklist.data_disinstallazione).toLocaleDateString()
+                  checklist.data_disinstallazione || cronoDisinstallazioneFallbackDate
+                    ? new Date(
+                        checklist.data_disinstallazione || cronoDisinstallazioneFallbackDate
+                      ).toLocaleDateString()
                     : "—"
                 }
                 edit={
@@ -8903,7 +9116,8 @@ function buildFormData(c: Checklist): FormData {
             cronoOperativiMeta,
             cronoOperativiError,
             cronoOperativiNotice,
-            formData?.data_tassativa || formData?.data_prevista || ""
+            formData?.data_tassativa || formData?.data_prevista || "",
+            null
           )}
           {isNoleggioProject
             ? renderCronoOperativiSection(
@@ -8917,7 +9131,10 @@ function buildFormData(c: Checklist): FormData {
                 cronoDisinstallazioneMeta,
                 cronoDisinstallazioneError,
                 cronoDisinstallazioneNotice,
-                formData?.data_disinstallazione || ""
+                formData?.data_disinstallazione || cronoDisinstallazioneFallbackDate || "",
+                showDisinstallazioneCronoWarning
+                  ? "Compilare cronoprogramma disinstallazione"
+                  : null
               )
             : null}
         </div>,
