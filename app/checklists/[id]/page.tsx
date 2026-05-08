@@ -394,7 +394,7 @@ function normalizeChecklistImpianto(value: unknown, checklistId?: string | null)
       Number.isFinite(impiantoQuantita) && impiantoQuantita > 0 ? Math.floor(impiantoQuantita) : 1,
     numero_facce: Number.isFinite(numeroFacce) && numeroFacce > 0 ? Math.floor(numeroFacce) : 1,
     m2_calcolati: Number.isFinite(m2Calcolati) ? m2Calcolati : null,
-    data_disinstallazione: normalizeOperativiDate(row.data_disinstallazione ?? null) ?? null,
+    data_disinstallazione: normalizeOperativiDate(row.data_disinstallazione) ?? null,
     note: String(row.note || "").trim() || null,
   };
 }
