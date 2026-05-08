@@ -4950,7 +4950,7 @@ function buildFormData(c: Checklist): FormData {
   }
 
   async function salvaImpianti(checklistId: string) {
-    const normalizedImpianti = impianti
+    const normalizedImpianti: ChecklistImpianto[] = impianti
       .map((imp) => ({
         impianto_descrizione: String(imp.impianto_descrizione || "").trim() || null,
         tipo_impianto: getChecklistImpiantoTipoValue(imp),
@@ -4959,6 +4959,7 @@ function buildFormData(c: Checklist): FormData {
         passo: String(imp.passo || "").trim() || null,
         dimensioni: String(imp.dimensioni || "").trim() || null,
         nit: Number.isFinite(Number(imp.nit)) && Number(imp.nit) > 0 ? Math.floor(Number(imp.nit)) : null,
+        data_disinstallazione: String(imp.data_disinstallazione || "").trim() || null,
         impianto_quantita:
           Number.isFinite(Number(imp.impianto_quantita)) && Number(imp.impianto_quantita) > 0
             ? Math.floor(Number(imp.impianto_quantita))
