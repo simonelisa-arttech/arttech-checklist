@@ -336,6 +336,20 @@ function buildLegacyChecklistImpianto(checklist: Checklist): ChecklistImpianto[]
   ];
 }
 
+function getChecklistImpiantoTipoValue(value: unknown) {
+  const row = value && typeof value === "object" ? (value as Record<string, unknown>) : null;
+  if (!row) return null;
+  return (
+    String(
+      row.tipo_impianto ??
+        row.impianto_tipo ??
+        row.tipologia ??
+        row.tipo ??
+        ""
+    ).trim() || null
+  );
+}
+
 function formatChecklistImpiantoLabel(impianto: ChecklistImpianto, index: number) {
   const position = Number.isFinite(Number(impianto.position)) ? Number(impianto.position) + 1 : index + 1;
   const quantita =
@@ -345,7 +359,7 @@ function formatChecklistImpiantoLabel(impianto: ChecklistImpianto, index: number
   const dimensioni = String(impianto.dimensioni || "").trim() || null;
   const passoRaw = String(impianto.passo || "").trim();
   const passo = passoRaw ? (passoRaw.toUpperCase().startsWith("P") ? passoRaw : `P${passoRaw}`) : null;
-  const tipo = String(impianto.tipo_impianto || "").trim() || null;
+  const tipo = getChecklistImpiantoTipoValue(impianto);
   const nit =
     Number.isFinite(Number(impianto.nit)) && Number(impianto.nit) > 0
       ? `${Math.floor(Number(impianto.nit))} nit`
@@ -368,7 +382,7 @@ function normalizeChecklistImpianto(value: unknown, checklistId?: string | null)
     position: Number.isFinite(Number(row.position)) ? Number(row.position) : null,
     impianto_codice: String(row.impianto_codice || "").trim() || null,
     impianto_descrizione: String(row.impianto_descrizione || "").trim() || null,
-    tipo_impianto: String(row.tipo_impianto || "").trim() || null,
+    tipo_impianto: getChecklistImpiantoTipoValue(row),
     tipo_struttura: String(row.tipo_struttura || "").trim() || null,
     impianto_indirizzo: String(row.impianto_indirizzo || "").trim() || null,
     passo: String(row.passo || "").trim() || null,
@@ -4759,7 +4773,7 @@ function buildFormData(c: Checklist): FormData {
     const normalizedImpianti = impianti
       .map((imp) => ({
         impianto_descrizione: String(imp.impianto_descrizione || "").trim() || null,
-        tipo_impianto: String(imp.tipo_impianto || "").trim() || null,
+        tipo_impianto: getChecklistImpiantoTipoValue(imp),
         tipo_struttura: String(imp.tipo_struttura || "").trim() || null,
         impianto_indirizzo: String(imp.impianto_indirizzo || "").trim() || null,
         passo: String(imp.passo || "").trim() || null,
@@ -4801,7 +4815,7 @@ function buildFormData(c: Checklist): FormData {
     }
 
     if (normalizedImpianti.length === 0) {
-      return;
+      return [];
     }
 
     const payload = normalizedImpianti.map((imp, index) => ({
@@ -4826,6 +4840,11 @@ function buildFormData(c: Checklist): FormData {
           "Errore salvataggio impianti checklist"
       );
     }
+    return normalizedImpianti.map((imp, index) => ({
+      ...imp,
+      checklist_id: checklistId,
+      position: index,
+    }));
   }
 
   const renderCronoOperativiSection = (
@@ -6391,7 +6410,7 @@ function buildFormData(c: Checklist): FormData {
         ? formData.data_tassativa.trim()
         : null,
       tipo_impianto: shouldSaveMultiImpianti
-        ? String(primoImpianto?.tipo_impianto || "").trim() || null
+        ? getChecklistImpiantoTipoValue(primoImpianto)
         : formData.tipo_impianto.trim()
           ? formData.tipo_impianto.trim()
           : null,
@@ -6544,9 +6563,10 @@ function buildFormData(c: Checklist): FormData {
       );
     }
 
+    let savedImpianti: ChecklistImpianto[] | null = null;
     if (shouldSaveMultiImpianti) {
       try {
-        await salvaImpianti(id);
+        savedImpianti = await salvaImpianti(id);
       } catch (err: any) {
         alert(String(err?.message || err || "Errore salvataggio impianti checklist"));
         return;
@@ -6664,6 +6684,20 @@ function buildFormData(c: Checklist): FormData {
         setItemsError("Errore eliminazione righe: " + (info || itemsDeleteErr.message));
         return;
       }
+    }
+
+    if (savedImpianti) {
+      const nextImpianti = savedImpianti.length > 0 ? savedImpianti : [buildEmptyChecklistImpianto()];
+      setImpianti(nextImpianti);
+      setChecklist((prev) =>
+        prev
+          ? {
+              ...prev,
+              impianti: nextImpianti,
+              tipo_impianto: getChecklistImpiantoTipoValue(nextImpianti[0]) ?? prev.tipo_impianto,
+            }
+          : prev
+      );
     }
 
     setEditMode(false);
@@ -8019,7 +8053,13 @@ function buildFormData(c: Checklist): FormData {
             />
             <FieldRow
               label="Tipo impianto"
-              view={checklist.tipo_impianto || "—"}
+              view={
+                getChecklistImpiantoTipoValue(
+                  Array.isArray(checklist.impianti) && checklist.impianti.length > 0
+                    ? checklist.impianti[0]
+                    : { tipo_impianto: checklist.tipo_impianto }
+                ) || "—"
+              }
               edit={
                 isEdit ? (
                   <select
@@ -8785,7 +8825,7 @@ function buildFormData(c: Checklist): FormData {
                 <label style={{ display: "grid", gap: 6, fontSize: 13 }}>
                   <span>Tipo</span>
                   <select
-                    value={String(imp.tipo_impianto || "")}
+                    value={String(getChecklistImpiantoTipoValue(imp) || "")}
                     onChange={(e) => updateImpianto(index, "tipo_impianto", e.target.value)}
                     style={{ width: "100%", padding: 10 }}
                   >
@@ -8826,7 +8866,7 @@ function buildFormData(c: Checklist): FormData {
                   `${Number(imp.impianto_quantita) > 0 ? Number(imp.impianto_quantita) : 1}x`,
                   String(imp.dimensioni || "").trim(),
                   String(imp.passo || "").trim(),
-                  String(imp.tipo_impianto || "").trim(),
+                  getChecklistImpiantoTipoValue(imp),
                 ].filter(Boolean);
                 return (
                   <div
