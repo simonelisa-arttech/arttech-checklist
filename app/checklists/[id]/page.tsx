@@ -2230,7 +2230,12 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
       const next = syncDisinstallazioneFormWithDate(prev, nextDateToSync);
       return JSON.stringify(prev) === JSON.stringify(next) ? prev : next;
     });
-  }, [editMode, formData?.data_disinstallazione, formData?.fine_noleggio, isNoleggioProject]);
+  }, [
+    editMode,
+    formData?.data_disinstallazione,
+    formData?.fine_noleggio,
+    isNoleggioValue(formData?.noleggio_vendita ?? checklist?.noleggio_vendita ?? null),
+  ]);
 
   function normalizeAlertTasks(input: any) {
     if (!input) {
