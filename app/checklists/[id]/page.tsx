@@ -3912,7 +3912,9 @@ function buildFormData(c: Checklist): FormData {
       if (rowKind === "DISINSTALLAZIONE") {
         const nextDate = getFirstCronoOperativiSlotDate(nextForm);
         if (nextDate) {
-          setFormData((prev) => ({ ...prev, data_disinstallazione: nextDate }));
+          setFormData((prev) =>
+            prev ? { ...prev, data_disinstallazione: nextDate } : prev
+          );
           setChecklist((prev) =>
             prev ? { ...prev, data_disinstallazione: nextDate } : prev
           );
@@ -3954,7 +3956,7 @@ function buildFormData(c: Checklist): FormData {
     const normalizedDate = normalizeOperativiDate(dateValue);
     if (!normalizedDate) return;
     const nextSourceForm = syncDisinstallazioneFormWithDate(cronoDisinstallazioneForm, normalizedDate);
-    const { nextMeta, nextForm } = await persistCronoOperativiForm(
+  const { nextMeta, nextForm } = await persistCronoOperativiForm(
       checklistId,
       "DISINSTALLAZIONE",
       nextSourceForm
@@ -3964,7 +3966,9 @@ function buildFormData(c: Checklist): FormData {
     setChecklist((prev) =>
       prev ? { ...prev, data_disinstallazione: normalizedDate } : prev
     );
-    setFormData((prev) => ({ ...prev, data_disinstallazione: normalizedDate }));
+    setFormData((prev) =>
+      prev ? { ...prev, data_disinstallazione: normalizedDate } : prev
+    );
     setCronoDisinstallazioneError(null);
     setCronoDisinstallazioneNotice("Cronoprogramma disinstallazione sincronizzato.");
   }
