@@ -553,7 +553,7 @@ function buildDuplicatedTaskPayload(
     target: task?.target ?? null,
     task_template_id: task?.task_template_id ?? null,
     stato: "DA_FARE",
-    note: null,
+    note: task?.note ?? null,
     created_at: nowIso,
     updated_at: nowIso,
     updated_by_operatore: operatoreId,
@@ -907,14 +907,14 @@ export default function DashboardEstesaPage() {
 
     try {
       const nowIso = new Date().toISOString();
-      const [operatoreRes, itemsRes, tasksRes, impiantiRes] = await Promise.all([
+      const [operatoreRes, itemsRes, rawTasksRes, impiantiRes] = await Promise.all([
         fetch("/api/me-operatore", { credentials: "include" }).then((res) => res.json().catch(() => ({}))),
         dbFrom("checklist_items")
           .select("codice, descrizione, quantita, note")
           .eq("checklist_id", checklistId)
           .order("created_at", { ascending: true }),
         dbFrom("checklist_tasks")
-          .select("sezione, ordine, titolo, target, task_template_id")
+          .select("sezione, ordine, titolo, target, task_template_id, note, stato, created_at, updated_at")
           .eq("checklist_id", checklistId)
           .order("sezione", { ascending: true })
           .order("ordine", { ascending: true }),
@@ -938,6 +938,44 @@ export default function DashboardEstesaPage() {
           .eq("checklist_id", checklistId)
           .order("position", { ascending: true }),
       ]);
+
+      let tasksRes = rawTasksRes;
+      if (
+        tasksRes.error &&
+        String(tasksRes.error.message || "").toLowerCase().includes("target")
+      ) {
+        tasksRes = await dbFrom("checklist_tasks")
+          .select("sezione, ordine, titolo, task_template_id, note, stato, created_at, updated_at")
+          .eq("checklist_id", checklistId)
+          .order("sezione", { ascending: true })
+          .order("ordine", { ascending: true });
+        if (!tasksRes.error && Array.isArray(tasksRes.data)) {
+          tasksRes = {
+            ...tasksRes,
+            data: (tasksRes.data as any[]).map((task) => ({ ...task, target: null })),
+          } as typeof tasksRes;
+        }
+      }
+      if (
+        tasksRes.error &&
+        String(tasksRes.error.message || "").toLowerCase().includes("task_template_id")
+      ) {
+        tasksRes = await dbFrom("checklist_tasks")
+          .select("sezione, ordine, titolo, note, stato, created_at, updated_at")
+          .eq("checklist_id", checklistId)
+          .order("sezione", { ascending: true })
+          .order("ordine", { ascending: true });
+        if (!tasksRes.error && Array.isArray(tasksRes.data)) {
+          tasksRes = {
+            ...tasksRes,
+            data: (tasksRes.data as any[]).map((task) => ({
+              ...task,
+              target: null,
+              task_template_id: null,
+            })),
+          } as typeof tasksRes;
+        }
+      }
 
       if (itemsRes.error) throw new Error(itemsRes.error.message || "Errore caricamento righe progetto");
       if (tasksRes.error) throw new Error(tasksRes.error.message || "Errore caricamento task progetto");
