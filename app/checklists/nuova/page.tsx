@@ -177,6 +177,12 @@ function getImpiantoSelectValue(
   return byCode?.id || "";
 }
 
+function stripPendingFrontendId(value?: string | null) {
+  const normalized = String(value || "").trim();
+  if (!normalized) return null;
+  return normalized.startsWith("pending:") ? null : normalized;
+}
+
 export default function NuovaChecklistPage() {
   if (!isSupabaseConfigured) {
     return <ConfigMancante />;
@@ -820,20 +826,20 @@ export default function NuovaChecklistPage() {
         ...serialiControllo.map((s) => ({
           checklist_id: checklistId,
           tipo: "CONTROLLO",
-          device_code: s.device_code,
-          device_descrizione: s.device_descrizione,
-          seriale: normalizeSerial(s.seriale),
+          device_code: stripPendingFrontendId(s.device_code),
+          device_descrizione: stripPendingFrontendId(s.device_descrizione),
+          seriale: stripPendingFrontendId(normalizeSerial(s.seriale)),
           note: s.note ? s.note.trim() : null,
         })),
         ...serialiModuli.map((s) => ({
           checklist_id: checklistId,
           tipo: "MODULO_LED",
-          device_code: s.device_code,
-          device_descrizione: s.device_descrizione,
-          seriale: normalizeSerial(s.seriale),
+          device_code: stripPendingFrontendId(s.device_code),
+          device_descrizione: stripPendingFrontendId(s.device_descrizione),
+          seriale: stripPendingFrontendId(normalizeSerial(s.seriale)),
           note: s.note ? s.note.trim() : null,
         })),
-      ];
+      ].filter((row) => Boolean(row.seriale));
       if (serialPayload.length > 0) {
         const { error: serialErr } = await dbFrom("asset_serials").insert(serialPayload);
         if (serialErr) {
