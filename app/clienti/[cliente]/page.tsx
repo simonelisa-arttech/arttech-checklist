@@ -1343,6 +1343,7 @@ export default function ClientePage({
     esitoFatturazione: "",
     numeroFattura: "",
     fatturatoIl: "",
+    fatturaUrl: "",
     note: "",
     noteTecniche: "",
     dataInizio: "",
@@ -1372,6 +1373,7 @@ export default function ClientePage({
     fatturazioneStato: "DA_FATTURARE",
     numeroFattura: "",
     fatturatoIl: "",
+    fatturaUrl: "",
     statoIntervento: "APERTO",
     dataInizio: "",
     durataGiorni: "",
@@ -2411,7 +2413,7 @@ export default function ClientePage({
     {
       perfCountDb("saas_interventi.select");
       let q = dbFrom("saas_interventi").select(
-        "id, cliente, checklist_id, contratto_id, ticket_no, data, data_tassativa, descrizione, incluso, proforma, codice_magazzino, fatturazione_stato, stato_intervento, esito_fatturazione, chiuso_il, chiuso_da_operatore, alert_fattura_last_sent_at, alert_fattura_last_sent_by, numero_fattura, fatturato_il, note, note_tecniche, created_at, checklist:checklists(id, nome_checklist, proforma, magazzino_importazione)"
+        "id, cliente, checklist_id, contratto_id, ticket_no, data, data_tassativa, descrizione, incluso, proforma, codice_magazzino, fatturazione_stato, stato_intervento, esito_fatturazione, chiuso_il, chiuso_da_operatore, alert_fattura_last_sent_at, alert_fattura_last_sent_by, numero_fattura, fatturato_il, fattura_url, note, note_tecniche, created_at, checklist:checklists(id, nome_checklist, proforma, magazzino_importazione)"
       );
       q = checklistIds.length > 0 ? q.in("checklist_id", checklistIds) : q.ilike("cliente", cleanCliente);
       const res = await q.order("data", { ascending: false });
@@ -2421,7 +2423,7 @@ export default function ClientePage({
     if (intsErr && String(intsErr.message || "").toLowerCase().includes("data_tassativa")) {
       perfCountDb("saas_interventi.select.retry_no_data_tassativa");
       let q = dbFrom("saas_interventi").select(
-        "id, cliente, checklist_id, contratto_id, ticket_no, data, descrizione, incluso, proforma, codice_magazzino, fatturazione_stato, stato_intervento, esito_fatturazione, chiuso_il, chiuso_da_operatore, alert_fattura_last_sent_at, alert_fattura_last_sent_by, numero_fattura, fatturato_il, note, note_tecniche, created_at, checklist:checklists(id, nome_checklist, proforma, magazzino_importazione)"
+        "id, cliente, checklist_id, contratto_id, ticket_no, data, descrizione, incluso, proforma, codice_magazzino, fatturazione_stato, stato_intervento, esito_fatturazione, chiuso_il, chiuso_da_operatore, alert_fattura_last_sent_at, alert_fattura_last_sent_by, numero_fattura, fatturato_il, fattura_url, note, note_tecniche, created_at, checklist:checklists(id, nome_checklist, proforma, magazzino_importazione)"
       );
       q = checklistIds.length > 0 ? q.in("checklist_id", checklistIds) : q.ilike("cliente", cleanCliente);
       const res = await q.order("data", { ascending: false });
@@ -2431,7 +2433,7 @@ export default function ClientePage({
     if (intsErr && String(intsErr.message || "").toLowerCase().includes("ticket_no")) {
       perfCountDb("saas_interventi.select.retry_no_ticket_no");
       let q = dbFrom("saas_interventi").select(
-        "id, cliente, checklist_id, contratto_id, data, data_tassativa, descrizione, incluso, proforma, codice_magazzino, fatturazione_stato, stato_intervento, esito_fatturazione, chiuso_il, chiuso_da_operatore, alert_fattura_last_sent_at, alert_fattura_last_sent_by, numero_fattura, fatturato_il, note, note_tecniche, created_at, checklist:checklists(id, nome_checklist, proforma, magazzino_importazione)"
+        "id, cliente, checklist_id, contratto_id, data, data_tassativa, descrizione, incluso, proforma, codice_magazzino, fatturazione_stato, stato_intervento, esito_fatturazione, chiuso_il, chiuso_da_operatore, alert_fattura_last_sent_at, alert_fattura_last_sent_by, numero_fattura, fatturato_il, fattura_url, note, note_tecniche, created_at, checklist:checklists(id, nome_checklist, proforma, magazzino_importazione)"
       );
       q = checklistIds.length > 0 ? q.in("checklist_id", checklistIds) : q.ilike("cliente", cleanCliente);
       const res = await q.order("data", { ascending: false });
@@ -2614,6 +2616,7 @@ export default function ClientePage({
       esitoFatturazione: getEsitoFatturazione(i) ?? "",
       numeroFattura: i.numero_fattura ?? "",
       fatturatoIl: i.fatturato_il ? i.fatturato_il.slice(0, 10) : "",
+      fatturaUrl: i.fattura_url ?? "",
       note: i.note ?? "",
       noteTecniche: i.note_tecniche ?? "",
       dataInizio: "",
@@ -2674,6 +2677,7 @@ export default function ClientePage({
         canonicalEsito === "FATTURATO"
           ? editIntervento.fatturatoIl || new Date().toISOString().slice(0, 10)
           : null,
+      fattura_url: editIntervento.fatturaUrl.trim() ? editIntervento.fatturaUrl.trim() : null,
       note: editIntervento.note.trim() ? editIntervento.note.trim() : null,
     };
 
@@ -4128,6 +4132,7 @@ export default function ClientePage({
         ? newIntervento.numeroFattura.trim()
         : null,
       fatturato_il: fatturatoIlValue,
+      fattura_url: newIntervento.fatturaUrl.trim() ? newIntervento.fatturaUrl.trim() : null,
       note: newIntervento.note.trim() ? newIntervento.note.trim() : null,
       note_tecniche: noteTecnicheToSave,
     };
@@ -4204,6 +4209,7 @@ export default function ClientePage({
       fatturazioneStato: "DA_FATTURARE",
       numeroFattura: "",
       fatturatoIl: "",
+      fatturaUrl: "",
       statoIntervento: "APERTO",
       dataInizio: "",
       durataGiorni: "",
@@ -8180,6 +8186,7 @@ ${rinnovi30ggBreakdown.debugSample
                 esitoFatturazione: "",
                 numeroFattura: newIntervento.numeroFattura,
                 fatturatoIl: newIntervento.fatturatoIl,
+                fatturaUrl: newIntervento.fatturaUrl,
                 note: newIntervento.note,
                 noteTecniche: "",
                 dataInizio: newIntervento.dataInizio,
@@ -8210,6 +8217,7 @@ ${rinnovi30ggBreakdown.debugSample
                   fatturazioneStato: value.fatturazioneStato,
                   numeroFattura: value.numeroFattura,
                   fatturatoIl: value.fatturatoIl,
+                  fatturaUrl: value.fatturaUrl,
                   statoIntervento: value.statoIntervento,
                   dataInizio: value.dataInizio,
                   durataGiorni: value.durataGiorni,
@@ -8251,6 +8259,7 @@ ${rinnovi30ggBreakdown.debugSample
                   esitoFatturazione: value.esitoFatturazione,
                   numeroFattura: value.numeroFattura,
                   fatturatoIl: value.fatturatoIl,
+                  fatturaUrl: value.fatturaUrl,
                   note: value.note,
                   noteTecniche: value.noteTecniche,
                   dataInizio: value.dataInizio,

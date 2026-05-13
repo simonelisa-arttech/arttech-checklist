@@ -155,6 +155,11 @@ Domini principali:
 - cronoprogramma, task attachments, foto/video e allegati progetto nuovo usano ora la modalita' link-only
 - `Creato da` / `Modificato da` nella pagina progetto usano fallback robusti su `created_by_operatore` / `updated_by_operatore` e mappa operatori completa
 
+### Interventi / fatture
+- `saas_interventi.fattura_url` e' collegato in `app/checklists/[id]/page.tsx`, `components/InterventiBlock.tsx` e `lib/interventi.ts`
+- il form nuovo/modifica intervento espone `Link fattura PDF`
+- la sezione `Fatture emesse` nella pagina progetto consente inline edit del link fattura e apertura in nuova tab
+
 ## Regole pratiche per nuovi agenti/chat
 
 - partire da:

@@ -1,6 +1,6 @@
 "use client";
 
-import { DashboardCockpitPage } from "@/app/page";
+import DashboardCockpitPage from "@/components/DashboardCockpitPage";
 
 export default function ClientiCockpitPage() {
   return (
@@ -8,10 +8,13 @@ export default function ClientiCockpitPage() {
       pageTitle="Clienti"
       pageSubtitle="Riepilogo clienti"
       showCockpitSection={false}
-      showCronoSection={false}
       showClientiSection
-      showClientiCockpit
+      showCronoSection={false}
+      showProjectsSection={false}
+      enableProjectFilters={false}
       enableClientFilters
+      showClientiCockpit
+      projectsView="compact"
     />
   );
 }

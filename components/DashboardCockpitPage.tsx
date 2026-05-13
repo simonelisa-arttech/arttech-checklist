@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, type UIEvent } from "react";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { useRouter } from "next/navigation";
 import ConfigMancante from "@/components/ConfigMancante";
 import CronoprogrammaPanel from "@/components/cronoprogramma/CronoprogrammaPanel";
 import Toast from "@/components/Toast";
@@ -907,7 +907,6 @@ function DashboardCockpitView({
     return <ConfigMancante />;
   }
   const router = useRouter();
-  const pathname = usePathname();
   const [items, setItems] = useState<Checklist[]>([]);
   const [clientiRegistry, setClientiRegistry] = useState<ClienteAnagraficaRow[]>([]);
   const [dashboardLoadError, setDashboardLoadError] = useState<string | null>(null);
@@ -5869,31 +5868,30 @@ function DashboardCockpitView({
   );
 }
 
-export default function DashboardCockpitPage() {
-  const pathname = usePathname();
-  const isDashboardRoute = pathname === "/dashboard";
-  const isClientiCockpitRoute = pathname === "/clienti-cockpit";
-
+export default function DashboardCockpitPage({
+  showCockpitSection = true,
+  showClientiSection = false,
+  showCronoSection = true,
+  showProjectsSection = false,
+  enableProjectFilters = false,
+  enableClientFilters = false,
+  showClientiCockpit = false,
+  projectsView = "compact",
+  pageTitle = "AT SYSTEM",
+  pageSubtitle = "Cockpit operativo",
+}: DashboardCockpitPageConfig = {}) {
   return (
     <DashboardCockpitView
-      pageTitle={
-        isDashboardRoute ? "Dashboard" : isClientiCockpitRoute ? "Clienti" : "AT SYSTEM"
-      }
-      pageSubtitle={
-        isDashboardRoute
-          ? "Progetti di tutti i clienti"
-          : isClientiCockpitRoute
-            ? "Riepilogo clienti"
-            : "Cockpit operativo"
-      }
-      showCockpitSection={!isClientiCockpitRoute}
-      showClientiSection={isClientiCockpitRoute}
-      showCronoSection={!isDashboardRoute && !isClientiCockpitRoute}
-      showProjectsSection={isDashboardRoute}
-      enableProjectFilters={isDashboardRoute}
-      enableClientFilters={isClientiCockpitRoute}
-      showClientiCockpit={isClientiCockpitRoute}
-      projectsView="compact"
+      pageTitle={pageTitle}
+      pageSubtitle={pageSubtitle}
+      showCockpitSection={showCockpitSection}
+      showClientiSection={showClientiSection}
+      showCronoSection={showCronoSection}
+      showProjectsSection={showProjectsSection}
+      enableProjectFilters={enableProjectFilters}
+      enableClientFilters={enableClientFilters}
+      showClientiCockpit={showClientiCockpit}
+      projectsView={projectsView}
     />
   );
 }

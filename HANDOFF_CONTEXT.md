@@ -193,6 +193,11 @@ Ordine reale da rispettare:
 - il clone progetto in `app/dashboard-estesa/page.tsx` copia anche `proforma_link_url` su checklist, licenze e accessori/ricambi
 - build e typecheck del repo possono restare appesi senza errori espliciti; fare sempre anche una verifica sintattica mirata dei file toccati
 
+### Interventi / fatture
+- `saas_interventi.fattura_url` e' gestito nel progetto checklist
+- `components/InterventiBlock.tsx` espone `Link fattura PDF` nei form intervento fatturato
+- `app/checklists/[id]/page.tsx` salva/carica `fattura_url` e mostra inline editor + CTA `Apri PDF` / `Apri link` nella sezione `Fatture emesse`
+
 ## Regole operative da rispettare
 
 - un solo step minimo e sicuro per volta
