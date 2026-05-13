@@ -85,6 +85,7 @@ type Checklist = {
   clienti_anagrafica?: { denominazione: string | null } | null;
   nome_checklist: string;
   proforma: string | null;
+  proforma_link_url?: string | null;
   po: string | null;
   magazzino_importazione: string | null;
   created_by_operatore: string | null;
@@ -488,6 +489,7 @@ function buildDuplicatedChecklistPayload(
     cliente_id: source.cliente_id ?? null,
     nome_checklist: buildDuplicateChecklistName(source.nome_checklist),
     proforma: source.proforma ?? null,
+    proforma_link_url: source.proforma_link_url ?? null,
     po: source.po ?? null,
     magazzino_importazione: source.magazzino_importazione ?? null,
     created_at: nowIso,
@@ -534,6 +536,30 @@ function buildDuplicatedItemPayload(item: Record<string, any>, checklistId: stri
     descrizione: item?.descrizione ?? null,
     quantita: item?.quantita ?? null,
     note: item?.note ?? null,
+    proforma_link_url: item?.proforma_link_url ?? null,
+    created_at: nowIso,
+    updated_at: nowIso,
+  });
+}
+
+function buildDuplicatedLicensePayload(
+  license: Record<string, any>,
+  checklistId: string,
+  nowIso: string
+) {
+  return cleanInsertPayload({
+    checklist_id: checklistId,
+    tipo: license?.tipo ?? null,
+    scadenza: license?.scadenza ?? null,
+    stato: license?.stato ?? null,
+    note: license?.note ?? null,
+    proforma_link_url: license?.proforma_link_url ?? null,
+    intestata_a: license?.intestata_a ?? null,
+    ref_univoco: license?.ref_univoco ?? null,
+    telefono: license?.telefono ?? null,
+    intestatario: license?.intestatario ?? null,
+    gestore: license?.gestore ?? null,
+    fornitore: license?.fornitore ?? null,
     created_at: nowIso,
     updated_at: nowIso,
   });
@@ -833,6 +859,7 @@ export default function DashboardEstesaPage() {
           l.tipo,
           l.scadenza,
           l.note,
+          l.proforma_link_url,
           l.ref_univoco,
           l.telefono,
           l.intestatario,
@@ -930,10 +957,17 @@ export default function DashboardEstesaPage() {
 
     try {
       const nowIso = new Date().toISOString();
-      const [operatoreRes, itemsRes, rawTasksRes, impiantiRes, impiantiCabinetRes] = await Promise.all([
+      const [operatoreRes, itemsRes, licensesRes, rawTasksRes, impiantiRes, impiantiCabinetRes] =
+        await Promise.all([
         fetch("/api/me-operatore", { credentials: "include" }).then((res) => res.json().catch(() => ({}))),
         dbFrom("checklist_items")
-          .select("codice, descrizione, quantita, note")
+          .select("codice, descrizione, quantita, note, proforma_link_url")
+          .eq("checklist_id", checklistId)
+          .order("created_at", { ascending: true }),
+        dbFrom("licenses")
+          .select(
+            "tipo, scadenza, stato, note, proforma_link_url, intestata_a, ref_univoco, telefono, intestatario, gestore, fornitore"
+          )
           .eq("checklist_id", checklistId)
           .order("created_at", { ascending: true }),
         dbFrom("checklist_tasks")
@@ -944,6 +978,7 @@ export default function DashboardEstesaPage() {
         dbFrom("checklist_impianti")
           .select(
             [
+              "id",
               "position",
               "impianto_codice",
               "impianto_descrizione",
@@ -976,7 +1011,7 @@ export default function DashboardEstesaPage() {
           )
           .eq("checklist_id", checklistId)
           .order("position", { ascending: true }),
-      ]);
+        ]);
 
       let tasksRes = rawTasksRes;
       if (
@@ -1017,6 +1052,9 @@ export default function DashboardEstesaPage() {
       }
 
       if (itemsRes.error) throw new Error(itemsRes.error.message || "Errore caricamento righe progetto");
+      if (licensesRes.error) {
+        throw new Error(licensesRes.error.message || "Errore caricamento licenze progetto");
+      }
       if (tasksRes.error) throw new Error(tasksRes.error.message || "Errore caricamento task progetto");
       if (impiantiRes.error) throw new Error(impiantiRes.error.message || "Errore caricamento impianti progetto");
       if (impiantiCabinetRes.error) {
@@ -1071,6 +1109,14 @@ export default function DashboardEstesaPage() {
       if (payloadItems.length > 0) {
         const { error } = await dbFrom("checklist_items").insert(payloadItems);
         if (error) throw new Error(`Errore duplicazione checklist_items: ${error.message || "insert fallito"}`);
+      }
+
+      const payloadLicenses = ((licensesRes.data as any[]) || []).map((license) =>
+        buildDuplicatedLicensePayload(license, newChecklistId, nowIso)
+      );
+      if (payloadLicenses.length > 0) {
+        const { error } = await dbFrom("licenses").insert(payloadLicenses);
+        if (error) throw new Error(`Errore duplicazione licenses: ${error.message || "insert fallito"}`);
       }
 
       const payloadTasks = ((tasksRes.data as any[]) || []).map((task) =>

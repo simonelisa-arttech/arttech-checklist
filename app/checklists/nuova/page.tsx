@@ -19,6 +19,7 @@ type ChecklistItem = {
   descrizione_custom?: string;
   qty: string;
   note: string;
+  proforma_link_url?: string;
   search?: string;
   categoria_filter?: string;
 };
@@ -27,6 +28,7 @@ type DraftLicenza = {
   tipo: string;
   scadenza: string;
   note: string;
+  proforma_link_url: string;
 };
 
 type CatalogItem = {
@@ -199,6 +201,7 @@ export default function NuovaChecklistPage() {
   const [referenteArtTechId, setReferenteArtTechId] = useState("");
   const [nomeChecklist, setNomeChecklist] = useState("");
   const [proforma, setProforma] = useState("");
+  const [proformaLinkUrl, setProformaLinkUrl] = useState("");
   const [magazzinoImportazione, setMagazzinoImportazione] = useState("");
   const [magazzinoDriveUrl, setMagazzinoDriveUrl] = useState("");
   const [saasPiano, setSaasPiano] = useState<string>("");
@@ -251,6 +254,7 @@ export default function NuovaChecklistPage() {
       descrizione: "",
       qty: "",
       note: "",
+      proforma_link_url: "",
       search: "",
       categoria_filter: "",
     },
@@ -260,6 +264,7 @@ export default function NuovaChecklistPage() {
     tipo: "",
     scadenza: "",
     note: "",
+    proforma_link_url: "",
   });
   const [licenzeError, setLicenzeError] = useState<string | null>(null);
 
@@ -393,6 +398,7 @@ export default function NuovaChecklistPage() {
         descrizione: "",
         qty: "",
         note: "",
+        proforma_link_url: "",
         search: "",
         categoria_filter: "",
       },
@@ -505,9 +511,10 @@ export default function NuovaChecklistPage() {
         tipo: newLicenza.tipo.trim(),
         scadenza: scadenzaISO,
         note: newLicenza.note.trim(),
+        proforma_link_url: newLicenza.proforma_link_url.trim(),
       },
     ]);
-    setNewLicenza({ tipo: "", scadenza: "", note: "" });
+    setNewLicenza({ tipo: "", scadenza: "", note: "", proforma_link_url: "" });
   }
 
   function removeDraftLicenza(idx: number) {
@@ -575,6 +582,7 @@ export default function NuovaChecklistPage() {
         referente_art_tech_nome: referenteArtTechNome,
         nome_checklist: nomeChecklist.trim(),
         proforma: proforma.trim() ? proforma.trim() : null,
+        proforma_link_url: proformaLinkUrl.trim() ? proformaLinkUrl.trim() : null,
         magazzino_importazione: magazzinoFields.codice || null,
         magazzino_drive_url: magazzinoFields.driveUrl || null,
         created_by_operatore: operatoreId,
@@ -662,6 +670,13 @@ export default function NuovaChecklistPage() {
         driveFallbackUsed = true;
         ({ data: created, error: errCreate } = await tryInsert(legacyPayload));
       }
+      if (errCreate && String(errCreate.message || "").toLowerCase().includes("proforma_link_url")) {
+        const sourcePayload = driveFallbackUsed
+          ? (({ magazzino_drive_url: _skip, ...rest }) => rest)(payloadChecklist)
+          : payloadChecklist;
+        const { proforma_link_url, ...legacyPayload } = sourcePayload;
+        ({ data: created, error: errCreate } = await tryInsert(legacyPayload));
+      }
       if (errCreate && isClienteIdMissing(errCreate)) {
         const sourcePayload = driveFallbackUsed
           ? (({ magazzino_drive_url: _skip, ...rest }) => rest)(payloadChecklist)
@@ -707,7 +722,7 @@ export default function NuovaChecklistPage() {
       const checklistId = created.id as string;
       if (driveFallbackUsed && magazzinoFields.driveUrl) {
         alert(
-          "Checklist creata. Il link Drive magazzino non e' stato salvato: colonna non disponibile nello schema cache / ambiente non migrato."
+          "Checklist creata. Il link Drive progetto non e' stato salvato: colonna non disponibile nello schema cache / ambiente non migrato."
         );
       }
 
@@ -759,8 +774,9 @@ export default function NuovaChecklistPage() {
           descrizione_custom: (r.descrizione_custom ?? "").trim(),
           qty: r.qty.trim(),
           note: r.note.trim(),
+          proforma_link_url: String(r.proforma_link_url || "").trim(),
         }))
-        .filter((r) => r.codice || r.descrizione || r.qty || r.note);
+        .filter((r) => r.codice || r.descrizione || r.qty || r.note || r.proforma_link_url);
 
       for (const r of normalizedRows) {
         if (r.qty !== "" && !isFiniteNumberString(r.qty)) {
@@ -795,6 +811,7 @@ export default function NuovaChecklistPage() {
             : null,
           quantita: r.qty === "" ? null : Number(r.qty),
           note: r.note ? r.note : null,
+          proforma_link_url: r.proforma_link_url ? r.proforma_link_url : null,
         }));
 
         const { error: errItems } = await dbFrom("checklist_items")
@@ -814,6 +831,7 @@ export default function NuovaChecklistPage() {
           scadenza: l.scadenza,
           stato: "attiva",
           note: l.note ? l.note : null,
+          proforma_link_url: l.proforma_link_url ? l.proforma_link_url : null,
         }));
         const { error: licErr } = await dbFrom("licenses").insert(payloadLicenze);
         if (licErr) {
@@ -969,6 +987,16 @@ export default function NuovaChecklistPage() {
             />
           </label>
 
+          <label>
+            Link Proforma<br />
+            <input
+              value={proformaLinkUrl}
+              onChange={(e) => setProformaLinkUrl(e.target.value)}
+              placeholder="https://drive.google.com/..."
+              style={{ width: "100%", padding: 10 }}
+            />
+          </label>
+
           <div
             style={{
               gridColumn: "1 / -1",
@@ -988,7 +1016,7 @@ export default function NuovaChecklistPage() {
             </label>
 
             <label>
-              Link Drive magazzino<br />
+              Link Drive Progetto<br />
               <input
                 value={magazzinoDriveUrl}
                 onChange={(e) => setMagazzinoDriveUrl(e.target.value)}
@@ -1489,6 +1517,7 @@ export default function NuovaChecklistPage() {
             entityId={null}
             multiple
             storagePrefix="checklist"
+            allowUploads={false}
           />
         </div>
 
@@ -1509,7 +1538,7 @@ export default function NuovaChecklistPage() {
               <div
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "2fr 1fr 2fr 120px",
+                  gridTemplateColumns: "2fr 1fr 2fr 2fr 120px",
                   gap: 0,
                   padding: "10px 12px",
                   fontWeight: 700,
@@ -1520,6 +1549,7 @@ export default function NuovaChecklistPage() {
                 <div>Tipo / Piano</div>
                 <div>Scadenza</div>
                 <div>Note</div>
+                <div>Link Proforma</div>
                 <div>Azioni</div>
               </div>
 
@@ -1528,7 +1558,7 @@ export default function NuovaChecklistPage() {
                   key={`${l.tipo}-${l.scadenza}-${idx}`}
                   style={{
                     display: "grid",
-                    gridTemplateColumns: "2fr 1fr 2fr 120px",
+                    gridTemplateColumns: "2fr 1fr 2fr 2fr 120px",
                     gap: 0,
                     padding: "10px 12px",
                     borderBottom: "1px solid #f5f5f5",
@@ -1539,6 +1569,15 @@ export default function NuovaChecklistPage() {
                   <div>{l.tipo || "—"}</div>
                   <div>{l.scadenza ? new Date(l.scadenza).toLocaleDateString() : "—"}</div>
                   <div>{l.note || "—"}</div>
+                  <div style={{ overflowWrap: "anywhere" }}>
+                    {l.proforma_link_url ? (
+                      <a href={l.proforma_link_url} target="_blank" rel="noreferrer">
+                        {l.proforma_link_url}
+                      </a>
+                    ) : (
+                      "—"
+                    )}
+                  </div>
                   <div>
                     <button
                       type="button"
@@ -1572,7 +1611,7 @@ export default function NuovaChecklistPage() {
             <div
               style={{
                 display: "grid",
-                gridTemplateColumns: "2fr 1fr 2fr 120px",
+                gridTemplateColumns: "2fr 1fr 2fr 2fr 120px",
                 gap: 10,
                 alignItems: "end",
               }}
@@ -1607,6 +1646,18 @@ export default function NuovaChecklistPage() {
                 <input
                   value={newLicenza.note}
                   onChange={(e) => setNewLicenza({ ...newLicenza, note: e.target.value })}
+                  style={{ width: "100%", padding: 10 }}
+                />
+              </label>
+              <label>
+                Link Proforma<br />
+                <input
+                  type="url"
+                  value={newLicenza.proforma_link_url}
+                  onChange={(e) =>
+                    setNewLicenza({ ...newLicenza, proforma_link_url: e.target.value })
+                  }
+                  placeholder="https://drive.google.com/..."
                   style={{ width: "100%", padding: 10 }}
                 />
               </label>
@@ -1645,7 +1696,7 @@ export default function NuovaChecklistPage() {
               <div
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "160px 1fr 120px 1fr",
+                  gridTemplateColumns: "160px 1fr 120px 1fr 1fr",
                   gap: 10,
                   alignItems: "center",
                 }}
@@ -1767,6 +1818,17 @@ export default function NuovaChecklistPage() {
                   <input
                     value={r.note}
                     onChange={(e) => updateRow(idx, "note", e.target.value)}
+                    style={{ width: "100%", padding: 10 }}
+                  />
+                </label>
+
+                <label>
+                  Link Proforma<br />
+                  <input
+                    type="url"
+                    value={r.proforma_link_url ?? ""}
+                    onChange={(e) => updateRow(idx, "proforma_link_url", e.target.value)}
+                    placeholder="https://drive.google.com/..."
                     style={{ width: "100%", padding: 10 }}
                   />
                 </label>

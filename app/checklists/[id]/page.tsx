@@ -83,6 +83,7 @@ type Checklist = {
   cliente_id: string | null;
   nome_checklist: string;
   proforma: string | null;
+  proforma_link_url?: string | null;
   po: string | null;
   magazzino_importazione: string | null;
   magazzino_drive_url: string | null;
@@ -173,6 +174,7 @@ type ChecklistItem = {
   descrizione: string | null;
   quantita: number | null;
   note: string | null;
+  proforma_link_url?: string | null;
   created_at: string;
 };
 
@@ -184,6 +186,7 @@ type ChecklistItemRow = {
   descrizione_custom?: string;
   quantita: string;
   note: string;
+  proforma_link_url?: string;
   search?: string;
 };
 
@@ -220,6 +223,7 @@ type Licenza = {
   scadenza: string | null;
   stato: string | null;
   note: string | null;
+  proforma_link_url?: string | null;
   intestata_a?: string | null;
   ref_univoco?: string | null;
   telefono?: string | null;
@@ -265,6 +269,7 @@ type NewLicenza = {
   tipo: string;
   scadenza: string;
   note: string;
+  proforma_link_url: string;
   intestata_a: string;
   ref_univoco: string;
   telefono: string;
@@ -628,6 +633,7 @@ type FormData = {
   cliente_id: string;
   nome_checklist: string;
   proforma: string;
+  proforma_link_url: string;
   po: string;
   magazzino_importazione: string;
   magazzino_drive_url: string;
@@ -828,6 +834,12 @@ function normalizeOperatoreDisplayValue(value?: string | null) {
   return raw;
 }
 
+function isUuidLike(value?: string | null) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+    String(value || "").trim()
+  );
+}
+
 function renderTextOrLink(value?: string | null) {
   const raw = String(value || "").trim();
   if (!raw) return "—";
@@ -837,6 +849,35 @@ function renderTextOrLink(value?: string | null) {
       {raw}
     </a>
   );
+}
+
+function resolveOperatoreDisplayValue(
+  values: {
+    explicitName?: string | null;
+    operatoreId?: string | null;
+    fallbackRef?: string | null;
+    email?: string | null;
+  },
+  operatoriMap: Map<string, string>
+) {
+  const explicitName = normalizeOperatoreDisplayValue(values.explicitName);
+  if (explicitName) return explicitName;
+
+  const operatoreId = String(values.operatoreId || "").trim();
+  if (operatoreId) {
+    const fromMap = normalizeOperatoreDisplayValue(operatoriMap.get(operatoreId) ?? null);
+    if (fromMap) return fromMap;
+  }
+
+  const fallbackRef = normalizeOperatoreDisplayValue(values.fallbackRef);
+  if (fallbackRef && !isUuidLike(fallbackRef)) return fallbackRef;
+
+  const email = normalizeOperatoreDisplayValue(values.email);
+  if (email) return email;
+
+  if (fallbackRef) return fallbackRef;
+  if (operatoreId) return operatoreId;
+  return null;
 }
 
 function normalizeRuleTargetValue(value?: string | null): string {
@@ -1760,6 +1801,7 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
     tipo: "",
     scadenza: "",
     note: "",
+    proforma_link_url: "",
     intestata_a: "CLIENTE",
     ref_univoco: "",
     telefono: "",
@@ -1773,6 +1815,7 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
     tipo: string;
     scadenza: string;
     note: string;
+    proforma_link_url: string;
     stato: "attiva" | "disattivata";
     intestata_a: string;
     ref_univoco: string;
@@ -2415,6 +2458,7 @@ function buildFormData(c: Checklist): FormData {
       cliente_id: asText(c.cliente_id),
       nome_checklist: asText(c.nome_checklist),
       proforma: asText(c.proforma),
+      proforma_link_url: asText(c.proforma_link_url),
       po: asText(c.po),
       magazzino_importazione: magazzino.codice,
       magazzino_drive_url: magazzino.driveUrl,
@@ -4353,6 +4397,7 @@ function buildFormData(c: Checklist): FormData {
         descrizione_custom: isCustom ? r.descrizione ?? "" : "",
         quantita: r.quantita != null ? String(r.quantita) : "",
         note: r.note ?? "",
+        proforma_link_url: String(r.proforma_link_url || "").trim(),
         search: "",
       };
     });
@@ -4808,12 +4853,6 @@ function buildFormData(c: Checklist): FormData {
   useEffect(() => {
     const checklistCliente = String(checklist?.cliente || "").trim();
     if (!checklistCliente) return;
-    const shouldLoadAlertSupport =
-      lazyDataLoaded.licenze ||
-      lazyDataLoaded.rinnovi ||
-      lazyDataLoaded.interventi ||
-      lazyDataLoaded.checklistOperativa;
-    if (!shouldLoadAlertSupport) return;
     (async () => {
       try {
         const { data, error: opErr } = await db<any[]>({
@@ -4827,10 +4866,10 @@ function buildFormData(c: Checklist): FormData {
           return;
         }
         const map = new Map<string, string>();
-        const activeOperatori = (data || []).filter((o: any) => {
-          if (!Boolean(o?.attivo)) return false;
-          return isSameClienteOperator(checklistCliente, o?.cliente ?? null);
-        });
+        const enabledOperatori = (data || []).filter((o: any) => Boolean(o?.attivo));
+        const activeOperatori = enabledOperatori.filter((o: any) =>
+          isSameClienteOperator(checklistCliente, o?.cliente ?? null)
+        );
         const list: AlertOperatore[] = activeOperatori.map((o: any) => ({
           id: o.id,
           nome: o.nome ?? null,
@@ -4841,9 +4880,9 @@ function buildFormData(c: Checklist): FormData {
           alert_enabled: Boolean(o.alert_enabled),
           alert_tasks: normalizeAlertTasks(o.alert_tasks),
         }));
-        activeOperatori.forEach((o: any) => {
+        enabledOperatori.forEach((o: any) => {
           const id = String(o?.id || "").trim();
-          const nome = String(o?.nome || "").trim();
+          const nome = String(o?.nome || o?.email || "").trim();
           if (id && nome) map.set(id, nome);
         });
         setOperatoriMap(map);
@@ -4877,10 +4916,6 @@ function buildFormData(c: Checklist): FormData {
     })();
   }, [
     checklist?.cliente,
-    lazyDataLoaded.checklistOperativa,
-    lazyDataLoaded.interventi,
-    lazyDataLoaded.licenze,
-    lazyDataLoaded.rinnovi,
   ]);
 
   useEffect(() => {
@@ -5974,6 +6009,7 @@ function buildFormData(c: Checklist): FormData {
           entityId={id}
           multiple
           storagePrefix="checklist-operativi"
+          allowUploads={false}
         />
       </div>
     </div>
@@ -6652,6 +6688,7 @@ function buildFormData(c: Checklist): FormData {
         descrizione_custom: "",
         quantita: "",
         note: "",
+        proforma_link_url: "",
         search: "",
       },
     ]);
@@ -6692,6 +6729,9 @@ function buildFormData(c: Checklist): FormData {
       scadenza: scadenzaISO,
       stato: "attiva",
       note: newLicenza.note.trim() ? newLicenza.note.trim() : null,
+      proforma_link_url: newLicenza.proforma_link_url.trim()
+        ? newLicenza.proforma_link_url.trim()
+        : null,
       intestata_a: newLicenza.intestata_a.trim() ? newLicenza.intestata_a.trim() : null,
       ref_univoco: newLicenza.ref_univoco.trim()
         ? newLicenza.ref_univoco.trim()
@@ -6715,6 +6755,7 @@ function buildFormData(c: Checklist): FormData {
       tipo: "",
       scadenza: "",
       note: "",
+      proforma_link_url: "",
       intestata_a: "CLIENTE",
       ref_univoco: "",
       telefono: "",
@@ -6740,6 +6781,7 @@ function buildFormData(c: Checklist): FormData {
       tipo?: string | null;
       scadenza?: string | null;
       note?: string | null;
+      proforma_link_url?: string | null;
       stato?: "attiva" | "disattivata";
       intestata_a?: string | null;
       ref_univoco?: string | null;
@@ -6768,6 +6810,7 @@ function buildFormData(c: Checklist): FormData {
       tipo: l.tipo ?? "",
       scadenza: l.scadenza ? l.scadenza.slice(0, 10) : "",
       note: l.note ?? "",
+      proforma_link_url: l.proforma_link_url ?? "",
       stato: (l.stato ?? "attiva") as "attiva" | "disattivata",
       intestata_a: l.intestata_a ?? "CLIENTE",
       ref_univoco: l.ref_univoco ?? "",
@@ -6794,6 +6837,9 @@ function buildFormData(c: Checklist): FormData {
       tipo: editingLicenza.tipo.trim(),
       scadenza: normalizedScadenza,
       note: editingLicenza.note.trim() ? editingLicenza.note.trim() : null,
+      proforma_link_url: editingLicenza.proforma_link_url.trim()
+        ? editingLicenza.proforma_link_url.trim()
+        : null,
       stato: editingLicenza.stato,
       intestata_a: editingLicenza.intestata_a.trim() ? editingLicenza.intestata_a.trim() : null,
       ref_univoco: editingLicenza.ref_univoco.trim()
@@ -7105,6 +7151,9 @@ function buildFormData(c: Checklist): FormData {
         ? formData.nome_checklist.trim()
         : null,
       proforma: formData.proforma.trim() ? formData.proforma.trim() : null,
+      proforma_link_url: formData.proforma_link_url.trim()
+        ? formData.proforma_link_url.trim()
+        : null,
       po: formData.po.trim() ? formData.po.trim() : null,
       magazzino_importazione: formData.magazzino_importazione.trim()
         ? formData.magazzino_importazione.trim()
@@ -7246,6 +7295,13 @@ function buildFormData(c: Checklist): FormData {
       driveFallbackUsed = true;
       ({ error: errUpdate } = await tryUpdate(legacyPayload));
     }
+    if (errUpdate && String(errUpdate.message || "").toLowerCase().includes("proforma_link_url")) {
+      const sourcePayload = driveFallbackUsed
+        ? (({ magazzino_drive_url: _skip, ...rest }) => rest)(payload)
+        : payload;
+      const { proforma_link_url, ...legacyPayload } = sourcePayload;
+      ({ error: errUpdate } = await tryUpdate(legacyPayload));
+    }
     if (errUpdate && isClienteIdMissing(errUpdate)) {
       const sourcePayload = driveFallbackUsed
         ? (({ magazzino_drive_url: _skip, ...rest }) => rest)(payload)
@@ -7281,7 +7337,7 @@ function buildFormData(c: Checklist): FormData {
     }
     if (driveFallbackUsed && formData.magazzino_drive_url.trim()) {
       alert(
-        "Checklist salvata. Il link Drive magazzino non e' stato salvato: colonna non disponibile nello schema cache / ambiente non migrato."
+        "Checklist salvata. Il link Drive progetto non e' stato salvato: colonna non disponibile nello schema cache / ambiente non migrato."
       );
     }
 
@@ -7303,6 +7359,7 @@ function buildFormData(c: Checklist): FormData {
         descrizione_custom: (r.descrizione_custom ?? "").trim(),
         quantita: r.quantita.trim(),
         note: r.note.trim(),
+        proforma_link_url: String(r.proforma_link_url || "").trim(),
       }))
       .filter((r) => {
         return (
@@ -7310,7 +7367,8 @@ function buildFormData(c: Checklist): FormData {
           r.descrizione ||
           r.descrizione_custom ||
           r.quantita ||
-          r.note
+          r.note ||
+          r.proforma_link_url
         );
       });
 
@@ -7353,6 +7411,7 @@ function buildFormData(c: Checklist): FormData {
           : null,
         quantita: r.quantita === "" ? null : Number(r.quantita),
         note: r.note ? r.note : null,
+        proforma_link_url: r.proforma_link_url ? r.proforma_link_url : null,
       }));
 
     if (existingPayload.length > 0) {
@@ -7378,6 +7437,7 @@ function buildFormData(c: Checklist): FormData {
           : null,
         quantita: r.quantita === "" ? null : Number(r.quantita),
         note: r.note ? r.note : null,
+        proforma_link_url: r.proforma_link_url ? r.proforma_link_url : null,
       }));
 
     if (insertPayload.length > 0) {
@@ -8135,7 +8195,7 @@ function buildFormData(c: Checklist): FormData {
             <div
               style={{
                 display: "grid",
-                gridTemplateColumns: "160px 1fr 120px 1fr",
+                gridTemplateColumns: "160px 1fr 120px 1fr 1fr",
                 gap: 0,
                 padding: 10,
                 fontWeight: 700,
@@ -8146,6 +8206,7 @@ function buildFormData(c: Checklist): FormData {
               <div>Descrizione</div>
               <div>Q.tà</div>
               <div>Note</div>
+              <div>Link Proforma</div>
             </div>
 
             {rows.map((r) => (
@@ -8153,7 +8214,7 @@ function buildFormData(c: Checklist): FormData {
                 key={r.id ?? r.client_id}
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "160px 1fr 120px 1fr",
+                  gridTemplateColumns: "160px 1fr 120px 1fr 1fr",
                   gap: 0,
                   padding: 10,
                   borderBottom: "1px solid #f1f1f1",
@@ -8165,6 +8226,7 @@ function buildFormData(c: Checklist): FormData {
                 </div>
                 <div>{r.quantita || "—"}</div>
                 <div>{r.note || "—"}</div>
+                <div>{renderTextOrLink(r.proforma_link_url)}</div>
               </div>
             ))}
           </div>
@@ -8185,7 +8247,7 @@ function buildFormData(c: Checklist): FormData {
               <div
                 style={{
                   display: "grid",
-                  gridTemplateColumns: "160px 1fr 120px 1fr 120px",
+                  gridTemplateColumns: "160px 1fr 120px 1fr 1fr 120px",
                   gap: 10,
                   alignItems: "center",
                 }}
@@ -8289,6 +8351,19 @@ function buildFormData(c: Checklist): FormData {
                   <input
                     value={r.note}
                     onChange={(e) => updateRowFields(idx, { note: e.target.value })}
+                    style={{ width: "100%", padding: 10 }}
+                  />
+                </label>
+
+                <label>
+                  Link Proforma<br />
+                  <input
+                    type="url"
+                    value={r.proforma_link_url ?? ""}
+                    onChange={(e) =>
+                      updateRowFields(idx, { proforma_link_url: e.target.value })
+                    }
+                    placeholder="https://drive.google.com/..."
                     style={{ width: "100%", padding: 10 }}
                   />
                 </label>
@@ -8514,6 +8589,23 @@ function buildFormData(c: Checklist): FormData {
               isEdit={isEdit}
             />
             <FieldRow
+              label="Link Proforma"
+              view={renderTextOrLink(checklist.proforma_link_url)}
+              edit={
+                isEdit ? (
+                  <input
+                    value={formData.proforma_link_url}
+                    onChange={(e) =>
+                      setFormData({ ...formData, proforma_link_url: e.target.value })
+                    }
+                    placeholder="https://drive.google.com/..."
+                    style={{ width: "100%", padding: 10 }}
+                  />
+                ) : undefined
+              }
+              isEdit={isEdit}
+            />
+            <FieldRow
               label="PO"
               view={checklist.po || "—"}
               edit={
@@ -8661,27 +8753,31 @@ function buildFormData(c: Checklist): FormData {
             <FieldRow
               label="Creato da"
               view={
-                normalizeOperatoreDisplayValue(checklist.created_by_name) ??
-                (checklist.created_by_operatore
-                  ? normalizeOperatoreDisplayValue(operatoriMap.get(checklist.created_by_operatore) ?? null) ??
-                    normalizeOperatoreDisplayValue(checklist.created_by) ??
-                    "—"
-                  : normalizeOperatoreDisplayValue(checklist.created_by) ??
-                    (estimatedCreatedByDisplay
-                      ? `Creato da (stimato): ${estimatedCreatedByDisplay}`
-                      : "—"))
+                resolveOperatoreDisplayValue(
+                  {
+                    explicitName: checklist.created_by_name,
+                    operatoreId: checklist.created_by_operatore,
+                    fallbackRef: checklist.created_by,
+                  },
+                  operatoriMap
+                ) ??
+                (estimatedCreatedByDisplay
+                  ? `Creato da (stimato): ${estimatedCreatedByDisplay}`
+                  : "—")
               }
               isEdit={false}
             />
             <FieldRow
               label="Modificato da"
               view={
-                normalizeOperatoreDisplayValue(checklist.updated_by_name) ??
-                (checklist.updated_by_operatore
-                  ? normalizeOperatoreDisplayValue(operatoriMap.get(checklist.updated_by_operatore) ?? null) ??
-                    normalizeOperatoreDisplayValue(checklist.updated_by) ??
-                    "—"
-                  : normalizeOperatoreDisplayValue(checklist.updated_by) ?? "—")
+                resolveOperatoreDisplayValue(
+                  {
+                    explicitName: checklist.updated_by_name,
+                    operatoreId: checklist.updated_by_operatore,
+                    fallbackRef: checklist.updated_by,
+                  },
+                  operatoriMap
+                ) ?? "—"
               }
               isEdit={false}
             />
@@ -9059,7 +9155,7 @@ function buildFormData(c: Checklist): FormData {
                   </div>
                   <div>
                     <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 4 }}>
-                      Link Drive magazzino
+                      Link Drive Progetto
                     </div>
                     <div>
                       {renderTextOrLink(
@@ -9090,7 +9186,7 @@ function buildFormData(c: Checklist): FormData {
                     </div>
                     <div>
                       <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 4 }}>
-                        Link Drive magazzino
+                        Link Drive Progetto
                       </div>
                       <input
                         value={formData.magazzino_drive_url}
@@ -10003,7 +10099,7 @@ function buildFormData(c: Checklist): FormData {
         <div style={{ display: "grid", gap: 12 }}>
           {renderCronoOperativiSection(
             "BLOCCO ATTIVITÀ",
-            "Allegati blocco attività (upload + link Drive)",
+            "Allegati blocco attività (link Drive)",
             "CHECKLIST_OPERATIVI",
             cronoOperativiForm,
             setCronoOperativiForm,
@@ -10018,7 +10114,7 @@ function buildFormData(c: Checklist): FormData {
           {isNoleggioProject
             ? renderCronoOperativiSection(
                 "BLOCCO DISINSTALLAZIONE",
-                "Allegati blocco disinstallazione (upload + link Drive)",
+                "Allegati blocco disinstallazione (link Drive)",
                 "CHECKLIST_DISINSTALLAZIONE",
                 cronoDisinstallazioneForm,
                 setCronoDisinstallazioneForm,
@@ -10838,6 +10934,7 @@ function buildFormData(c: Checklist): FormData {
                       if (l.intestatario) parts.push(l.intestatario);
                       if (l.gestore) parts.push(l.gestore);
                       if (l.fornitore) parts.push(l.fornitore);
+                      if (l.proforma_link_url) parts.push(`Proforma: ${l.proforma_link_url}`);
                       const suffix = parts.filter(Boolean).join(" · ");
                       return `${suffix} (${l.scadenza ? l.scadenza.slice(0, 10) : "—"})`;
                     }
@@ -11051,12 +11148,28 @@ function buildFormData(c: Checklist): FormData {
                           placeholder="Fornitore"
                           style={{ width: "100%", padding: 6 }}
                         />
+                        <input
+                          type="url"
+                          value={editingLicenza?.proforma_link_url ?? ""}
+                          onChange={(e) =>
+                            setEditingLicenza((prev) =>
+                              prev ? { ...prev, proforma_link_url: e.target.value } : prev
+                            )
+                          }
+                          placeholder="Link Proforma"
+                          style={{ width: "100%", padding: 6 }}
+                        />
                       </div>
                     ) : (
                       <div style={{ overflowWrap: "anywhere" }}>
-                        {[l.ref_univoco, l.telefono, l.intestatario, l.gestore, l.fornitore]
-                          .filter(Boolean)
-                          .join(" · ") || "—"}
+                        <div>
+                          {[l.ref_univoco, l.telefono, l.intestatario, l.gestore, l.fornitore]
+                            .filter(Boolean)
+                            .join(" · ") || "—"}
+                        </div>
+                        {l.proforma_link_url ? (
+                          <div style={{ marginTop: 6 }}>{renderTextOrLink(l.proforma_link_url)}</div>
+                        ) : null}
                       </div>
                     )}
                   </div>
@@ -11187,6 +11300,18 @@ function buildFormData(c: Checklist): FormData {
                   <input
                     value={newLicenza.note}
                     onChange={(e) => setNewLicenza({ ...newLicenza, note: e.target.value })}
+                    style={{ width: "100%", padding: 10 }}
+                  />
+                </label>
+                <label>
+                  Link Proforma<br />
+                  <input
+                    type="url"
+                    value={newLicenza.proforma_link_url}
+                    onChange={(e) =>
+                      setNewLicenza({ ...newLicenza, proforma_link_url: e.target.value })
+                    }
+                    placeholder="https://drive.google.com/..."
                     style={{ width: "100%", padding: 10 }}
                   />
                 </label>
@@ -11466,11 +11591,12 @@ function buildFormData(c: Checklist): FormData {
         </div>
         <div style={{ marginBottom: 12 }}>
           <AttachmentsPanel
-            title="Foto / Video progetto (upload file + link)"
+            title="Foto / Video progetto (link)"
             entityType="CHECKLIST"
             entityId={id}
             multiple
             storagePrefix="checklist"
+            allowUploads={false}
           />
         </div>
         </>,
@@ -11906,11 +12032,12 @@ function buildFormData(c: Checklist): FormData {
             )}
             <div style={{ marginBottom: 12 }}>
               <AttachmentsPanel
-                title="Allegati task (upload + link Drive)"
+                title="Allegati task (link Drive)"
                 entityType="CHECKLIST_TASK"
                 entityId={taskFilesTask.id}
                 multiple
                 storagePrefix="task"
+                allowUploads={false}
               />
             </div>
 

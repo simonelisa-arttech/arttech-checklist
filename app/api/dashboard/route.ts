@@ -56,7 +56,7 @@ export async function GET(request: Request) {
   }
 
   const checklistFieldsBase = `
-      id, cliente, cliente_id, nome_checklist, proforma, po, magazzino_importazione,
+      id, cliente, cliente_id, nome_checklist, proforma, proforma_link_url, po, magazzino_importazione,
       created_by_operatore, updated_by_operatore,
       tipo_saas, saas_piano, saas_scadenza, saas_stato, saas_tipo, saas_note,
       m2_calcolati, m2_inclusi, m2_allocati,
@@ -200,7 +200,7 @@ export async function GET(request: Request) {
         .select("checklist_id, licenze_attive, licenze_prossima_scadenza, licenze_dettaglio"),
       supabaseAdmin
         .from("licenses")
-        .select("id, checklist_id, tipo, scadenza, note, ref_univoco, telefono, intestatario, gestore, fornitore"),
+        .select("id, checklist_id, tipo, scadenza, note, proforma_link_url, ref_univoco, telefono, intestatario, gestore, fornitore"),
       supabaseAdmin.from("asset_serials").select("checklist_id, seriale"),
       supabaseAdmin
         .from("catalog_items")

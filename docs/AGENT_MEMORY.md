@@ -147,6 +147,14 @@ Domini principali:
   - redirect dashboard con `focus=sim-association`
   - `sim_id` aggiunto solo per SIM persistite
 
+### Progetti / allegati / proforma
+- `checklists.proforma_link_url` e' gestito in `app/checklists/nuova/page.tsx` e `app/checklists/[id]/page.tsx`
+- `licenses.proforma_link_url` e `checklist_items.proforma_link_url` sono editabili, persistiti e ricaricati
+- la duplicazione progetto copia ora anche `proforma_link_url` su checklist, licenze e accessori/ricambi senza copiare gli ID originali
+- i pannelli allegati shared (`AttachmentsPanel`) supportano modalita' link-only con `allowUploads={false}`
+- cronoprogramma, task attachments, foto/video e allegati progetto nuovo usano ora la modalita' link-only
+- `Creato da` / `Modificato da` nella pagina progetto usano fallback robusti su `created_by_operatore` / `updated_by_operatore` e mappa operatori completa
+
 ## Regole pratiche per nuovi agenti/chat
 
 - partire da:

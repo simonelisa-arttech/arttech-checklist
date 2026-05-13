@@ -51,6 +51,7 @@ type Props = {
   title?: string;
   multiple?: boolean;
   storagePrefix?: string;
+  allowUploads?: boolean;
   onCountChange?: (count: number) => void;
 };
 
@@ -89,6 +90,7 @@ export default function AttachmentsPanel({
   title = "Allegati",
   multiple = false,
   storagePrefix,
+  allowUploads = true,
   onCountChange,
 }: Props) {
   const [rows, setRows] = useState<AttachmentRow[]>([]);
@@ -329,59 +331,76 @@ export default function AttachmentsPanel({
       )}
       {error && <div style={{ color: "#b91c1c", fontSize: 12, marginBottom: 8 }}>{error}</div>}
 
-      <div style={{ display: "grid", gridTemplateColumns: "180px 1fr auto", gap: 8, marginBottom: 8 }}>
-        <select
-          value={documentType}
-          disabled={!canUse}
-          onChange={(e) => setDocumentType(e.target.value as DocumentType)}
-          style={{ padding: 8, borderRadius: 8, border: "1px solid #ddd", background: "white" }}
-        >
-          {DOCUMENT_TYPE_OPTIONS.map((option) => (
-            <option key={option.value} value={option.value}>
-              Tipo documento: {option.label}
-            </option>
-          ))}
-        </select>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <input
-            ref={fileInputRef}
-            type="file"
-            multiple={multiple}
+      {allowUploads ? (
+        <div style={{ display: "grid", gridTemplateColumns: "180px 1fr auto", gap: 8, marginBottom: 8 }}>
+          <select
+            value={documentType}
             disabled={!canUse}
-            onChange={(e) => setFiles(e.target.files ? Array.from(e.target.files) : [])}
-            style={{ display: "none" }}
-          />
+            onChange={(e) => setDocumentType(e.target.value as DocumentType)}
+            style={{ padding: 8, borderRadius: 8, border: "1px solid #ddd", background: "white" }}
+          >
+            {DOCUMENT_TYPE_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                Tipo documento: {option.label}
+              </option>
+            ))}
+          </select>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple={multiple}
+              disabled={!canUse}
+              onChange={(e) => setFiles(e.target.files ? Array.from(e.target.files) : [])}
+              style={{ display: "none" }}
+            />
+            <button
+              type="button"
+              disabled={!canUse}
+              onClick={() => fileInputRef.current?.click()}
+              style={{
+                padding: "8px 10px",
+                borderRadius: 8,
+                border: "1px solid #ddd",
+                background: "white",
+                cursor: canUse ? "pointer" : "not-allowed",
+              }}
+            >
+              Seleziona file
+            </button>
+            <div style={{ fontSize: 12, opacity: 0.75 }}>
+              {files.length === 0
+                ? "Nessun file selezionato"
+                : files.length === 1
+                  ? files[0].name
+                  : `${files.length} file selezionati`}
+            </div>
+          </div>
           <button
             type="button"
-            disabled={!canUse}
-            onClick={() => fileInputRef.current?.click()}
-            style={{
-              padding: "8px 10px",
-              borderRadius: 8,
-              border: "1px solid #ddd",
-              background: "white",
-              cursor: canUse ? "pointer" : "not-allowed",
-            }}
+            disabled={!canSave}
+            onClick={uploadSelected}
+            style={{ padding: "8px 10px", borderRadius: 8, border: "1px solid #111", background: "#111", color: "white" }}
           >
-            Seleziona file
+            Carica file
           </button>
-          <div style={{ fontSize: 12, opacity: 0.75 }}>
-            {files.length === 0
-              ? "Nessun file selezionato"
-              : files.length === 1
-                ? files[0].name
-                : `${files.length} file selezionati`}
-          </div>
         </div>
-        <button
-          type="button"
-          disabled={!canSave}
-          onClick={uploadSelected}
-          style={{ padding: "8px 10px", borderRadius: 8, border: "1px solid #111", background: "#111", color: "white" }}
-        >
-          Carica file
-        </button>
-      </div>
+      ) : (
+        <div style={{ marginBottom: 8 }}>
+          <select
+            value={documentType}
+            disabled={!canUse}
+            onChange={(e) => setDocumentType(e.target.value as DocumentType)}
+            style={{ width: "100%", maxWidth: 260, padding: 8, borderRadius: 8, border: "1px solid #ddd", background: "white" }}
+          >
+            {DOCUMENT_TYPE_OPTIONS.map((option) => (
+              <option key={option.value} value={option.value}>
+                Tipo documento: {option.label}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr auto", gap: 8, marginBottom: 12 }}>
         <input

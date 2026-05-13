@@ -186,6 +186,13 @@ Ordine reale da rispettare:
 - non reintrodurre stati UI fittizi non persistiti (`PAGATA`, `EMESSA`) se il dominio reale usa `FATTURATO`
 - distinguere pagamento via `payment_status`, non tramite `stato` fatturazione
 
+### Progetti / proforma / allegati
+- `app/checklists/nuova/page.tsx` e `app/checklists/[id]/page.tsx` gestiscono `checklists.proforma_link_url`
+- `licenses.proforma_link_url` e `checklist_items.proforma_link_url` sono supportati in create/edit/load/readonly
+- `components/AttachmentsPanel.tsx` ha `allowUploads`; usato in modalita' link-only per allegati progetto nuovo, cronoprogramma, foto/video e allegati task
+- il clone progetto in `app/dashboard-estesa/page.tsx` copia anche `proforma_link_url` su checklist, licenze e accessori/ricambi
+- build e typecheck del repo possono restare appesi senza errori espliciti; fare sempre anche una verifica sintattica mirata dei file toccati
+
 ## Regole operative da rispettare
 
 - un solo step minimo e sicuro per volta
