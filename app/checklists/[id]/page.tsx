@@ -145,6 +145,21 @@ type ChecklistImpianto = {
   m2_calcolati?: number | null;
   data_disinstallazione?: string | null;
   note?: string | null;
+  cabinet_configurazioni?: ChecklistImpiantoCabinet[];
+};
+
+type ChecklistImpiantoCabinet = {
+  id?: string;
+  checklist_id?: string | null;
+  checklist_impianto_id?: string | null;
+  codice_magazzino?: string | null;
+  fornitore?: string | null;
+  dimensione_cabinet?: string | null;
+  numero_cabinet?: number | null;
+  file_rcfg_url?: string | null;
+  file_rcfg_name?: string | null;
+  note?: string | null;
+  position?: number | null;
 };
 
 type ProjectInterventoRow = InterventoRow & {
@@ -334,8 +349,43 @@ function buildLegacyChecklistImpianto(checklist: Checklist): ChecklistImpianto[]
       m2_calcolati: checklist.m2_calcolati,
       data_disinstallazione: checklist.data_disinstallazione,
       note: null,
+      cabinet_configurazioni: [],
     },
   ];
+}
+
+const CLIENT_TEMP_ID_PREFIX = "__tmp__";
+
+function buildClientTempId(scope: string) {
+  const cryptoUuid =
+    typeof globalThis !== "undefined" && "crypto" in globalThis && globalThis.crypto?.randomUUID
+      ? globalThis.crypto.randomUUID()
+      : `${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+  return `${CLIENT_TEMP_ID_PREFIX}${scope}_${cryptoUuid}`;
+}
+
+function isClientTempId(value?: string | null) {
+  return String(value || "").startsWith(CLIENT_TEMP_ID_PREFIX);
+}
+
+function getStoredUploadPath(value?: string | null) {
+  const normalized = String(value || "").trim();
+  if (!normalized.toLowerCase().startsWith("upload:")) return null;
+  const path = normalized.slice("upload:".length).trim();
+  return path || null;
+}
+
+function isChecklistImpiantiCabinetSchemaMissing(error: any) {
+  const msg = `${error?.message || ""}`.toLowerCase();
+  const details = `${error?.details || ""}`.toLowerCase();
+  return (
+    msg.includes("checklist_impianti_cabinet") &&
+    (msg.includes("does not exist") ||
+      msg.includes("could not find the table") ||
+      msg.includes("schema cache") ||
+      msg.includes("relation")) ||
+    details.includes("checklist_impianti_cabinet")
+  );
 }
 
 function getChecklistImpiantoTipoValue(value: unknown) {
@@ -379,7 +429,7 @@ function normalizeChecklistImpianto(value: unknown, checklistId?: string | null)
   const m2Calcolati = Number(row.m2_calcolati);
   const nit = Number(row.nit);
   return {
-    ...(id ? { id } : {}),
+    ...(id ? { id } : { id: buildClientTempId("impianto") }),
     checklist_id: String(row.checklist_id || checklistId || "").trim() || null,
     position: Number.isFinite(Number(row.position)) ? Number(row.position) : null,
     impianto_codice: String(row.impianto_codice || "").trim() || null,
@@ -401,11 +451,17 @@ function normalizeChecklistImpianto(value: unknown, checklistId?: string | null)
           : undefined
       ) ?? null,
     note: String(row.note || "").trim() || null,
+    cabinet_configurazioni: Array.isArray(row.cabinet_configurazioni)
+      ? (row.cabinet_configurazioni as unknown[])
+          .map((item) => normalizeChecklistImpiantoCabinet(item, checklistId, id || null))
+          .filter(Boolean) as ChecklistImpiantoCabinet[]
+      : [],
   };
 }
 
 function buildEmptyChecklistImpianto(): ChecklistImpianto {
   return {
+    id: buildClientTempId("impianto"),
     impianto_quantita: 1,
     dimensioni: "",
     passo: "",
@@ -414,7 +470,60 @@ function buildEmptyChecklistImpianto(): ChecklistImpianto {
     tipo_struttura: "",
     data_disinstallazione: null,
     note: "",
+    cabinet_configurazioni: [],
   };
+}
+
+function normalizeChecklistImpiantoCabinet(
+  value: unknown,
+  checklistId?: string | null,
+  impiantoId?: string | null
+): ChecklistImpiantoCabinet | null {
+  const row = value && typeof value === "object" ? (value as Record<string, unknown>) : null;
+  if (!row) return null;
+  const id = String(row.id || "").trim();
+  const numeroCabinet = Number(row.numero_cabinet);
+  return {
+    ...(id ? { id } : { id: buildClientTempId("cabinet") }),
+    checklist_id: String(row.checklist_id || checklistId || "").trim() || null,
+    checklist_impianto_id: String(row.checklist_impianto_id || impiantoId || "").trim() || null,
+    codice_magazzino: String(row.codice_magazzino || "").trim() || null,
+    fornitore: String(row.fornitore || "").trim() || null,
+    dimensione_cabinet: String(row.dimensione_cabinet || "").trim() || null,
+    numero_cabinet:
+      Number.isFinite(numeroCabinet) && numeroCabinet > 0 ? Math.floor(numeroCabinet) : null,
+    file_rcfg_url: String(row.file_rcfg_url || "").trim() || null,
+    file_rcfg_name: String(row.file_rcfg_name || "").trim() || null,
+    note: String(row.note || "").trim() || null,
+    position: Number.isFinite(Number(row.position)) ? Number(row.position) : null,
+  };
+}
+
+function buildEmptyChecklistImpiantoCabinet(defaultCodiceMagazzino = ""): ChecklistImpiantoCabinet {
+  return {
+    id: buildClientTempId("cabinet"),
+    codice_magazzino: defaultCodiceMagazzino.trim() || null,
+    fornitore: "",
+    dimensione_cabinet: "",
+    numero_cabinet: null,
+    file_rcfg_url: null,
+    file_rcfg_name: null,
+    note: "",
+    position: null,
+  };
+}
+
+function hasChecklistImpiantoCabinetData(value: ChecklistImpiantoCabinet | null | undefined) {
+  if (!value) return false;
+  return [
+    value.codice_magazzino,
+    value.fornitore,
+    value.dimensione_cabinet,
+    value.numero_cabinet,
+    value.file_rcfg_url,
+    value.file_rcfg_name,
+    value.note,
+  ].some((item) => item != null && String(item).trim() !== "");
 }
 
 type ChecklistTaskDocument = {
@@ -1225,7 +1334,8 @@ function hasChecklistImpiantiData(list: ChecklistImpianto[]) {
       imp.note,
       imp.impianto_quantita,
       imp.numero_facce,
-    ].some((value) => value != null && String(value).trim() !== "")
+    ].some((value) => value != null && String(value).trim() !== "") ||
+    (imp.cabinet_configurazioni || []).some((cabinet) => hasChecklistImpiantoCabinetData(cabinet))
   );
 }
 
@@ -1612,6 +1722,9 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
   const [checklist, setChecklist] = useState<Checklist | null>(null);
   const [formData, setFormData] = useState<FormData | null>(null);
   const [impianti, setImpianti] = useState<ChecklistImpianto[]>([]);
+  const [cabinetPanelsOpen, setCabinetPanelsOpen] = useState<Record<string, boolean>>({});
+  const [cabinetPendingFiles, setCabinetPendingFiles] = useState<Record<string, File | null>>({});
+  const [cabinetError, setCabinetError] = useState<string | null>(null);
   const [originalData, setOriginalData] = useState<FormData | null>(null);
   const [editMode, setEditMode] = useState(false);
   const [dimensioniLocal, setDimensioniLocal] = useState("");
@@ -2189,9 +2302,15 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
         .map((row) => normalizeChecklistImpianto(row, checklist.id))
         .filter(Boolean) as ChecklistImpianto[];
       setImpianti(normalizedImpianti.length > 0 ? normalizedImpianti : [buildEmptyChecklistImpianto()]);
+      setCabinetPendingFiles({});
+      setCabinetPanelsOpen({});
+      setCabinetError(null);
       return;
     }
     setImpianti([buildEmptyChecklistImpianto()]);
+    setCabinetPendingFiles({});
+    setCabinetPanelsOpen({});
+    setCabinetError(null);
   }, [checklist]);
 
   useEffect(() => {
@@ -4073,6 +4192,8 @@ function buildFormData(c: Checklist): FormData {
 
     let impiantiData: any[] | null = null;
     let impiantiErr: any = null;
+    let impiantiCabinetData: any[] | null = null;
+    let impiantiCabinetErr: any = null;
     ({
       data: impiantiData,
       error: impiantiErr,
@@ -4104,6 +4225,27 @@ function buildFormData(c: Checklist): FormData {
       console.error("Errore caricamento checklist_impianti", impiantiErr);
     }
 
+    ({
+      data: impiantiCabinetData,
+      error: impiantiCabinetErr,
+    } = await db<any[]>({
+      table: "checklist_impianti_cabinet",
+      op: "select",
+      select:
+        "id, checklist_id, checklist_impianto_id, codice_magazzino, fornitore, dimensione_cabinet, numero_cabinet, file_rcfg_url, file_rcfg_name, note, position",
+      filter: { checklist_id: id },
+      order: [{ col: "position", asc: true }],
+    }));
+    if (impiantiCabinetErr) {
+      if (isChecklistImpiantiCabinetSchemaMissing(impiantiCabinetErr)) {
+        console.warn("Tabella checklist_impianti_cabinet non disponibile nello schema corrente");
+        impiantiCabinetData = [];
+        impiantiCabinetErr = null;
+      } else {
+        console.error("Errore caricamento checklist_impianti_cabinet", impiantiCabinetErr);
+      }
+    }
+
     if (!catalogLoaded) {
       if (isPerfEnabled()) console.time(`[perf][checklist][load#${loadSeq}] db catalog_items`);
       const { data: catalogData, error: catalogErr } = await db<any[]>({
@@ -4133,8 +4275,27 @@ function buildFormData(c: Checklist): FormData {
     }
 
       const headChecklist = (head || {}) as Checklist;
+      const cabinetByImpiantoId = new Map<string, ChecklistImpiantoCabinet[]>();
+      ((impiantiCabinetData || []) as unknown[]).forEach((row) => {
+        const normalizedCabinet = normalizeChecklistImpiantoCabinet(row, id);
+        if (!normalizedCabinet) return;
+        const impiantoId = String(normalizedCabinet.checklist_impianto_id || "").trim();
+        if (!impiantoId) return;
+        const bucket = cabinetByImpiantoId.get(impiantoId) || [];
+        bucket.push(normalizedCabinet);
+        bucket.sort((a, b) => Number(a.position ?? 0) - Number(b.position ?? 0));
+        cabinetByImpiantoId.set(impiantoId, bucket);
+      });
       const impiantiRows = ((impiantiData || []) as unknown[])
         .map((row) => normalizeChecklistImpianto(row, id))
+        .map((row) =>
+          row
+            ? {
+                ...row,
+                cabinet_configurazioni: cabinetByImpiantoId.get(String(row.id || "").trim()) || [],
+              }
+            : null
+        )
         .filter(Boolean) as ChecklistImpianto[];
       headChecklist.impianti =
         impiantiRows.length > 0
@@ -4928,11 +5089,52 @@ function buildFormData(c: Checklist): FormData {
     editMode && formData ? formData.noleggio_vendita : checklist?.noleggio_vendita
   );
 
+  function getDefaultCabinetCodiceMagazzino() {
+    const magazzino = splitMagazzinoFields(
+      formData?.magazzino_importazione || checklist?.magazzino_importazione || "",
+      formData?.magazzino_drive_url || checklist?.magazzino_drive_url || ""
+    );
+    return String(magazzino.codice || formData?.magazzino_importazione || "").trim();
+  }
+
+  function getImpiantoEditorKey(impianto: ChecklistImpianto, index: number) {
+    const rawId = String(impianto.id || "").trim();
+    return rawId || `impianto-${index}`;
+  }
+
+  function getCabinetEditorKey(
+    impianto: ChecklistImpianto,
+    impiantoIndex: number,
+    cabinet: ChecklistImpiantoCabinet,
+    cabinetIndex: number
+  ) {
+    const impiantoKey = getImpiantoEditorKey(impianto, impiantoIndex);
+    const cabinetId = String(cabinet.id || "").trim();
+    return `${impiantoKey}:cabinet:${cabinetId || cabinetIndex}`;
+  }
+
   function addImpianto() {
     setImpianti((prev) => [...prev, buildEmptyChecklistImpianto()]);
   }
 
   function removeImpianto(index: number) {
+    const impianto = impianti[index];
+    if (impianto) {
+      const impiantoKey = getImpiantoEditorKey(impianto, index);
+      setCabinetPanelsOpen((prev) => {
+        const { [impiantoKey]: _skip, ...rest } = prev;
+        return rest;
+      });
+      setCabinetPendingFiles((prev) => {
+        const next: Record<string, File | null> = {};
+        Object.entries(prev).forEach(([key, file]) => {
+          if (!key.startsWith(`${impiantoKey}:cabinet:`)) {
+            next[key] = file;
+          }
+        });
+        return next;
+      });
+    }
     setImpianti((prev) => {
       const next = prev.filter((_, idx) => idx !== index);
       return next.length > 0 ? next : [buildEmptyChecklistImpianto()];
@@ -4949,41 +5151,215 @@ function buildFormData(c: Checklist): FormData {
     );
   }
 
+  function toggleCabinetPanel(impianto: ChecklistImpianto, index: number) {
+    const key = getImpiantoEditorKey(impianto, index);
+    setCabinetPanelsOpen((prev) => ({ ...prev, [key]: !prev[key] }));
+  }
+
+  function addCabinetConfigurazione(impiantoIndex: number) {
+    const defaultCodiceMagazzino = getDefaultCabinetCodiceMagazzino();
+    setImpianti((prev) =>
+      prev.map((impianto, idx) =>
+        idx === impiantoIndex
+          ? {
+              ...impianto,
+              cabinet_configurazioni: [
+                ...(impianto.cabinet_configurazioni || []),
+                buildEmptyChecklistImpiantoCabinet(defaultCodiceMagazzino),
+              ],
+            }
+          : impianto
+      )
+    );
+    setCabinetError(null);
+  }
+
+  function removeCabinetConfigurazione(impiantoIndex: number, cabinetIndex: number) {
+    const impianto = impianti[impiantoIndex];
+    const cabinet = impianto?.cabinet_configurazioni?.[cabinetIndex];
+    if (impianto && cabinet) {
+      setCabinetPendingFile(impianto, impiantoIndex, cabinet, cabinetIndex, null);
+    }
+    setImpianti((prev) =>
+      prev.map((impianto, idx) => {
+        if (idx !== impiantoIndex) return impianto;
+        const nextCabinet = (impianto.cabinet_configurazioni || []).filter(
+          (_, currentIndex) => currentIndex !== cabinetIndex
+        );
+        return { ...impianto, cabinet_configurazioni: nextCabinet };
+      })
+    );
+  }
+
+  function updateCabinetConfigurazione(
+    impiantoIndex: number,
+    cabinetIndex: number,
+    field: keyof ChecklistImpiantoCabinet,
+    value: string | number | null
+  ) {
+    setImpianti((prev) =>
+      prev.map((impianto, idx) => {
+        if (idx !== impiantoIndex) return impianto;
+        const nextCabinet = (impianto.cabinet_configurazioni || []).map((cabinet, currentIndex) =>
+          currentIndex === cabinetIndex ? { ...cabinet, [field]: value } : cabinet
+        );
+        return { ...impianto, cabinet_configurazioni: nextCabinet };
+      })
+    );
+  }
+
+  function setCabinetPendingFile(
+    impianto: ChecklistImpianto,
+    impiantoIndex: number,
+    cabinet: ChecklistImpiantoCabinet,
+    cabinetIndex: number,
+    file: File | null
+  ) {
+    const key = getCabinetEditorKey(impianto, impiantoIndex, cabinet, cabinetIndex);
+    setCabinetPendingFiles((prev) => {
+      if (!file) {
+        const { [key]: _skip, ...rest } = prev;
+        return rest;
+      }
+      return { ...prev, [key]: file };
+    });
+  }
+
+  async function openCabinetRcfgFile(cabinet: ChecklistImpiantoCabinet) {
+    const rawUrl = String(cabinet.file_rcfg_url || "").trim();
+    if (!rawUrl) return;
+    const storagePath = getStoredUploadPath(rawUrl);
+    if (storagePath) {
+      const { data, error: urlErr } = await storageSignedUrl(storagePath);
+      if (urlErr || !data?.signedUrl) {
+        setCabinetError("Errore apertura file cabinet: " + (urlErr?.message || "URL non disponibile"));
+        return;
+      }
+      window.open(data.signedUrl, "_blank", "noopener,noreferrer");
+      return;
+    }
+    window.open(rawUrl, "_blank", "noopener,noreferrer");
+  }
+
   async function salvaImpianti(checklistId: string) {
-    const normalizedImpianti: ChecklistImpianto[] = impianti
-      .map((imp) => ({
-        impianto_descrizione: String(imp.impianto_descrizione || "").trim() || null,
-        tipo_impianto: getChecklistImpiantoTipoValue(imp),
-        tipo_struttura: String(imp.tipo_struttura || "").trim() || null,
-        impianto_indirizzo: String(imp.impianto_indirizzo || "").trim() || null,
-        passo: String(imp.passo || "").trim() || null,
-        dimensioni: String(imp.dimensioni || "").trim() || null,
-        nit: Number.isFinite(Number(imp.nit)) && Number(imp.nit) > 0 ? Math.floor(Number(imp.nit)) : null,
-        data_disinstallazione: String(imp.data_disinstallazione || "").trim() || null,
-        impianto_quantita:
-          Number.isFinite(Number(imp.impianto_quantita)) && Number(imp.impianto_quantita) > 0
-            ? Math.floor(Number(imp.impianto_quantita))
-            : 1,
-        numero_facce:
-          Number.isFinite(Number(imp.numero_facce)) && Number(imp.numero_facce) > 0
-            ? Math.floor(Number(imp.numero_facce))
-            : 1,
-        note: String(imp.note || "").trim() || null,
-      }))
-      .filter((imp) =>
-        [
-          imp.impianto_descrizione,
-          imp.tipo_impianto,
-          imp.tipo_struttura,
-          imp.impianto_indirizzo,
-          imp.passo,
-          imp.dimensioni,
-          imp.nit,
-          imp.note,
-          imp.impianto_quantita,
-          imp.numero_facce,
-        ].some((value) => value != null && String(value).trim() !== "")
+    setCabinetError(null);
+
+    const normalizedImpianti = impianti
+      .map((imp, impiantoIndex) => {
+        const normalizedCabinet = (imp.cabinet_configurazioni || [])
+          .map((cabinet, cabinetIndex) => {
+            const pendingFile =
+              cabinetPendingFiles[getCabinetEditorKey(imp, impiantoIndex, cabinet, cabinetIndex)] ||
+              null;
+            return {
+              source_id: !isClientTempId(cabinet.id) ? String(cabinet.id || "").trim() || null : null,
+              checklist_id: checklistId,
+              checklist_impianto_id:
+                !isClientTempId(cabinet.checklist_impianto_id)
+                  ? String(cabinet.checklist_impianto_id || "").trim() || null
+                  : null,
+              codice_magazzino: String(cabinet.codice_magazzino || "").trim() || null,
+              fornitore: String(cabinet.fornitore || "").trim() || null,
+              dimensione_cabinet: String(cabinet.dimensione_cabinet || "").trim() || null,
+              numero_cabinet:
+                Number.isFinite(Number(cabinet.numero_cabinet)) && Number(cabinet.numero_cabinet) > 0
+                  ? Math.floor(Number(cabinet.numero_cabinet))
+                  : null,
+              file_rcfg_url: String(cabinet.file_rcfg_url || "").trim() || null,
+              file_rcfg_name: String(cabinet.file_rcfg_name || "").trim() || null,
+              note: String(cabinet.note || "").trim() || null,
+              pending_file: pendingFile,
+            };
+          })
+          .filter(
+            (cabinet) =>
+              hasChecklistImpiantoCabinetData(cabinet as ChecklistImpiantoCabinet) ||
+              Boolean(cabinet.pending_file)
+          );
+
+        const normalizedImpianto = {
+          source_id: !isClientTempId(imp.id) ? String(imp.id || "").trim() || null : null,
+          impianto_descrizione: String(imp.impianto_descrizione || "").trim() || null,
+          tipo_impianto: getChecklistImpiantoTipoValue(imp),
+          tipo_struttura: String(imp.tipo_struttura || "").trim() || null,
+          impianto_indirizzo: String(imp.impianto_indirizzo || "").trim() || null,
+          passo: String(imp.passo || "").trim() || null,
+          dimensioni: String(imp.dimensioni || "").trim() || null,
+          nit:
+            Number.isFinite(Number(imp.nit)) && Number(imp.nit) > 0
+              ? Math.floor(Number(imp.nit))
+              : null,
+          data_disinstallazione: String(imp.data_disinstallazione || "").trim() || null,
+          impianto_quantita:
+            Number.isFinite(Number(imp.impianto_quantita)) && Number(imp.impianto_quantita) > 0
+              ? Math.floor(Number(imp.impianto_quantita))
+              : 1,
+          numero_facce:
+            Number.isFinite(Number(imp.numero_facce)) && Number(imp.numero_facce) > 0
+              ? Math.floor(Number(imp.numero_facce))
+              : 1,
+          note: String(imp.note || "").trim() || null,
+          cabinet_configurazioni: normalizedCabinet,
+        };
+
+        const hasBaseData = [
+          normalizedImpianto.impianto_descrizione,
+          normalizedImpianto.tipo_impianto,
+          normalizedImpianto.tipo_struttura,
+          normalizedImpianto.impianto_indirizzo,
+          normalizedImpianto.passo,
+          normalizedImpianto.dimensioni,
+          normalizedImpianto.nit,
+          normalizedImpianto.note,
+          normalizedImpianto.impianto_quantita,
+          normalizedImpianto.numero_facce,
+        ].some((value) => value != null && String(value).trim() !== "");
+
+        return hasBaseData || normalizedCabinet.length > 0 ? normalizedImpianto : null;
+      })
+      .filter(Boolean);
+
+    const hasCabinetRows = normalizedImpianti.some(
+      (impianto) => (impianto?.cabinet_configurazioni || []).length > 0
+    );
+
+    let cabinetTableAvailable = true;
+    let existingCabinetRows: any[] = [];
+    const { data: existingCabinetData, error: existingCabinetErr } = await dbFrom(
+      "checklist_impianti_cabinet"
+    )
+      .select("id, checklist_id, checklist_impianto_id, file_rcfg_url")
+      .eq("checklist_id", checklistId);
+    if (existingCabinetErr) {
+      if (isChecklistImpiantiCabinetSchemaMissing(existingCabinetErr)) {
+        cabinetTableAvailable = false;
+      } else {
+        throw new Error(
+          logSupabaseError("load checklist_impianti_cabinet", existingCabinetErr) ||
+            "Errore caricamento configurazioni cabinet"
+        );
+      }
+    } else {
+      existingCabinetRows = (existingCabinetData as any[]) || [];
+    }
+
+    if (!cabinetTableAvailable && hasCabinetRows) {
+      throw new Error(
+        "La tabella checklist_impianti_cabinet non risulta disponibile. Eseguire la migration dedicata prima di salvare le configurazioni cabinet."
       );
+    }
+
+    if (cabinetTableAvailable) {
+      const { error: deleteCabinetErr } = await dbFrom("checklist_impianti_cabinet")
+        .delete()
+        .eq("checklist_id", checklistId);
+      if (deleteCabinetErr) {
+        throw new Error(
+          logSupabaseError("delete checklist_impianti_cabinet", deleteCabinetErr) ||
+            "Errore eliminazione configurazioni cabinet"
+        );
+      }
+    }
 
     const { error: deleteErr } = await dbFrom("checklist_impianti")
       .delete()
@@ -4996,33 +5372,58 @@ function buildFormData(c: Checklist): FormData {
     }
 
     if (normalizedImpianti.length === 0) {
+      for (const oldRow of existingCabinetRows) {
+        const storagePath = getStoredUploadPath(String(oldRow?.file_rcfg_url || "").trim());
+        if (!storagePath) continue;
+        const { error: storageErr } = await storageRemove(storagePath);
+        if (storageErr) {
+          console.warn("Errore pulizia file cabinet", storageErr.message, storagePath);
+        }
+      }
+      setCabinetPendingFiles({});
       return [];
     }
 
     const payload = normalizedImpianti.map((imp, index) => ({
       checklist_id: checklistId,
       position: index,
-      impianto_descrizione: imp.impianto_descrizione,
-      tipo_impianto: imp.tipo_impianto,
-      tipo_struttura: imp.tipo_struttura,
-      impianto_indirizzo: imp.impianto_indirizzo,
-      passo: imp.passo,
-      dimensioni: imp.dimensioni,
-      nit: imp.nit,
-      impianto_quantita: imp.impianto_quantita,
-      numero_facce: imp.numero_facce,
+      impianto_descrizione: imp?.impianto_descrizione ?? null,
+      tipo_impianto: imp?.tipo_impianto ?? null,
+      tipo_struttura: imp?.tipo_struttura ?? null,
+      impianto_indirizzo: imp?.impianto_indirizzo ?? null,
+      passo: imp?.passo ?? null,
+      dimensioni: imp?.dimensioni ?? null,
+      nit: imp?.nit ?? null,
+      impianto_quantita: imp?.impianto_quantita ?? 1,
+      numero_facce: imp?.numero_facce ?? 1,
       data_disinstallazione:
-        String(imp.data_disinstallazione || formData?.data_disinstallazione || "").trim() || null,
-      note: imp.note,
+        String(imp?.data_disinstallazione || formData?.data_disinstallazione || "").trim() || null,
+      note: imp?.note ?? null,
     }));
 
-    let { error: insertErr } = await dbFrom("checklist_impianti").insert(payload);
+    let insertData: any[] | null = null;
+    let insertErr: any = null;
+    ({
+      data: insertData,
+      error: insertErr,
+    } = await dbFrom("checklist_impianti")
+      .insert(payload)
+      .select(
+        "id, checklist_id, position, impianto_codice, impianto_descrizione, tipo_impianto, tipo_struttura, impianto_indirizzo, passo, dimensioni, nit, impianto_quantita, numero_facce, m2_calcolati, data_disinstallazione, note"
+      ));
     if (
       insertErr &&
       String(insertErr.message || "").toLowerCase().includes("data_disinstallazione")
     ) {
       const legacyPayload = payload.map(({ data_disinstallazione: _skip, ...row }) => row);
-      ({ error: insertErr } = await dbFrom("checklist_impianti").insert(legacyPayload));
+      ({
+        data: insertData,
+        error: insertErr,
+      } = await dbFrom("checklist_impianti")
+        .insert(legacyPayload)
+        .select(
+          "id, checklist_id, position, impianto_codice, impianto_descrizione, tipo_impianto, tipo_struttura, impianto_indirizzo, passo, dimensioni, nit, impianto_quantita, numero_facce, m2_calcolati, note"
+        ));
     }
     if (insertErr) {
       throw new Error(
@@ -5030,12 +5431,105 @@ function buildFormData(c: Checklist): FormData {
           "Errore salvataggio impianti checklist"
       );
     }
-    return normalizedImpianti.map((imp, index) => ({
+
+    const insertedImpianti = ((insertData || []) as unknown[])
+      .map((row) => normalizeChecklistImpianto(row, checklistId))
+      .filter(Boolean) as ChecklistImpianto[];
+    insertedImpianti.sort((a, b) => Number(a.position ?? 0) - Number(b.position ?? 0));
+
+    const retainedStoragePaths = new Set<string>();
+    let insertedCabinetRows: ChecklistImpiantoCabinet[] = [];
+
+    if (cabinetTableAvailable) {
+      const cabinetPayload: Record<string, any>[] = [];
+
+      for (const insertedImpianto of insertedImpianti) {
+        const impiantoPosition = Number(insertedImpianto.position ?? 0);
+        const sourceImpianto = normalizedImpianti[impiantoPosition];
+        if (!sourceImpianto) continue;
+
+        for (const [cabinetIndex, cabinet] of (sourceImpianto.cabinet_configurazioni || []).entries()) {
+          let fileRcfgUrl = cabinet.file_rcfg_url ?? null;
+          let fileRcfgName = cabinet.file_rcfg_name ?? null;
+
+          if (cabinet.pending_file) {
+            const safeName = cabinet.pending_file.name.replace(/[^\w.\-]+/g, "_");
+            const storagePath =
+              `checklists/${checklistId}/impianti/${insertedImpianto.id}/cabinet/` +
+              `${Date.now()}_${cabinetIndex}_${safeName}`;
+            const { error: uploadErr } = await storageUpload(storagePath, cabinet.pending_file);
+            if (uploadErr) {
+              throw new Error("Errore upload file cabinet: " + uploadErr.message);
+            }
+            fileRcfgUrl = `upload:${storagePath}`;
+            fileRcfgName = cabinet.pending_file.name;
+          }
+
+          const retainedPath = getStoredUploadPath(fileRcfgUrl);
+          if (retainedPath) retainedStoragePaths.add(retainedPath);
+
+          cabinetPayload.push({
+            checklist_id: checklistId,
+            checklist_impianto_id: insertedImpianto.id || null,
+            codice_magazzino: cabinet.codice_magazzino ?? null,
+            fornitore: cabinet.fornitore ?? null,
+            dimensione_cabinet: cabinet.dimensione_cabinet ?? null,
+            numero_cabinet: cabinet.numero_cabinet ?? null,
+            file_rcfg_url: fileRcfgUrl,
+            file_rcfg_name: fileRcfgName,
+            note: cabinet.note ?? null,
+            position: cabinetIndex,
+          });
+        }
+      }
+
+      if (cabinetPayload.length > 0) {
+        const { data: insertedCabinetData, error: insertCabinetErr } = await dbFrom(
+          "checklist_impianti_cabinet"
+        )
+          .insert(cabinetPayload)
+          .select(
+            "id, checklist_id, checklist_impianto_id, codice_magazzino, fornitore, dimensione_cabinet, numero_cabinet, file_rcfg_url, file_rcfg_name, note, position"
+          );
+        if (insertCabinetErr) {
+          throw new Error(
+            logSupabaseError("insert checklist_impianti_cabinet", insertCabinetErr) ||
+              "Errore salvataggio configurazioni cabinet"
+          );
+        }
+        insertedCabinetRows = ((insertedCabinetData || []) as unknown[])
+          .map((row) => normalizeChecklistImpiantoCabinet(row, checklistId))
+          .filter(Boolean) as ChecklistImpiantoCabinet[];
+      }
+    }
+
+    const oldStoragePaths = new Set<string>();
+    existingCabinetRows.forEach((row) => {
+      const storagePath = getStoredUploadPath(String(row?.file_rcfg_url || "").trim());
+      if (storagePath) oldStoragePaths.add(storagePath);
+    });
+    for (const storagePath of oldStoragePaths) {
+      if (retainedStoragePaths.has(storagePath)) continue;
+      const { error: storageErr } = await storageRemove(storagePath);
+      if (storageErr) {
+        console.warn("Errore pulizia file cabinet", storageErr.message, storagePath);
+      }
+    }
+
+    const cabinetByImpiantoId = new Map<string, ChecklistImpiantoCabinet[]>();
+    insertedCabinetRows.forEach((cabinet) => {
+      const impiantoId = String(cabinet.checklist_impianto_id || "").trim();
+      if (!impiantoId) return;
+      const bucket = cabinetByImpiantoId.get(impiantoId) || [];
+      bucket.push(cabinet);
+      bucket.sort((a, b) => Number(a.position ?? 0) - Number(b.position ?? 0));
+      cabinetByImpiantoId.set(impiantoId, bucket);
+    });
+
+    setCabinetPendingFiles({});
+    return insertedImpianti.map((imp) => ({
       ...imp,
-      checklist_id: checklistId,
-      position: index,
-      data_disinstallazione:
-        String(imp.data_disinstallazione || formData?.data_disinstallazione || "").trim() || null,
+      cabinet_configurazioni: cabinetByImpiantoId.get(String(imp.id || "").trim()) || [],
     }));
   }
 
@@ -6934,6 +7428,8 @@ function buildFormData(c: Checklist): FormData {
     if (originalData) setFormData(originalData);
     setEditingLicenzaId(null);
     setEditingLicenza(null);
+    setCabinetPendingFiles({});
+    setCabinetError(null);
     setEditMode(false);
     if (id) {
       load(id);
@@ -6988,6 +7484,7 @@ function buildFormData(c: Checklist): FormData {
     }
 
     let taskDocsData: any[] = [];
+    let cabinetFilesData: any[] = [];
     {
       const { data, error } = await db<any[]>({
         table: "checklist_task_documents",
@@ -7016,13 +7513,35 @@ function buildFormData(c: Checklist): FormData {
         }
       }
     }
+    {
+      const { data, error } = await db<any[]>({
+        table: "checklist_impianti_cabinet",
+        op: "select",
+        select: "id, file_rcfg_url",
+        filter: { checklist_id: id },
+        limit: 1000,
+      });
+      if (!error) {
+        cabinetFilesData = data || [];
+      } else if (!isChecklistImpiantiCabinetSchemaMissing(error)) {
+        const emsg =
+          logSupabaseError("load checklist_impianti_cabinet", error) ||
+          "Errore caricamento configurazioni cabinet";
+        alert(emsg);
+        setItemsError(emsg);
+        return;
+      }
+    }
     const paths = (docsData || [])
       .map((d: any) => d.storage_path)
       .filter(Boolean);
     const taskPaths = (taskDocsData || [])
       .map((d: any) => d.storage_path)
       .filter(Boolean);
-    const allPaths = [...paths, ...taskPaths];
+    const cabinetPaths = (cabinetFilesData || [])
+      .map((d: any) => getStoredUploadPath(String(d?.file_rcfg_url || "").trim()))
+      .filter(Boolean);
+    const allPaths = [...paths, ...taskPaths, ...cabinetPaths];
     if (allPaths.length > 0) {
       let storageErr: { message: string } | null = null;
       for (const path of allPaths) {
@@ -7070,6 +7589,18 @@ function buildFormData(c: Checklist): FormData {
         setItemsError(msg);
         return;
       }
+    }
+
+    const { error: cabinetDeleteErr } = await dbFrom("checklist_impianti_cabinet")
+      .delete()
+      .eq("checklist_id", id);
+    if (cabinetDeleteErr && !isChecklistImpiantiCabinetSchemaMissing(cabinetDeleteErr)) {
+      const msg =
+        logSupabaseError("delete checklist_impianti_cabinet", cabinetDeleteErr) ||
+        "Errore eliminazione configurazioni cabinet";
+      alert(msg);
+      setItemsError(msg);
+      return;
     }
 
     const { error: checklistErr } = await dbFrom("checklists").delete().eq("id", id);
@@ -8915,11 +9446,11 @@ function buildFormData(c: Checklist): FormData {
             style={{
               display: "flex",
               flexWrap: "wrap",
-            alignItems: "center",
-            justifyContent: "space-between",
-            gap: 10,
-          }}
-        >
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 10,
+            }}
+          >
             <div style={{ fontWeight: 800 }}>IMPIANTI</div>
             <button
               type="button"
@@ -8938,142 +9469,449 @@ function buildFormData(c: Checklist): FormData {
             </button>
           </div>
 
-          {impianti.map((imp, index) => (
+          {cabinetError ? (
             <div
-              key={imp.id || index}
               style={{
-                border: "1px solid #eee",
-                borderRadius: 10,
-                padding: 12,
-                background: "#fafafa",
-                display: "grid",
-                gap: 10,
+                color: "#b91c1c",
+                fontSize: 12,
+                padding: "8px 10px",
+                borderRadius: 8,
+                background: "#fff1f2",
+                border: "1px solid #fecaca",
               }}
             >
+              {cabinetError}
+            </div>
+          ) : null}
+
+          {impianti.map((imp, index) => {
+            const impiantoKey = getImpiantoEditorKey(imp, index);
+            const cabinetRows = imp.cabinet_configurazioni || [];
+            const cabinetPanelOpen = cabinetPanelsOpen[impiantoKey] === true;
+            return (
               <div
+                key={imp.id || index}
                 style={{
-                  display: "flex",
-                  flexWrap: "wrap",
-                  alignItems: "center",
-                  justifyContent: "space-between",
+                  border: "1px solid #eee",
+                  borderRadius: 10,
+                  padding: 12,
+                  background: "#fafafa",
+                  display: "grid",
                   gap: 10,
                 }}
               >
-                <div style={{ fontWeight: 700 }}>Impianto #{index + 1}</div>
-                <button
-                  type="button"
-                  onClick={() => removeImpianto(index)}
+                <div
                   style={{
-                    padding: "6px 10px",
-                    borderRadius: 8,
-                    border: "1px solid #fecaca",
-                    background: "#fff1f2",
-                    color: "#b91c1c",
-                    cursor: "pointer",
-                    fontSize: 12,
-                    fontWeight: 700,
+                    display: "flex",
+                    flexWrap: "wrap",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: 10,
                   }}
                 >
-                  Rimuovi
-                </button>
-              </div>
+                  <div style={{ fontWeight: 700 }}>Impianto #{index + 1}</div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                    <button
+                      type="button"
+                      onClick={() => toggleCabinetPanel(imp, index)}
+                      style={{
+                        padding: "6px 10px",
+                        borderRadius: 8,
+                        border: "1px solid #cbd5e1",
+                        background: cabinetPanelOpen ? "#eef2ff" : "white",
+                        color: "#1e3a8a",
+                        cursor: "pointer",
+                        fontSize: 12,
+                        fontWeight: 700,
+                      }}
+                    >
+                      Composizione cabinet
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => removeImpianto(index)}
+                      style={{
+                        padding: "6px 10px",
+                        borderRadius: 8,
+                        border: "1px solid #fecaca",
+                        background: "#fff1f2",
+                        color: "#b91c1c",
+                        cursor: "pointer",
+                        fontSize: 12,
+                        fontWeight: 700,
+                      }}
+                    >
+                      Rimuovi
+                    </button>
+                  </div>
+                </div>
 
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-                  gap: 10,
-                }}
-              >
-                <label style={{ display: "grid", gap: 6, fontSize: 13 }}>
-                  <span>Quantità</span>
-                  <input
-                    type="number"
-                    min={1}
-                    step={1}
-                    value={
-                      Number.isFinite(Number(imp.impianto_quantita)) &&
-                      Number(imp.impianto_quantita) > 0
-                        ? Number(imp.impianto_quantita)
-                        : 1
-                    }
-                    onChange={(e) => {
-                      const next = Number(e.target.value);
-                      updateImpianto(
-                        index,
-                        "impianto_quantita",
-                        Number.isFinite(next) && next > 0 ? Math.floor(next) : 1
-                      );
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+                    gap: 10,
+                  }}
+                >
+                  <label style={{ display: "grid", gap: 6, fontSize: 13 }}>
+                    <span>Quantità</span>
+                    <input
+                      type="number"
+                      min={1}
+                      step={1}
+                      value={
+                        Number.isFinite(Number(imp.impianto_quantita)) &&
+                        Number(imp.impianto_quantita) > 0
+                          ? Number(imp.impianto_quantita)
+                          : 1
+                      }
+                      onChange={(e) => {
+                        const next = Number(e.target.value);
+                        updateImpianto(
+                          index,
+                          "impianto_quantita",
+                          Number.isFinite(next) && next > 0 ? Math.floor(next) : 1
+                        );
+                      }}
+                      style={{ width: "100%", padding: 10 }}
+                    />
+                  </label>
+
+                  <label style={{ display: "grid", gap: 6, fontSize: 13 }}>
+                    <span>Dimensioni</span>
+                    <input
+                      value={String(imp.dimensioni || "")}
+                      placeholder="es. 3x2"
+                      onChange={(e) => updateImpianto(index, "dimensioni", e.target.value)}
+                      style={{ width: "100%", padding: 10 }}
+                    />
+                  </label>
+
+                  <label style={{ display: "grid", gap: 6, fontSize: 13 }}>
+                    <span>Passo</span>
+                    <input
+                      value={String(imp.passo || "")}
+                      placeholder="es. P2.6"
+                      onChange={(e) => updateImpianto(index, "passo", e.target.value)}
+                      style={{ width: "100%", padding: 10 }}
+                    />
+                  </label>
+
+                  <label style={{ display: "grid", gap: 6, fontSize: 13 }}>
+                    <span>NIT (luminosità)</span>
+                    <input
+                      type="number"
+                      min={0}
+                      step={1}
+                      value={imp.nit == null ? "" : String(imp.nit)}
+                      placeholder="es. 6500"
+                      onChange={(e) => {
+                        const raw = e.target.value.trim();
+                        const next = Number(raw);
+                        updateImpianto(
+                          index,
+                          "nit",
+                          raw && Number.isFinite(next) ? Math.max(0, Math.floor(next)) : null
+                        );
+                      }}
+                      style={{ width: "100%", padding: 10 }}
+                    />
+                  </label>
+
+                  <label style={{ display: "grid", gap: 6, fontSize: 13 }}>
+                    <span>Tipo</span>
+                    <select
+                      value={String(getChecklistImpiantoTipoValue(imp) || "")}
+                      onChange={(e) => updateImpianto(index, "tipo_impianto", e.target.value)}
+                      style={{ width: "100%", padding: 10 }}
+                    >
+                      <option value="">—</option>
+                      <option value="INDOOR">Indoor</option>
+                      <option value="OUTDOOR">Outdoor</option>
+                    </select>
+                  </label>
+
+                  <label style={{ display: "grid", gap: 6, fontSize: 13 }}>
+                    <span>Note</span>
+                    <input
+                      value={String(imp.note || "")}
+                      onChange={(e) => updateImpianto(index, "note", e.target.value)}
+                      style={{ width: "100%", padding: 10 }}
+                    />
+                  </label>
+                </div>
+
+                {cabinetPanelOpen ? (
+                  <div
+                    style={{
+                      border: "1px solid #dbeafe",
+                      borderRadius: 10,
+                      padding: 12,
+                      background: "#f8fbff",
+                      display: "grid",
+                      gap: 10,
                     }}
-                    style={{ width: "100%", padding: 10 }}
-                  />
-                </label>
-
-                <label style={{ display: "grid", gap: 6, fontSize: 13 }}>
-                  <span>Dimensioni</span>
-                  <input
-                    value={String(imp.dimensioni || "")}
-                    placeholder="es. 3x2"
-                    onChange={(e) => updateImpianto(index, "dimensioni", e.target.value)}
-                    style={{ width: "100%", padding: 10 }}
-                  />
-                </label>
-
-                <label style={{ display: "grid", gap: 6, fontSize: 13 }}>
-                  <span>Passo</span>
-                  <input
-                    value={String(imp.passo || "")}
-                    placeholder="es. P2.6"
-                    onChange={(e) => updateImpianto(index, "passo", e.target.value)}
-                    style={{ width: "100%", padding: 10 }}
-                  />
-                </label>
-
-                <label style={{ display: "grid", gap: 6, fontSize: 13 }}>
-                  <span>NIT (luminosità)</span>
-                  <input
-                    type="number"
-                    min={0}
-                    step={1}
-                    value={imp.nit == null ? "" : String(imp.nit)}
-                    placeholder="es. 6500"
-                    onChange={(e) => {
-                      const raw = e.target.value.trim();
-                      const next = Number(raw);
-                      updateImpianto(
-                        index,
-                        "nit",
-                        raw && Number.isFinite(next) ? Math.max(0, Math.floor(next)) : null
-                      );
-                    }}
-                    style={{ width: "100%", padding: 10 }}
-                  />
-                </label>
-
-                <label style={{ display: "grid", gap: 6, fontSize: 13 }}>
-                  <span>Tipo</span>
-                  <select
-                    value={String(getChecklistImpiantoTipoValue(imp) || "")}
-                    onChange={(e) => updateImpianto(index, "tipo_impianto", e.target.value)}
-                    style={{ width: "100%", padding: 10 }}
                   >
-                    <option value="">—</option>
-                    <option value="INDOOR">Indoor</option>
-                    <option value="OUTDOOR">Outdoor</option>
-                  </select>
-                </label>
+                    <div
+                      style={{
+                        display: "flex",
+                        flexWrap: "wrap",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        gap: 10,
+                      }}
+                    >
+                      <div style={{ fontWeight: 800, color: "#1d4ed8" }}>Composizione cabinet</div>
+                      <button
+                        type="button"
+                        onClick={() => addCabinetConfigurazione(index)}
+                        style={{
+                          padding: "6px 10px",
+                          borderRadius: 8,
+                          border: "1px solid #bfdbfe",
+                          background: "white",
+                          color: "#1d4ed8",
+                          cursor: "pointer",
+                          fontSize: 12,
+                          fontWeight: 700,
+                        }}
+                      >
+                        + Aggiungi configurazione
+                      </button>
+                    </div>
 
-                <label style={{ display: "grid", gap: 6, fontSize: 13 }}>
-                  <span>Note</span>
-                  <input
-                    value={String(imp.note || "")}
-                    onChange={(e) => updateImpianto(index, "note", e.target.value)}
-                    style={{ width: "100%", padding: 10 }}
-                  />
-                </label>
+                    {cabinetRows.length === 0 ? (
+                      <div style={{ fontSize: 13, color: "#64748b" }}>
+                        Nessuna configurazione cabinet per questo impianto.
+                      </div>
+                    ) : null}
+
+                    {cabinetRows.map((cabinet, cabinetIndex) => {
+                      const cabinetKey = getCabinetEditorKey(imp, index, cabinet, cabinetIndex);
+                      const pendingFile = cabinetPendingFiles[cabinetKey] || null;
+                      const fileLabel = pendingFile?.name || cabinet.file_rcfg_name || "";
+                      return (
+                        <div
+                          key={cabinet.id || cabinetIndex}
+                          style={{
+                            border: "1px solid #dbeafe",
+                            borderRadius: 10,
+                            padding: 12,
+                            background: "white",
+                            display: "grid",
+                            gap: 10,
+                          }}
+                        >
+                          <div
+                            style={{
+                              display: "flex",
+                              flexWrap: "wrap",
+                              alignItems: "center",
+                              justifyContent: "space-between",
+                              gap: 10,
+                            }}
+                          >
+                            <div style={{ fontWeight: 700 }}>
+                              Configurazione cabinet #{cabinetIndex + 1}
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => removeCabinetConfigurazione(index, cabinetIndex)}
+                              style={{
+                                padding: "6px 10px",
+                                borderRadius: 8,
+                                border: "1px solid #fecaca",
+                                background: "#fff1f2",
+                                color: "#b91c1c",
+                                cursor: "pointer",
+                                fontSize: 12,
+                                fontWeight: 700,
+                              }}
+                            >
+                              Rimuovi configurazione
+                            </button>
+                          </div>
+
+                          <div
+                            style={{
+                              display: "grid",
+                              gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+                              gap: 10,
+                            }}
+                          >
+                            <label style={{ display: "grid", gap: 6, fontSize: 13 }}>
+                              <span>Codice magazzino</span>
+                              <input
+                                value={String(cabinet.codice_magazzino || "")}
+                                placeholder={getDefaultCabinetCodiceMagazzino() || "Codice magazzino"}
+                                onChange={(e) =>
+                                  updateCabinetConfigurazione(
+                                    index,
+                                    cabinetIndex,
+                                    "codice_magazzino",
+                                    e.target.value
+                                  )
+                                }
+                                style={{ width: "100%", padding: 10 }}
+                              />
+                            </label>
+
+                            <label style={{ display: "grid", gap: 6, fontSize: 13 }}>
+                              <span>Fornitore</span>
+                              <input
+                                value={String(cabinet.fornitore || "")}
+                                onChange={(e) =>
+                                  updateCabinetConfigurazione(index, cabinetIndex, "fornitore", e.target.value)
+                                }
+                                style={{ width: "100%", padding: 10 }}
+                              />
+                            </label>
+
+                            <label style={{ display: "grid", gap: 6, fontSize: 13 }}>
+                              <span>Dimensione cabinet</span>
+                              <input
+                                value={String(cabinet.dimensione_cabinet || "")}
+                                placeholder="500x500 / 500x1000"
+                                onChange={(e) =>
+                                  updateCabinetConfigurazione(
+                                    index,
+                                    cabinetIndex,
+                                    "dimensione_cabinet",
+                                    e.target.value
+                                  )
+                                }
+                                style={{ width: "100%", padding: 10 }}
+                              />
+                            </label>
+
+                            <label style={{ display: "grid", gap: 6, fontSize: 13 }}>
+                              <span>N° cabinet</span>
+                              <input
+                                type="number"
+                                min={0}
+                                step={1}
+                                value={
+                                  cabinet.numero_cabinet == null ? "" : String(cabinet.numero_cabinet)
+                                }
+                                onChange={(e) => {
+                                  const raw = e.target.value.trim();
+                                  const next = Number(raw);
+                                  updateCabinetConfigurazione(
+                                    index,
+                                    cabinetIndex,
+                                    "numero_cabinet",
+                                    raw && Number.isFinite(next) ? Math.max(0, Math.floor(next)) : null
+                                  );
+                                }}
+                                style={{ width: "100%", padding: 10 }}
+                              />
+                            </label>
+
+                            <label
+                              style={{
+                                display: "grid",
+                                gap: 6,
+                                fontSize: 13,
+                                gridColumn: "1 / -1",
+                              }}
+                            >
+                              <span>File RCFG upload</span>
+                              <input
+                                type="file"
+                                onChange={(e) => {
+                                  setCabinetError(null);
+                                  setCabinetPendingFile(
+                                    imp,
+                                    index,
+                                    cabinet,
+                                    cabinetIndex,
+                                    e.target.files?.[0] ?? null
+                                  );
+                                }}
+                                style={{ width: "100%", padding: 10 }}
+                              />
+                            </label>
+
+                            <div
+                              style={{
+                                gridColumn: "1 / -1",
+                                display: "flex",
+                                flexWrap: "wrap",
+                                alignItems: "center",
+                                gap: 8,
+                                fontSize: 12,
+                                color: "#475569",
+                              }}
+                            >
+                              <span>{fileLabel || "Nessun file RCFG selezionato"}</span>
+                              {cabinet.file_rcfg_url ? (
+                                <button
+                                  type="button"
+                                  onClick={() => openCabinetRcfgFile(cabinet)}
+                                  style={{
+                                    padding: "6px 10px",
+                                    borderRadius: 8,
+                                    border: "1px solid #cbd5e1",
+                                    background: "white",
+                                    cursor: "pointer",
+                                    fontSize: 12,
+                                    fontWeight: 700,
+                                  }}
+                                >
+                                  Apri file
+                                </button>
+                              ) : null}
+                              {(pendingFile || cabinet.file_rcfg_url || cabinet.file_rcfg_name) ? (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setCabinetPendingFile(imp, index, cabinet, cabinetIndex, null);
+                                    updateCabinetConfigurazione(index, cabinetIndex, "file_rcfg_url", null);
+                                    updateCabinetConfigurazione(index, cabinetIndex, "file_rcfg_name", null);
+                                  }}
+                                  style={{
+                                    padding: "6px 10px",
+                                    borderRadius: 8,
+                                    border: "1px solid #fecaca",
+                                    background: "#fff1f2",
+                                    color: "#b91c1c",
+                                    cursor: "pointer",
+                                    fontSize: 12,
+                                    fontWeight: 700,
+                                  }}
+                                >
+                                  Rimuovi file
+                                </button>
+                              ) : null}
+                            </div>
+
+                            <label
+                              style={{
+                                display: "grid",
+                                gap: 6,
+                                fontSize: 13,
+                                gridColumn: "1 / -1",
+                              }}
+                            >
+                              <span>Note</span>
+                              <textarea
+                                value={String(cabinet.note || "")}
+                                onChange={(e) =>
+                                  updateCabinetConfigurazione(index, cabinetIndex, "note", e.target.value)
+                                }
+                                rows={3}
+                                style={{ width: "100%", padding: 10, resize: "vertical" }}
+                              />
+                            </label>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : null}
               </div>
-            </div>
-          ))}
+            );
+          })}
 
           <div
             style={{
@@ -9110,6 +9948,25 @@ function buildFormData(c: Checklist): FormData {
                     <span style={{ fontWeight: 700, color: "#111827" }}>#{index + 1} → </span>
                     {parts.length > 0 ? parts.join(" • ") : "Impianto da completare"}
                     <span style={{ color: "#6b7280" }}>{` • NIT: ${nitLabel}`}</span>
+                    {(imp.cabinet_configurazioni || []).length > 0 ? (
+                      <div style={{ marginTop: 4, paddingLeft: 18 }}>
+                        <div style={{ fontWeight: 700, color: "#1f2937" }}>CABINET:</div>
+                        {(imp.cabinet_configurazioni || []).map((cabinet, cabinetIndex) => {
+                          const qty =
+                            Number.isFinite(Number(cabinet.numero_cabinet)) &&
+                            Number(cabinet.numero_cabinet) > 0
+                              ? `${Math.floor(Number(cabinet.numero_cabinet))}x`
+                              : "—";
+                          const dimensione = String(cabinet.dimensione_cabinet || "").trim() || "—";
+                          const fornitore = String(cabinet.fornitore || "").trim() || "—";
+                          return (
+                            <div key={`summary-cabinet-${cabinet.id || cabinetIndex}`}>
+                              {`- ${qty} ${dimensione} | Fornitore: ${fornitore}`}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : null}
                   </div>
                 );
               })}

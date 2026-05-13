@@ -585,6 +585,29 @@ function buildDuplicatedImpiantoPayload(
   });
 }
 
+function buildDuplicatedImpiantoCabinetPayload(
+  cabinet: Record<string, any>,
+  checklistId: string,
+  checklistImpiantoId: string,
+  index: number,
+  nowIso: string
+) {
+  return cleanInsertPayload({
+    checklist_id: checklistId,
+    checklist_impianto_id: checklistImpiantoId,
+    codice_magazzino: cabinet?.codice_magazzino ?? null,
+    fornitore: cabinet?.fornitore ?? null,
+    dimensione_cabinet: cabinet?.dimensione_cabinet ?? null,
+    numero_cabinet: cabinet?.numero_cabinet ?? null,
+    file_rcfg_url: cabinet?.file_rcfg_url ?? null,
+    file_rcfg_name: cabinet?.file_rcfg_name ?? null,
+    note: cabinet?.note ?? null,
+    position: Number.isFinite(Number(cabinet?.position)) ? Number(cabinet.position) : index,
+    created_at: nowIso,
+    updated_at: nowIso,
+  });
+}
+
 export default function DashboardEstesaPage() {
   if (!isSupabaseConfigured) {
     return <ConfigMancante />;
@@ -907,7 +930,7 @@ export default function DashboardEstesaPage() {
 
     try {
       const nowIso = new Date().toISOString();
-      const [operatoreRes, itemsRes, rawTasksRes, impiantiRes] = await Promise.all([
+      const [operatoreRes, itemsRes, rawTasksRes, impiantiRes, impiantiCabinetRes] = await Promise.all([
         fetch("/api/me-operatore", { credentials: "include" }).then((res) => res.json().catch(() => ({}))),
         dbFrom("checklist_items")
           .select("codice, descrizione, quantita, note")
@@ -932,6 +955,22 @@ export default function DashboardEstesaPage() {
               "impianto_quantita",
               "numero_facce",
               "m2_calcolati",
+              "note",
+            ].join(", ")
+          )
+          .eq("checklist_id", checklistId)
+          .order("position", { ascending: true }),
+        dbFrom("checklist_impianti_cabinet")
+          .select(
+            [
+              "checklist_impianto_id",
+              "position",
+              "codice_magazzino",
+              "fornitore",
+              "dimensione_cabinet",
+              "numero_cabinet",
+              "file_rcfg_url",
+              "file_rcfg_name",
               "note",
             ].join(", ")
           )
@@ -980,6 +1019,20 @@ export default function DashboardEstesaPage() {
       if (itemsRes.error) throw new Error(itemsRes.error.message || "Errore caricamento righe progetto");
       if (tasksRes.error) throw new Error(tasksRes.error.message || "Errore caricamento task progetto");
       if (impiantiRes.error) throw new Error(impiantiRes.error.message || "Errore caricamento impianti progetto");
+      if (impiantiCabinetRes.error) {
+        const msg = String(impiantiCabinetRes.error.message || "").toLowerCase();
+        const missingTable =
+          msg.includes("checklist_impianti_cabinet") &&
+          (msg.includes("does not exist") ||
+            msg.includes("relation") ||
+            msg.includes("schema cache") ||
+            msg.includes("could not find the table"));
+        if (!missingTable) {
+          throw new Error(
+            impiantiCabinetRes.error.message || "Errore caricamento configurazioni cabinet progetto"
+          );
+        }
+      }
 
       const operatore = operatoreRes?.operatore || {};
       const operatoreId = String(operatore?.id || "").trim() || null;
@@ -1028,12 +1081,56 @@ export default function DashboardEstesaPage() {
         if (error) throw new Error(`Errore duplicazione checklist_tasks: ${error.message || "insert fallito"}`);
       }
 
-      const payloadImpianti = ((impiantiRes.data as any[]) || []).map((impianto, index) =>
+      const sourceImpianti = ((impiantiRes.data as any[]) || []) as any[];
+      const payloadImpianti = sourceImpianti.map((impianto, index) =>
         buildDuplicatedImpiantoPayload(impianto, newChecklistId, index, nowIso)
       );
       if (payloadImpianti.length > 0) {
-        const { error } = await dbFrom("checklist_impianti").insert(payloadImpianti);
+        const { data: insertedImpianti, error } = await dbFrom("checklist_impianti")
+          .insert(payloadImpianti)
+          .select("id, position");
         if (error) throw new Error(`Errore duplicazione checklist_impianti: ${error.message || "insert fallito"}`);
+
+        const sourceCabinetRows = ((impiantiCabinetRes.data as any[]) || []) as any[];
+        if (sourceCabinetRows.length > 0) {
+          const newImpiantoIdBySourceId = new Map<string, string>();
+          const insertedByPosition = new Map<number, string>();
+          ((insertedImpianti as any[]) || []).forEach((row) => {
+            insertedByPosition.set(Number(row?.position ?? 0), String(row?.id || ""));
+          });
+          sourceImpianti.forEach((row, index) => {
+            const sourceImpiantoId = String(row?.id || "").trim();
+            const newImpiantoId = insertedByPosition.get(Number(row?.position ?? index));
+            if (sourceImpiantoId && newImpiantoId) {
+              newImpiantoIdBySourceId.set(sourceImpiantoId, newImpiantoId);
+            }
+          });
+
+          const payloadCabinet = sourceCabinetRows
+            .map((cabinet, index) => {
+              const sourceImpiantoId = String(cabinet?.checklist_impianto_id || "").trim();
+              const newImpiantoId = newImpiantoIdBySourceId.get(sourceImpiantoId) || "";
+              if (!newImpiantoId) return null;
+              return buildDuplicatedImpiantoCabinetPayload(
+                cabinet,
+                newChecklistId,
+                newImpiantoId,
+                index,
+                nowIso
+              );
+            })
+            .filter(Boolean);
+          if (payloadCabinet.length > 0) {
+            const { error: cabinetError } = await dbFrom("checklist_impianti_cabinet").insert(
+              payloadCabinet
+            );
+            if (cabinetError) {
+              throw new Error(
+                `Errore duplicazione checklist_impianti_cabinet: ${cabinetError.message || "insert fallito"}`
+              );
+            }
+          }
+        }
       }
 
       await load();

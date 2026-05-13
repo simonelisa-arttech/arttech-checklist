@@ -1,6 +1,6 @@
 # Handoff Context — AT SYSTEM (arttech-checklist)
 
-Ultimo aggiornamento: 2026-05-04 10:27 CEST
+Ultimo aggiornamento: 2026-05-13 12:00 CEST
 
 ## Stato attuale del progetto
 
@@ -114,7 +114,14 @@ Lo stato corrente e' buono: i flussi critici principali sono stati stabilizzati 
 - niente query separata stale per `Inclusi usati`
 - conteggi fatture da emettere coerenti con il dataset mostrato in pagina
 
-### 9. Navigazione
+### 9. Impianti / cabinet
+- la checklist progetto supporta ora piu' righe `Composizione cabinet` per ogni impianto
+- la source dati e' `checklist_impianti_cabinet`, collegata a `checklist_impianti`
+- i file RCFG cabinet vengono caricati nello storage `checklist-documents`
+- duplicazione progetto aggiornata per copiare anche le configurazioni cabinet
+- migration da applicare: `scripts/20260513_add_checklist_impianti_cabinet.sql`
+
+### 10. Navigazione
 - menu ripulito con separazione:
   - `Menu` = navigazione operativa
   - `Impostazioni` = configurazione/admin
@@ -123,7 +130,7 @@ Lo stato corrente e' buono: i flussi critici principali sono stati stabilizzati 
   - `Clienti` compatto -> `/clienti-cockpit`
   - `App operatori` -> `/operatori`
 
-### 10. UX SIM / progetto associato
+### 11. UX SIM / progetto associato
 - pagina `app/sim/page.tsx` ora rende utilizzabile il campo `Progetto associato`
 - SIM associata:
   - nome progetto cliccabile

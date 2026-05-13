@@ -1,6 +1,6 @@
 # AGENT MEMORY — AT SYSTEM / arttech-checklist
 
-Ultimo aggiornamento: 2026-05-04
+Ultimo aggiornamento: 2026-05-13
 
 ## Identita' progetto
 
@@ -125,6 +125,12 @@ Domini principali:
 - `attachments.document_type` e' la fonte primaria
 - filtri per tipo documento e ricerca testuale gia' attivi
 - flussi rapidi Home supportano allegati/link/ODA
+
+### Impianti / cabinet
+- `app/checklists/[id]/page.tsx` supporta ora piu' configurazioni cabinet per ogni impianto
+- la source dati e' `checklist_impianti_cabinet`
+- i file RCFG cabinet usano lo storage `checklist-documents` con riferimento persistito in `file_rcfg_url`
+- la migration da applicare e' `scripts/20260513_add_checklist_impianti_cabinet.sql`
 
 ### Dashboard / Home
 - KPI cliccabili
