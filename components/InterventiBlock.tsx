@@ -332,6 +332,12 @@ function buildDescrizioneFromImpianto(impianto: InterventiImpiantoOption) {
   return parts.length > 0 ? `Assistenza impianto ${parts.join(" • ")}` : "";
 }
 
+function normalizeDateInputValue(value?: string | null) {
+  const raw = String(value || "").trim();
+  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(raw);
+  return match ? `${match[1]}-${match[2]}-${match[3]}` : "";
+}
+
 function applyImpiantoPrefill(
   form: InterventoFormState,
   selectedId: string,
@@ -1030,10 +1036,6 @@ export default function InterventiBlock({
                   setNewIntervento({
                     ...newIntervento,
                     fatturazioneStato: next,
-                    fatturatoIl:
-                      next === "FATTURATO" && !newIntervento.fatturatoIl
-                        ? new Date().toISOString().slice(0, 10)
-                        : newIntervento.fatturatoIl,
                   });
                 }}
                 style={{ width: "100%", padding: 8 }}
@@ -1076,7 +1078,7 @@ export default function InterventiBlock({
                   Fatturato il<br />
                   <input
                     type="date"
-                    value={newIntervento.fatturatoIl}
+                    value={normalizeDateInputValue(newIntervento.fatturatoIl)}
                     onChange={(e) => setNewIntervento({ ...newIntervento, fatturatoIl: e.target.value })}
                     style={{ width: "100%", padding: 8 }}
                   />
@@ -1775,7 +1777,7 @@ export default function InterventiBlock({
                             Fatturato il<br />
                             <input
                               type="date"
-                              value={editIntervento.fatturatoIl}
+                              value={normalizeDateInputValue(editIntervento.fatturatoIl)}
                               onChange={(e) =>
                                 setEditIntervento({ ...editIntervento, fatturatoIl: e.target.value })
                               }

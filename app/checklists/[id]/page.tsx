@@ -596,6 +596,8 @@ type ProjectInterventoForm = {
   codice_magazzino: string;
   fatturazione_stato: string;
   stato_intervento: string;
+  numero_fattura: string;
+  fatturato_il: string;
   note: string;
 } & InterventoOperativiFormState;
 
@@ -614,6 +616,8 @@ function buildEmptyProjectInterventoForm(
     codice_magazzino: codiceMagazzino,
     fatturazione_stato: "DA_FATTURARE",
     stato_intervento: "APERTO",
+    numero_fattura: "",
+    fatturato_il: "",
     note: "",
     ...EMPTY_INTERVENTO_OPERATIVI,
   };
@@ -2459,6 +2463,8 @@ function buildFormData(c: Checklist): FormData {
       codice_magazzino: String(it.codice_magazzino || ""),
       fatturazione_stato: getCanonicalInterventoEsitoFatturazione(it) || "DA_FATTURARE",
       stato_intervento: String(it.stato_intervento || "APERTO"),
+      numero_fattura: String(it.numero_fattura || ""),
+      fatturato_il: toDateInput(it.fatturato_il),
       note: String(it.note || ""),
       ...EMPTY_INTERVENTO_OPERATIVI,
     };
@@ -2752,6 +2758,11 @@ function buildFormData(c: Checklist): FormData {
     const newInterventoOperativi = extractProjectInterventoOperativi(newProjectIntervento);
     const canonicalEsito =
       normalizeInterventoEsitoFatturazioneValue(newProjectIntervento.fatturazione_stato) || "DA_FATTURARE";
+    const normalizedFatturatoIl = toDateInput(newProjectIntervento.fatturato_il);
+    const fatturatoIlToSave =
+      canonicalEsito === "FATTURATO"
+        ? normalizedFatturatoIl || new Date().toISOString().slice(0, 10)
+        : normalizedFatturatoIl || null;
     const payload = {
       cliente: checklist.cliente,
       checklist_id: id,
@@ -2767,6 +2778,8 @@ function buildFormData(c: Checklist): FormData {
       fatturazione_stato: null,
       stato_intervento: newProjectIntervento.stato_intervento || "APERTO",
       esito_fatturazione: canonicalEsito,
+      numero_fattura: newProjectIntervento.numero_fattura.trim() || null,
+      fatturato_il: fatturatoIlToSave,
       note: newProjectIntervento.note.trim() || null,
     };
     let inserted: { id: string } | null = null;
@@ -2843,6 +2856,11 @@ function buildFormData(c: Checklist): FormData {
     setProjectInterventiError(null);
     const canonicalEsito =
       normalizeInterventoEsitoFatturazioneValue(projectInterventoEditForm.fatturazione_stato) || "DA_FATTURARE";
+    const normalizedFatturatoIl = toDateInput(projectInterventoEditForm.fatturato_il);
+    const fatturatoIlToSave =
+      canonicalEsito === "FATTURATO"
+        ? normalizedFatturatoIl || new Date().toISOString().slice(0, 10)
+        : normalizedFatturatoIl || null;
     const payload = {
       data: projectInterventoEditForm.data || null,
       data_tassativa: projectInterventoEditForm.data_tassativa || null,
@@ -2859,6 +2877,8 @@ function buildFormData(c: Checklist): FormData {
           : null,
       stato_intervento: projectInterventoEditForm.stato_intervento || "APERTO",
       esito_fatturazione: canonicalEsito,
+      numero_fattura: projectInterventoEditForm.numero_fattura.trim() || null,
+      fatturato_il: fatturatoIlToSave,
       note: projectInterventoEditForm.note.trim() || null,
     };
     let updRes = await dbFrom("saas_interventi")
@@ -7827,12 +7847,12 @@ function buildFormData(c: Checklist): FormData {
         checklistImpiantoId: newProjectIntervento.checklist_impianto_id || "",
         proforma: newProjectIntervento.proforma,
         codiceMagazzino: newProjectIntervento.codice_magazzino,
-      fatturazioneStato:
+        fatturazioneStato:
         normalizeInterventoEsitoFatturazioneValue(newProjectIntervento.fatturazione_stato) || "DA_FATTURARE",
         statoIntervento: newProjectIntervento.stato_intervento,
         esitoFatturazione: "",
-        numeroFattura: "",
-        fatturatoIl: "",
+        numeroFattura: newProjectIntervento.numero_fattura,
+        fatturatoIl: toDateInput(newProjectIntervento.fatturato_il),
         note: newProjectIntervento.note,
         noteTecniche: "",
         dataInizio: newProjectIntervento.data_inizio,
@@ -7862,6 +7882,8 @@ function buildFormData(c: Checklist): FormData {
           codice_magazzino: value.codiceMagazzino,
           fatturazione_stato: value.fatturazioneStato,
           stato_intervento: value.statoIntervento,
+          numero_fattura: value.numeroFattura,
+          fatturato_il: toDateInput(value.fatturatoIl),
           note: value.note,
           data_inizio: value.dataInizio,
           durata_giorni: value.durataGiorni,
@@ -7900,8 +7922,8 @@ function buildFormData(c: Checklist): FormData {
           "DA_FATTURARE",
         statoIntervento: projectInterventoEditForm?.stato_intervento || "APERTO",
         esitoFatturazione: "",
-        numeroFattura: "",
-        fatturatoIl: "",
+        numeroFattura: projectInterventoEditForm?.numero_fattura || "",
+        fatturatoIl: toDateInput(projectInterventoEditForm?.fatturato_il),
         note: projectInterventoEditForm?.note || "",
         noteTecniche: "",
         dataInizio: projectInterventoEditForm?.data_inizio || "",
@@ -7933,6 +7955,8 @@ function buildFormData(c: Checklist): FormData {
                 codice_magazzino: value.codiceMagazzino,
                 fatturazione_stato: value.fatturazioneStato,
                 stato_intervento: value.statoIntervento,
+                numero_fattura: value.numeroFattura,
+                fatturato_il: toDateInput(value.fatturatoIl),
                 note: value.note,
                 data_inizio: value.dataInizio,
                 durata_giorni: value.durataGiorni,
