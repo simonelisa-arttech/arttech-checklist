@@ -464,6 +464,12 @@ function normalizeChecklistImpianto(value: unknown, checklistId?: string | null)
   };
 }
 
+function getFirstImpiantoTipoStruttura(impianti?: ChecklistImpianto[] | null) {
+  const firstImpianto = Array.isArray(impianti) ? impianti[0] : null;
+  const normalizedValue = String(firstImpianto?.tipo_struttura || "").trim();
+  return normalizedValue || null;
+}
+
 function buildEmptyChecklistImpianto(): ChecklistImpianto {
   return {
     id: buildClientTempId("impianto"),
@@ -4396,6 +4402,8 @@ function buildFormData(c: Checklist): FormData {
           : buildLegacyChecklistImpianto(headChecklist)
               .map((row) => normalizeChecklistImpianto(row, id))
               .filter(Boolean) as ChecklistImpianto[];
+      headChecklist.tipo_struttura =
+        getFirstImpiantoTipoStruttura(headChecklist.impianti) ?? headChecklist.tipo_struttura;
       console.log("[checklist][impianti]", {
         checklistId: id,
         source: impiantiRows.length > 0 ? "checklist_impianti" : "legacy_checklist",
@@ -7499,13 +7507,23 @@ function buildFormData(c: Checklist): FormData {
 
     if (savedImpianti) {
       const nextImpianti = savedImpianti.length > 0 ? savedImpianti : [buildEmptyChecklistImpianto()];
+      const nextTipoStruttura = getFirstImpiantoTipoStruttura(nextImpianti);
       setImpianti(nextImpianti);
+      setFormData((prev) =>
+        prev
+          ? {
+              ...prev,
+              tipo_struttura: nextTipoStruttura || "",
+            }
+          : prev
+      );
       setChecklist((prev) =>
         prev
           ? {
               ...prev,
               impianti: nextImpianti,
               tipo_impianto: getChecklistImpiantoTipoValue(nextImpianti[0]) ?? prev.tipo_impianto,
+              tipo_struttura: nextTipoStruttura ?? prev.tipo_struttura,
             }
           : prev
       );
@@ -9115,9 +9133,18 @@ function buildFormData(c: Checklist): FormData {
                 isEdit ? (
                   <select
                     value={formData.tipo_struttura}
-                    onChange={(e) =>
-                      setFormData({ ...formData, tipo_struttura: e.target.value })
-                    }
+                    onChange={(e) => {
+                      const nextValue = e.target.value;
+                      setFormData({ ...formData, tipo_struttura: nextValue });
+                      setImpianti((prev) => {
+                        if (prev.length === 0) {
+                          return [{ ...buildEmptyChecklistImpianto(), tipo_struttura: nextValue }];
+                        }
+                        return prev.map((impianto, index) =>
+                          index === 0 ? { ...impianto, tipo_struttura: nextValue } : impianto
+                        );
+                      });
+                    }}
                     style={{ width: "100%", padding: 10 }}
                   >
                     <option value="">—</option>
@@ -9887,6 +9914,26 @@ function buildFormData(c: Checklist): FormData {
                   </label>
 
                   <label style={{ display: "grid", gap: 6, fontSize: 13 }}>
+                    <span>Tipo struttura</span>
+                    <select
+                      value={String(imp.tipo_struttura || "")}
+                      onChange={(e) => updateImpianto(index, "tipo_struttura", e.target.value)}
+                      style={{ width: "100%", padding: 10 }}
+                    >
+                      <option value="">—</option>
+                      {strutturaOptions.map((item) => (
+                        <option key={`impianto-struttura-${item.id}`} value={item.codice ?? ""}>
+                          {item.codice} — {item.descrizione}
+                        </option>
+                      ))}
+                      {imp.tipo_struttura &&
+                        !strutturaOptions.some((o) => o.codice === imp.tipo_struttura) && (
+                          <option value={imp.tipo_struttura}>{imp.tipo_struttura}</option>
+                        )}
+                    </select>
+                  </label>
+
+                  <label style={{ display: "grid", gap: 6, fontSize: 13 }}>
                     <span>Note</span>
                     <input
                       value={String(imp.note || "")}
@@ -10188,6 +10235,7 @@ function buildFormData(c: Checklist): FormData {
                   String(imp.dimensioni || "").trim(),
                   String(imp.passo || "").trim(),
                   getChecklistImpiantoTipoValue(imp),
+                  String(imp.tipo_struttura || "").trim(),
                 ].filter(Boolean);
                 return (
                   <div
