@@ -462,6 +462,77 @@ function isChecklistDuplicateError(error: any) {
   return code === "23505" || msg.includes("duplicate key") || msg.includes("already exists");
 }
 
+function isMissingColumnError(error: any, columnName: string) {
+  const code = String(error?.code || "").trim().toUpperCase();
+  const msg = String(error?.message || "").toLowerCase();
+  const details = String(error?.details || "").toLowerCase();
+  const hint = String(error?.hint || "").toLowerCase();
+  const column = String(columnName || "").trim().toLowerCase();
+  if (!column) return false;
+
+  const mentionsColumn =
+    msg.includes(column) || details.includes(column) || hint.includes(column);
+  if (!mentionsColumn) return false;
+
+  return (
+    code === "PGRST204" ||
+    msg.includes("schema cache") ||
+    msg.includes("could not find") ||
+    msg.includes("does not exist") ||
+    msg.includes("column") ||
+    details.includes("schema cache")
+  );
+}
+
+type ChecklistItemsTimestampSupport = {
+  hasCreatedAt: boolean;
+  hasUpdatedAt: boolean;
+};
+
+// SQL helper per forzare il refresh della schema cache PostgREST dopo una migration:
+// NOTIFY pgrst, 'reload schema';
+
+async function loadChecklistItemsForDuplication(checklistId: string) {
+  let timestampSupport: ChecklistItemsTimestampSupport = {
+    hasCreatedAt: true,
+    hasUpdatedAt: true,
+  };
+
+  let result = await dbFrom("checklist_items")
+    .select("codice, descrizione, quantita, note, proforma_link_url, created_at, updated_at")
+    .eq("checklist_id", checklistId)
+    .order("created_at", { ascending: true });
+
+  if (result.error && isMissingColumnError(result.error, "updated_at")) {
+    timestampSupport = { ...timestampSupport, hasUpdatedAt: false };
+    result = await dbFrom("checklist_items")
+      .select("codice, descrizione, quantita, note, proforma_link_url, created_at")
+      .eq("checklist_id", checklistId)
+      .order("created_at", { ascending: true });
+  }
+
+  if (result.error && isMissingColumnError(result.error, "created_at")) {
+    timestampSupport = { ...timestampSupport, hasCreatedAt: false };
+    result = await dbFrom("checklist_items")
+      .select("codice, descrizione, quantita, note, proforma_link_url")
+      .eq("checklist_id", checklistId);
+  }
+
+  const normalizedData = Array.isArray(result.data)
+    ? (result.data as any[]).map((item) => ({
+        ...item,
+        created_at: timestampSupport.hasCreatedAt ? item?.created_at ?? null : null,
+        updated_at: timestampSupport.hasUpdatedAt ? item?.updated_at ?? null : null,
+      }))
+    : result.data;
+
+  return {
+    ...result,
+    data: normalizedData,
+    timestampSupport,
+  };
+}
+
 function buildDuplicateChecklistName(value?: string | null) {
   const base = String(value || "").trim() || "Progetto";
   const stamp = new Date()
@@ -529,17 +600,23 @@ function buildDuplicatedChecklistPayload(
   });
 }
 
-function buildDuplicatedItemPayload(item: Record<string, any>, checklistId: string, nowIso: string) {
-  return cleanInsertPayload({
+function buildDuplicatedItemPayload(
+  item: Record<string, any>,
+  checklistId: string,
+  nowIso: string,
+  timestampSupport: ChecklistItemsTimestampSupport
+) {
+  const payload = {
     checklist_id: checklistId,
     codice: item?.codice ?? null,
     descrizione: item?.descrizione ?? null,
     quantita: item?.quantita ?? null,
     note: item?.note ?? null,
     proforma_link_url: item?.proforma_link_url ?? null,
-    created_at: nowIso,
-    updated_at: nowIso,
-  });
+    ...(timestampSupport.hasCreatedAt ? { created_at: nowIso } : {}),
+    ...(timestampSupport.hasUpdatedAt ? { updated_at: nowIso } : {}),
+  };
+  return cleanInsertPayload(payload);
 }
 
 function buildDuplicatedLicensePayload(
@@ -960,10 +1037,7 @@ export default function DashboardEstesaPage() {
       const [operatoreRes, itemsRes, licensesRes, rawTasksRes, impiantiRes, impiantiCabinetRes] =
         await Promise.all([
         fetch("/api/me-operatore", { credentials: "include" }).then((res) => res.json().catch(() => ({}))),
-        dbFrom("checklist_items")
-          .select("codice, descrizione, quantita, note, proforma_link_url")
-          .eq("checklist_id", checklistId)
-          .order("created_at", { ascending: true }),
+        loadChecklistItemsForDuplication(checklistId),
         dbFrom("licenses")
           .select(
             "tipo, scadenza, stato, note, proforma_link_url, intestata_a, ref_univoco, telefono, intestatario, gestore, fornitore"
@@ -1103,12 +1177,46 @@ export default function DashboardEstesaPage() {
         throw new Error("ID nuova checklist non ricevuto");
       }
 
+      let checklistItemsTimestampSupport =
+        itemsRes.timestampSupport ||
+        ({
+          hasCreatedAt: true,
+          hasUpdatedAt: true,
+        } as ChecklistItemsTimestampSupport);
       const payloadItems = ((itemsRes.data as any[]) || []).map((item) =>
-        buildDuplicatedItemPayload(item, newChecklistId, nowIso)
+        buildDuplicatedItemPayload(item, newChecklistId, nowIso, checklistItemsTimestampSupport)
       );
       if (payloadItems.length > 0) {
-        const { error } = await dbFrom("checklist_items").insert(payloadItems);
-        if (error) throw new Error(`Errore duplicazione checklist_items: ${error.message || "insert fallito"}`);
+        let insertItemsPayload = payloadItems;
+        let { error } = await dbFrom("checklist_items").insert(insertItemsPayload);
+
+        if (error && isMissingColumnError(error, "updated_at")) {
+          checklistItemsTimestampSupport = {
+            ...checklistItemsTimestampSupport,
+            hasUpdatedAt: false,
+          };
+          insertItemsPayload = ((itemsRes.data as any[]) || []).map((item) =>
+            buildDuplicatedItemPayload(item, newChecklistId, nowIso, checklistItemsTimestampSupport)
+          );
+          ({ error } = await dbFrom("checklist_items").insert(insertItemsPayload));
+        }
+
+        if (error && isMissingColumnError(error, "created_at")) {
+          checklistItemsTimestampSupport = {
+            ...checklistItemsTimestampSupport,
+            hasCreatedAt: false,
+          };
+          insertItemsPayload = ((itemsRes.data as any[]) || []).map((item) =>
+            buildDuplicatedItemPayload(item, newChecklistId, nowIso, checklistItemsTimestampSupport)
+          );
+          ({ error } = await dbFrom("checklist_items").insert(insertItemsPayload));
+        }
+
+        if (error) {
+          throw new Error(
+            `Errore duplicazione checklist_items: ${error.message || "insert fallito"}`
+          );
+        }
       }
 
       const payloadLicenses = ((licensesRes.data as any[]) || []).map((license) =>
