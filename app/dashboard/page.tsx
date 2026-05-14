@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { DashboardCockpitPage } from "@/app/page";
+import DashboardCockpitPage from "@/components/DashboardCockpitPage";
 
 export default function DashboardPage() {
   return (
@@ -34,10 +34,13 @@ export default function DashboardPage() {
       <DashboardCockpitPage
         pageTitle="Dashboard"
         pageSubtitle="Progetti di tutti i clienti"
+        showCockpitSection
         showClientiSection={false}
         showCronoSection={false}
         showProjectsSection
         enableProjectFilters
+        enableClientFilters={false}
+        showClientiCockpit={false}
         projectsView="compact"
       />
     </div>

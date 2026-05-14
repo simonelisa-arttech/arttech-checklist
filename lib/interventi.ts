@@ -19,6 +19,7 @@ export type InterventoRow = {
   alert_fattura_last_sent_by?: string | null;
   numero_fattura?: string | null;
   fatturato_il?: string | null;
+  fattura_url?: string | null;
   note_amministrazione?: string | null;
   note?: string | null;
   note_tecniche?: string | null;

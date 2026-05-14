@@ -51,6 +51,7 @@ export type InterventoFormState = {
   esitoFatturazione: string;
   numeroFattura: string;
   fatturatoIl: string;
+  fatturaUrl: string;
   note: string;
   noteTecniche: string;
   dataInizio: string;
@@ -1083,6 +1084,16 @@ export default function InterventiBlock({
                     style={{ width: "100%", padding: 8 }}
                   />
                 </label>
+                <label>
+                  Link fattura PDF<br />
+                  <input
+                    type="url"
+                    value={newIntervento.fatturaUrl}
+                    onChange={(e) => setNewIntervento({ ...newIntervento, fatturaUrl: e.target.value })}
+                    placeholder="https://drive.google.com/..."
+                    style={{ width: "100%", padding: 8 }}
+                  />
+                </label>
               </>
             )}
           </div>
@@ -1785,8 +1796,21 @@ export default function InterventiBlock({
                               style={{ width: "100%", padding: 8 }}
                             />
                           </label>
+                          <label>
+                            Link fattura PDF<br />
+                            <input
+                              type="url"
+                              value={editIntervento.fatturaUrl}
+                              onChange={(e) =>
+                                setEditIntervento({ ...editIntervento, fatturaUrl: e.target.value })
+                              }
+                              disabled={!editInterventoIsFatturato}
+                              placeholder="https://drive.google.com/..."
+                              style={{ width: "100%", padding: 8 }}
+                            />
+                          </label>
                           {editIntervento.statoIntervento !== "CHIUSO" && (
-                            <div style={{ gridColumn: "1 / span 3", fontSize: 12, opacity: 0.7 }}>
+                            <div style={{ gridColumn: "1 / span 4", fontSize: 12, opacity: 0.7 }}>
                               Intervento aperto: lo stato economico resta modificabile e verrà confermato alla chiusura.
                             </div>
                           )}

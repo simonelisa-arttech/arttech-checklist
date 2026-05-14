@@ -464,6 +464,12 @@ function normalizeChecklistImpianto(value: unknown, checklistId?: string | null)
   };
 }
 
+function getFirstImpiantoTipoStruttura(impianti?: ChecklistImpianto[] | null) {
+  const firstImpianto = Array.isArray(impianti) ? impianti[0] : null;
+  const normalizedValue = String(firstImpianto?.tipo_struttura || "").trim();
+  return normalizedValue || null;
+}
+
 function buildEmptyChecklistImpianto(): ChecklistImpianto {
   return {
     id: buildClientTempId("impianto"),
@@ -603,6 +609,7 @@ type ProjectInterventoForm = {
   stato_intervento: string;
   numero_fattura: string;
   fatturato_il: string;
+  fattura_url: string;
   note: string;
 } & InterventoOperativiFormState;
 
@@ -623,6 +630,7 @@ function buildEmptyProjectInterventoForm(
     stato_intervento: "APERTO",
     numero_fattura: "",
     fatturato_il: "",
+    fattura_url: "",
     note: "",
     ...EMPTY_INTERVENTO_OPERATIVI,
   };
@@ -1954,6 +1962,8 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
   const [contrattoUltra, setContrattoUltra] = useState<ContrattoRow | null>(null);
   const [contrattoUltraNome, setContrattoUltraNome] = useState<string | null>(null);
   const [projectInterventi, setProjectInterventi] = useState<InterventoRow[]>([]);
+  const [projectInvoiceUrlDrafts, setProjectInvoiceUrlDrafts] = useState<Record<string, string>>({});
+  const [projectInvoiceUrlSavingId, setProjectInvoiceUrlSavingId] = useState<string | null>(null);
   const [projectTagliando, setProjectTagliando] = useState<{
     scadenza: string;
     fatturazione: string;
@@ -2509,6 +2519,7 @@ function buildFormData(c: Checklist): FormData {
       stato_intervento: String(it.stato_intervento || "APERTO"),
       numero_fattura: String(it.numero_fattura || ""),
       fatturato_il: toDateInput(it.fatturato_il),
+      fattura_url: String(it.fattura_url || ""),
       note: String(it.note || ""),
       ...EMPTY_INTERVENTO_OPERATIVI,
     };
@@ -2559,15 +2570,27 @@ function buildFormData(c: Checklist): FormData {
   async function loadProjectInterventi(checklistId: string) {
     let res = await dbFrom("saas_interventi")
       .select(
-        "id, cliente, checklist_id, checklist_impianto_id, contratto_id, ticket_no, data, data_tassativa, descrizione, incluso, proforma, codice_magazzino, fatturazione_stato, stato_intervento, esito_fatturazione, chiuso_il, chiuso_da_operatore, alert_fattura_last_sent_at, alert_fattura_last_sent_by, numero_fattura, fatturato_il, note_amministrazione, note, note_tecniche, created_at, checklist:checklists(id, nome_checklist, proforma, magazzino_importazione)"
+        "id, cliente, checklist_id, checklist_impianto_id, contratto_id, ticket_no, data, data_tassativa, descrizione, incluso, proforma, codice_magazzino, fatturazione_stato, stato_intervento, esito_fatturazione, chiuso_il, chiuso_da_operatore, alert_fattura_last_sent_at, alert_fattura_last_sent_by, numero_fattura, fatturato_il, fattura_url, note_amministrazione, note, note_tecniche, created_at, checklist:checklists(id, nome_checklist, proforma, magazzino_importazione)"
       )
       .eq("checklist_id", checklistId)
       .order("data", { ascending: false });
 
+    if (res.error && String(res.error.message || "").toLowerCase().includes("fattura_url")) {
+      res = await dbFrom("saas_interventi")
+        .select(
+          "id, cliente, checklist_id, checklist_impianto_id, contratto_id, ticket_no, data, data_tassativa, descrizione, incluso, proforma, codice_magazzino, fatturazione_stato, stato_intervento, esito_fatturazione, chiuso_il, chiuso_da_operatore, alert_fattura_last_sent_at, alert_fattura_last_sent_by, numero_fattura, fatturato_il, note_amministrazione, note, note_tecniche, created_at, checklist:checklists(id, nome_checklist, proforma, magazzino_importazione)"
+        )
+        .eq("checklist_id", checklistId)
+        .order("data", { ascending: false });
+      if (!res.error) {
+        res.data = ((res.data || []) as any[]).map((r) => ({ ...r, fattura_url: null }));
+      }
+    }
+
     if (res.error && String(res.error.message || "").toLowerCase().includes("note_amministrazione")) {
       res = await dbFrom("saas_interventi")
         .select(
-          "id, cliente, checklist_id, checklist_impianto_id, contratto_id, ticket_no, data, data_tassativa, descrizione, incluso, proforma, codice_magazzino, fatturazione_stato, stato_intervento, esito_fatturazione, chiuso_il, chiuso_da_operatore, alert_fattura_last_sent_at, alert_fattura_last_sent_by, numero_fattura, fatturato_il, note, note_tecniche, created_at, checklist:checklists(id, nome_checklist, proforma, magazzino_importazione)"
+          "id, cliente, checklist_id, checklist_impianto_id, contratto_id, ticket_no, data, data_tassativa, descrizione, incluso, proforma, codice_magazzino, fatturazione_stato, stato_intervento, esito_fatturazione, chiuso_il, chiuso_da_operatore, alert_fattura_last_sent_at, alert_fattura_last_sent_by, numero_fattura, fatturato_il, fattura_url, note, note_tecniche, created_at, checklist:checklists(id, nome_checklist, proforma, magazzino_importazione)"
         )
         .eq("checklist_id", checklistId)
         .order("data", { ascending: false });
@@ -2579,7 +2602,7 @@ function buildFormData(c: Checklist): FormData {
     if (res.error && String(res.error.message || "").toLowerCase().includes("data_tassativa")) {
       res = await dbFrom("saas_interventi")
         .select(
-          "id, cliente, checklist_id, checklist_impianto_id, contratto_id, ticket_no, data, descrizione, incluso, proforma, codice_magazzino, fatturazione_stato, stato_intervento, esito_fatturazione, chiuso_il, chiuso_da_operatore, alert_fattura_last_sent_at, alert_fattura_last_sent_by, numero_fattura, fatturato_il, note_amministrazione, note, note_tecniche, created_at, checklist:checklists(id, nome_checklist, proforma, magazzino_importazione)"
+          "id, cliente, checklist_id, checklist_impianto_id, contratto_id, ticket_no, data, descrizione, incluso, proforma, codice_magazzino, fatturazione_stato, stato_intervento, esito_fatturazione, chiuso_il, chiuso_da_operatore, alert_fattura_last_sent_at, alert_fattura_last_sent_by, numero_fattura, fatturato_il, fattura_url, note_amministrazione, note, note_tecniche, created_at, checklist:checklists(id, nome_checklist, proforma, magazzino_importazione)"
         )
         .eq("checklist_id", checklistId)
         .order("data", { ascending: false });
@@ -2590,7 +2613,7 @@ function buildFormData(c: Checklist): FormData {
     if (res.error && String(res.error.message || "").toLowerCase().includes("ticket_no")) {
       res = await dbFrom("saas_interventi")
         .select(
-          "id, cliente, checklist_id, checklist_impianto_id, contratto_id, data, data_tassativa, descrizione, incluso, proforma, codice_magazzino, fatturazione_stato, stato_intervento, esito_fatturazione, chiuso_il, chiuso_da_operatore, alert_fattura_last_sent_at, alert_fattura_last_sent_by, numero_fattura, fatturato_il, note_amministrazione, note, note_tecniche, created_at, checklist:checklists(id, nome_checklist, proforma, magazzino_importazione)"
+          "id, cliente, checklist_id, checklist_impianto_id, contratto_id, data, data_tassativa, descrizione, incluso, proforma, codice_magazzino, fatturazione_stato, stato_intervento, esito_fatturazione, chiuso_il, chiuso_da_operatore, alert_fattura_last_sent_at, alert_fattura_last_sent_by, numero_fattura, fatturato_il, fattura_url, note_amministrazione, note, note_tecniche, created_at, checklist:checklists(id, nome_checklist, proforma, magazzino_importazione)"
         )
         .eq("checklist_id", checklistId)
         .order("data", { ascending: false });
@@ -2824,10 +2847,15 @@ function buildFormData(c: Checklist): FormData {
       esito_fatturazione: canonicalEsito,
       numero_fattura: newProjectIntervento.numero_fattura.trim() || null,
       fatturato_il: fatturatoIlToSave,
+      fattura_url: newProjectIntervento.fattura_url.trim() || null,
       note: newProjectIntervento.note.trim() || null,
     };
     let inserted: { id: string } | null = null;
     let insRes = await dbFrom("saas_interventi").insert(payload).select("id").single();
+    if (insRes.error && String(insRes.error.message || "").toLowerCase().includes("fattura_url")) {
+      const { fattura_url: _skip, ...payloadNoInvoiceUrl } = payload;
+      insRes = await dbFrom("saas_interventi").insert(payloadNoInvoiceUrl).select("id").single();
+    }
     if (insRes.error && String(insRes.error.message || "").toLowerCase().includes("data_tassativa")) {
       const { data_tassativa: _skip, ...payloadNoTassativa } = payload;
       insRes = await dbFrom("saas_interventi").insert(payloadNoTassativa).select("id").single();
@@ -2923,11 +2951,18 @@ function buildFormData(c: Checklist): FormData {
       esito_fatturazione: canonicalEsito,
       numero_fattura: projectInterventoEditForm.numero_fattura.trim() || null,
       fatturato_il: fatturatoIlToSave,
+      fattura_url: projectInterventoEditForm.fattura_url.trim() || null,
       note: projectInterventoEditForm.note.trim() || null,
     };
     let updRes = await dbFrom("saas_interventi")
       .update(payload)
       .eq("id", projectInterventoEditId);
+    if (updRes.error && String(updRes.error.message || "").toLowerCase().includes("fattura_url")) {
+      const { fattura_url: _skip, ...payloadNoInvoiceUrl } = payload;
+      updRes = await dbFrom("saas_interventi")
+        .update(payloadNoInvoiceUrl)
+        .eq("id", projectInterventoEditId);
+    }
     if (updRes.error && String(updRes.error.message || "").toLowerCase().includes("data_tassativa")) {
       const { data_tassativa: _skip, ...payloadNoTassativa } = payload;
       updRes = await dbFrom("saas_interventi")
@@ -4367,6 +4402,8 @@ function buildFormData(c: Checklist): FormData {
           : buildLegacyChecklistImpianto(headChecklist)
               .map((row) => normalizeChecklistImpianto(row, id))
               .filter(Boolean) as ChecklistImpianto[];
+      headChecklist.tipo_struttura =
+        getFirstImpiantoTipoStruttura(headChecklist.impianti) ?? headChecklist.tipo_struttura;
       console.log("[checklist][impianti]", {
         checklistId: id,
         source: impiantiRows.length > 0 ? "checklist_impianti" : "legacy_checklist",
@@ -7470,13 +7507,23 @@ function buildFormData(c: Checklist): FormData {
 
     if (savedImpianti) {
       const nextImpianti = savedImpianti.length > 0 ? savedImpianti : [buildEmptyChecklistImpianto()];
+      const nextTipoStruttura = getFirstImpiantoTipoStruttura(nextImpianti);
       setImpianti(nextImpianti);
+      setFormData((prev) =>
+        prev
+          ? {
+              ...prev,
+              tipo_struttura: nextTipoStruttura || "",
+            }
+          : prev
+      );
       setChecklist((prev) =>
         prev
           ? {
               ...prev,
               impianti: nextImpianti,
               tipo_impianto: getChecklistImpiantoTipoValue(nextImpianti[0]) ?? prev.tipo_impianto,
+              tipo_struttura: nextTipoStruttura ?? prev.tipo_struttura,
             }
           : prev
       );
@@ -7913,6 +7960,7 @@ function buildFormData(c: Checklist): FormData {
         esitoFatturazione: "",
         numeroFattura: newProjectIntervento.numero_fattura,
         fatturatoIl: toDateInput(newProjectIntervento.fatturato_il),
+        fatturaUrl: newProjectIntervento.fattura_url,
         note: newProjectIntervento.note,
         noteTecniche: "",
         dataInizio: newProjectIntervento.data_inizio,
@@ -7944,6 +7992,7 @@ function buildFormData(c: Checklist): FormData {
           stato_intervento: value.statoIntervento,
           numero_fattura: value.numeroFattura,
           fatturato_il: toDateInput(value.fatturatoIl),
+          fattura_url: value.fatturaUrl,
           note: value.note,
           data_inizio: value.dataInizio,
           durata_giorni: value.durataGiorni,
@@ -7984,6 +8033,7 @@ function buildFormData(c: Checklist): FormData {
         esitoFatturazione: "",
         numeroFattura: projectInterventoEditForm?.numero_fattura || "",
         fatturatoIl: toDateInput(projectInterventoEditForm?.fatturato_il),
+        fatturaUrl: projectInterventoEditForm?.fattura_url || "",
         note: projectInterventoEditForm?.note || "",
         noteTecniche: "",
         dataInizio: projectInterventoEditForm?.data_inizio || "",
@@ -8017,6 +8067,7 @@ function buildFormData(c: Checklist): FormData {
                 stato_intervento: value.statoIntervento,
                 numero_fattura: value.numeroFattura,
                 fatturato_il: toDateInput(value.fatturatoIl),
+                fattura_url: value.fatturaUrl,
                 note: value.note,
                 data_inizio: value.dataInizio,
                 durata_giorni: value.durataGiorni,
@@ -8088,10 +8139,53 @@ function buildFormData(c: Checklist): FormData {
     />
   );
 
+  useEffect(() => {
+    const nextDrafts: Record<string, string> = {};
+    for (const row of projectInterventi) {
+      const rowId = String(row.id || "").trim();
+      if (!rowId) continue;
+      nextDrafts[rowId] = String(row.fattura_url || "").trim();
+    }
+    setProjectInvoiceUrlDrafts(nextDrafts);
+  }, [projectInterventi]);
+
   const projectFattureEmesseList = useMemo(
     () => projectInterventi.filter((row) => getProjectEsitoFatturazione(row) === "FATTURATO"),
     [projectInterventi]
   );
+
+  async function saveProjectInvoiceUrl(rowId: string) {
+    const normalizedId = String(rowId || "").trim();
+    if (!normalizedId) return;
+    const draftValue = String(projectInvoiceUrlDrafts[normalizedId] || "").trim();
+    const currentValue =
+      String(projectInterventi.find((row) => row.id === normalizedId)?.fattura_url || "").trim();
+    if (draftValue === currentValue) return;
+
+    setProjectInvoiceUrlSavingId(normalizedId);
+    setProjectInterventiError(null);
+    try {
+      let updRes = await dbFrom("saas_interventi")
+        .update({ fattura_url: draftValue || null })
+        .eq("id", normalizedId);
+      if (updRes.error && String(updRes.error.message || "").toLowerCase().includes("fattura_url")) {
+        throw new Error("Colonna saas_interventi.fattura_url non disponibile.");
+      }
+      if (updRes.error) {
+        throw new Error(updRes.error.message || "Errore salvataggio link fattura");
+      }
+      setProjectInterventi((prev) =>
+        prev.map((row) =>
+          row.id === normalizedId ? { ...row, fattura_url: draftValue || null } : row
+        )
+      );
+      setProjectInterventiNotice("Link fattura salvato.");
+    } catch (err: any) {
+      setProjectInterventiError(String(err?.message || "Errore salvataggio link fattura"));
+    } finally {
+      setProjectInvoiceUrlSavingId(null);
+    }
+  }
 
   const projectFattureEmesseBlock = (
     <div style={{ display: "grid", gap: 10 }}>
@@ -8111,20 +8205,79 @@ function buildFormData(c: Checklist): FormData {
               key={row.id}
               style={{
                 display: "grid",
-                gap: 4,
+                gridTemplateColumns: "minmax(220px,1.1fr) minmax(320px,1.6fr) auto",
+                gap: 12,
                 padding: "12px 14px",
                 borderTop: "1px solid #f3f4f6",
+                alignItems: "start",
               }}
             >
-              <div style={{ fontWeight: 700 }}>
-                {formatLocalDateLabel(row.fatturato_il || row.data)} • {row.descrizione || "Intervento"}
-                {row.numero_fattura ? ` • Fattura ${row.numero_fattura}` : ""}
-              </div>
-              {row.note_amministrazione ? (
-                <div style={{ fontSize: 12, opacity: 0.8, whiteSpace: "pre-wrap" }}>
-                  {row.note_amministrazione}
+              <div style={{ display: "grid", gap: 4 }}>
+                <div style={{ fontWeight: 700 }}>
+                  {row.numero_fattura
+                    ? `Fattura ${row.numero_fattura}`
+                    : `Fattura ${formatLocalDateLabel(row.fatturato_il || row.data)}`}
                 </div>
-              ) : null}
+                <div style={{ fontSize: 12, opacity: 0.8 }}>
+                  {formatLocalDateLabel(row.fatturato_il || row.data)} • {row.descrizione || "Intervento"}
+                </div>
+                {row.note_amministrazione ? (
+                  <div style={{ fontSize: 12, opacity: 0.8, whiteSpace: "pre-wrap" }}>
+                    {row.note_amministrazione}
+                  </div>
+                ) : null}
+              </div>
+              <div style={{ display: "grid", gap: 6 }}>
+                <input
+                  type="url"
+                  value={projectInvoiceUrlDrafts[row.id] ?? String(row.fattura_url || "")}
+                  onChange={(e) =>
+                    setProjectInvoiceUrlDrafts((prev) => ({
+                      ...prev,
+                      [row.id]: e.target.value,
+                    }))
+                  }
+                  onBlur={() => void saveProjectInvoiceUrl(row.id)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      void saveProjectInvoiceUrl(row.id);
+                    }
+                  }}
+                  placeholder="https://drive.google.com/..."
+                  style={{ width: "100%", padding: 8 }}
+                />
+                {projectInvoiceUrlSavingId === row.id ? (
+                  <div style={{ fontSize: 12, opacity: 0.7 }}>Salvataggio link...</div>
+                ) : null}
+              </div>
+              <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                {isHttpUrl(projectInvoiceUrlDrafts[row.id] ?? row.fattura_url ?? "") ? (
+                  <a
+                    href={String((projectInvoiceUrlDrafts[row.id] ?? row.fattura_url) || "").trim()}
+                    target="_blank"
+                    rel="noreferrer"
+                    style={{
+                      padding: "8px 12px",
+                      borderRadius: 8,
+                      border: "1px solid #111",
+                      background: "white",
+                      color: "#111",
+                      textDecoration: "none",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    {String((projectInvoiceUrlDrafts[row.id] ?? row.fattura_url) || "")
+                      .trim()
+                      .toLowerCase()
+                      .includes(".pdf")
+                      ? "Apri PDF"
+                      : "Apri link"}
+                  </a>
+                ) : (
+                  <span style={{ fontSize: 12, opacity: 0.6, alignSelf: "center" }}>—</span>
+                )}
+              </div>
             </div>
           ))}
         </div>
@@ -8980,9 +9133,18 @@ function buildFormData(c: Checklist): FormData {
                 isEdit ? (
                   <select
                     value={formData.tipo_struttura}
-                    onChange={(e) =>
-                      setFormData({ ...formData, tipo_struttura: e.target.value })
-                    }
+                    onChange={(e) => {
+                      const nextValue = e.target.value;
+                      setFormData({ ...formData, tipo_struttura: nextValue });
+                      setImpianti((prev) => {
+                        if (prev.length === 0) {
+                          return [{ ...buildEmptyChecklistImpianto(), tipo_struttura: nextValue }];
+                        }
+                        return prev.map((impianto, index) =>
+                          index === 0 ? { ...impianto, tipo_struttura: nextValue } : impianto
+                        );
+                      });
+                    }}
                     style={{ width: "100%", padding: 10 }}
                   >
                     <option value="">—</option>
@@ -9752,6 +9914,26 @@ function buildFormData(c: Checklist): FormData {
                   </label>
 
                   <label style={{ display: "grid", gap: 6, fontSize: 13 }}>
+                    <span>Tipo struttura</span>
+                    <select
+                      value={String(imp.tipo_struttura || "")}
+                      onChange={(e) => updateImpianto(index, "tipo_struttura", e.target.value)}
+                      style={{ width: "100%", padding: 10 }}
+                    >
+                      <option value="">—</option>
+                      {strutturaOptions.map((item) => (
+                        <option key={`impianto-struttura-${item.id}`} value={item.codice ?? ""}>
+                          {item.codice} — {item.descrizione}
+                        </option>
+                      ))}
+                      {imp.tipo_struttura &&
+                        !strutturaOptions.some((o) => o.codice === imp.tipo_struttura) && (
+                          <option value={imp.tipo_struttura}>{imp.tipo_struttura}</option>
+                        )}
+                    </select>
+                  </label>
+
+                  <label style={{ display: "grid", gap: 6, fontSize: 13 }}>
                     <span>Note</span>
                     <input
                       value={String(imp.note || "")}
@@ -10053,6 +10235,7 @@ function buildFormData(c: Checklist): FormData {
                   String(imp.dimensioni || "").trim(),
                   String(imp.passo || "").trim(),
                   getChecklistImpiantoTipoValue(imp),
+                  String(imp.tipo_struttura || "").trim(),
                 ].filter(Boolean);
                 return (
                   <div
