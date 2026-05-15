@@ -550,7 +550,7 @@ function buildChecklistImpiantoMatchKey(value?: ChecklistImpianto | null) {
 }
 
 function resolvePersistedChecklistImpiantoId(
-  selectedId?: string | null,
+  selectedId: string | null | undefined,
   currentImpianti: ChecklistImpianto[],
   persistedImpianti: ChecklistImpianto[]
 ) {
@@ -2957,7 +2957,8 @@ function buildFormData(c: Checklist): FormData {
   async function addInterventoRow() {
     if (!id || !checklist) return;
     const descrizione = newProjectIntervento.descrizione.trim();
-    let selectedChecklistImpiantoId = String(newProjectIntervento.checklist_impianto_id || "").trim();
+    let selectedChecklistImpiantoId: string | null =
+      String(newProjectIntervento.checklist_impianto_id || "").trim() || null;
     const magazzino = splitMagazzinoFields(
       checklist.magazzino_importazione,
       checklist.magazzino_drive_url
@@ -3096,7 +3097,8 @@ function buildFormData(c: Checklist): FormData {
 
   async function saveInterventoRow() {
     if (!projectInterventoEditId || !projectInterventoEditForm) return;
-    let selectedChecklistImpiantoId = String(projectInterventoEditForm.checklist_impianto_id || "").trim();
+    let selectedChecklistImpiantoId: string | null =
+      String(projectInterventoEditForm.checklist_impianto_id || "").trim() || null;
     if (isTemporaryChecklistImpiantoSelection(selectedChecklistImpiantoId)) {
       try {
         selectedChecklistImpiantoId = await resolveInterventoChecklistImpiantoId(
