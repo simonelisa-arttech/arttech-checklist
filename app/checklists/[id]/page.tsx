@@ -550,12 +550,12 @@ function buildChecklistImpiantoMatchKey(value?: ChecklistImpianto | null) {
 }
 
 function resolvePersistedChecklistImpiantoId(
-  selectedId: string,
+  selectedId?: string | null,
   currentImpianti: ChecklistImpianto[],
   persistedImpianti: ChecklistImpianto[]
 ) {
   const normalizedId = String(selectedId || "").trim();
-  if (!normalizedId) return "";
+  if (!normalizedId) return null;
   if (isRealUuid(normalizedId)) return normalizedId;
 
   const selectedIndex = currentImpianti.findIndex(
@@ -570,14 +570,15 @@ function resolvePersistedChecklistImpiantoId(
   const selectedImpianto =
     currentImpianti.find((impianto) => String(impianto.id || "").trim() === normalizedId) || null;
   const selectedKey = buildChecklistImpiantoMatchKey(selectedImpianto);
-  if (!selectedKey) return "";
+  if (!selectedKey) return null;
 
   const matchedPersisted = persistedImpianti.find(
     (impianto) =>
       isRealUuid(String(impianto.id || "").trim()) &&
       buildChecklistImpiantoMatchKey(impianto) === selectedKey
   );
-  return String(matchedPersisted?.id || "").trim();
+  const matchedPersistedId = String(matchedPersisted?.id || "").trim();
+  return matchedPersistedId || null;
 }
 
 function hasChecklistImpiantoCabinetData(value: ChecklistImpiantoCabinet | null | undefined) {
@@ -2501,14 +2502,15 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
 
   async function resolveInterventoChecklistImpiantoId(selectedId?: string | null) {
     const normalizedId = String(selectedId || "").trim();
-    if (!normalizedId || isRealUuid(normalizedId)) return normalizedId;
-    if (!id) return "";
+    if (!normalizedId) return null;
+    if (isRealUuid(normalizedId)) return normalizedId;
+    if (!id) return null;
 
     let persistedRows = persistedInterventoImpianti;
     if (persistedRows.length === 0) {
       persistedRows = await loadPersistedInterventoImpianti(id);
     }
-    if (persistedRows.length === 0) return "";
+    if (persistedRows.length === 0) return null;
 
     return resolvePersistedChecklistImpiantoId(normalizedId, impianti, persistedRows);
   }
