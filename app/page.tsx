@@ -112,6 +112,37 @@ const EMPTY_DOCUMENTI_ALERT_SUMMARY: DocumentiAlertSummary = {
   aziende_in_scadenza: 0,
 };
 
+function hasMissingProformaAlert(project: {
+  proforma?: string | null;
+  proforma_link_url?: string | null;
+  stato_progetto?: string | null;
+}) {
+  const status = String(project.stato_progetto || "").trim().toUpperCase();
+  if (status === "CHIUSO" || status === "COMPLETATO") return false;
+  const proforma = String(project.proforma || "").trim();
+  const proformaLink = String(project.proforma_link_url || "").trim();
+  return !proforma || !proformaLink;
+}
+
+function renderMissingProformaBadge() {
+  return (
+    <span
+      style={{
+        padding: "4px 8px",
+        borderRadius: 999,
+        border: "1px solid #fca5a5",
+        background: "#fee2e2",
+        color: "#b91c1c",
+        fontSize: 11,
+        fontWeight: 800,
+        whiteSpace: "nowrap",
+      }}
+    >
+      PROFORMA MANCANTE
+    </span>
+  );
+}
+
 function getProjectStatusBadge(value?: string | null) {
   const raw = String(value || "").trim().toUpperCase();
   if (raw === "NOLEGGIO_IN_CORSO") {
@@ -224,6 +255,7 @@ type Checklist = {
   clienti_anagrafica?: { denominazione: string | null } | null;
   nome_checklist: string;
   proforma: string | null;
+  proforma_link_url?: string | null;
   po: string | null;
   magazzino_importazione: string | null;
   created_by_operatore: string | null;
@@ -3930,6 +3962,7 @@ function DashboardCockpitView({
                       <tbody>
                         {filteredDashboardProjectRows.map((item, index) => {
                           const projectStatus = getProjectStatusBadge(item.stato_progetto);
+                          const missingProforma = hasMissingProformaAlert(item);
                           const keyDate = item.data_tassativa || item.data_prevista;
                           const isHovered = hoveredDashboardProjectId === item.id;
                           const rowBackground = isHovered ? "#f8fafc" : index % 2 === 0 ? "#ffffff" : "#fbfdff";
@@ -4022,6 +4055,11 @@ function DashboardCockpitView({
                                 >
                                   {item.nome_checklist || "—"}
                                 </div>
+                                {missingProforma ? (
+                                  <div style={{ marginTop: 6, display: "flex", flexWrap: "wrap", gap: 6 }}>
+                                    {renderMissingProformaBadge()}
+                                  </div>
+                                ) : null}
                                 <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginTop: 6 }}>
                                   {item.tipo_impianto ? (
                                     <span style={{ padding: "4px 8px", borderRadius: 999, background: "#f8fafc", border: "1px solid #e2e8f0", fontSize: 12, color: "#64748b" }}>
@@ -4137,6 +4175,7 @@ function DashboardCockpitView({
                       data_disinstallazione: item.data_disinstallazione,
                     });
                     const projectStatus = getProjectStatusBadge(projectPresentation.displayStatus);
+                    const missingProforma = hasMissingProformaAlert(item);
                     const keyDate = item.data_tassativa || item.data_prevista;
                     return (
                       <Link
@@ -4208,6 +4247,7 @@ function DashboardCockpitView({
                                 NOLEGGIO_IN_CORSO
                               </span>
                             ) : null}
+                            {missingProforma ? renderMissingProformaBadge() : null}
                           </div>
                           <div
                             style={{

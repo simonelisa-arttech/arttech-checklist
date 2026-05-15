@@ -256,6 +256,18 @@ function renderStatusBadge(value?: string | null) {
   );
 }
 
+function hasMissingProformaAlert(project: {
+  proforma?: string | null;
+  proforma_link_url?: string | null;
+  stato_progetto?: string | null;
+}) {
+  const status = String(project.stato_progetto || "").trim().toUpperCase();
+  if (status === "CHIUSO" || status === "COMPLETATO") return false;
+  const proforma = String(project.proforma || "").trim();
+  const proformaLink = String(project.proforma_link_url || "").trim();
+  return !proforma || !proformaLink;
+}
+
 function getExpiryStatus(value?: string | null): "ATTIVA" | "SCADUTA" | "—" {
   const dt = parseLocalDay(value);
   if (!dt) return "—";
@@ -1346,6 +1358,7 @@ export default function DashboardEstesaPage() {
         getExpiryStatus={getExpiryStatus}
         renderBadge={renderBadge}
         renderStatusBadge={renderStatusBadge}
+        hasMissingProformaAlert={hasMissingProformaAlert}
         getProjectStatusLabel={getProjectStatusLabel}
         getProjectNoleggioState={getProjectNoleggioState}
         formatOperatoreRef={formatOperatoreRef}

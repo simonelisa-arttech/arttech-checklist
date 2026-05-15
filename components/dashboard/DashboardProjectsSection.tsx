@@ -32,6 +32,7 @@ type Props = {
   getExpiryStatus: (value?: string | null) => "ATTIVA" | "SCADUTA" | "—";
   renderBadge: (label: "ATTIVA" | "SCADUTA" | "—") => React.ReactNode;
   renderStatusBadge: (value?: string | null) => React.ReactNode;
+  hasMissingProformaAlert: (project: any) => boolean;
   getProjectStatusLabel: (project: any) => string;
   getProjectNoleggioState: (project: any) => {
     isNoleggioAttivo: boolean;
@@ -78,10 +79,30 @@ export default function DashboardProjectsSection({
   getExpiryStatus,
   renderBadge,
   renderStatusBadge,
+  hasMissingProformaAlert,
   getProjectStatusLabel,
   getProjectNoleggioState,
   formatOperatoreRef,
 }: Props) {
+  function renderMissingProformaBadge() {
+    return (
+      <span
+        style={{
+          padding: "4px 8px",
+          borderRadius: 999,
+          border: "1px solid #fca5a5",
+          background: "#fee2e2",
+          color: "#b91c1c",
+          fontSize: 11,
+          fontWeight: 800,
+          whiteSpace: "nowrap",
+        }}
+      >
+        PROFORMA MANCANTE
+      </span>
+    );
+  }
+
   return loading ? (
     <div>Caricamento…</div>
   ) : itemsCount === 0 ? (
@@ -405,6 +426,7 @@ export default function DashboardProjectsSection({
             </thead>
             <tbody>
               {displayRows.map((c) => {
+                const missingProforma = hasMissingProformaAlert(c);
                 return (
                   <tr
                     key={c.id}
@@ -426,7 +448,10 @@ export default function DashboardProjectsSection({
                   >
                     <td style={{ padding: "10px 12px", fontWeight: 700 }}>
                       <div style={{ display: "grid", gap: 6 }}>
-                        <div>{c.nome_checklist}</div>
+                        <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                          <div>{c.nome_checklist}</div>
+                          {missingProforma ? renderMissingProformaBadge() : null}
+                        </div>
                         <div
                           style={{
                             border: "1px solid #eef2f7",
@@ -541,13 +566,14 @@ export default function DashboardProjectsSection({
                         }
                         const title = titleParts.join(" | ");
                         return (
-                          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
                             <span>{c.proforma ?? "—"}</span>
                             {hasProforma && (
                               <span title={title} style={{ cursor: "help" }}>
                                 ✅
                               </span>
                             )}
+                            {missingProforma ? renderMissingProformaBadge() : null}
                           </div>
                         );
                       })()}

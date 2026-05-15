@@ -7797,6 +7797,13 @@ function buildFormData(c: Checklist): FormData {
   const proformaDocTitle = hasProformaDoc
     ? `Documento PROFORMA: ${proformaDocs[0].filename}`
     : "Documento PROFORMA presente";
+  const projectHasMissingProformaAlert = (() => {
+    const status = String(checklist?.stato_progetto || "").trim().toUpperCase();
+    if (status === "CHIUSO" || status === "COMPLETATO") return false;
+    const proforma = String(checklist?.proforma || "").trim();
+    const proformaLink = String(checklist?.proforma_link_url || "").trim();
+    return !proforma || !proformaLink;
+  })();
 
   const projectRenewalsAll = [
     ...(checklist?.saas_piano && checklist?.id === id
@@ -8699,6 +8706,22 @@ function buildFormData(c: Checklist): FormData {
             }}
           >
             <div style={{ fontWeight: 800, marginBottom: 6 }}>PROGETTO</div>
+            {projectHasMissingProformaAlert ? (
+              <div
+                style={{
+                  marginBottom: 10,
+                  padding: "10px 12px",
+                  borderRadius: 10,
+                  border: "1px solid #fca5a5",
+                  background: "#fee2e2",
+                  color: "#b91c1c",
+                  fontSize: 13,
+                  fontWeight: 800,
+                }}
+              >
+                PROFORMA MANCANTE
+              </div>
+            ) : null}
             <FieldRow
               label="Rif. Progetto"
               view={checklist.nome_checklist || "—"}
