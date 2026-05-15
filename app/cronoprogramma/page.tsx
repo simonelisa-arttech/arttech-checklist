@@ -64,12 +64,38 @@ type CronoComment = {
   created_by_nome: string | null;
 };
 
+type CompletionOutcome = "COMPLETATO" | "PARZIALE" | "NON_COMPLETATO";
+
+type CompletionDraft = {
+  esito_attivita: CompletionOutcome | "";
+  note_finali: string;
+  problemi: string;
+  materiali: string;
+};
+
 function sortCommentsNewestFirst(comments: CronoComment[]) {
   return [...comments].sort((a, b) => {
     const aTime = a.created_at ? new Date(a.created_at).getTime() : 0;
     const bTime = b.created_at ? new Date(b.created_at).getTime() : 0;
     return bTime - aTime;
   });
+}
+
+const EMPTY_COMPLETION_DRAFT: CompletionDraft = {
+  esito_attivita: "",
+  note_finali: "",
+  problemi: "",
+  materiali: "",
+};
+
+function mergeComments(existing: CronoComment[], incoming: CronoComment[]) {
+  const byId = new Map<string, CronoComment>();
+  for (const comment of [...incoming, ...existing]) {
+    const id = String(comment?.id || "").trim();
+    if (!id) continue;
+    if (!byId.has(id)) byId.set(id, comment);
+  }
+  return sortCommentsNewestFirst(Array.from(byId.values()));
 }
 
 type OperativiFields = {
@@ -299,6 +325,9 @@ export default function CronoprogrammaPage() {
   const [deletingCommentId, setDeletingCommentId] = useState<string | null>(null);
   const [noteHistoryKey, setNoteHistoryKey] = useState<string | null>(null);
   const [operativiDraftByKey, setOperativiDraftByKey] = useState<Record<string, OperativiFields>>({});
+  const [completionRow, setCompletionRow] = useState<TimelineRow | null>(null);
+  const [completionDraft, setCompletionDraft] = useState<CompletionDraft>(EMPTY_COMPLETION_DRAFT);
+  const [completionError, setCompletionError] = useState<string | null>(null);
   const topScrollRef = useRef<HTMLDivElement | null>(null);
   const mainScrollRef = useRef<HTMLDivElement | null>(null);
   const bottomScrollRef = useRef<HTMLDivElement | null>(null);
@@ -367,8 +396,26 @@ export default function CronoprogrammaPage() {
     }
   }
 
+  function openCompletionModal(row: TimelineRow) {
+    setCompletionRow(row);
+    setCompletionDraft(EMPTY_COMPLETION_DRAFT);
+    setCompletionError(null);
+    setStateError(null);
+  }
+
+  function closeCompletionModal() {
+    if (savingFattoKey) return;
+    setCompletionRow(null);
+    setCompletionDraft(EMPTY_COMPLETION_DRAFT);
+    setCompletionError(null);
+  }
+
   async function setFatto(row: TimelineRow, fatto: boolean) {
     const key = getRowKey(row.kind, row.row_ref_id);
+    if (fatto) {
+      openCompletionModal(row);
+      return;
+    }
     setSavingFattoKey(key);
     setStateError(null);
     try {
@@ -393,6 +440,71 @@ export default function CronoprogrammaPage() {
           r.kind === row.kind && r.row_ref_id === row.row_ref_id ? { ...r, fatto } : r
         )
       );
+    } finally {
+      setSavingFattoKey(null);
+    }
+  }
+
+  async function confirmCompletion() {
+    if (!completionRow) return;
+    if (!completionDraft.esito_attivita) {
+      setCompletionError("Seleziona l'esito attività.");
+      return;
+    }
+    if (!completionDraft.note_finali.trim()) {
+      setCompletionError("Inserisci la descrizione esito / note finali.");
+      return;
+    }
+
+    const row = completionRow;
+    const key = getRowKey(row.kind, row.row_ref_id);
+    setSavingFattoKey(key);
+    setCompletionError(null);
+    setStateError(null);
+
+    try {
+      const res = await fetch("/api/cronoprogramma", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          action: "complete_activity",
+          row_kind: row.kind,
+          row_ref_id: row.row_ref_id,
+          esito_attivita: completionDraft.esito_attivita,
+          note_finali: completionDraft.note_finali.trim(),
+          problemi: completionDraft.problemi.trim(),
+          materiali: completionDraft.materiali.trim(),
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const message = String(data?.error || "Errore completamento attività");
+        setCompletionError(message);
+        setStateError(message);
+        return;
+      }
+
+      setMetaByKey((prev) => ({ ...prev, [key]: data?.meta }));
+      setRows((prev) =>
+        prev.map((entry) =>
+          entry.kind === row.kind && entry.row_ref_id === row.row_ref_id
+            ? { ...entry, fatto: true }
+            : entry
+        )
+      );
+      const insertedComments = Array.isArray(data?.comments)
+        ? (data.comments as CronoComment[])
+        : [];
+      if (insertedComments.length > 0) {
+        setCommentsByKey((prev) => ({
+          ...prev,
+          [key]: mergeComments(prev[key] || [], insertedComments),
+        }));
+      }
+      setCompletionRow(null);
+      setCompletionDraft(EMPTY_COMPLETION_DRAFT);
+      setCompletionError(null);
     } finally {
       setSavingFattoKey(null);
     }
@@ -773,6 +885,170 @@ export default function CronoprogrammaPage() {
           {stateError}
         </div>
       )}
+      {completionRow ? (
+        <div
+          role="dialog"
+          aria-modal="true"
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(15, 23, 42, 0.5)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 16,
+            zIndex: 50,
+          }}
+        >
+          <div
+            style={{
+              width: "100%",
+              maxWidth: 680,
+              background: "white",
+              borderRadius: 16,
+              border: "1px solid #e5e7eb",
+              boxShadow: "0 24px 80px rgba(15, 23, 42, 0.2)",
+              padding: 20,
+              display: "grid",
+              gap: 14,
+            }}
+          >
+            <div>
+              <div style={{ fontSize: 22, fontWeight: 800, color: "#111827" }}>
+                Completa attività
+              </div>
+              <div style={{ marginTop: 4, fontSize: 13, color: "#4b5563" }}>
+                {completionRow.progetto || "Attività cronoprogramma"} ·{" "}
+                {completionRow.cliente || completionRow.kind}
+              </div>
+            </div>
+            {completionError ? (
+              <div
+                style={{
+                  padding: "10px 12px",
+                  borderRadius: 10,
+                  background: "#fff7ed",
+                  color: "#9a3412",
+                  fontSize: 14,
+                }}
+              >
+                {completionError}
+              </div>
+            ) : null}
+            <label style={{ display: "grid", gap: 6, fontWeight: 700 }}>
+              <span>Esito attività</span>
+              <select
+                value={completionDraft.esito_attivita}
+                onChange={(e) =>
+                  setCompletionDraft((prev) => ({
+                    ...prev,
+                    esito_attivita: e.target.value as CompletionOutcome | "",
+                  }))
+                }
+                style={{
+                  border: "1px solid #d1d5db",
+                  borderRadius: 10,
+                  padding: "10px 12px",
+                  background: "white",
+                }}
+              >
+                <option value="">Seleziona esito</option>
+                <option value="COMPLETATO">COMPLETATO</option>
+                <option value="PARZIALE">PARZIALE</option>
+                <option value="NON_COMPLETATO">NON_COMPLETATO</option>
+              </select>
+            </label>
+            <label style={{ display: "grid", gap: 6, fontWeight: 700 }}>
+              <span>Descrizione esito / note finali</span>
+              <textarea
+                value={completionDraft.note_finali}
+                onChange={(e) =>
+                  setCompletionDraft((prev) => ({ ...prev, note_finali: e.target.value }))
+                }
+                rows={5}
+                style={{
+                  border: "1px solid #d1d5db",
+                  borderRadius: 10,
+                  padding: "10px 12px",
+                  resize: "vertical",
+                }}
+              />
+            </label>
+            <label style={{ display: "grid", gap: 6, fontWeight: 700 }}>
+              <span>Problemi riscontrati</span>
+              <textarea
+                value={completionDraft.problemi}
+                onChange={(e) =>
+                  setCompletionDraft((prev) => ({ ...prev, problemi: e.target.value }))
+                }
+                rows={3}
+                style={{
+                  border: "1px solid #d1d5db",
+                  borderRadius: 10,
+                  padding: "10px 12px",
+                  resize: "vertical",
+                }}
+              />
+            </label>
+            <label style={{ display: "grid", gap: 6, fontWeight: 700 }}>
+              <span>Materiali utilizzati</span>
+              <textarea
+                value={completionDraft.materiali}
+                onChange={(e) =>
+                  setCompletionDraft((prev) => ({ ...prev, materiali: e.target.value }))
+                }
+                rows={3}
+                style={{
+                  border: "1px solid #d1d5db",
+                  borderRadius: 10,
+                  padding: "10px 12px",
+                  resize: "vertical",
+                }}
+              />
+            </label>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, flexWrap: "wrap" }}>
+              <button
+                type="button"
+                onClick={closeCompletionModal}
+                disabled={savingFattoKey === getRowKey(completionRow.kind, completionRow.row_ref_id)}
+                style={{
+                  padding: "10px 14px",
+                  borderRadius: 10,
+                  border: "1px solid #d1d5db",
+                  background: "white",
+                  cursor:
+                    savingFattoKey === getRowKey(completionRow.kind, completionRow.row_ref_id)
+                      ? "not-allowed"
+                      : "pointer",
+                }}
+              >
+                Annulla
+              </button>
+              <button
+                type="button"
+                onClick={confirmCompletion}
+                disabled={savingFattoKey === getRowKey(completionRow.kind, completionRow.row_ref_id)}
+                style={{
+                  padding: "10px 14px",
+                  borderRadius: 10,
+                  border: "1px solid #111827",
+                  background: "#111827",
+                  color: "white",
+                  fontWeight: 700,
+                  cursor:
+                    savingFattoKey === getRowKey(completionRow.kind, completionRow.row_ref_id)
+                      ? "not-allowed"
+                      : "pointer",
+                }}
+              >
+                {savingFattoKey === getRowKey(completionRow.kind, completionRow.row_ref_id)
+                  ? "Salvataggio..."
+                  : "Conferma completamento"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
       <CronoprogrammaPanel
         fromDate={fromDate}
         setFromDate={(value) => {

@@ -39,6 +39,12 @@ type OperativiReferenteInput = {
   ruolo?: string | null;
   position?: string | number | null;
 };
+type CompletionReportInput = {
+  esito_attivita: ReportOutcome;
+  note_finali: string;
+  problemi: string | null;
+  materiali: string | null;
+};
 const CUTOFF = "2026-01-01";
 const REPORT_COMMENT_PREFIX = "__REPORT__:";
 const REPORT_OUTCOME_VALUES = new Set(["COMPLETATO", "PARZIALE", "NON_COMPLETATO"]);
@@ -81,6 +87,26 @@ function parseStructuredReportOutcome(commentValue: unknown): ReportOutcome | nu
   } catch {
     return null;
   }
+}
+
+function buildStructuredReportComment(input: CompletionReportInput) {
+  return `${REPORT_COMMENT_PREFIX}${JSON.stringify({
+    esito: input.esito_attivita,
+    problemi: input.problemi || "",
+    materiali: input.materiali || "",
+    note_finali: input.note_finali,
+  })}`;
+}
+
+function buildReadableCompletionComment(input: CompletionReportInput) {
+  const lines = [
+    "[ATTIVITÀ COMPLETATA]",
+    `Esito: ${input.esito_attivita}`,
+    `Note: ${input.note_finali}`,
+  ];
+  if (input.problemi) lines.push(`Problemi: ${input.problemi}`);
+  if (input.materiali) lines.push(`Materiali: ${input.materiali}`);
+  return lines.join("\n");
 }
 
 function cleanModalitaAttivita(value: unknown) {
@@ -189,6 +215,16 @@ function mapMetaRow(row: any) {
     referente_cliente_contatto: row?.referente_cliente_contatto || null,
     commerciale_art_tech_nome: row?.commerciale_art_tech_nome || null,
     commerciale_art_tech_contatto: row?.commerciale_art_tech_contatto || null,
+  };
+}
+
+function mapCommentRow(row: any) {
+  return {
+    id: row?.id,
+    commento: row?.commento || "",
+    created_at: row?.created_at || null,
+    created_by_operatore: row?.created_by_operatore || null,
+    created_by_nome: row?.operatore?.nome || null,
   };
 }
 
@@ -656,13 +692,7 @@ export async function POST(request: Request) {
       const key = rowKey(String((row as any).row_kind), String((row as any).row_ref_id));
       if (!wanted.has(key)) continue;
       if (!commentsByKey[key]) commentsByKey[key] = [];
-      commentsByKey[key].push({
-        id: (row as any).id,
-        commento: (row as any).commento || "",
-        created_at: (row as any).created_at || null,
-        created_by_operatore: (row as any).created_by_operatore || null,
-        created_by_nome: (row as any).operatore?.nome || null,
-      });
+      commentsByKey[key].push(mapCommentRow(row));
       if (!(key in latestReportOutcomeByKey)) {
         latestReportOutcomeByKey[key] = parseStructuredReportOutcome((row as any).commento);
       }
@@ -778,6 +808,139 @@ export async function POST(request: Request) {
       meta: metaByKey,
       comments: commentsByKey,
       time_budget: timeBudgetByKey,
+    });
+  }
+
+  if (action === "complete_activity") {
+    const rowKind = String(body?.row_kind || "").trim().toUpperCase();
+    const rowRefId = String(body?.row_ref_id || "").trim();
+    const esitoAttivita = String(body?.esito_attivita || "").trim().toUpperCase();
+    const noteFinali = String(body?.note_finali || "").trim();
+    const problemi = cleanText(body?.problemi);
+    const materiali = cleanText(body?.materiali);
+
+    if (!(rowKind === "INSTALLAZIONE" || rowKind === "DISINSTALLAZIONE" || rowKind === "INTERVENTO") || !rowRefId) {
+      return NextResponse.json({ error: "row_kind/row_ref_id non validi" }, { status: 400 });
+    }
+    if (!REPORT_OUTCOME_VALUES.has(esitoAttivita)) {
+      return NextResponse.json({ error: "Esito attività non valido" }, { status: 400 });
+    }
+    if (!noteFinali) {
+      return NextResponse.json({ error: "Inserisci le note finali dell'attività" }, { status: 400 });
+    }
+
+    const nowIso = new Date().toISOString();
+    const report: CompletionReportInput = {
+      esito_attivita: esitoAttivita as ReportOutcome,
+      note_finali: noteFinali,
+      problemi,
+      materiali,
+    };
+
+    const { data: currentMeta, error: currentMetaErr } = await supabaseAdmin
+      .from("cronoprogramma_meta")
+      .select("*")
+      .eq("row_kind", rowKind)
+      .eq("row_ref_id", rowRefId)
+      .maybeSingle();
+
+    if (
+      currentMetaErr &&
+      !String(currentMetaErr.message || "").toLowerCase().includes("cronoprogramma_meta")
+    ) {
+      return NextResponse.json({ error: currentMetaErr.message }, { status: 500 });
+    }
+
+    const { data: currentSlots, error: currentSlotsErr } = await supabaseAdmin
+      .from("cronoprogramma_meta_slots")
+      .select("*")
+      .eq("row_kind", rowKind)
+      .eq("row_ref_id", rowRefId)
+      .order("position", { ascending: true });
+
+    if (
+      currentSlotsErr &&
+      !String(currentSlotsErr.message || "").toLowerCase().includes("cronoprogramma_meta_slots")
+    ) {
+      return NextResponse.json({ error: currentSlotsErr.message }, { status: 500 });
+    }
+
+    const payload = {
+      row_kind: rowKind,
+      row_ref_id: rowRefId,
+      fatto: true,
+      updated_at: nowIso,
+      updated_by_operatore: operatore.id,
+    };
+
+    let { data, error } = await supabaseAdmin
+      .from("cronoprogramma_meta")
+      .upsert(payload, { onConflict: "row_kind,row_ref_id" })
+      .select("*, operatore:updated_by_operatore(nome)")
+      .maybeSingle();
+
+    if (error && String(error.message || "").toLowerCase().includes("personale_ids")) {
+      const retry = await supabaseAdmin
+        .from("cronoprogramma_meta")
+        .upsert(payload, { onConflict: "row_kind,row_ref_id" })
+        .select("*, operatore:updated_by_operatore(nome)")
+        .maybeSingle();
+      data = retry.data;
+      error = retry.error;
+    }
+
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+
+    const { error: eventErr } = await supabaseAdmin.from("cronoprogramma_activity_events").insert({
+      row_kind: rowKind,
+      row_ref_id: rowRefId,
+      event_type: "COMPLETATO",
+      esito_attivita: report.esito_attivita,
+      note_finali: report.note_finali,
+      problemi: report.problemi,
+      materiali: report.materiali,
+      old_meta: currentMeta || null,
+      old_slots: currentSlots || [],
+      created_by_operatore: operatore.id,
+      created_at: nowIso,
+    });
+
+    if (eventErr) {
+      return NextResponse.json({ error: eventErr.message }, { status: 500 });
+    }
+
+    const readableCommentCreatedAt = nowIso;
+    const structuredCommentCreatedAt = new Date(Date.parse(nowIso) + 1).toISOString();
+    const { data: insertedComments, error: commentErr } = await supabaseAdmin
+      .from("cronoprogramma_comments")
+      .insert([
+        {
+          row_kind: rowKind,
+          row_ref_id: rowRefId,
+          commento: buildReadableCompletionComment(report),
+          created_by_operatore: operatore.id,
+          created_at: readableCommentCreatedAt,
+        },
+        {
+          row_kind: rowKind,
+          row_ref_id: rowRefId,
+          commento: buildStructuredReportComment(report),
+          created_by_operatore: operatore.id,
+          created_at: structuredCommentCreatedAt,
+        },
+      ])
+      .select("id, row_kind, row_ref_id, commento, created_at, created_by_operatore, operatore:created_by_operatore(nome)");
+
+    if (commentErr) {
+      return NextResponse.json({ error: commentErr.message }, { status: 500 });
+    }
+
+    return NextResponse.json({
+      ok: true,
+      meta: mapMetaRow(data as any),
+      comments: (insertedComments || []).map((row) => mapCommentRow(row)),
     });
   }
 
@@ -1453,13 +1616,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({
       ok: true,
-      comment: {
-        id: (data as any)?.id,
-        commento: (data as any)?.commento || "",
-        created_at: (data as any)?.created_at || null,
-        created_by_operatore: (data as any)?.created_by_operatore || null,
-        created_by_nome: (data as any)?.operatore?.nome || null,
-      },
+      comment: mapCommentRow(data as any),
     });
   }
 
