@@ -1,7 +1,13 @@
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import {
+  getOperatorTargetCandidates,
+  normalizeNotificationTarget,
+} from "@/lib/notifications/operatorTargets";
 import {
   syncChecklistTemplate,
   syncChecklistTemplatesForChecklistIds,
@@ -74,12 +80,20 @@ function getSupabaseClient() {
 }
 
 function normalizeTarget(input: unknown) {
-  const raw = String(input || "")
-    .trim()
-    .toUpperCase();
-  if (!raw) return "GENERICA";
-  if (raw === "ALTRO") return "GENERICA";
-  return raw;
+  return normalizeNotificationTarget(input);
+}
+
+function isMissingColumn(error: any, column: string) {
+  return String(error?.message || "").toLowerCase().includes(column.toLowerCase());
+}
+
+async function selectOperatoriTargets(supabase: any) {
+  const withReparto = await supabase.from("operatori").select("ruolo, reparto").eq("attivo", true);
+  if (!withReparto.error) return withReparto.data || [];
+  if (!isMissingColumn(withReparto.error, "reparto")) throw new Error(withReparto.error.message);
+  const fallback = await supabase.from("operatori").select("ruolo").eq("attivo", true);
+  if (fallback.error) throw new Error(fallback.error.message);
+  return fallback.data || [];
 }
 
 async function fetchRows(supabase: any) {
@@ -162,10 +176,11 @@ export async function GET(request: Request) {
     if (t) existingTargets.add(t);
   }
 
-  const { data: ops } = await supabase.from("operatori").select("ruolo").eq("attivo", true);
+  const ops = await selectOperatoriTargets(supabase);
   for (const op of ops || []) {
-    const role = normalizeTarget((op as any)?.ruolo);
-    if (role) existingTargets.add(role);
+    for (const role of getOperatorTargetCandidates(op as { ruolo?: string | null; reparto?: string | null })) {
+      existingTargets.add(role);
+    }
   }
 
   const availableTargets = Array.from(new Set([...baseTargets, ...Array.from(existingTargets)]));

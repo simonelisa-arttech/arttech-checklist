@@ -1,7 +1,14 @@
 export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
 
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import {
+  buildNotificationAutoRecipients,
+  getOperatorTargetCandidates,
+  normalizeNotificationTarget,
+} from "@/lib/notifications/operatorTargets";
 
 function getAccessToken(request: Request) {
   const authHeader = request.headers.get("authorization") || "";
@@ -61,13 +68,7 @@ async function requireUser(request: Request) {
 }
 
 function normalizeTarget(input: any) {
-  const raw = String(input || "")
-    .trim()
-    .toUpperCase();
-  if (raw === "MAGAZZINO") return "MAGAZZINO";
-  if (raw === "TECNICO_SW" || raw === "TECNICO SW" || raw === "TECNICO-SW") return "TECNICO_SW";
-  if (raw === "ALTRO") return "GENERICA";
-  return raw || "GENERICA";
+  return normalizeNotificationTarget(input);
 }
 
 function sanitizeEmailList(input: any) {
@@ -128,10 +129,11 @@ function isLegacyTaskTargetUniqueViolation(err: any) {
 async function getAvailableTargets(adminClient: any) {
   const base = ["GENERICA", "MAGAZZINO", "TECNICO_SW"];
   const out = new Set<string>(base);
-  const { data } = await adminClient.from("operatori").select("ruolo").eq("attivo", true);
+  const { data } = await selectOperatoriForNotifications(adminClient, "ruolo");
   for (const row of data || []) {
-    const role = normalizeTarget((row as any)?.ruolo);
-    if (role) out.add(role);
+    for (const candidate of getOperatorTargetCandidates(row as OperatoreRecipientRow)) {
+      out.add(candidate);
+    }
   }
   return Array.from(out);
 }
@@ -140,6 +142,7 @@ type OperatoreRecipientRow = {
   nome: string | null;
   email: string | null;
   ruolo: string | null;
+  reparto?: string | null;
   attivo: boolean | null;
   riceve_notifiche?: boolean | null;
   alert_enabled?: boolean | null;
@@ -153,20 +156,30 @@ type OperatoreRecipientRow = {
   } | null;
 };
 
-async function listOperatoriForNotifications(adminClient: any): Promise<OperatoreRecipientRow[]> {
-  const withRiceve = await adminClient
+async function selectOperatoriForNotifications(adminClient: any, columns: string) {
+  const withReparto = await adminClient
     .from("operatori")
-    .select("nome, email, ruolo, attivo, riceve_notifiche, alert_tasks")
+    .select(`${columns}, reparto`)
     .eq("attivo", true);
+  if (!withReparto.error) return withReparto;
+  if (!isMissingColumn(withReparto.error, "reparto")) return withReparto;
+  return adminClient.from("operatori").select(columns).eq("attivo", true);
+}
+
+async function listOperatoriForNotifications(adminClient: any): Promise<OperatoreRecipientRow[]> {
+  const withRiceve = await selectOperatoriForNotifications(
+    adminClient,
+    "nome, email, ruolo, attivo, riceve_notifiche, alert_tasks"
+  );
   if (!withRiceve.error) return (withRiceve.data || []) as OperatoreRecipientRow[];
   if (!isMissingColumn(withRiceve.error, "riceve_notifiche")) {
     throw new Error(withRiceve.error.message);
   }
 
-  const fallback = await adminClient
-    .from("operatori")
-    .select("nome, email, ruolo, attivo, alert_enabled, alert_tasks")
-    .eq("attivo", true);
+  const fallback = await selectOperatoriForNotifications(
+    adminClient,
+    "nome, email, ruolo, attivo, alert_enabled, alert_tasks"
+  );
   if (fallback.error) throw new Error(fallback.error.message);
   return ((fallback.data || []) as OperatoreRecipientRow[]).map((o) => ({
     ...o,
@@ -175,16 +188,7 @@ async function listOperatoriForNotifications(adminClient: any): Promise<Operator
 }
 
 function buildAutoRecipients(_rule: any, target: string, operatori: OperatoreRecipientRow[]) {
-  const normalizedTarget = normalizeTarget(target);
-  return Array.from(
-    new Set(
-      operatori
-        .filter((o) => normalizeTarget(o.ruolo) === normalizedTarget)
-        .filter((o) => o.riceve_notifiche !== false)
-        .map((o) => String(o.email || "").trim().toLowerCase())
-        .filter((email) => email.includes("@"))
-    )
-  );
+  return buildNotificationAutoRecipients(target, operatori);
 }
 
 function normalizeLooseText(value: string) {
@@ -245,8 +249,9 @@ function resolveExtraRecipientsFromTokens(tokens: string[], operatori: Operatore
 }
 
 function withRecipients(rule: any, operatori: OperatoreRecipientRow[]) {
-  const extra_recipients = sanitizeEmailList(rule?.recipients);
   const auto_recipients = buildAutoRecipients(rule, String(rule?.target || "GENERICA"), operatori);
+  const autoRecipientSet = new Set(auto_recipients);
+  const extra_recipients = sanitizeEmailList(rule?.recipients).filter((email) => !autoRecipientSet.has(email));
   const effective_recipients = Array.from(new Set([...auto_recipients, ...extra_recipients]));
   return {
     ...(rule || {}),
@@ -761,6 +766,10 @@ export async function GET(request: Request) {
     auto_recipients: effectiveRule.auto_recipients,
     extra_recipients: effectiveRule.extra_recipients,
     effective_recipients: effectiveRule.effective_recipients,
+  }, {
+    headers: {
+      "Cache-Control": "no-store, max-age=0",
+    },
   });
 }
 

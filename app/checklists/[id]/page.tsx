@@ -6497,6 +6497,7 @@ function buildFormData(c: Checklist): FormData {
       const res = await fetch(`/api/notification-rules?${query.toString()}`, {
         method: "GET",
         credentials: "include",
+        cache: "no-store",
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) {

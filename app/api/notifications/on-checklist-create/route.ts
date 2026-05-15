@@ -4,6 +4,7 @@ import { createHash } from "crypto";
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { sendEmail } from "@/lib/email";
+import { buildNotificationAutoRecipients, normalizeNotificationTarget } from "@/lib/notifications/operatorTargets";
 import { getEffectiveProjectStatus } from "@/lib/projectStatus";
 import {
   getChecklistEligibilityDate,
@@ -44,6 +45,7 @@ type TaskRow = {
 type OperatoreRow = {
   email: string | null;
   ruolo: string | null;
+  reparto?: string | null;
   attivo: boolean | null;
   riceve_notifiche?: boolean | null;
   alert_enabled?: boolean | null;
@@ -81,31 +83,30 @@ function parseRecipients(input: any) {
 }
 
 function normalizeTarget(value: string | null | undefined) {
-  const raw = String(value || "")
-    .trim()
-    .toUpperCase();
-  if (raw === "TECNICO SW" || raw === "TECNICO-SW") return "TECNICO_SW";
-  if (raw === "ALTRO") return "GENERICA";
-  return raw || "GENERICA";
+  return normalizeNotificationTarget(value);
 }
 
 function isMissingColumn(error: any, column: string) {
   return String(error?.message || "").toLowerCase().includes(column.toLowerCase());
 }
 
-async function listOperatoriForNotifications(adminClient: any): Promise<OperatoreRow[]> {
-  const withRiceve = await adminClient
+async function selectOperatoriForNotifications(adminClient: any, columns: string) {
+  const withReparto = await adminClient
     .from("operatori")
-    .select("email, ruolo, attivo, riceve_notifiche")
+    .select(`${columns}, reparto`)
     .eq("attivo", true);
+  if (!withReparto.error) return withReparto;
+  if (!isMissingColumn(withReparto.error, "reparto")) return withReparto;
+  return adminClient.from("operatori").select(columns).eq("attivo", true);
+}
+
+async function listOperatoriForNotifications(adminClient: any): Promise<OperatoreRow[]> {
+  const withRiceve = await selectOperatoriForNotifications(adminClient, "email, ruolo, attivo, riceve_notifiche");
   if (!withRiceve.error) return (withRiceve.data || []) as OperatoreRow[];
   if (!String(withRiceve.error.message || "").toLowerCase().includes("riceve_notifiche")) {
     throw new Error(withRiceve.error.message);
   }
-  const fallback = await adminClient
-    .from("operatori")
-    .select("email, ruolo, attivo, alert_enabled")
-    .eq("attivo", true);
+  const fallback = await selectOperatoriForNotifications(adminClient, "email, ruolo, attivo, alert_enabled");
   if (fallback.error) throw new Error(fallback.error.message);
   return ((fallback.data || []) as OperatoreRow[]).map((o) => ({
     ...o,
@@ -114,16 +115,7 @@ async function listOperatoriForNotifications(adminClient: any): Promise<Operator
 }
 
 function getAutoRecipients(target: string, operatori: OperatoreRow[]) {
-  const normalizedTarget = normalizeTarget(target);
-  return Array.from(
-    new Set(
-      operatori
-        .filter((o) => o.riceve_notifiche !== false)
-        .filter((o) => normalizeTarget(o.ruolo) === normalizedTarget)
-        .map((o) => String(o.email || "").trim().toLowerCase())
-        .filter((email) => email.includes("@"))
-    )
-  );
+  return buildNotificationAutoRecipients(target, operatori);
 }
 
 function escapeHtml(value: string) {

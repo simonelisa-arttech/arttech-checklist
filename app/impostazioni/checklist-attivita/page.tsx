@@ -177,6 +177,7 @@ export default function ChecklistAttivitaPage() {
       const res = await fetch(`/api/notification-rules?${query.toString()}`, {
         method: "GET",
         credentials: "include",
+        cache: "no-store",
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(json?.error || "Errore caricamento regola.");
