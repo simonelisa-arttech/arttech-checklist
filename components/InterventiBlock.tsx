@@ -26,6 +26,7 @@ export type InterventiImpiantoOption = {
   dimensioni?: string | null;
   passo?: string | null;
   tipo_impianto?: string | null;
+  disabled?: boolean;
 };
 
 export type InterventiOperatore = {
@@ -1071,7 +1072,11 @@ export default function InterventiBlock({
               >
                 <option value="">Intervento generale progetto</option>
                 {impianti.map((impianto) => (
-                  <option key={impianto.id} value={impianto.id}>
+                  <option
+                    key={impianto.id}
+                    value={impianto.id}
+                    disabled={Boolean(impianto.disabled)}
+                  >
                     {impianto.label}
                   </option>
                 ))}
@@ -1754,7 +1759,11 @@ export default function InterventiBlock({
                             >
                               <option value="">Intervento generale progetto</option>
                               {impianti.map((impianto) => (
-                                <option key={impianto.id} value={impianto.id}>
+                                <option
+                                  key={impianto.id}
+                                  value={impianto.id}
+                                  disabled={Boolean(impianto.disabled)}
+                                >
                                   {impianto.label}
                                 </option>
                               ))}

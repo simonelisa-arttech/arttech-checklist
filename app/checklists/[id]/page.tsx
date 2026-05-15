@@ -536,6 +536,50 @@ function buildEmptyChecklistImpiantoCabinet(defaultCodiceMagazzino = ""): Checkl
   };
 }
 
+function buildChecklistImpiantoMatchKey(value?: ChecklistImpianto | null) {
+  if (!value) return "";
+  const parts = [
+    String(value.impianto_descrizione || "").trim().toLowerCase(),
+    String(getChecklistImpiantoTipoValue(value) || "").trim().toLowerCase(),
+    String(value.tipo_struttura || "").trim().toLowerCase(),
+    String(value.impianto_indirizzo || "").trim().toLowerCase(),
+    String(value.dimensioni || "").trim().toLowerCase(),
+    String(value.passo || "").trim().toLowerCase(),
+  ].filter(Boolean);
+  return parts.join("|");
+}
+
+function resolvePersistedChecklistImpiantoId(
+  selectedId: string,
+  currentImpianti: ChecklistImpianto[],
+  persistedImpianti: ChecklistImpianto[]
+) {
+  const normalizedId = String(selectedId || "").trim();
+  if (!normalizedId) return "";
+  if (isRealUuid(normalizedId)) return normalizedId;
+
+  const selectedIndex = currentImpianti.findIndex(
+    (impianto) => String(impianto.id || "").trim() === normalizedId
+  );
+  if (selectedIndex >= 0) {
+    const indexedPersisted = persistedImpianti[selectedIndex];
+    const indexedPersistedId = String(indexedPersisted?.id || "").trim();
+    if (isRealUuid(indexedPersistedId)) return indexedPersistedId;
+  }
+
+  const selectedImpianto =
+    currentImpianti.find((impianto) => String(impianto.id || "").trim() === normalizedId) || null;
+  const selectedKey = buildChecklistImpiantoMatchKey(selectedImpianto);
+  if (!selectedKey) return "";
+
+  const matchedPersisted = persistedImpianti.find(
+    (impianto) =>
+      isRealUuid(String(impianto.id || "").trim()) &&
+      buildChecklistImpiantoMatchKey(impianto) === selectedKey
+  );
+  return String(matchedPersisted?.id || "").trim();
+}
+
 function hasChecklistImpiantoCabinetData(value: ChecklistImpiantoCabinet | null | undefined) {
   if (!value) return false;
   return [
@@ -2059,6 +2103,9 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
   const [projectInterventoBulkSending, setProjectInterventoBulkSending] = useState(false);
   const [projectInterventoBulkErr, setProjectInterventoBulkErr] = useState<string | null>(null);
   const [projectInterventoBulkOk, setProjectInterventoBulkOk] = useState<string | null>(null);
+  const [persistedInterventoImpianti, setPersistedInterventoImpianti] = useState<
+    ChecklistImpianto[]
+  >([]);
   const [projectInterventoBulkLastSentAt, setProjectInterventoBulkLastSentAt] = useState<string | null>(null);
   const [projectInterventoBulkLastToOperatoreId, setProjectInterventoBulkLastToOperatoreId] = useState<string | null>(null);
   const [projectInterventoBulkLastMessage, setProjectInterventoBulkLastMessage] = useState<string | null>(null);
@@ -2370,12 +2417,16 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
       const normalizedImpianti = checklist.impianti
         .map((row) => normalizeChecklistImpianto(row, checklist.id))
         .filter(Boolean) as ChecklistImpianto[];
+      setPersistedInterventoImpianti(
+        normalizedImpianti.filter((row) => isRealUuid(String(row.id || "").trim()))
+      );
       setImpianti(normalizedImpianti.length > 0 ? normalizedImpianti : [buildEmptyChecklistImpianto()]);
       setCabinetPendingFiles({});
       setCabinetPanelsOpen({});
       setCabinetError(null);
       return;
     }
+    setPersistedInterventoImpianti([]);
     setImpianti([buildEmptyChecklistImpianto()]);
     setCabinetPendingFiles({});
     setCabinetPanelsOpen({});
@@ -2423,6 +2474,85 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
     formData?.data_disinstallazione,
     formData?.fine_noleggio,
     isNoleggioValue(formData?.noleggio_vendita ?? checklist?.noleggio_vendita ?? null),
+  ]);
+
+  async function loadPersistedInterventoImpianti(checklistId: string) {
+    const { data, error } = await dbFrom("checklist_impianti")
+      .select(
+        "id, checklist_id, position, impianto_codice, impianto_descrizione, tipo_impianto, tipo_struttura, impianto_indirizzo, passo, dimensioni, nit, impianto_quantita, numero_facce, m2_calcolati, data_disinstallazione, note"
+      )
+      .eq("checklist_id", checklistId)
+      .order("position", { ascending: true });
+
+    if (error) {
+      throw new Error(
+        logSupabaseError("load checklist_impianti for interventi", error) ||
+          "Errore caricamento impianti progetto"
+      );
+    }
+
+    const rows = ((data || []) as unknown[])
+      .map((row) => normalizeChecklistImpianto(row, checklistId))
+      .filter(Boolean) as ChecklistImpianto[];
+    const persistedRows = rows.filter((row) => isRealUuid(String(row.id || "").trim()));
+    setPersistedInterventoImpianti(persistedRows);
+    return persistedRows;
+  }
+
+  async function resolveInterventoChecklistImpiantoId(selectedId?: string | null) {
+    const normalizedId = String(selectedId || "").trim();
+    if (!normalizedId || isRealUuid(normalizedId)) return normalizedId;
+    if (!id) return "";
+
+    let persistedRows = persistedInterventoImpianti;
+    if (persistedRows.length === 0) {
+      persistedRows = await loadPersistedInterventoImpianti(id);
+    }
+    if (persistedRows.length === 0) return "";
+
+    return resolvePersistedChecklistImpiantoId(normalizedId, impianti, persistedRows);
+  }
+
+  useEffect(() => {
+    if (persistedInterventoImpianti.length === 0) return;
+
+    const resolvedNewSelection = resolvePersistedChecklistImpiantoId(
+      newProjectIntervento.checklist_impianto_id,
+      impianti,
+      persistedInterventoImpianti
+    );
+    if (
+      resolvedNewSelection &&
+      resolvedNewSelection !== String(newProjectIntervento.checklist_impianto_id || "").trim()
+    ) {
+      setNewProjectIntervento((prev) => ({
+        ...prev,
+        checklist_impianto_id: resolvedNewSelection,
+      }));
+    }
+
+    const currentEditSelection = String(projectInterventoEditForm?.checklist_impianto_id || "").trim();
+    if (!projectInterventoEditForm || !currentEditSelection) return;
+    const resolvedEditSelection = resolvePersistedChecklistImpiantoId(
+      currentEditSelection,
+      impianti,
+      persistedInterventoImpianti
+    );
+    if (resolvedEditSelection && resolvedEditSelection !== currentEditSelection) {
+      setProjectInterventoEditForm((prev) =>
+        prev
+          ? {
+              ...prev,
+              checklist_impianto_id: resolvedEditSelection,
+            }
+          : prev
+      );
+    }
+  }, [
+    impianti,
+    newProjectIntervento.checklist_impianto_id,
+    persistedInterventoImpianti,
+    projectInterventoEditForm,
   ]);
 
   function normalizeAlertTasks(input: any) {
@@ -2825,7 +2955,7 @@ function buildFormData(c: Checklist): FormData {
   async function addInterventoRow() {
     if (!id || !checklist) return;
     const descrizione = newProjectIntervento.descrizione.trim();
-    const selectedChecklistImpiantoId = String(newProjectIntervento.checklist_impianto_id || "").trim();
+    let selectedChecklistImpiantoId = String(newProjectIntervento.checklist_impianto_id || "").trim();
     const magazzino = splitMagazzinoFields(
       checklist.magazzino_importazione,
       checklist.magazzino_drive_url
@@ -2835,10 +2965,27 @@ function buildFormData(c: Checklist): FormData {
       return;
     }
     if (isTemporaryChecklistImpiantoSelection(selectedChecklistImpiantoId)) {
-      setProjectInterventiError(
-        "Salva prima il progetto/impianto prima di collegare l'intervento all'impianto."
-      );
-      return;
+      try {
+        selectedChecklistImpiantoId = await resolveInterventoChecklistImpiantoId(
+          selectedChecklistImpiantoId
+        );
+      } catch (error: any) {
+        setProjectInterventiError(
+          String(error?.message || "Errore aggiornamento impianti progetto")
+        );
+        return;
+      }
+      if (isRealUuid(selectedChecklistImpiantoId)) {
+        setNewProjectIntervento((prev) => ({
+          ...prev,
+          checklist_impianto_id: selectedChecklistImpiantoId,
+        }));
+      } else {
+        setProjectInterventiError(
+          "Salva prima il progetto/impianto prima di collegare l'intervento all'impianto."
+        );
+        return;
+      }
     }
     setProjectInterventiError(null);
     const safeChecklistImpiantoId = isRealUuid(selectedChecklistImpiantoId)
@@ -2947,12 +3094,33 @@ function buildFormData(c: Checklist): FormData {
 
   async function saveInterventoRow() {
     if (!projectInterventoEditId || !projectInterventoEditForm) return;
-    const selectedChecklistImpiantoId = String(projectInterventoEditForm.checklist_impianto_id || "").trim();
+    let selectedChecklistImpiantoId = String(projectInterventoEditForm.checklist_impianto_id || "").trim();
     if (isTemporaryChecklistImpiantoSelection(selectedChecklistImpiantoId)) {
-      setProjectInterventiError(
-        "Salva prima il progetto/impianto prima di collegare l'intervento all'impianto."
-      );
-      return;
+      try {
+        selectedChecklistImpiantoId = await resolveInterventoChecklistImpiantoId(
+          selectedChecklistImpiantoId
+        );
+      } catch (error: any) {
+        setProjectInterventiError(
+          String(error?.message || "Errore aggiornamento impianti progetto")
+        );
+        return;
+      }
+      if (isRealUuid(selectedChecklistImpiantoId)) {
+        setProjectInterventoEditForm((prev) =>
+          prev
+            ? {
+                ...prev,
+                checklist_impianto_id: selectedChecklistImpiantoId,
+              }
+            : prev
+        );
+      } else {
+        setProjectInterventiError(
+          "Salva prima il progetto/impianto prima di collegare l'intervento all'impianto."
+        );
+        return;
+      }
     }
     setProjectInterventiError(null);
     const safeChecklistImpiantoId = isRealUuid(selectedChecklistImpiantoId)
@@ -7541,6 +7709,9 @@ function buildFormData(c: Checklist): FormData {
     if (savedImpianti) {
       const nextImpianti = savedImpianti.length > 0 ? savedImpianti : [buildEmptyChecklistImpianto()];
       const nextTipoStruttura = getFirstImpiantoTipoStruttura(nextImpianti);
+      setPersistedInterventoImpianti(
+        nextImpianti.filter((impianto) => isRealUuid(String(impianto.id || "").trim()))
+      );
       setImpianti(nextImpianti);
       setFormData((prev) =>
         prev
@@ -7932,18 +8103,29 @@ function buildFormData(c: Checklist): FormData {
   }
 
   const projectInterventoImpiantiOptions = useMemo<InterventiImpiantoOption[]>(
-    () =>
-      impianti
+    () => {
+      const sourceImpianti =
+        persistedInterventoImpianti.length > 0 ? persistedInterventoImpianti : impianti;
+      return sourceImpianti
         .map((impianto, index) => {
           const impiantoId = String(impianto.id || "").trim();
           if (!impiantoId) return null;
+          const isPersisted = isRealUuid(impiantoId);
           return {
             id: impiantoId,
-            label: formatChecklistImpiantoLabel(impianto, index),
+            label: isPersisted
+              ? formatChecklistImpiantoLabel(impianto, index)
+              : `${formatChecklistImpiantoLabel(impianto, index)} · Impianto non ancora salvato`,
+            indirizzo_impianto: impianto.impianto_indirizzo ?? null,
+            dimensioni: impianto.dimensioni ?? null,
+            passo: impianto.passo ?? null,
+            tipo_impianto: getChecklistImpiantoTipoValue(impianto) ?? null,
+            disabled: !isPersisted,
           };
         })
-        .filter(Boolean) as InterventiImpiantoOption[],
-    [impianti]
+        .filter(Boolean) as InterventiImpiantoOption[];
+    },
+    [impianti, persistedInterventoImpianti]
   );
 
   const projectInterventiBlock = (
