@@ -114,6 +114,10 @@ type OperativiFields = {
   commerciale_art_tech_contatto: string;
 };
 
+type RescheduleDraft = OperativiFields & {
+  motivo_rimando: string;
+};
+
 const EMPTY_OPERATIVI: OperativiFields = {
   data_inizio: "",
   durata_giorni: "",
@@ -128,6 +132,11 @@ const EMPTY_OPERATIVI: OperativiFields = {
   referente_cliente_contatto: "",
   commerciale_art_tech_nome: "",
   commerciale_art_tech_contatto: "",
+};
+
+const EMPTY_RESCHEDULE_DRAFT: RescheduleDraft = {
+  ...EMPTY_OPERATIVI,
+  motivo_rimando: "",
 };
 
 function extractOperativi(meta?: CronoMeta | null): OperativiFields {
@@ -328,6 +337,10 @@ export default function CronoprogrammaPage() {
   const [completionRow, setCompletionRow] = useState<TimelineRow | null>(null);
   const [completionDraft, setCompletionDraft] = useState<CompletionDraft>(EMPTY_COMPLETION_DRAFT);
   const [completionError, setCompletionError] = useState<string | null>(null);
+  const [rescheduleRow, setRescheduleRow] = useState<TimelineRow | null>(null);
+  const [rescheduleDraft, setRescheduleDraft] = useState<RescheduleDraft>(EMPTY_RESCHEDULE_DRAFT);
+  const [rescheduleError, setRescheduleError] = useState<string | null>(null);
+  const [savingRescheduleKey, setSavingRescheduleKey] = useState<string | null>(null);
   const topScrollRef = useRef<HTMLDivElement | null>(null);
   const mainScrollRef = useRef<HTMLDivElement | null>(null);
   const bottomScrollRef = useRef<HTMLDivElement | null>(null);
@@ -408,6 +421,28 @@ export default function CronoprogrammaPage() {
     setCompletionRow(null);
     setCompletionDraft(EMPTY_COMPLETION_DRAFT);
     setCompletionError(null);
+  }
+
+  function openRescheduleModal(row: TimelineRow) {
+    const key = getRowKey(row.kind, row.row_ref_id);
+    const baseOperativi = operativiDraftByKey[key] || extractOperativi(metaByKey[key] || null);
+    const currentSchedule = getRowSchedule(row, metaByKey[key] || null);
+    setRescheduleRow(row);
+    setRescheduleDraft({
+      ...EMPTY_RESCHEDULE_DRAFT,
+      ...baseOperativi,
+      data_inizio: baseOperativi.data_inizio || currentSchedule.data_inizio || "",
+      motivo_rimando: "",
+    });
+    setRescheduleError(null);
+    setStateError(null);
+  }
+
+  function closeRescheduleModal() {
+    if (savingRescheduleKey) return;
+    setRescheduleRow(null);
+    setRescheduleDraft(EMPTY_RESCHEDULE_DRAFT);
+    setRescheduleError(null);
   }
 
   async function setFatto(row: TimelineRow, fatto: boolean) {
@@ -507,6 +542,85 @@ export default function CronoprogrammaPage() {
       setCompletionError(null);
     } finally {
       setSavingFattoKey(null);
+    }
+  }
+
+  async function confirmReschedule() {
+    if (!rescheduleRow) return;
+    if (!rescheduleDraft.motivo_rimando.trim()) {
+      setRescheduleError("Inserisci il motivo del rimando.");
+      return;
+    }
+    if (!rescheduleDraft.data_inizio) {
+      setRescheduleError("Inserisci la nuova data.");
+      return;
+    }
+
+    const row = rescheduleRow;
+    const key = getRowKey(row.kind, row.row_ref_id);
+    const durataPrevistaMinuti = hoursInputToMinutes(rescheduleDraft.durata_giorni);
+    setSavingRescheduleKey(key);
+    setRescheduleError(null);
+    setStateError(null);
+
+    try {
+      const res = await fetch("/api/cronoprogramma", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          action: "reschedule_activity",
+          row_kind: row.kind,
+          row_ref_id: row.row_ref_id,
+          motivo_rimando: rescheduleDraft.motivo_rimando.trim(),
+          data_inizio: rescheduleDraft.data_inizio,
+          durata_prevista_minuti: durataPrevistaMinuti,
+          durata_giorni: estimatedMinutesToLegacyDays(durataPrevistaMinuti),
+          ore_previste_label: rescheduleDraft.durata_giorni.trim(),
+          modalita_attivita: rescheduleDraft.modalita_attivita,
+          personale_previsto: rescheduleDraft.personale_previsto.trim(),
+          personale_ids: rescheduleDraft.personale_ids,
+          mezzi: rescheduleDraft.mezzi.trim(),
+          descrizione_attivita: rescheduleDraft.descrizione_attivita.trim(),
+          indirizzo: rescheduleDraft.indirizzo.trim(),
+          orario: rescheduleDraft.orario.trim(),
+          referente_cliente_nome: rescheduleDraft.referente_cliente_nome.trim(),
+          referente_cliente_contatto: rescheduleDraft.referente_cliente_contatto.trim(),
+          commerciale_art_tech_nome: rescheduleDraft.commerciale_art_tech_nome.trim(),
+          commerciale_art_tech_contatto: rescheduleDraft.commerciale_art_tech_contatto.trim(),
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const message = String(data?.error || "Errore rimando attività");
+        setRescheduleError(message);
+        setStateError(message);
+        return;
+      }
+
+      setMetaByKey((prev) => ({ ...prev, [key]: data?.meta }));
+      setOperativiDraftByKey((prev) => ({
+        ...prev,
+        [key]: extractOperativi(data?.meta || null),
+      }));
+      setRows((prev) =>
+        prev.map((entry) =>
+          entry.kind === row.kind && entry.row_ref_id === row.row_ref_id
+            ? { ...entry, fatto: false }
+            : entry
+        )
+      );
+      if (data?.comment?.id) {
+        setCommentsByKey((prev) => ({
+          ...prev,
+          [key]: mergeComments(prev[key] || [], [data.comment as CronoComment]),
+        }));
+      }
+      setRescheduleRow(null);
+      setRescheduleDraft(EMPTY_RESCHEDULE_DRAFT);
+      setRescheduleError(null);
+    } finally {
+      setSavingRescheduleKey(null);
     }
   }
 
@@ -1049,6 +1163,320 @@ export default function CronoprogrammaPage() {
           </div>
         </div>
       ) : null}
+      {rescheduleRow ? (
+        <div
+          role="dialog"
+          aria-modal="true"
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(15, 23, 42, 0.5)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 16,
+            zIndex: 50,
+          }}
+        >
+          <div
+            style={{
+              width: "100%",
+              maxWidth: 760,
+              maxHeight: "90vh",
+              overflowY: "auto",
+              background: "white",
+              borderRadius: 16,
+              border: "1px solid #e5e7eb",
+              boxShadow: "0 24px 80px rgba(15, 23, 42, 0.2)",
+              padding: 20,
+              display: "grid",
+              gap: 14,
+            }}
+          >
+            <div>
+              <div style={{ fontSize: 22, fontWeight: 800, color: "#111827" }}>
+                Riprogramma attività
+              </div>
+              <div style={{ marginTop: 4, fontSize: 13, color: "#4b5563" }}>
+                {rescheduleRow.progetto || "Attività cronoprogramma"} ·{" "}
+                {rescheduleRow.cliente || rescheduleRow.kind}
+              </div>
+            </div>
+            {rescheduleError ? (
+              <div
+                style={{
+                  padding: "10px 12px",
+                  borderRadius: 10,
+                  background: "#fff7ed",
+                  color: "#9a3412",
+                  fontSize: 14,
+                }}
+              >
+                {rescheduleError}
+              </div>
+            ) : null}
+            <label style={{ display: "grid", gap: 6, fontWeight: 700 }}>
+              <span>Motivo rimando</span>
+              <textarea
+                value={rescheduleDraft.motivo_rimando}
+                onChange={(e) =>
+                  setRescheduleDraft((prev) => ({ ...prev, motivo_rimando: e.target.value }))
+                }
+                rows={4}
+                style={{
+                  border: "1px solid #d1d5db",
+                  borderRadius: 10,
+                  padding: "10px 12px",
+                  resize: "vertical",
+                }}
+              />
+            </label>
+            <div
+              style={{
+                display: "grid",
+                gap: 12,
+                gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+              }}
+            >
+              <label style={{ display: "grid", gap: 6, fontWeight: 700 }}>
+                <span>Nuova data</span>
+                <input
+                  type="date"
+                  value={rescheduleDraft.data_inizio}
+                  onChange={(e) =>
+                    setRescheduleDraft((prev) => ({ ...prev, data_inizio: e.target.value }))
+                  }
+                  style={{
+                    border: "1px solid #d1d5db",
+                    borderRadius: 10,
+                    padding: "10px 12px",
+                  }}
+                />
+              </label>
+              <label style={{ display: "grid", gap: 6, fontWeight: 700 }}>
+                <span>Ore previste</span>
+                <input
+                  type="text"
+                  value={rescheduleDraft.durata_giorni}
+                  onChange={(e) =>
+                    setRescheduleDraft((prev) => ({ ...prev, durata_giorni: e.target.value }))
+                  }
+                  placeholder="es. 8 oppure 7.5"
+                  style={{
+                    border: "1px solid #d1d5db",
+                    borderRadius: 10,
+                    padding: "10px 12px",
+                  }}
+                />
+              </label>
+              <label style={{ display: "grid", gap: 6, fontWeight: 700 }}>
+                <span>Orario</span>
+                <input
+                  type="text"
+                  value={rescheduleDraft.orario}
+                  onChange={(e) =>
+                    setRescheduleDraft((prev) => ({ ...prev, orario: e.target.value }))
+                  }
+                  placeholder="es. 09:00"
+                  style={{
+                    border: "1px solid #d1d5db",
+                    borderRadius: 10,
+                    padding: "10px 12px",
+                  }}
+                />
+              </label>
+            </div>
+            <label style={{ display: "grid", gap: 6, fontWeight: 700 }}>
+              <span>Personale previsto / incarico</span>
+              <input
+                type="text"
+                value={rescheduleDraft.personale_previsto}
+                onChange={(e) =>
+                  setRescheduleDraft((prev) => ({ ...prev, personale_previsto: e.target.value }))
+                }
+                style={{
+                  border: "1px solid #d1d5db",
+                  borderRadius: 10,
+                  padding: "10px 12px",
+                }}
+              />
+            </label>
+            <label style={{ display: "grid", gap: 6, fontWeight: 700 }}>
+              <span>Mezzi</span>
+              <input
+                type="text"
+                value={rescheduleDraft.mezzi}
+                onChange={(e) =>
+                  setRescheduleDraft((prev) => ({ ...prev, mezzi: e.target.value }))
+                }
+                style={{
+                  border: "1px solid #d1d5db",
+                  borderRadius: 10,
+                  padding: "10px 12px",
+                }}
+              />
+            </label>
+            <label style={{ display: "grid", gap: 6, fontWeight: 700 }}>
+              <span>Descrizione attività aggiornata</span>
+              <textarea
+                value={rescheduleDraft.descrizione_attivita}
+                onChange={(e) =>
+                  setRescheduleDraft((prev) => ({
+                    ...prev,
+                    descrizione_attivita: e.target.value,
+                  }))
+                }
+                rows={4}
+                style={{
+                  border: "1px solid #d1d5db",
+                  borderRadius: 10,
+                  padding: "10px 12px",
+                  resize: "vertical",
+                }}
+              />
+            </label>
+            <label style={{ display: "grid", gap: 6, fontWeight: 700 }}>
+              <span>Indirizzo</span>
+              <input
+                type="text"
+                value={rescheduleDraft.indirizzo}
+                onChange={(e) =>
+                  setRescheduleDraft((prev) => ({ ...prev, indirizzo: e.target.value }))
+                }
+                style={{
+                  border: "1px solid #d1d5db",
+                  borderRadius: 10,
+                  padding: "10px 12px",
+                }}
+              />
+            </label>
+            <div
+              style={{
+                display: "grid",
+                gap: 12,
+                gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+              }}
+            >
+              <label style={{ display: "grid", gap: 6, fontWeight: 700 }}>
+                <span>Referente cliente nome</span>
+                <input
+                  type="text"
+                  value={rescheduleDraft.referente_cliente_nome}
+                  onChange={(e) =>
+                    setRescheduleDraft((prev) => ({
+                      ...prev,
+                      referente_cliente_nome: e.target.value,
+                    }))
+                  }
+                  style={{
+                    border: "1px solid #d1d5db",
+                    borderRadius: 10,
+                    padding: "10px 12px",
+                  }}
+                />
+              </label>
+              <label style={{ display: "grid", gap: 6, fontWeight: 700 }}>
+                <span>Referente cliente contatto</span>
+                <input
+                  type="text"
+                  value={rescheduleDraft.referente_cliente_contatto}
+                  onChange={(e) =>
+                    setRescheduleDraft((prev) => ({
+                      ...prev,
+                      referente_cliente_contatto: e.target.value,
+                    }))
+                  }
+                  style={{
+                    border: "1px solid #d1d5db",
+                    borderRadius: 10,
+                    padding: "10px 12px",
+                  }}
+                />
+              </label>
+              <label style={{ display: "grid", gap: 6, fontWeight: 700 }}>
+                <span>Commerciale Art Tech nome</span>
+                <input
+                  type="text"
+                  value={rescheduleDraft.commerciale_art_tech_nome}
+                  onChange={(e) =>
+                    setRescheduleDraft((prev) => ({
+                      ...prev,
+                      commerciale_art_tech_nome: e.target.value,
+                    }))
+                  }
+                  style={{
+                    border: "1px solid #d1d5db",
+                    borderRadius: 10,
+                    padding: "10px 12px",
+                  }}
+                />
+              </label>
+              <label style={{ display: "grid", gap: 6, fontWeight: 700 }}>
+                <span>Commerciale Art Tech contatto</span>
+                <input
+                  type="text"
+                  value={rescheduleDraft.commerciale_art_tech_contatto}
+                  onChange={(e) =>
+                    setRescheduleDraft((prev) => ({
+                      ...prev,
+                      commerciale_art_tech_contatto: e.target.value,
+                    }))
+                  }
+                  style={{
+                    border: "1px solid #d1d5db",
+                    borderRadius: 10,
+                    padding: "10px 12px",
+                  }}
+                />
+              </label>
+            </div>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, flexWrap: "wrap" }}>
+              <button
+                type="button"
+                onClick={closeRescheduleModal}
+                disabled={
+                  savingRescheduleKey === getRowKey(rescheduleRow.kind, rescheduleRow.row_ref_id)
+                }
+                style={{
+                  padding: "10px 14px",
+                  borderRadius: 10,
+                  border: "1px solid #d1d5db",
+                  background: "white",
+                  cursor:
+                    savingRescheduleKey === getRowKey(rescheduleRow.kind, rescheduleRow.row_ref_id)
+                      ? "not-allowed"
+                      : "pointer",
+                }}
+              >
+                Annulla
+              </button>
+              <button
+                type="button"
+                onClick={confirmReschedule}
+                disabled={
+                  savingRescheduleKey === getRowKey(rescheduleRow.kind, rescheduleRow.row_ref_id)
+                }
+                style={{
+                  padding: "10px 14px",
+                  borderRadius: 10,
+                  border: "1px solid #b45309",
+                  background: "#b45309",
+                  color: "white",
+                  fontWeight: 700,
+                  cursor:
+                    savingRescheduleKey === getRowKey(rescheduleRow.kind, rescheduleRow.row_ref_id)
+                      ? "not-allowed"
+                      : "pointer",
+                }}
+              >
+                {savingRescheduleKey === getRowKey(rescheduleRow.kind, rescheduleRow.row_ref_id)
+                  ? "Salvataggio..."
+                  : "Conferma rimando"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
       <CronoprogrammaPanel
         fromDate={fromDate}
         setFromDate={(value) => {
@@ -1125,6 +1553,7 @@ export default function CronoprogrammaPage() {
         savingHiddenKey={savingHiddenKey}
         savingCommentKey={savingCommentKey}
         savingOperativiKey={savingOperativiKey}
+        savingRescheduleKey={savingRescheduleKey}
         deletingCommentId={deletingCommentId}
         noteHistoryKey={noteHistoryKey}
         setNoteHistoryKey={setNoteHistoryKey}
@@ -1133,6 +1562,7 @@ export default function CronoprogrammaPage() {
         conflictByKey={conflictByKey}
         rowByKey={rowByKey}
         setFatto={setFatto}
+        openRescheduleModal={openRescheduleModal}
         setHidden={setHidden}
         addComment={addComment}
         saveOperativi={saveOperativi}

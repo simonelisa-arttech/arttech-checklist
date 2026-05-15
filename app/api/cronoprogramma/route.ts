@@ -45,6 +45,23 @@ type CompletionReportInput = {
   problemi: string | null;
   materiali: string | null;
 };
+type RescheduleActivityInput = {
+  motivo_rimando: string;
+  ore_previste_label: string | null;
+  data_inizio: string;
+  durata_prevista_minuti: number | null;
+  modalita_attivita: string | null;
+  personale_previsto: string | null;
+  personale_ids: string[];
+  mezzi: string | null;
+  descrizione_attivita: string | null;
+  indirizzo: string | null;
+  orario: string | null;
+  referente_cliente_nome: string | null;
+  referente_cliente_contatto: string | null;
+  commerciale_art_tech_nome: string | null;
+  commerciale_art_tech_contatto: string | null;
+};
 const CUTOFF = "2026-01-01";
 const REPORT_COMMENT_PREFIX = "__REPORT__:";
 const REPORT_OUTCOME_VALUES = new Set(["COMPLETATO", "PARZIALE", "NON_COMPLETATO"]);
@@ -106,6 +123,18 @@ function buildReadableCompletionComment(input: CompletionReportInput) {
   ];
   if (input.problemi) lines.push(`Problemi: ${input.problemi}`);
   if (input.materiali) lines.push(`Materiali: ${input.materiali}`);
+  return lines.join("\n");
+}
+
+function buildReadableRescheduleComment(input: RescheduleActivityInput) {
+  const lines = [
+    "[ATTIVITÀ RIMANDATA]",
+    `Motivo: ${input.motivo_rimando}`,
+    `Nuova data: ${input.data_inizio}`,
+  ];
+  if (input.ore_previste_label) lines.push(`Ore previste: ${input.ore_previste_label}`);
+  if (input.personale_previsto) lines.push(`Personale: ${input.personale_previsto}`);
+  if (input.mezzi) lines.push(`Mezzi: ${input.mezzi}`);
   return lines.join("\n");
 }
 
@@ -941,6 +970,207 @@ export async function POST(request: Request) {
       ok: true,
       meta: mapMetaRow(data as any),
       comments: (insertedComments || []).map((row) => mapCommentRow(row)),
+    });
+  }
+
+  if (action === "reschedule_activity") {
+    const rowKind = String(body?.row_kind || "").trim().toUpperCase();
+    const rowRefId = String(body?.row_ref_id || "").trim();
+    if (!(rowKind === "INSTALLAZIONE" || rowKind === "DISINSTALLAZIONE" || rowKind === "INTERVENTO") || !rowRefId) {
+      return NextResponse.json({ error: "row_kind/row_ref_id non validi" }, { status: 400 });
+    }
+
+    const motivoRimando = String(body?.motivo_rimando || "").trim();
+    const dataInizio = normalizeOperativiDate(body?.data_inizio);
+    if (!motivoRimando) {
+      return NextResponse.json({ error: "Inserisci il motivo del rimando" }, { status: 400 });
+    }
+    if (!dataInizio) {
+      return NextResponse.json({ error: "Inserisci la nuova data" }, { status: 400 });
+    }
+
+    const durataPrevistaMinuti = cleanNonNegativeInteger(body?.durata_prevista_minuti);
+    const rescheduleInput: RescheduleActivityInput = {
+      motivo_rimando: motivoRimando,
+      ore_previste_label: cleanText(body?.ore_previste_label),
+      data_inizio: dataInizio,
+      durata_prevista_minuti: durataPrevistaMinuti,
+      modalita_attivita: cleanModalitaAttivita(body?.modalita_attivita),
+      personale_previsto: cleanText(body?.personale_previsto),
+      personale_ids: cleanUuidArray(body?.personale_ids),
+      mezzi: cleanText(body?.mezzi),
+      descrizione_attivita: cleanText(body?.descrizione_attivita),
+      indirizzo: cleanText(body?.indirizzo),
+      orario: cleanText(body?.orario),
+      referente_cliente_nome: cleanText(body?.referente_cliente_nome),
+      referente_cliente_contatto: cleanText(body?.referente_cliente_contatto),
+      commerciale_art_tech_nome: cleanText(body?.commerciale_art_tech_nome),
+      commerciale_art_tech_contatto: cleanText(body?.commerciale_art_tech_contatto),
+    };
+
+    const { data: currentMeta, error: currentMetaErr } = await supabaseAdmin
+      .from("cronoprogramma_meta")
+      .select("*")
+      .eq("row_kind", rowKind)
+      .eq("row_ref_id", rowRefId)
+      .maybeSingle();
+
+    if (
+      currentMetaErr &&
+      !String(currentMetaErr.message || "").toLowerCase().includes("cronoprogramma_meta")
+    ) {
+      return NextResponse.json({ error: currentMetaErr.message }, { status: 500 });
+    }
+
+    const { data: currentSlots, error: currentSlotsErr } = await supabaseAdmin
+      .from("cronoprogramma_meta_slots")
+      .select("*")
+      .eq("row_kind", rowKind)
+      .eq("row_ref_id", rowRefId)
+      .order("position", { ascending: true });
+
+    if (
+      currentSlotsErr &&
+      !String(currentSlotsErr.message || "").toLowerCase().includes("cronoprogramma_meta_slots")
+    ) {
+      return NextResponse.json({ error: currentSlotsErr.message }, { status: 500 });
+    }
+
+    const nowIso = new Date().toISOString();
+    const metaPayload = {
+      row_kind: rowKind,
+      row_ref_id: rowRefId,
+      fatto: false,
+      hidden: false,
+      ...toOperativiPayload({
+        data_inizio: rescheduleInput.data_inizio,
+        durata_prevista_minuti: rescheduleInput.durata_prevista_minuti,
+        modalita_attivita: rescheduleInput.modalita_attivita,
+        personale_previsto: rescheduleInput.personale_previsto,
+        personale_ids: rescheduleInput.personale_ids,
+        mezzi: rescheduleInput.mezzi,
+        descrizione_attivita: rescheduleInput.descrizione_attivita,
+        indirizzo: rescheduleInput.indirizzo,
+        orario: rescheduleInput.orario,
+        referente_cliente_nome: rescheduleInput.referente_cliente_nome,
+        referente_cliente_contatto: rescheduleInput.referente_cliente_contatto,
+        commerciale_art_tech_nome: rescheduleInput.commerciale_art_tech_nome,
+        commerciale_art_tech_contatto: rescheduleInput.commerciale_art_tech_contatto,
+      }),
+      updated_at: nowIso,
+      updated_by_operatore: operatore.id,
+    };
+
+    let { data: updatedMetaRow, error: metaErr } = await supabaseAdmin
+      .from("cronoprogramma_meta")
+      .upsert(metaPayload, { onConflict: "row_kind,row_ref_id" })
+      .select("*, operatore:updated_by_operatore(nome)")
+      .maybeSingle();
+
+    if (metaErr && String(metaErr.message || "").toLowerCase().includes("personale_ids")) {
+      const { personale_ids: _skip, ...legacyPayload } = metaPayload as Record<string, unknown>;
+      const retry = await supabaseAdmin
+        .from("cronoprogramma_meta")
+        .upsert(legacyPayload, { onConflict: "row_kind,row_ref_id" })
+        .select("*, operatore:updated_by_operatore(nome)")
+        .maybeSingle();
+      updatedMetaRow = retry.data;
+      metaErr = retry.error;
+    }
+
+    if (metaErr) {
+      return NextResponse.json({ error: metaErr.message }, { status: 500 });
+    }
+
+    const { error: deleteSlotsErr } = await supabaseAdmin
+      .from("cronoprogramma_meta_slots")
+      .delete()
+      .eq("row_kind", rowKind)
+      .eq("row_ref_id", rowRefId);
+
+    if (deleteSlotsErr) {
+      return NextResponse.json({ error: deleteSlotsErr.message }, { status: 500 });
+    }
+
+    const newSlotPayload = {
+      row_kind: rowKind,
+      row_ref_id: rowRefId,
+      ...toOperativiSlotPayload(
+        {
+          data_inizio: rescheduleInput.data_inizio,
+          durata_prevista_minuti: rescheduleInput.durata_prevista_minuti,
+          personale_previsto: rescheduleInput.personale_previsto,
+          personale_ids: rescheduleInput.personale_ids,
+          mezzi: rescheduleInput.mezzi,
+          descrizione_attivita: rescheduleInput.descrizione_attivita,
+          indirizzo: rescheduleInput.indirizzo,
+          orario: rescheduleInput.orario,
+          referente_cliente_nome: rescheduleInput.referente_cliente_nome,
+          referente_cliente_contatto: rescheduleInput.referente_cliente_contatto,
+          commerciale_art_tech_nome: rescheduleInput.commerciale_art_tech_nome,
+          commerciale_art_tech_contatto: rescheduleInput.commerciale_art_tech_contatto,
+        },
+        0
+      ),
+    };
+
+    let insertedSlots: any[] = [];
+    const { data: insertedSlotRows, error: insertSlotErr } = await supabaseAdmin
+      .from("cronoprogramma_meta_slots")
+      .insert([newSlotPayload])
+      .select(
+        "position, data_inizio, durata_giorni, durata_prevista_minuti, personale_previsto, personale_ids, mezzi, descrizione_attivita, indirizzo, orario, referente_cliente_nome, referente_cliente_contatto, commerciale_art_tech_nome, commerciale_art_tech_contatto"
+      )
+      .order("position", { ascending: true });
+
+    if (insertSlotErr) {
+      return NextResponse.json({ error: insertSlotErr.message }, { status: 500 });
+    }
+    insertedSlots = (insertedSlotRows || []).map((row) => mapSlotRow(row));
+
+    const mappedMeta = mapMetaRow(updatedMetaRow as any);
+    const newMeta = {
+      ...mappedMeta,
+      slots: insertedSlots,
+    };
+
+    const { error: eventErr } = await supabaseAdmin.from("cronoprogramma_activity_events").insert({
+      row_kind: rowKind,
+      row_ref_id: rowRefId,
+      event_type: "RIMANDATO",
+      motivo_rimando: rescheduleInput.motivo_rimando,
+      old_meta: currentMeta || null,
+      old_slots: currentSlots || [],
+      new_meta: newMeta,
+      new_slots: insertedSlots,
+      created_by_operatore: operatore.id,
+      created_at: nowIso,
+    });
+
+    if (eventErr) {
+      return NextResponse.json({ error: eventErr.message }, { status: 500 });
+    }
+
+    const { data: insertedComment, error: commentErr } = await supabaseAdmin
+      .from("cronoprogramma_comments")
+      .insert({
+        row_kind: rowKind,
+        row_ref_id: rowRefId,
+        commento: buildReadableRescheduleComment(rescheduleInput),
+        created_by_operatore: operatore.id,
+        created_at: nowIso,
+      })
+      .select("id, row_kind, row_ref_id, commento, created_at, created_by_operatore, operatore:created_by_operatore(nome)")
+      .single();
+
+    if (commentErr) {
+      return NextResponse.json({ error: commentErr.message }, { status: 500 });
+    }
+
+    return NextResponse.json({
+      ok: true,
+      meta: newMeta,
+      comment: mapCommentRow(insertedComment as any),
     });
   }
 

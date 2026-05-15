@@ -85,6 +85,7 @@ type CronoprogrammaPanelProps = {
   savingHiddenKey: string | null;
   savingCommentKey: string | null;
   savingOperativiKey: string | null;
+  savingRescheduleKey?: string | null;
   deletingCommentId: string | null;
   noteHistoryKey: string | null;
   setNoteHistoryKey: Dispatch<SetStateAction<string | null>>;
@@ -93,6 +94,7 @@ type CronoprogrammaPanelProps = {
   conflictByKey: Record<string, any>;
   rowByKey: Record<string, TimelineRow>;
   setFatto: (row: TimelineRow, fatto: boolean) => void;
+  openRescheduleModal?: (row: TimelineRow) => void;
   setHidden: (row: TimelineRow, hidden: boolean) => void;
   addComment: (row: TimelineRow) => void;
   saveOperativi: (row: TimelineRow) => void;
@@ -353,6 +355,7 @@ export default function CronoprogrammaPanel({
   savingHiddenKey,
   savingCommentKey,
   savingOperativiKey,
+  savingRescheduleKey,
   deletingCommentId,
   noteHistoryKey,
   setNoteHistoryKey,
@@ -361,6 +364,7 @@ export default function CronoprogrammaPanel({
   conflictByKey,
   rowByKey,
   setFatto,
+  openRescheduleModal,
   setHidden,
   addComment,
   saveOperativi,
@@ -1506,6 +1510,25 @@ export default function CronoprogrammaPanel({
                           />
                           Nascosta
                         </label>
+                        {openRescheduleModal ? (
+                          <button
+                            type="button"
+                            onClick={() => openRescheduleModal(r)}
+                            disabled={savingRescheduleKey === key || stateLoading}
+                            style={{
+                              padding: "8px 12px",
+                              borderRadius: 8,
+                              border: "1px solid #b45309",
+                              background: savingRescheduleKey === key ? "#ffedd5" : "#fff7ed",
+                              color: "#9a3412",
+                              fontWeight: 700,
+                              cursor: savingRescheduleKey === key ? "not-allowed" : "pointer",
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            {savingRescheduleKey === key ? "..." : "Rimandato"}
+                          </button>
+                        ) : null}
                         <button
                           type="button"
                           onClick={() => saveOperativi(r)}
