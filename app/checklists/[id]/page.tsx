@@ -360,6 +360,8 @@ function buildLegacyChecklistImpianto(checklist: Checklist): ChecklistImpianto[]
 }
 
 const CLIENT_TEMP_ID_PREFIX = "__tmp__";
+const REAL_UUID_REGEX =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 function buildClientTempId(scope: string) {
   const cryptoUuid =
@@ -371,6 +373,16 @@ function buildClientTempId(scope: string) {
 
 function isClientTempId(value?: string | null) {
   return String(value || "").startsWith(CLIENT_TEMP_ID_PREFIX);
+}
+
+function isRealUuid(value?: string | null) {
+  return REAL_UUID_REGEX.test(String(value || "").trim());
+}
+
+function isTemporaryChecklistImpiantoSelection(value?: string | null) {
+  const normalized = String(value || "").trim();
+  if (!normalized || isRealUuid(normalized)) return false;
+  return isClientTempId(normalized) || normalized.startsWith("pending:");
 }
 
 function getStoredUploadPath(value?: string | null) {
@@ -2813,6 +2825,7 @@ function buildFormData(c: Checklist): FormData {
   async function addInterventoRow() {
     if (!id || !checklist) return;
     const descrizione = newProjectIntervento.descrizione.trim();
+    const selectedChecklistImpiantoId = String(newProjectIntervento.checklist_impianto_id || "").trim();
     const magazzino = splitMagazzinoFields(
       checklist.magazzino_importazione,
       checklist.magazzino_drive_url
@@ -2821,7 +2834,16 @@ function buildFormData(c: Checklist): FormData {
       setProjectInterventiError("Inserisci descrizione intervento.");
       return;
     }
+    if (isTemporaryChecklistImpiantoSelection(selectedChecklistImpiantoId)) {
+      setProjectInterventiError(
+        "Salva prima il progetto/impianto prima di collegare l'intervento all'impianto."
+      );
+      return;
+    }
     setProjectInterventiError(null);
+    const safeChecklistImpiantoId = isRealUuid(selectedChecklistImpiantoId)
+      ? selectedChecklistImpiantoId
+      : null;
     const newInterventoOperativi = extractProjectInterventoOperativi(newProjectIntervento);
     const canonicalEsito =
       normalizeInterventoEsitoFatturazioneValue(newProjectIntervento.fatturazione_stato) || "DA_FATTURARE";
@@ -2833,7 +2855,7 @@ function buildFormData(c: Checklist): FormData {
     const payload = {
       cliente: checklist.cliente,
       checklist_id: id,
-      checklist_impianto_id: newProjectIntervento.checklist_impianto_id || null,
+      checklist_impianto_id: safeChecklistImpiantoId,
       data: newProjectIntervento.data || new Date().toISOString().slice(0, 10),
       data_tassativa: newProjectIntervento.data_tassativa || null,
       ticket_no: newProjectIntervento.ticket_no.trim() || null,
@@ -2925,7 +2947,17 @@ function buildFormData(c: Checklist): FormData {
 
   async function saveInterventoRow() {
     if (!projectInterventoEditId || !projectInterventoEditForm) return;
+    const selectedChecklistImpiantoId = String(projectInterventoEditForm.checklist_impianto_id || "").trim();
+    if (isTemporaryChecklistImpiantoSelection(selectedChecklistImpiantoId)) {
+      setProjectInterventiError(
+        "Salva prima il progetto/impianto prima di collegare l'intervento all'impianto."
+      );
+      return;
+    }
     setProjectInterventiError(null);
+    const safeChecklistImpiantoId = isRealUuid(selectedChecklistImpiantoId)
+      ? selectedChecklistImpiantoId
+      : null;
     const canonicalEsito =
       normalizeInterventoEsitoFatturazioneValue(projectInterventoEditForm.fatturazione_stato) || "DA_FATTURARE";
     const normalizedFatturatoIl = toDateInput(projectInterventoEditForm.fatturato_il);
@@ -2937,7 +2969,7 @@ function buildFormData(c: Checklist): FormData {
       data: projectInterventoEditForm.data || null,
       data_tassativa: projectInterventoEditForm.data_tassativa || null,
       ticket_no: projectInterventoEditForm.ticket_no.trim() || null,
-      checklist_impianto_id: projectInterventoEditForm.checklist_impianto_id || null,
+      checklist_impianto_id: safeChecklistImpiantoId,
       descrizione: projectInterventoEditForm.descrizione.trim() || null,
       tipo: projectInterventoEditForm.descrizione.trim() || null,
       incluso: Boolean(projectInterventoEditForm.incluso),

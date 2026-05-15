@@ -184,6 +184,8 @@ const MODALITA_ATTIVITA_OPTIONS = ["ONSITE", "REMOTO"] as const;
 const INTERVENTI_TABLE_GRID =
   "minmax(250px,1.8fr) 92px 100px minmax(170px,1fr) 130px minmax(240px,1.2fr)";
 const INTERVENTI_TABLE_MIN_WIDTH = 980;
+const REAL_UUID_REGEX =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 function renderInterventoBadge(label: "INCLUSO" | "EXTRA") {
   const bg = label === "INCLUSO" ? "#dcfce7" : "#fee2e2";
@@ -337,6 +339,16 @@ function normalizeDateInputValue(value?: string | null) {
   const raw = String(value || "").trim();
   const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(raw);
   return match ? `${match[1]}-${match[2]}-${match[3]}` : "";
+}
+
+function isRealUuid(value?: string | null) {
+  return REAL_UUID_REGEX.test(String(value || "").trim());
+}
+
+function isTemporaryImpiantoSelection(value?: string | null) {
+  const normalized = String(value || "").trim();
+  if (!normalized || isRealUuid(normalized)) return false;
+  return normalized.startsWith("__tmp__") || normalized.startsWith("pending:");
 }
 
 function applyImpiantoPrefill(
@@ -1064,6 +1076,11 @@ export default function InterventiBlock({
                   </option>
                 ))}
               </select>
+              {isTemporaryImpiantoSelection(newIntervento.checklistImpiantoId) && (
+                <div style={{ marginTop: 6, fontSize: 12, color: "#b45309" }}>
+                  Salva prima il progetto/impianto prima di collegare l&apos;intervento all&apos;impianto.
+                </div>
+              )}
             </label>
             {newIntervento.statoIntervento === "CHIUSO" && newIntervento.fatturazioneStato === "FATTURATO" && (
               <>
@@ -1742,6 +1759,11 @@ export default function InterventiBlock({
                                 </option>
                               ))}
                             </select>
+                            {isTemporaryImpiantoSelection(editIntervento.checklistImpiantoId) && (
+                              <div style={{ marginTop: 6, fontSize: 12, color: "#b45309" }}>
+                                Salva prima il progetto/impianto prima di collegare l&apos;intervento all&apos;impianto.
+                              </div>
+                            )}
                           </label>
                         </div>
                         <div
