@@ -287,6 +287,124 @@ function mapSlotRow(row: any) {
   };
 }
 
+type TimeBudgetState = "NON_INIZIATA" | "IN_CORSO" | "IN_PAUSA" | "COMPLETATA";
+type TimeBudgetRow = {
+  id?: string | null;
+  row_kind?: string | null;
+  row_ref_id?: string | null;
+  operatore_id?: string | null;
+  durata_effettiva_minuti?: number | null;
+  stato?: string | null;
+  started_at?: string | null;
+};
+type TimeBudgetIntervalRow = {
+  timbratura_id?: string | null;
+  started_at?: string | null;
+  ended_at?: string | null;
+  durata_minuti?: number | null;
+};
+type TimeBudgetSummary = {
+  stimatoMinuti: number | null;
+  realeMinuti: number | null;
+  stato: TimeBudgetState;
+  liveStartedAt: string[];
+};
+
+function buildTimeBudgetSummaries(params: {
+  normalizedRows: Array<{ row_kind: string; row_ref_id: string }>;
+  wanted: Set<string>;
+  metaByKey: Record<string, any>;
+  timbratureRows: TimeBudgetRow[];
+  intervalsByTimbraturaId: Record<string, TimeBudgetIntervalRow[]>;
+  latestReportOutcomeByKey?: Record<string, ReportOutcome | null>;
+  operatoreId?: string | null;
+}) {
+  const {
+    normalizedRows,
+    wanted,
+    metaByKey,
+    timbratureRows,
+    intervalsByTimbraturaId,
+    latestReportOutcomeByKey,
+    operatoreId,
+  } = params;
+  const summaries: Record<string, TimeBudgetSummary> = {};
+
+  for (const row of normalizedRows) {
+    const key = rowKey(row.row_kind, row.row_ref_id);
+    summaries[key] = {
+      stimatoMinuti: getOperativiEstimatedMinutes(metaByKey[key]) ?? null,
+      realeMinuti: null,
+      stato: "NON_INIZIATA",
+      liveStartedAt: [],
+    };
+  }
+
+  for (const row of timbratureRows || []) {
+    const key = rowKey(String(row?.row_kind || ""), String(row?.row_ref_id || ""));
+    if (!wanted.has(key)) continue;
+    if (operatoreId && String(row?.operatore_id || "").trim() !== operatoreId) continue;
+    if (!summaries[key]) {
+      summaries[key] = {
+        stimatoMinuti: null,
+        realeMinuti: null,
+        stato: "NON_INIZIATA",
+        liveStartedAt: [],
+      };
+    }
+
+    const current = summaries[key];
+    const timbraturaId = String(row?.id || "").trim();
+    const intervals = intervalsByTimbraturaId[timbraturaId] || [];
+    let closedMinutes = 0;
+    let hasIntervalData = false;
+
+    for (const interval of intervals) {
+      const durationMinutes = Number(interval?.durata_minuti);
+      const endedAt = String(interval?.ended_at || "").trim();
+      const startedAt = String(interval?.started_at || "").trim();
+      if (Number.isFinite(durationMinutes) && durationMinutes >= 0 && endedAt) {
+        hasIntervalData = true;
+        closedMinutes += durationMinutes;
+      } else if (!endedAt && startedAt) {
+        hasIntervalData = true;
+        current.liveStartedAt.push(startedAt);
+      }
+    }
+
+    const durataEffettivaMinuti = Number(row?.durata_effettiva_minuti);
+    if (hasIntervalData) {
+      current.realeMinuti = (current.realeMinuti ?? 0) + closedMinutes;
+    } else if (Number.isFinite(durataEffettivaMinuti) && durataEffettivaMinuti >= 0) {
+      current.realeMinuti = (current.realeMinuti ?? 0) + durataEffettivaMinuti;
+    } else {
+      const startedAt = String(row?.started_at || "").trim();
+      const stato = String(row?.stato || "").trim().toUpperCase();
+      if (stato === "IN_CORSO" && startedAt) {
+        current.liveStartedAt.push(startedAt);
+      }
+    }
+
+    const stato = String(row?.stato || "").trim().toUpperCase();
+    if (stato === "IN_CORSO") current.stato = "IN_CORSO";
+    else if (stato === "IN_PAUSA" && current.stato !== "IN_CORSO") current.stato = "IN_PAUSA";
+    else if (stato === "COMPLETATA" && current.stato === "NON_INIZIATA") {
+      if (operatoreId) {
+        current.stato = "COMPLETATA";
+      } else {
+        const latestReportOutcome = latestReportOutcomeByKey?.[key];
+        const shouldTreatActivityAsCompleted =
+          latestReportOutcome == null || latestReportOutcome === "COMPLETATO";
+        if (shouldTreatActivityAsCompleted) {
+          current.stato = "COMPLETATA";
+        }
+      }
+    }
+  }
+
+  return summaries;
+}
+
 function toOperativiSlotPayload(input: OperativiSlotInput, position: number) {
   const {
     durata_giorni: _legacyDurataGiorni,
@@ -511,7 +629,13 @@ export async function POST(request: Request) {
       .filter((r) => isValidRowKind(r.row_kind) && r.row_ref_id);
 
     if (normalizedRows.length === 0) {
-      return NextResponse.json({ ok: true, meta: {}, comments: {}, time_budget: {} });
+      return NextResponse.json({
+        ok: true,
+        meta: {},
+        comments: {},
+        time_budget: {},
+        time_budget_current_operator: {},
+      });
     }
 
     const installazioneIds = Array.from(
@@ -577,7 +701,13 @@ export async function POST(request: Request) {
     });
 
     if (normalizedRows.length === 0) {
-      return NextResponse.json({ ok: true, meta: {}, comments: {}, time_budget: {} });
+      return NextResponse.json({
+        ok: true,
+        meta: {},
+        comments: {},
+        time_budget: {},
+        time_budget_current_operator: {},
+      });
     }
 
     const rowIds = Array.from(new Set(normalizedRows.map((r) => r.row_ref_id)));
@@ -664,7 +794,7 @@ export async function POST(request: Request) {
 
     const { data: timbratureRows, error: timbratureErr } = await supabaseAdmin
       .from("cronoprogramma_timbrature")
-      .select("id, row_kind, row_ref_id, durata_effettiva_minuti, stato, started_at")
+      .select("id, row_kind, row_ref_id, operatore_id, durata_effettiva_minuti, stato, started_at")
       .in("row_ref_id", rowIds)
       .in("row_kind", rowKinds as any)
       .order("created_at", { ascending: false });
@@ -758,85 +888,29 @@ export async function POST(request: Request) {
       intervalsByTimbraturaId[timbraturaId].push(row);
     }
 
-    const timeBudgetByKey: Record<
-      string,
-      {
-        stimatoMinuti: number | null;
-        realeMinuti: number | null;
-        stato: "NON_INIZIATA" | "IN_CORSO" | "IN_PAUSA" | "COMPLETATA";
-        liveStartedAt: string[];
-      }
-    > = {};
-    for (const row of normalizedRows) {
-      const key = rowKey(row.row_kind, row.row_ref_id);
-      timeBudgetByKey[key] = {
-        stimatoMinuti: getOperativiEstimatedMinutes(metaByKey[key]) ?? null,
-        realeMinuti: null,
-        stato: "NON_INIZIATA",
-        liveStartedAt: [],
-      };
-    }
-
-    for (const row of timbratureRows || []) {
-      const key = rowKey(String((row as any).row_kind), String((row as any).row_ref_id));
-      if (!wanted.has(key)) continue;
-      if (!timeBudgetByKey[key]) {
-        timeBudgetByKey[key] = {
-          stimatoMinuti: null,
-          realeMinuti: null,
-          stato: "NON_INIZIATA",
-          liveStartedAt: [],
-        };
-      }
-      const current = timeBudgetByKey[key];
-      const timbraturaId = String((row as any).id || "").trim();
-      const intervals = intervalsByTimbraturaId[timbraturaId] || [];
-      let closedMinutes = 0;
-      let hasIntervalData = false;
-
-      for (const interval of intervals) {
-        const durationMinutes = Number((interval as any).durata_minuti);
-        const endedAt = String((interval as any).ended_at || "").trim();
-        const startedAt = String((interval as any).started_at || "").trim();
-        if (Number.isFinite(durationMinutes) && durationMinutes >= 0 && endedAt) {
-          hasIntervalData = true;
-          closedMinutes += durationMinutes;
-        } else if (!endedAt && startedAt) {
-          hasIntervalData = true;
-          current.liveStartedAt.push(startedAt);
-        }
-      }
-
-      const durataEffettivaMinuti = Number((row as any).durata_effettiva_minuti);
-      if (hasIntervalData) {
-        current.realeMinuti = (current.realeMinuti ?? 0) + closedMinutes;
-      } else if (Number.isFinite(durataEffettivaMinuti) && durataEffettivaMinuti >= 0) {
-        current.realeMinuti = (current.realeMinuti ?? 0) + durataEffettivaMinuti;
-      } else {
-        const startedAt = String((row as any).started_at || "").trim();
-        const stato = String((row as any).stato || "").trim().toUpperCase();
-        if (stato === "IN_CORSO" && startedAt) {
-          current.liveStartedAt.push(startedAt);
-        }
-      }
-      const stato = String((row as any).stato || "").trim().toUpperCase();
-      if (stato === "IN_CORSO") current.stato = "IN_CORSO";
-      else if (stato === "IN_PAUSA" && current.stato !== "IN_CORSO") current.stato = "IN_PAUSA";
-      else if (stato === "COMPLETATA" && current.stato === "NON_INIZIATA") {
-        const latestReportOutcome = latestReportOutcomeByKey[key];
-        const shouldTreatActivityAsCompleted =
-          latestReportOutcome == null || latestReportOutcome === "COMPLETATO";
-        if (shouldTreatActivityAsCompleted) {
-          current.stato = "COMPLETATA";
-        }
-      }
-    }
+    const timeBudgetByKey = buildTimeBudgetSummaries({
+      normalizedRows,
+      wanted,
+      metaByKey,
+      timbratureRows: (timbratureRows || []) as TimeBudgetRow[],
+      intervalsByTimbraturaId,
+      latestReportOutcomeByKey,
+    });
+    const timeBudgetCurrentOperatorByKey = buildTimeBudgetSummaries({
+      normalizedRows,
+      wanted,
+      metaByKey,
+      timbratureRows: (timbratureRows || []) as TimeBudgetRow[],
+      intervalsByTimbraturaId,
+      operatoreId: operatore.id,
+    });
 
     return NextResponse.json({
       ok: true,
       meta: metaByKey,
       comments: commentsByKey,
       time_budget: timeBudgetByKey,
+      time_budget_current_operator: timeBudgetCurrentOperatorByKey,
     });
   }
 
@@ -1759,6 +1833,7 @@ export async function POST(request: Request) {
       .select("id")
       .eq("row_kind", rowKind)
       .eq("row_ref_id", rowRefId)
+      .eq("operatore_id", operatore.id)
       .in("stato", ["IN_CORSO", "IN_PAUSA"]);
 
     if (openErr) {

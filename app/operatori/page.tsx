@@ -331,6 +331,34 @@ function getDisplayedActualMinutes(summary: TimeBudgetSummary, nowMs: number) {
   return baseMinutes + liveMinutes;
 }
 
+function normalizeTimeBudgetSummary(value: unknown): TimeBudgetSummary {
+  const summary = value as Record<string, unknown>;
+  return {
+    stimatoMinuti:
+      Number.isFinite(Number(summary?.stimatoMinuti)) && Number(summary?.stimatoMinuti) >= 0
+        ? Number(summary?.stimatoMinuti)
+        : null,
+    realeMinuti:
+      Number.isFinite(Number(summary?.realeMinuti)) && Number(summary?.realeMinuti) >= 0
+        ? Number(summary?.realeMinuti)
+        : null,
+    liveStartedAt: Array.isArray(summary?.liveStartedAt)
+      ? summary.liveStartedAt.map((item) => String(item || "").trim()).filter(Boolean)
+      : [],
+  };
+}
+
+function normalizeTimbraturaState(value: unknown): "NON_INIZIATA" | "IN_CORSO" | "IN_PAUSA" | "COMPLETATA" {
+  const stato = String(value || "").trim().toUpperCase();
+  return stato === "IN_CORSO"
+    ? "IN_CORSO"
+    : stato === "IN_PAUSA"
+      ? "IN_PAUSA"
+      : stato === "COMPLETATA"
+        ? "COMPLETATA"
+        : "NON_INIZIATA";
+}
+
 function formatLiveElapsed(ms: number) {
   if (!Number.isFinite(ms) || ms <= 0) return "00:00:00";
   const totalSeconds = Math.max(0, Math.floor(ms / 1000));
@@ -525,32 +553,15 @@ export default function OperatoreAttivitaPage() {
         }
 
         const serverBudget =
-          loadData?.time_budget && typeof loadData.time_budget === "object" ? loadData.time_budget : {};
+          loadData?.time_budget_current_operator &&
+          typeof loadData.time_budget_current_operator === "object"
+            ? loadData.time_budget_current_operator
+            : {};
         for (const [key, value] of Object.entries(serverBudget)) {
           if (!nextTimeBudget[key]) continue;
           const summary = value as Record<string, unknown>;
-          nextTimeBudget[key] = {
-            stimatoMinuti:
-              Number.isFinite(Number(summary?.stimatoMinuti)) && Number(summary?.stimatoMinuti) >= 0
-                ? Number(summary?.stimatoMinuti)
-                : null,
-            realeMinuti:
-              Number.isFinite(Number(summary?.realeMinuti)) && Number(summary?.realeMinuti) >= 0
-                ? Number(summary?.realeMinuti)
-                : null,
-            liveStartedAt: Array.isArray(summary?.liveStartedAt)
-              ? summary.liveStartedAt.map((item) => String(item || "").trim()).filter(Boolean)
-              : [],
-          };
-          const stato = String(summary?.stato || "").trim().toUpperCase();
-          nextTimbraturaState[key] =
-            stato === "IN_CORSO"
-              ? "IN_CORSO"
-              : stato === "IN_PAUSA"
-                ? "IN_PAUSA"
-                : stato === "COMPLETATA"
-                  ? "COMPLETATA"
-                  : "NON_INIZIATA";
+          nextTimeBudget[key] = normalizeTimeBudgetSummary(summary);
+          nextTimbraturaState[key] = normalizeTimbraturaState(summary?.stato);
         }
 
         const totalMonthlyMinutes = (monthlyTimbratureRes.data || []).reduce((sum, row: any) => {
@@ -598,13 +609,12 @@ export default function OperatoreAttivitaPage() {
       const comments = commentsByKey[key] || [];
       const latestReportComment = comments.find((comment) => Boolean(parseStructuredReport(comment))) || null;
       const latestReport = latestReportComment ? parseStructuredReport(latestReportComment) : null;
-      const timbraturaState = timbraturaStateByKey[key] || "NON_INIZIATA";
       const isCompleted =
         latestReport?.esito === "COMPLETATO"
           ? true
           : latestReport?.esito === "PARZIALE" || latestReport?.esito === "NON_COMPLETATO"
             ? false
-            : Boolean(meta?.fatto ?? row.fatto) || timbraturaState === "COMPLETATA";
+            : Boolean(meta?.fatto ?? row.fatto);
       if (activityFilter === "ATTIVE") return !isCompleted;
       if (activityFilter === "FATTE") return isCompleted;
       return true;
@@ -684,8 +694,8 @@ export default function OperatoreAttivitaPage() {
 
     const nextMeta = (data?.meta || {}) as Record<string, CronoMeta>;
     const nextComments = (data?.comments || {}) as Record<string, CronoComment[]>;
-    const summary = ((data?.time_budget || {}) as Record<string, Record<string, unknown>>)[key] || {};
-    const stato = String(summary?.stato || "").trim().toUpperCase();
+    const summary =
+      ((data?.time_budget_current_operator || {}) as Record<string, Record<string, unknown>>)[key] || {};
 
     setMetaByKey((prev) => ({
       ...prev,
@@ -697,30 +707,11 @@ export default function OperatoreAttivitaPage() {
     }));
     setTimeBudgetByKey((prev) => ({
       ...prev,
-      [key]: {
-        stimatoMinuti:
-          Number.isFinite(Number(summary?.stimatoMinuti)) && Number(summary?.stimatoMinuti) >= 0
-            ? Number(summary?.stimatoMinuti)
-            : null,
-        realeMinuti:
-          Number.isFinite(Number(summary?.realeMinuti)) && Number(summary?.realeMinuti) >= 0
-            ? Number(summary?.realeMinuti)
-            : null,
-        liveStartedAt: Array.isArray(summary?.liveStartedAt)
-          ? summary.liveStartedAt.map((item) => String(item || "").trim()).filter(Boolean)
-          : [],
-      },
+      [key]: normalizeTimeBudgetSummary(summary),
     }));
     setTimbraturaStateByKey((prev) => ({
       ...prev,
-      [key]:
-        stato === "IN_CORSO"
-          ? "IN_CORSO"
-          : stato === "IN_PAUSA"
-            ? "IN_PAUSA"
-            : stato === "COMPLETATA"
-              ? "COMPLETATA"
-              : "NON_INIZIATA",
+      [key]: normalizeTimbraturaState(summary?.stato),
     }));
   }
 
