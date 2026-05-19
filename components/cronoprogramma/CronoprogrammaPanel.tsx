@@ -230,6 +230,15 @@ function getDisplayedActualMinutes(summary: TimeBudgetSummary, nowMs: number) {
   return baseMinutes + liveMinutes;
 }
 
+function getSlotEstimatedMinutes(row: TimelineRow | null | undefined) {
+  return row &&
+    Number.isFinite(Number(row.slot_hours)) &&
+    row.slot_hours != null &&
+    Number(row.slot_hours) >= 0
+    ? Math.round(Number(row.slot_hours) * 60)
+    : null;
+}
+
 function formatLiveElapsed(ms: number) {
   if (!Number.isFinite(ms) || ms <= 0) return "00:00:00";
   const totalSeconds = Math.max(0, Math.floor(ms / 1000));
@@ -405,6 +414,10 @@ export default function CronoprogrammaPanel({
       row_kind: String(row.kind || "").trim().toUpperCase(),
       row_ref_id: String(row.row_ref_id || "").trim(),
       slot_id: String(row.slot_id || "").trim() || null,
+      slot_hours:
+        Number.isFinite(Number(row.slot_hours)) && row.slot_hours != null && Number(row.slot_hours) >= 0
+          ? Number(row.slot_hours)
+          : null,
     }));
 
     void (async () => {
@@ -441,9 +454,12 @@ export default function CronoprogrammaPanel({
         for (const [key, value] of Object.entries(serverBudget)) {
           if (!next[key]) continue;
           const summary = value as Record<string, unknown>;
+          const row = rowByKey[key] || null;
+          const slotEstimatedMinutes = getSlotEstimatedMinutes(row);
           next[key] = {
-            stimatoMinuti:
-              Number.isFinite(Number(summary?.stimatoMinuti)) && Number(summary?.stimatoMinuti) >= 0
+            stimatoMinuti: slotEstimatedMinutes != null
+              ? slotEstimatedMinutes
+              : Number.isFinite(Number(summary?.stimatoMinuti)) && Number(summary?.stimatoMinuti) >= 0
                 ? Number(summary?.stimatoMinuti)
                 : null,
             realeMinuti:
@@ -963,7 +979,17 @@ export default function CronoprogrammaPanel({
                             <span>
                               Slot: {schedule.data_inizio ? formatOperativiDateLabel(schedule.data_inizio) : "—"}
                               {timeBudget.stimatoMinuti != null ? ` · ${formatMinutesCompact(timeBudget.stimatoMinuti)}` : ""}
-                              {operativi.orario ? ` · ${operativi.orario}` : r.slot_orario ? ` · ${r.slot_orario}` : ""}
+                              {r.slot_id
+                                ? r.slot_orario
+                                  ? ` · ${r.slot_orario}`
+                                  : operativi.orario
+                                    ? ` · ${operativi.orario}`
+                                    : ""
+                                : operativi.orario
+                                  ? ` · ${operativi.orario}`
+                                  : r.slot_orario
+                                    ? ` · ${r.slot_orario}`
+                                    : ""}
                             </span>
                           ) : null}
                           <span>Cliente: {r.cliente || "—"}</span>

@@ -164,6 +164,25 @@ function extractOperativi(meta?: CronoMeta | null): OperativiFields {
   };
 }
 
+function getSlotEstimatedMinutes(row: TimelineRow) {
+  return Number.isFinite(Number(row.slot_hours)) && row.slot_hours != null && Number(row.slot_hours) >= 0
+    ? Math.round(Number(row.slot_hours) * 60)
+    : null;
+}
+
+function extractRowOperativi(row: TimelineRow, meta?: CronoMeta | null): OperativiFields {
+  const base = extractOperativi(meta);
+  if (!row.slot_id) return base;
+  const slotEstimatedMinutes = getSlotEstimatedMinutes(row);
+  return {
+    ...base,
+    data_inizio: normalizeOperativiDate(row.slot_date) || base.data_inizio || "",
+    durata_giorni:
+      slotEstimatedMinutes != null ? minutesToHoursInput(slotEstimatedMinutes) : base.durata_giorni,
+    orario: String(row.slot_orario || base.orario || ""),
+  };
+}
+
 type OperativiScheduleLike = {
   data_inizio?: string | null;
   durata_prevista_minuti?: string | number | null;
@@ -175,6 +194,13 @@ function getRowSchedule(row: TimelineRow, value?: OperativiScheduleLike | null) 
     Number.isFinite(Number(row.slot_hours)) && row.slot_hours != null
       ? Math.round(Number(row.slot_hours) * 60)
       : null;
+  if (row.slot_id) {
+    return buildOperativiSchedule(
+      row.slot_date ?? null,
+      row.slot_date || row.data_tassativa || row.data_prevista,
+      estimatedMinutesToLegacyDays(fallbackSlotMinutes) ?? null
+    );
+  }
   const durataGiorni =
     typeof value?.durata_giorni === "string"
       ? estimatedMinutesToLegacyDays(hoursInputToMinutes(value?.durata_giorni))
@@ -379,6 +405,7 @@ export default function CronoprogrammaPage() {
           row_kind: r.kind,
           row_ref_id: r.row_ref_id,
           slot_id: r.slot_id ?? null,
+          slot_hours: r.slot_hours ?? null,
         })),
       };
       const res = await fetch("/api/cronoprogramma", {
@@ -410,7 +437,7 @@ export default function CronoprogrammaPage() {
         for (const r of timelineRows) {
           const key = getRowKey(r.kind, r.row_ref_id, r.slot_id);
           if (!next[key]) {
-            next[key] = extractOperativi(nextMeta[key]);
+            next[key] = extractRowOperativi(r, nextMeta[key]);
           }
         }
         return next;
@@ -442,7 +469,7 @@ export default function CronoprogrammaPage() {
 
   function openRescheduleModal(row: TimelineRow) {
     const key = getRowKey(row.kind, row.row_ref_id, row.slot_id);
-    const baseOperativi = operativiDraftByKey[key] || extractOperativi(metaByKey[key] || null);
+    const baseOperativi = operativiDraftByKey[key] || extractRowOperativi(row, metaByKey[key] || null);
     const currentSchedule = getRowSchedule(row, metaByKey[key] || null);
     setRescheduleRow(row);
     setRescheduleDraft({

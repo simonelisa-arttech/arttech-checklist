@@ -276,7 +276,20 @@ function getRowKey(
   return slotId ? `${rowKind}:${rowRefId}:${slotId}` : `${rowKind}:${rowRefId}`;
 }
 
+function getSlotEstimatedMinutes(row: TimelineRow) {
+  return Number.isFinite(Number(row.slot_hours)) && row.slot_hours != null && Number(row.slot_hours) >= 0
+    ? Math.round(Number(row.slot_hours) * 60)
+    : null;
+}
+
 function getRowSchedule(row: TimelineRow, value?: { data_inizio?: string | null; durata_giorni?: string | number | null } | null) {
+  if (row.slot_id) {
+    return buildOperativiSchedule(
+      row.slot_date ?? null,
+      row.slot_date || row.data_tassativa || row.data_prevista,
+      durationToInputValue(getSlotEstimatedMinutes(row))
+    );
+  }
   const fallbackHours =
     Number.isFinite(Number(row.slot_hours)) && row.slot_hours != null ? String(row.slot_hours) : null;
   return buildOperativiSchedule(
@@ -348,11 +361,13 @@ function getDisplayedActualMinutes(summary: TimeBudgetSummary, nowMs: number) {
   return baseMinutes + liveMinutes;
 }
 
-function normalizeTimeBudgetSummary(value: unknown): TimeBudgetSummary {
+function normalizeTimeBudgetSummary(value: unknown, row?: TimelineRow | null): TimeBudgetSummary {
   const summary = value as Record<string, unknown>;
+  const slotEstimatedMinutes = row ? getSlotEstimatedMinutes(row) : null;
   return {
-    stimatoMinuti:
-      Number.isFinite(Number(summary?.stimatoMinuti)) && Number(summary?.stimatoMinuti) >= 0
+    stimatoMinuti: slotEstimatedMinutes != null
+      ? slotEstimatedMinutes
+      : Number.isFinite(Number(summary?.stimatoMinuti)) && Number(summary?.stimatoMinuti) >= 0
         ? Number(summary?.stimatoMinuti)
         : null,
     realeMinuti:
@@ -531,6 +546,7 @@ export default function OperatoreAttivitaPage() {
               row_kind: row.kind,
               row_ref_id: row.row_ref_id,
               slot_id: row.slot_id ?? null,
+              slot_hours: row.slot_hours ?? null,
             })),
           }),
         });
@@ -578,7 +594,8 @@ export default function OperatoreAttivitaPage() {
         for (const [key, value] of Object.entries(serverBudget)) {
           if (!nextTimeBudget[key]) continue;
           const summary = value as Record<string, unknown>;
-          nextTimeBudget[key] = normalizeTimeBudgetSummary(summary);
+          const row = assignedRows.find((item) => getRowKey(item.kind, item.row_ref_id, item.slot_id) === key) || null;
+          nextTimeBudget[key] = normalizeTimeBudgetSummary(summary, row);
           nextTimbraturaState[key] = normalizeTimbraturaState(summary?.stato);
         }
 
@@ -702,7 +719,14 @@ export default function OperatoreAttivitaPage() {
       credentials: "include",
       body: JSON.stringify({
         action: "load",
-        rows: [{ row_kind: row.kind, row_ref_id: row.row_ref_id, slot_id: row.slot_id ?? null }],
+        rows: [
+          {
+            row_kind: row.kind,
+            row_ref_id: row.row_ref_id,
+            slot_id: row.slot_id ?? null,
+            slot_hours: row.slot_hours ?? null,
+          },
+        ],
       }),
     });
     const data = await res.json().catch(() => ({}));
@@ -725,7 +749,7 @@ export default function OperatoreAttivitaPage() {
     }));
     setTimeBudgetByKey((prev) => ({
       ...prev,
-      [key]: normalizeTimeBudgetSummary(summary),
+      [key]: normalizeTimeBudgetSummary(summary, row),
     }));
     setTimbraturaStateByKey((prev) => ({
       ...prev,
@@ -1209,7 +1233,17 @@ export default function OperatoreAttivitaPage() {
                           {row.slot_id || row.slot_hours != null || row.slot_orario ? (
                             <span>
                               Slot: {timeBudget.stimatoMinuti != null ? formatMinutesCompact(timeBudget.stimatoMinuti) : "—"}
-                              {operativi.orario ? ` · ${operativi.orario}` : row.slot_orario ? ` · ${row.slot_orario}` : ""}
+                              {row.slot_id
+                                ? row.slot_orario
+                                  ? ` · ${row.slot_orario}`
+                                  : operativi.orario
+                                    ? ` · ${operativi.orario}`
+                                    : ""
+                                : operativi.orario
+                                  ? ` · ${operativi.orario}`
+                                  : row.slot_orario
+                                    ? ` · ${row.slot_orario}`
+                                    : ""}
                             </span>
                           ) : null}
                         </div>

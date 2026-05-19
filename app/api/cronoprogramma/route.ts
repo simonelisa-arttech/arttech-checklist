@@ -12,7 +12,12 @@ import {
 } from "@/lib/operativiSchedule";
 
 type RowKind = "INSTALLAZIONE" | "DISINSTALLAZIONE" | "INTERVENTO" | "CHECKLIST_TASK";
-type RowRef = { row_kind: RowKind; row_ref_id: string; slot_id?: string | null };
+type RowRef = {
+  row_kind: RowKind;
+  row_ref_id: string;
+  slot_id?: string | null;
+  slot_hours?: number | null;
+};
 type OperativiInput = {
   data_inizio?: string | null;
   durata_giorni?: string | number | null;
@@ -335,7 +340,12 @@ type TimeBudgetSummary = {
 };
 
 function buildTimeBudgetSummaries(params: {
-  normalizedRows: Array<{ row_kind: string; row_ref_id: string; slot_id?: string | null }>;
+  normalizedRows: Array<{
+    row_kind: string;
+    row_ref_id: string;
+    slot_id?: string | null;
+    slot_hours?: number | null;
+  }>;
   wanted: Set<string>;
   metaByKey: Record<string, any>;
   timbratureRows: TimeBudgetRow[];
@@ -356,8 +366,12 @@ function buildTimeBudgetSummaries(params: {
 
   for (const row of normalizedRows) {
     const key = rowKey(row.row_kind, row.row_ref_id, row.slot_id);
+    const slotEstimatedMinutes =
+      row.slot_id && Number.isFinite(Number(row.slot_hours)) && Number(row.slot_hours) >= 0
+        ? Math.round(Number(row.slot_hours) * 60)
+        : null;
     summaries[key] = {
-      stimatoMinuti: getOperativiEstimatedMinutes(metaByKey[key]) ?? null,
+      stimatoMinuti: slotEstimatedMinutes ?? getOperativiEstimatedMinutes(metaByKey[key]) ?? null,
       realeMinuti: null,
       stato: "NON_INIZIATA",
       liveStartedAt: [],
@@ -861,6 +875,10 @@ export async function POST(request: Request) {
         row_kind: String(r?.row_kind || "").toUpperCase(),
         row_ref_id: String(r?.row_ref_id || "").trim(),
         slot_id: cleanOptionalUuid(r?.slot_id),
+        slot_hours:
+          Number.isFinite(Number(r?.slot_hours)) && Number(r?.slot_hours) >= 0
+            ? Number(r?.slot_hours)
+            : null,
       }))
       .filter((r) => isValidRowKind(r.row_kind) && r.row_ref_id);
 
