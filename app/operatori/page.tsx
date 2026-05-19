@@ -1262,46 +1262,72 @@ export default function OperatoreAttivitaPage() {
                     }}
                   >
                     <div style={{ display: "grid", gap: 12 }}>
-                      <div style={{ display: "grid", gap: 8, minWidth: 0 }}>
-                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-                          {renderMainStatusBadge(activityDate, timbraturaState, todayIso)}
-                          {renderPlanningStatusBadge(visualPlanningStatus)}
-                          {renderActivityKindBadge(kindLabel)}
-                          {renderModeBadge(modeLabel)}
+                      <div style={{ display: "flex", gap: 16, alignItems: "flex-start", flexWrap: "wrap" }}>
+                        <div style={{ display: "grid", gap: 8, minWidth: 0, flex: "1 1 320px" }}>
+                          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                            {renderMainStatusBadge(activityDate, timbraturaState, todayIso)}
+                            {renderPlanningStatusBadge(visualPlanningStatus)}
+                            {renderActivityKindBadge(kindLabel)}
+                            {renderModeBadge(modeLabel)}
+                          </div>
+                          <div style={{ fontWeight: 800, fontSize: 16, color: "#111827", wordBreak: "break-word" }}>
+                            {row.progetto || "Attività cronoprogramma"}
+                          </div>
+                          <div style={{ display: "grid", gap: 4, fontSize: 13, color: "#475569", minWidth: 0 }}>
+                            <span>Cliente / progetto: {row.cliente || "—"}</span>
+                            <span
+                              style={{
+                                overflowWrap: "anywhere",
+                                wordBreak: "break-word",
+                                lineHeight: 1.5,
+                              }}
+                            >
+                              Persone: {operativi.personale_previsto || "—"}
+                            </span>
+                          </div>
                         </div>
-                        <div style={{ fontWeight: 800, fontSize: 16, color: "#111827", wordBreak: "break-word" }}>
-                          {row.progetto || "Attività cronoprogramma"}
-                        </div>
-                        <div style={{ display: "grid", gap: 4, fontSize: 13, color: "#475569" }}>
-                          <span>Cliente / progetto: {row.cliente || "—"}</span>
-                          <span>Data: {schedule.data_inizio ? formatOperativiDateLabel(schedule.data_inizio) : "—"}</span>
-                          {row.slot_id || row.slot_hours != null || row.slot_orario ? (
-                            <span>
-                              Slot: {timeBudget.stimatoMinuti != null ? formatMinutesCompact(timeBudget.stimatoMinuti) : "—"}
-                              {row.slot_id
-                                ? row.slot_orario
-                                  ? ` · ${row.slot_orario}`
+                        <div
+                          style={{
+                            display: "grid",
+                            gap: 6,
+                            flex: "0 1 240px",
+                            minWidth: 200,
+                            marginLeft: "auto",
+                            justifyItems: "end",
+                            alignContent: "start",
+                            textAlign: "right",
+                          }}
+                        >
+                          <div style={{ display: "grid", gap: 4, fontSize: 13, color: "#475569", justifyItems: "end" }}>
+                            <span>Data: {schedule.data_inizio ? formatOperativiDateLabel(schedule.data_inizio) : "—"}</span>
+                            {row.slot_id || row.slot_hours != null || row.slot_orario ? (
+                              <span>
+                                Slot: {timeBudget.stimatoMinuti != null ? formatMinutesCompact(timeBudget.stimatoMinuti) : "—"}
+                                {row.slot_id
+                                  ? row.slot_orario
+                                    ? ` · ${row.slot_orario}`
+                                    : operativi.orario
+                                      ? ` · ${operativi.orario}`
+                                      : ""
                                   : operativi.orario
                                     ? ` · ${operativi.orario}`
-                                    : ""
-                                : operativi.orario
-                                  ? ` · ${operativi.orario}`
-                                  : row.slot_orario
-                                    ? ` · ${row.slot_orario}`
-                                    : ""}
-                            </span>
-                          ) : null}
-                        </div>
-                        <div style={{ display: "grid", gap: 6 }}>
-                          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", fontSize: 12, color: "#475569" }}>
+                                    : row.slot_orario
+                                      ? ` · ${row.slot_orario}`
+                                      : ""}
+                              </span>
+                            ) : null}
+                          </div>
+                          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end", alignItems: "center", fontSize: 12, color: "#475569" }}>
                             <span>Stimato: {formatMinutesCompact(timeBudget.stimatoMinuti)}</span>
                             <span>Reale: {formatMinutesCompact(displayedActualMinutes)}</span>
                           </div>
-                          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", fontSize: 12, color: "#475569" }}>
+                          <div style={{ display: "flex", gap: 8, flexWrap: "wrap", justifyContent: "flex-end", alignItems: "center", fontSize: 12, color: "#475569" }}>
                             <span>{deltaLabel}</span>
                             {timeBudget.stimatoMinuti != null ? renderBudgetBadge(timeBudget.stimatoMinuti, displayedActualMinutes) : null}
                           </div>
                         </div>
+                      </div>
+                      <div style={{ display: "grid", gap: 8, minWidth: 0 }}>
                         <div
                           style={{
                             display: "grid",

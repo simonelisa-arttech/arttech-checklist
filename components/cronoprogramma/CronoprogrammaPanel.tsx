@@ -1035,13 +1035,12 @@ export default function CronoprogrammaPanel({
                     <div
                       style={{
                         display: "flex",
-                        justifyContent: "space-between",
-                        gap: 12,
+                        gap: 16,
                         alignItems: "flex-start",
                         flexWrap: "wrap",
                       }}
                     >
-                      <div style={{ display: "grid", gap: 8 }}>
+                      <div style={{ display: "grid", gap: 8, flex: "1 1 420px", minWidth: 0 }}>
                         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
                           {renderActivityKindBadge(kindLabel)}
                           {renderModeBadge(modeLabel)}
@@ -1051,8 +1050,8 @@ export default function CronoprogrammaPanel({
                             ? renderPill("CONFLITTO", { bg: "#fff1f2", border: "#fca5a5", color: "#b91c1c" }, "⚠")
                             : null}
                         </div>
-                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-                          <div style={{ fontWeight: 800, fontSize: 16, color: "#111827" }}>
+                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", minWidth: 0 }}>
+                          <div style={{ fontWeight: 800, fontSize: 16, color: "#111827", wordBreak: "break-word" }}>
                             {r.progetto || "Attività cronoprogramma"}
                           </div>
                           {r.checklist_id ? (
@@ -1071,110 +1070,30 @@ export default function CronoprogrammaPanel({
                             </Link>
                           ) : null}
                         </div>
-                        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", fontSize: 13, color: "#475569" }}>
-                          {r.kind === "INTERVENTO" ? (
-                            <span>
-                              Data intervento:{" "}
-                              {schedule.data_inizio ? formatOperativiDateLabel(schedule.data_inizio) : "—"}
-                            </span>
-                          ) : null}
-                          {r.kind !== "INTERVENTO" ? (
-                            <span>
-                              Slot: {schedule.data_inizio ? formatOperativiDateLabel(schedule.data_inizio) : "—"}
-                              {timeBudget.stimatoMinuti != null ? ` · ${formatMinutesCompact(timeBudget.stimatoMinuti)}` : ""}
-                              {r.slot_id
-                                ? r.slot_orario
-                                  ? ` · ${r.slot_orario}`
-                                  : operativi.orario
-                                    ? ` · ${operativi.orario}`
-                                    : ""
-                                : operativi.orario
-                                  ? ` · ${operativi.orario}`
-                                  : r.slot_orario
-                                    ? ` · ${r.slot_orario}`
-                                    : ""}
-                            </span>
-                          ) : null}
+                        <div
+                          style={{
+                            display: "flex",
+                            gap: 10,
+                            flexWrap: "wrap",
+                            fontSize: 13,
+                            color: "#475569",
+                            minWidth: 0,
+                          }}
+                        >
                           <span>Cliente: {r.cliente || "—"}</span>
-                          <span>Persone: {operativi.personale_previsto || "—"}</span>
                           <span>Rif: {r.ticket_no || r.proforma || "—"}</span>
                         </div>
-                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", fontSize: 12, color: "#475569" }}>
-                          <span>Stimato: {formatMinutesCompact(timeBudget.stimatoMinuti)}</span>
-                          {hasRealMinutes ? <span>Reale: {formatMinutesCompact(displayedActualMinutes)}</span> : null}
-                          {hasRealMinutes ? <span>Delta: {budgetDelta?.deltaLabel || "—"}</span> : null}
-                          {hasRealMinutes ? budgetDelta?.badge || null : null}
-                          {!hasRealMinutes ? (
-                            manualActualOpen ? (
-                              <span
-                                onClick={(e) => e.stopPropagation()}
-                                style={{ display: "inline-flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}
-                              >
-                                <input
-                                  type="number"
-                                  min="0"
-                                  step="0.25"
-                                  value={manualActualValue}
-                                  onChange={(e) =>
-                                    setManualActualHoursByKey((prev) => ({ ...prev, [key]: e.target.value }))
-                                  }
-                                  placeholder="Ore"
-                                  style={{
-                                    width: 88,
-                                    padding: "6px 8px",
-                                    borderRadius: 10,
-                                    border: "1px solid #d1d5db",
-                                    background: "white",
-                                  }}
-                                />
-                                <button
-                                  type="button"
-                                  onClick={() => void handleSaveManualActual(r, key)}
-                                  disabled={manualActualSaving || !String(manualActualValue).trim()}
-                                  style={{
-                                    padding: "6px 10px",
-                                    borderRadius: 999,
-                                    border: "1px solid #93c5fd",
-                                    background: "#dbeafe",
-                                    color: "#1d4ed8",
-                                    fontSize: 12,
-                                    fontWeight: 700,
-                                    cursor:
-                                      manualActualSaving || !String(manualActualValue).trim()
-                                        ? "not-allowed"
-                                        : "pointer",
-                                    opacity: manualActualSaving || !String(manualActualValue).trim() ? 0.7 : 1,
-                                  }}
-                                >
-                                  {manualActualSaving ? "Salvataggio..." : "Salva"}
-                                </button>
-                              </span>
-                            ) : (
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setManualActualOpenKey(key);
-                                  setManualActualHoursByKey((prev) => ({
-                                    ...prev,
-                                    [key]: prev[key] ?? "",
-                                  }));
-                                }}
-                                style={{
-                                  padding: "6px 10px",
-                                  borderRadius: 999,
-                                  border: "1px solid #cbd5e1",
-                                  background: "white",
-                                  color: "#0f172a",
-                                  fontSize: 12,
-                                  fontWeight: 700,
-                                  cursor: "pointer",
-                                }}
-                              >
-                                Inserisci tempo impiegato
-                              </button>
-                            )
-                          ) : null}
+                        <div
+                          style={{
+                            fontSize: 13,
+                            color: "#475569",
+                            minWidth: 0,
+                            overflowWrap: "anywhere",
+                            wordBreak: "break-word",
+                            lineHeight: 1.5,
+                          }}
+                        >
+                          <strong>Persone:</strong> {operativi.personale_previsto || "—"}
                         </div>
                         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
                           {timbraturaState === "IN_CORSO"
@@ -1296,24 +1215,136 @@ export default function CronoprogrammaPanel({
                           ) : null}
                         </div>
                       </div>
-                      <div style={{ display: "grid", gap: 6, justifyItems: "end", textAlign: "right" }}>
-                        <div style={{ fontWeight: 700, fontSize: 14 }}>
-                          {schedule.data_inizio ? formatOperativiDateLabel(schedule.data_inizio) : "—"}
+                      <div
+                        style={{
+                          display: "grid",
+                          gap: 8,
+                          flex: "0 1 280px",
+                          minWidth: 220,
+                          marginLeft: "auto",
+                          justifyItems: "end",
+                          alignContent: "start",
+                          textAlign: "right",
+                        }}
+                      >
+                        <div style={{ display: "grid", gap: 4, fontSize: 13, color: "#475569", justifyItems: "end" }}>
+                          {r.kind === "INTERVENTO" ? (
+                            <span>
+                              Data intervento:{" "}
+                              {schedule.data_inizio ? formatOperativiDateLabel(schedule.data_inizio) : "—"}
+                            </span>
+                          ) : (
+                            <span>
+                              Slot: {schedule.data_inizio ? formatOperativiDateLabel(schedule.data_inizio) : "—"}
+                              {timeBudget.stimatoMinuti != null ? ` · ${formatMinutesCompact(timeBudget.stimatoMinuti)}` : ""}
+                              {r.slot_id
+                                ? r.slot_orario
+                                  ? ` · ${r.slot_orario}`
+                                  : operativi.orario
+                                    ? ` · ${operativi.orario}`
+                                    : ""
+                                : operativi.orario
+                                  ? ` · ${operativi.orario}`
+                                  : r.slot_orario
+                                    ? ` · ${r.slot_orario}`
+                                    : ""}
+                            </span>
+                          )}
+                          <span>{schedule.data_fine ? `Fine ${formatOperativiDateLabel(schedule.data_fine)}` : "Fine —"}</span>
                         </div>
-                        <div style={{ fontSize: 12, color: "#64748b" }}>
-                          {schedule.data_fine ? `Fine ${formatOperativiDateLabel(schedule.data_fine)}` : "Fine —"}
+                        <div
+                          style={{
+                            display: "flex",
+                            gap: 8,
+                            flexWrap: "wrap",
+                            justifyContent: "flex-end",
+                            alignItems: "center",
+                            fontSize: 12,
+                            color: "#475569",
+                          }}
+                        >
+                          <span>Stimato: {formatMinutesCompact(timeBudget.stimatoMinuti)}</span>
+                          {hasRealMinutes ? <span>Reale: {formatMinutesCompact(displayedActualMinutes)}</span> : <span>Reale: —</span>}
+                          {hasRealMinutes ? <span>Delta: {budgetDelta?.deltaLabel || "—"}</span> : <span>Delta: —</span>}
+                          {hasRealMinutes ? budgetDelta?.badge || null : null}
                         </div>
-                        <div style={{ fontSize: 12, color: "#64748b" }}>
-                          Stimato {formatMinutesCompact(timeBudget.stimatoMinuti)}
-                        </div>
-                        <div style={{ fontSize: 12, color: "#64748b" }}>
-                          {hasRealMinutes
-                            ? `Reale ${formatMinutesCompact(displayedActualMinutes)}`
-                            : "Reale —"}
-                        </div>
-                        <div style={{ fontSize: 12, color: "#64748b" }}>
-                          {hasRealMinutes && budgetDelta ? budgetDelta.deltaLabel : "Delta —"}
-                        </div>
+                        {!hasRealMinutes ? (
+                          manualActualOpen ? (
+                            <span
+                              onClick={(e) => e.stopPropagation()}
+                              style={{
+                                display: "inline-flex",
+                                gap: 8,
+                                alignItems: "center",
+                                justifyContent: "flex-end",
+                                flexWrap: "wrap",
+                              }}
+                            >
+                              <input
+                                type="number"
+                                min="0"
+                                step="0.25"
+                                value={manualActualValue}
+                                onChange={(e) =>
+                                  setManualActualHoursByKey((prev) => ({ ...prev, [key]: e.target.value }))
+                                }
+                                placeholder="Ore"
+                                style={{
+                                  width: 88,
+                                  padding: "6px 8px",
+                                  borderRadius: 10,
+                                  border: "1px solid #d1d5db",
+                                  background: "white",
+                                }}
+                              />
+                              <button
+                                type="button"
+                                onClick={() => void handleSaveManualActual(r, key)}
+                                disabled={manualActualSaving || !String(manualActualValue).trim()}
+                                style={{
+                                  padding: "6px 10px",
+                                  borderRadius: 999,
+                                  border: "1px solid #93c5fd",
+                                  background: "#dbeafe",
+                                  color: "#1d4ed8",
+                                  fontSize: 12,
+                                  fontWeight: 700,
+                                  cursor:
+                                    manualActualSaving || !String(manualActualValue).trim()
+                                      ? "not-allowed"
+                                      : "pointer",
+                                  opacity: manualActualSaving || !String(manualActualValue).trim() ? 0.7 : 1,
+                                }}
+                              >
+                                {manualActualSaving ? "Salvataggio..." : "Salva"}
+                              </button>
+                            </span>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setManualActualOpenKey(key);
+                                setManualActualHoursByKey((prev) => ({
+                                  ...prev,
+                                  [key]: prev[key] ?? "",
+                                }));
+                              }}
+                              style={{
+                                padding: "6px 10px",
+                                borderRadius: 999,
+                                border: "1px solid #cbd5e1",
+                                background: "white",
+                                color: "#0f172a",
+                                fontSize: 12,
+                                fontWeight: 700,
+                                cursor: "pointer",
+                              }}
+                            >
+                              Inserisci tempo impiegato
+                            </button>
+                          )
+                        ) : null}
                       </div>
                     </div>
                   </div>
