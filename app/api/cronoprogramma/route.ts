@@ -784,6 +784,124 @@ async function loadCurrentSlotsForActivity(
   return query;
 }
 
+async function syncOperativiSlotsForActivity(
+  supabaseAdmin: any,
+  rowKind: string,
+  rowRefId: string,
+  inputSlots: unknown[]
+) {
+  const currentSlotsRes = await loadCurrentSlotsForActivity(supabaseAdmin, rowKind, rowRefId);
+  const currentSlots = (currentSlotsRes.data || []) as any[];
+  const currentSlotsErr = currentSlotsRes.error;
+  if (
+    currentSlotsErr &&
+    !String(currentSlotsErr.message || "").toLowerCase().includes("cronoprogramma_meta_slots")
+  ) {
+    return { data: null, error: currentSlotsErr };
+  }
+
+  const existingById = new Map<string, any>();
+  for (const slot of currentSlots) {
+    const slotUuid = cleanOptionalUuid((slot as any)?.id);
+    if (slotUuid) existingById.set(slotUuid, slot);
+  }
+
+  const normalizedIncoming = inputSlots.map((slot, index) => {
+    const slotRow = slot && typeof slot === "object" ? (slot as Record<string, unknown>) : {};
+    return {
+      id: cleanOptionalUuid(slotRow.id),
+      payload: toOperativiSlotPayload(slotRow as OperativiSlotInput, index),
+    };
+  });
+
+  const hasExplicitIds = normalizedIncoming.some((slot) => slot.id && existingById.has(slot.id));
+  const reusableExistingSlots = !hasExplicitIds
+    ? currentSlots.filter((slot) => cleanOptionalUuid((slot as any)?.id))
+    : [];
+
+  const keptIds = new Set<string>();
+
+  for (const slot of normalizedIncoming) {
+    if (slot.id && existingById.has(slot.id)) {
+      const { error: updateErr } = await supabaseAdmin
+        .from("cronoprogramma_meta_slots")
+        .update(slot.payload)
+        .eq("id", slot.id)
+        .eq("row_kind", rowKind)
+        .eq("row_ref_id", rowRefId);
+      if (updateErr) {
+        return { data: null, error: updateErr };
+      }
+      keptIds.add(slot.id);
+      continue;
+    }
+
+    const fallbackExisting = !hasExplicitIds ? reusableExistingSlots.shift() : null;
+    const fallbackId = cleanOptionalUuid((fallbackExisting as any)?.id);
+    if (fallbackId) {
+      const { error: updateErr } = await supabaseAdmin
+        .from("cronoprogramma_meta_slots")
+        .update(slot.payload)
+        .eq("id", fallbackId)
+        .eq("row_kind", rowKind)
+        .eq("row_ref_id", rowRefId);
+      if (updateErr) {
+        return { data: null, error: updateErr };
+      }
+      keptIds.add(fallbackId);
+      continue;
+    }
+
+    const { data: insertedRows, error: insertErr } = await supabaseAdmin
+      .from("cronoprogramma_meta_slots")
+      .insert([
+        {
+          row_kind: rowKind,
+          row_ref_id: rowRefId,
+          ...slot.payload,
+        },
+      ])
+      .select("id");
+    if (insertErr) {
+      return { data: null, error: insertErr };
+    }
+    const insertedId = cleanOptionalUuid((insertedRows || [])[0]?.id);
+    if (insertedId) keptIds.add(insertedId);
+  }
+
+  const removableIds = currentSlots
+    .map((slot) => cleanOptionalUuid((slot as any)?.id))
+    .filter((slotId): slotId is string => typeof slotId === "string" && slotId.length > 0)
+    .filter((slotId) => !keptIds.has(slotId));
+
+  if (removableIds.length > 0) {
+    const { error: deleteErr } = await supabaseAdmin
+      .from("cronoprogramma_meta_slots")
+      .delete()
+      .in("id", removableIds)
+      .eq("row_kind", rowKind)
+      .eq("row_ref_id", rowRefId);
+    if (deleteErr) {
+      return { data: null, error: deleteErr };
+    }
+  }
+
+  const refreshedSlotsRes = await loadCurrentSlotsForActivity(supabaseAdmin, rowKind, rowRefId);
+  const refreshedSlots = (refreshedSlotsRes.data || []) as any[];
+  const refreshedSlotsErr = refreshedSlotsRes.error;
+  if (
+    refreshedSlotsErr &&
+    !String(refreshedSlotsErr.message || "").toLowerCase().includes("cronoprogramma_meta_slots")
+  ) {
+    return { data: null, error: refreshedSlotsErr };
+  }
+
+  return {
+    data: refreshedSlots.map((row) => mapSlotRow(row)),
+    error: null,
+  };
+}
+
 export async function POST(request: Request) {
   const debug = new URL(request.url).searchParams.get("debug") === "1";
   const auth = await requireOperatore(request);
@@ -1999,48 +2117,23 @@ export async function POST(request: Request) {
     let slotsResponse: any[] | undefined;
     let normalizedSlotsForSync: ReturnType<typeof toOperativiSlotPayload>[] | null = null;
     if (Array.isArray(body?.slots) && !slotId) {
-      const { error: deleteSlotsErr } = await supabaseAdmin
-        .from("cronoprogramma_meta_slots")
-        .delete()
-        .eq("row_kind", rowKind)
-        .eq("row_ref_id", rowRefId);
-
-      if (deleteSlotsErr) {
-        return NextResponse.json({ error: deleteSlotsErr.message }, { status: 500 });
-      }
-
-      const normalizedSlots = (body.slots as unknown[])
-        .map((slot, index) =>
-          toOperativiSlotPayload(
-            slot && typeof slot === "object" ? (slot as OperativiSlotInput) : {},
-            index
-          )
-        );
+      const normalizedSlots = (body.slots as unknown[]).map((slot, index) =>
+        toOperativiSlotPayload(
+          slot && typeof slot === "object" ? (slot as OperativiSlotInput) : {},
+          index
+        )
+      );
       normalizedSlotsForSync = normalizedSlots;
-
-      if (normalizedSlots.length > 0) {
-        const insertPayload = normalizedSlots.map((slot) => ({
-          row_kind: rowKind,
-          row_ref_id: rowRefId,
-          ...slot,
-        }));
-
-        const { data: insertedSlots, error: insertSlotsErr } = await supabaseAdmin
-          .from("cronoprogramma_meta_slots")
-          .insert(insertPayload)
-          .select(
-            "id, position, data_inizio, durata_prevista_minuti, personale_previsto, personale_ids, mezzi, descrizione_attivita, indirizzo, orario, referente_cliente_nome, referente_cliente_contatto, commerciale_art_tech_nome, commerciale_art_tech_contatto"
-          )
-          .order("position", { ascending: true });
-
-        if (insertSlotsErr) {
-          return NextResponse.json({ error: insertSlotsErr.message }, { status: 500 });
-        }
-
-        slotsResponse = (insertedSlots || []).map((row) => mapSlotRow(row));
-      } else {
-        slotsResponse = [];
+      const { data: syncedSlots, error: syncSlotsErr } = await syncOperativiSlotsForActivity(
+        supabaseAdmin,
+        rowKind,
+        rowRefId,
+        body.slots as unknown[]
+      );
+      if (syncSlotsErr) {
+        return NextResponse.json({ error: syncSlotsErr.message }, { status: 500 });
       }
+      slotsResponse = syncedSlots || [];
     } else if (slotId) {
       const { data: currentSlotRows, error: currentSlotErr } = await loadCurrentSlotsForActivity(
         supabaseAdmin,
