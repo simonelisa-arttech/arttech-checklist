@@ -210,10 +210,24 @@ function getImpiantoSelectValue(
   return byCode?.id || "";
 }
 
+function isRealUuid(value?: string | null) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+    String(value || "").trim()
+  );
+}
+
 function stripPendingFrontendId(value?: string | null) {
   const normalized = String(value || "").trim();
   if (!normalized) return null;
-  return normalized.startsWith("pending:") ? null : normalized;
+  if (normalized.startsWith("pending:") || normalized.startsWith("__tmp__")) {
+    return null;
+  }
+  return isRealUuid(normalized) ? normalized : normalized;
+}
+
+function sanitizeUuidForPayload(value?: string | null) {
+  const normalized = stripPendingFrontendId(value);
+  return normalized && isRealUuid(normalized) ? normalized : null;
 }
 
 export default function NuovaChecklistPage() {
@@ -385,7 +399,7 @@ export default function NuovaChecklistPage() {
 
   useEffect(() => {
     let active = true;
-    const normalizedClienteId = String(clienteId || "").trim();
+    const normalizedClienteId = sanitizeUuidForPayload(clienteId);
     if (!normalizedClienteId) {
       setClienteReferenti([createEmptyClienteReferente()]);
       setClienteReferentiSnapshot([]);
@@ -428,12 +442,12 @@ export default function NuovaChecklistPage() {
   }, [clienteId]);
 
   async function syncClienteReferentiDrafts(targetClienteId: string) {
-    const normalizedClienteId = String(targetClienteId || "").trim();
+    const normalizedClienteId = sanitizeUuidForPayload(targetClienteId);
     const normalizedDrafts = clienteReferenti.map((row) => normalizeClienteReferenteDraft(row));
     const rowsToPersist = normalizedDrafts.filter((row) => hasClienteReferenteContent(row));
     if (!normalizedClienteId) {
       if (rowsToPersist.length > 0) {
-        throw new Error("Seleziona un cliente dall'anagrafica per salvare i referenti.");
+        return;
       }
       return;
     }
@@ -716,8 +730,8 @@ export default function NuovaChecklistPage() {
 
       const payloadChecklist = {
         cliente: cliente.trim(),
-        cliente_id: clienteId,
-        referente_art_tech_id: referenteArtTechId,
+        cliente_id: sanitizeUuidForPayload(clienteId),
+        referente_art_tech_id: sanitizeUuidForPayload(referenteArtTechId),
         referente_art_tech_nome: referenteArtTechNome,
         nome_checklist: nomeChecklist.trim(),
         proforma: proforma.trim() ? proforma.trim() : null,
