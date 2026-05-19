@@ -45,6 +45,37 @@ type ReferenteArtTechOption = {
   nome: string;
 };
 
+type ClienteReferente = {
+  id?: string;
+  cliente_id?: string | null;
+  nome: string;
+  telefono: string;
+  email: string;
+  ruolo: string;
+};
+
+function createEmptyClienteReferente(): ClienteReferente {
+  return { nome: "", telefono: "", email: "", ruolo: "" };
+}
+
+function normalizeClienteReferenteDraft(value: Partial<ClienteReferente> | null | undefined): ClienteReferente {
+  return {
+    ...(String(value?.id || "").trim() ? { id: String(value?.id || "").trim() } : {}),
+    ...(String(value?.cliente_id || "").trim()
+      ? { cliente_id: String(value?.cliente_id || "").trim() }
+      : {}),
+    nome: String(value?.nome || "").trim(),
+    telefono: String(value?.telefono || "").trim(),
+    email: String(value?.email || "").trim(),
+    ruolo: String(value?.ruolo || "").trim(),
+  };
+}
+
+function hasClienteReferenteContent(value: Partial<ClienteReferente> | null | undefined) {
+  const row = normalizeClienteReferenteDraft(value);
+  return Boolean(row.nome || row.telefono || row.email || row.ruolo);
+}
+
 const CATEGORIE_VOCI = [
   "Elettronica",
   "SaaS/Servizi",
@@ -194,6 +225,12 @@ export default function NuovaChecklistPage() {
   const [deviceCatalogItems, setDeviceCatalogItems] = useState<CatalogItem[]>([]);
   const [referenteArtTechOptions, setReferenteArtTechOptions] = useState<ReferenteArtTechOption[]>([]);
   const [currentOperatoreId, setCurrentOperatoreId] = useState<string>("");
+  const [clienteReferenti, setClienteReferenti] = useState<ClienteReferente[]>([
+    createEmptyClienteReferente(),
+  ]);
+  const [clienteReferentiSnapshot, setClienteReferentiSnapshot] = useState<ClienteReferente[]>([]);
+  const [clienteReferentiLoading, setClienteReferentiLoading] = useState(false);
+  const [clienteReferentiError, setClienteReferentiError] = useState<string | null>(null);
 
   // campi testata
   const [cliente, setCliente] = useState("");
@@ -345,6 +382,108 @@ export default function NuovaChecklistPage() {
       typeof window !== "undefined" ? window.localStorage.getItem("current_operatore_id") : null;
     if (stored) setCurrentOperatoreId(stored);
   }, []);
+
+  useEffect(() => {
+    let active = true;
+    const normalizedClienteId = String(clienteId || "").trim();
+    if (!normalizedClienteId) {
+      setClienteReferenti([createEmptyClienteReferente()]);
+      setClienteReferentiSnapshot([]);
+      setClienteReferentiError(null);
+      return;
+    }
+
+    void (async () => {
+      setClienteReferentiLoading(true);
+      setClienteReferentiError(null);
+      try {
+        const res = await fetch(`/api/clienti/${encodeURIComponent(normalizedClienteId)}/referenti`, {
+          method: "GET",
+          cache: "no-store",
+          credentials: "include",
+        });
+        const json = await res.json().catch(() => ({} as any));
+        if (!res.ok || json?.ok === false) {
+          throw new Error(String(json?.error || "Errore caricamento referenti cliente"));
+        }
+        const loaded = ((json?.referenti || []) as ClienteReferente[]).map((row) =>
+          normalizeClienteReferenteDraft(row)
+        );
+        if (!active) return;
+        setClienteReferenti(loaded.length > 0 ? loaded : [createEmptyClienteReferente()]);
+        setClienteReferentiSnapshot(loaded);
+      } catch (err: any) {
+        if (!active) return;
+        setClienteReferenti([createEmptyClienteReferente()]);
+        setClienteReferentiSnapshot([]);
+        setClienteReferentiError(String(err?.message || "Errore caricamento referenti cliente"));
+      } finally {
+        if (active) setClienteReferentiLoading(false);
+      }
+    })();
+
+    return () => {
+      active = false;
+    };
+  }, [clienteId]);
+
+  async function syncClienteReferentiDrafts(targetClienteId: string) {
+    const normalizedClienteId = String(targetClienteId || "").trim();
+    const normalizedDrafts = clienteReferenti.map((row) => normalizeClienteReferenteDraft(row));
+    const rowsToPersist = normalizedDrafts.filter((row) => hasClienteReferenteContent(row));
+    if (!normalizedClienteId) {
+      if (rowsToPersist.length > 0) {
+        throw new Error("Seleziona un cliente dall'anagrafica per salvare i referenti.");
+      }
+      return;
+    }
+
+    const snapshotById = new Map(
+      clienteReferentiSnapshot
+        .map((row) => normalizeClienteReferenteDraft(row))
+        .filter((row) => row.id)
+        .map((row) => [row.id as string, row])
+    );
+    const currentIds = new Set(rowsToPersist.map((row) => row.id).filter(Boolean) as string[]);
+    const idsToDelete = Array.from(snapshotById.keys()).filter((id) => !currentIds.has(id));
+
+    for (const row of rowsToPersist.filter((value) => value.id)) {
+      const payload = {
+        nome: row.nome,
+        telefono: row.telefono || null,
+        email: row.email || null,
+        ruolo: row.ruolo || null,
+      };
+      const { error } = await dbFrom("clienti_referenti")
+        .update(payload)
+        .eq("id", row.id as string)
+        .eq("cliente_id", normalizedClienteId);
+      if (error) throw new Error(error.message || "Errore aggiornamento referente cliente");
+    }
+
+    const rowsToInsert = rowsToPersist
+      .filter((row) => !row.id)
+      .map((row) => ({
+        cliente_id: normalizedClienteId,
+        nome: row.nome,
+        telefono: row.telefono || null,
+        email: row.email || null,
+        ruolo: row.ruolo || null,
+        attivo: true,
+      }));
+    if (rowsToInsert.length > 0) {
+      const { error } = await dbFrom("clienti_referenti").insert(rowsToInsert);
+      if (error) throw new Error(error.message || "Errore inserimento referenti cliente");
+    }
+
+    if (idsToDelete.length > 0) {
+      const { error } = await dbFrom("clienti_referenti")
+        .delete()
+        .in("id", idsToDelete)
+        .eq("cliente_id", normalizedClienteId);
+      if (error) throw new Error(error.message || "Errore rimozione referenti cliente");
+    }
+  }
 
   useEffect(() => {
     (async () => {
@@ -726,6 +865,16 @@ export default function NuovaChecklistPage() {
         );
       }
 
+      try {
+        await syncClienteReferentiDrafts(String(clienteId || "").trim());
+      } catch (err: any) {
+        alert(
+          `Checklist creata, ma i referenti cliente non sono stati salvati: ${String(
+            err?.message || "errore sconosciuto"
+          )}`
+        );
+      }
+
       {
         const res = await fetch("/api/checklists/materialize-tasks", {
           method: "POST",
@@ -921,6 +1070,9 @@ export default function NuovaChecklistPage() {
               onValueChange={(val) => {
                 setCliente(val);
                 setClienteId(null);
+                setClienteReferenti([createEmptyClienteReferente()]);
+                setClienteReferentiSnapshot([]);
+                setClienteReferentiError(null);
               }}
               selectedId={clienteId}
               onSelectId={(id) => {
@@ -947,6 +1099,137 @@ export default function NuovaChecklistPage() {
               + Nuovo cliente
             </button>
           </label>
+
+          <div
+            style={{
+              gridColumn: "1 / -1",
+              border: "1px solid #e5e7eb",
+              borderRadius: 12,
+              padding: 12,
+              display: "grid",
+              gap: 10,
+            }}
+          >
+            <div style={{ fontWeight: 700 }}>Referente cliente</div>
+            {!clienteId ? (
+              <div style={{ fontSize: 12, opacity: 0.7 }}>
+                Seleziona il cliente dall&apos;anagrafica per caricare o salvare i referenti.
+              </div>
+            ) : null}
+            {clienteReferentiLoading ? (
+              <div style={{ fontSize: 12, opacity: 0.7 }}>Caricamento referenti...</div>
+            ) : null}
+            {clienteReferentiError ? (
+              <div style={{ fontSize: 12, color: "crimson" }}>{clienteReferentiError}</div>
+            ) : null}
+            {clienteReferenti.map((referente, index) => (
+              <div
+                key={referente.id || `cliente-referente-${index}`}
+                style={{
+                  border: "1px solid #eee",
+                  borderRadius: 10,
+                  padding: 10,
+                  display: "grid",
+                  gap: 8,
+                }}
+              >
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+                    gap: 8,
+                  }}
+                >
+                  <input
+                    value={referente.nome}
+                    onChange={(e) =>
+                      setClienteReferenti((prev) =>
+                        prev.map((row, currentIndex) =>
+                          currentIndex === index ? { ...row, nome: e.target.value } : row
+                        )
+                      )
+                    }
+                    placeholder="Nome"
+                    style={{ width: "100%", padding: 10 }}
+                  />
+                  <input
+                    value={referente.telefono}
+                    onChange={(e) =>
+                      setClienteReferenti((prev) =>
+                        prev.map((row, currentIndex) =>
+                          currentIndex === index ? { ...row, telefono: e.target.value } : row
+                        )
+                      )
+                    }
+                    placeholder="Telefono"
+                    style={{ width: "100%", padding: 10 }}
+                  />
+                  <input
+                    value={referente.email}
+                    onChange={(e) =>
+                      setClienteReferenti((prev) =>
+                        prev.map((row, currentIndex) =>
+                          currentIndex === index ? { ...row, email: e.target.value } : row
+                        )
+                      )
+                    }
+                    placeholder="Email"
+                    style={{ width: "100%", padding: 10 }}
+                  />
+                  <input
+                    value={referente.ruolo}
+                    onChange={(e) =>
+                      setClienteReferenti((prev) =>
+                        prev.map((row, currentIndex) =>
+                          currentIndex === index ? { ...row, ruolo: e.target.value } : row
+                        )
+                      )
+                    }
+                    placeholder="Ruolo / riferimento"
+                    style={{ width: "100%", padding: 10 }}
+                  />
+                </div>
+                <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setClienteReferenti((prev) => {
+                        const next = prev.filter((_, currentIndex) => currentIndex !== index);
+                        return next.length > 0 ? next : [createEmptyClienteReferente()];
+                      })
+                    }
+                    style={{
+                      padding: "8px 12px",
+                      borderRadius: 10,
+                      border: "1px solid #d1d5db",
+                      background: "white",
+                      cursor: "pointer",
+                    }}
+                  >
+                    Rimuovi
+                  </button>
+                </div>
+              </div>
+            ))}
+            <div>
+              <button
+                type="button"
+                onClick={() =>
+                  setClienteReferenti((prev) => [...prev, createEmptyClienteReferente()])
+                }
+                style={{
+                  padding: "8px 12px",
+                  borderRadius: 10,
+                  border: "1px solid #d1d5db",
+                  background: "white",
+                  cursor: "pointer",
+                  fontWeight: 700,
+                }}
+              >
+                + Aggiungi referente
+              </button>
+            </div>
+          </div>
 
           <label>
             RIF. Progetto*<br />

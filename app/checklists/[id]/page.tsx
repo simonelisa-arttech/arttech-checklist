@@ -303,6 +303,40 @@ type ClienteReferente = {
   updated_at: string | null;
 };
 
+function createEmptyClienteReferenteDraft(): ClienteReferente {
+  return {
+    id: "",
+    cliente_id: "",
+    nome: "",
+    telefono: "",
+    email: "",
+    ruolo: "",
+    note: null,
+    attivo: true,
+    indirizzo_preferito: null,
+    created_at: null,
+    updated_at: null,
+  };
+}
+
+function normalizeClienteReferenteDraft(value: Partial<ClienteReferente> | null | undefined): ClienteReferente {
+  return {
+    ...createEmptyClienteReferenteDraft(),
+    ...value,
+    id: String(value?.id || "").trim(),
+    cliente_id: String(value?.cliente_id || "").trim(),
+    nome: String(value?.nome || "").trim(),
+    telefono: String(value?.telefono || "").trim(),
+    email: String(value?.email || "").trim(),
+    ruolo: String(value?.ruolo || "").trim(),
+  };
+}
+
+function hasClienteReferenteDraftContent(value: Partial<ClienteReferente> | null | undefined) {
+  const row = normalizeClienteReferenteDraft(value);
+  return Boolean(row.nome || row.telefono || row.email || row.ruolo);
+}
+
 function isMissingClienteScadenzeDeliveryModeColumnError(error: any) {
   return String(error?.message || "").toLowerCase().includes("scadenze_delivery_mode");
 }
@@ -1785,7 +1819,6 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
   }
   const projectSectionLinks = [
     { id: "section-dati-operativi", label: "Dati operativi" },
-    { id: "section-referenti-cliente", label: "Referenti cliente" },
     { id: "section-documenti-checklist", label: "Documenti checklist" },
     { id: "section-scadenze-rinnovi", label: "Scadenze e rinnovi" },
     { id: "section-servizi", label: "Servizi" },
@@ -1799,7 +1832,6 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
   type LazySectionId = (typeof projectSectionLinks)[number]["id"];
   const emptyExpandedSections = (): Record<LazySectionId, boolean> => ({
     "section-dati-operativi": false,
-    "section-referenti-cliente": false,
     "section-documenti-checklist": false,
     "section-scadenze-rinnovi": false,
     "section-servizi": false,
@@ -1930,14 +1962,9 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
   >([]);
   const [documents, setDocuments] = useState<ChecklistDocument[]>([]);
   const [clienteReferenti, setClienteReferenti] = useState<ClienteReferente[]>([]);
+  const [clienteReferentiSnapshot, setClienteReferentiSnapshot] = useState<ClienteReferente[]>([]);
+  const [clienteReferentiVersion, setClienteReferentiVersion] = useState(0);
   const [clienteReferentiError, setClienteReferentiError] = useState<string | null>(null);
-  const [clienteReferentiSaving, setClienteReferentiSaving] = useState(false);
-  const [newClienteReferente, setNewClienteReferente] = useState<{
-    nome: string;
-    telefono: string;
-    email: string;
-    ruolo: string;
-  }>({ nome: "", telefono: "", email: "", ruolo: "" });
   const [taskDocuments, setTaskDocuments] = useState<ChecklistTaskDocument[]>([]);
   const [taskAttachmentsById, setTaskAttachmentsById] = useState<
     Map<string, ChecklistTaskAttachment[]>
@@ -2028,7 +2055,6 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
   }>({ scadenza: "", fatturazione: "INCLUSO", note: "" });
   const [projectRinnovi, setProjectRinnovi] = useState<ProjectRinnovoRow[]>([]);
   const [projectTagliandoSaving, setProjectTagliandoSaving] = useState(false);
-  const newClienteReferenteNomeRef = useRef<HTMLInputElement | null>(null);
   const [projectRenewalEdit, setProjectRenewalEdit] = useState<{
     row: ProjectRenewalRow;
     scadenza: string;
@@ -2433,6 +2459,21 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
     setCabinetPanelsOpen({});
     setCabinetError(null);
   }, [checklist]);
+
+  useEffect(() => {
+    const targetClienteId = String((formData?.cliente_id || checklist?.cliente_id || "")).trim();
+    if (!targetClienteId) {
+      setClienteReferenti([]);
+      setClienteReferentiSnapshot([]);
+      setClienteReferentiError(null);
+      return;
+    }
+    void loadClienteReferentiSection(targetClienteId).catch((err: any) => {
+      setClienteReferenti([]);
+      setClienteReferentiSnapshot([]);
+      setClienteReferentiError(String(err?.message || "Errore caricamento referenti cliente"));
+    });
+  }, [checklist?.cliente_id, formData?.cliente_id]);
 
   useEffect(() => {
     const nextDataDisinstallazione = String(formData?.data_disinstallazione || "").trim();
@@ -4686,8 +4727,9 @@ function buildFormData(c: Checklist): FormData {
       setOriginalRowIds((items || []).map((r) => r.id));
       setDocuments((docsData || []) as ChecklistDocument[]);
       setClienteReferenti([]);
+      setClienteReferentiSnapshot([]);
+      setClienteReferentiVersion(0);
       setClienteReferentiError(null);
-      setNewClienteReferente({ nome: "", telefono: "", email: "", ruolo: "" });
       setAssetSerials((serialsData || []) as AssetSerial[]);
       setTasks([]);
       setLicenze([]);
@@ -4946,8 +4988,76 @@ function buildFormData(c: Checklist): FormData {
       throw new Error(String(json?.error || "Errore caricamento referenti cliente"));
     }
 
-    setClienteReferenti(((json?.referenti || []) as ClienteReferente[]).slice());
+    const loaded = ((json?.referenti || []) as ClienteReferente[])
+      .map((row) => normalizeClienteReferenteDraft(row))
+      .slice();
+    setClienteReferenti(loaded);
+    setClienteReferentiSnapshot(loaded);
+    setClienteReferentiVersion((prev) => prev + 1);
     setLazyDataLoaded((prev) => ({ ...prev, referenti: true }));
+  }
+
+  async function syncClienteReferentiDrafts(targetClienteId: string) {
+    const normalizedClienteId = String(targetClienteId || "").trim();
+    const normalizedDrafts = clienteReferenti.map((row) => normalizeClienteReferenteDraft(row));
+    const rowsToPersist = normalizedDrafts.filter((row) => hasClienteReferenteDraftContent(row));
+    if (!normalizedClienteId) {
+      if (rowsToPersist.length > 0) {
+        throw new Error("Seleziona un cliente dall'anagrafica per salvare i referenti.");
+      }
+      setClienteReferenti([]);
+      setClienteReferentiSnapshot([]);
+      setClienteReferentiVersion((prev) => prev + 1);
+      return;
+    }
+
+    const snapshotById = new Map(
+      clienteReferentiSnapshot
+        .map((row) => normalizeClienteReferenteDraft(row))
+        .filter((row) => row.id)
+        .map((row) => [row.id, row] as const)
+    );
+    const currentIds = new Set(rowsToPersist.map((row) => row.id).filter(Boolean));
+    const idsToDelete = Array.from(snapshotById.keys()).filter((id) => !currentIds.has(id));
+
+    for (const row of rowsToPersist.filter((value) => value.id)) {
+      const payload = {
+        nome: row.nome,
+        telefono: row.telefono || null,
+        email: row.email || null,
+        ruolo: row.ruolo || null,
+      };
+      const { error } = await dbFrom("clienti_referenti")
+        .update(payload)
+        .eq("id", row.id)
+        .eq("cliente_id", normalizedClienteId);
+      if (error) throw new Error(error.message || "Errore aggiornamento referente cliente");
+    }
+
+    const rowsToInsert = rowsToPersist
+      .filter((row) => !row.id)
+      .map((row) => ({
+        cliente_id: normalizedClienteId,
+        nome: row.nome,
+        telefono: row.telefono || null,
+        email: row.email || null,
+        ruolo: row.ruolo || null,
+        attivo: true,
+      }));
+    if (rowsToInsert.length > 0) {
+      const { error } = await dbFrom("clienti_referenti").insert(rowsToInsert);
+      if (error) throw new Error(error.message || "Errore inserimento referenti cliente");
+    }
+
+    if (idsToDelete.length > 0) {
+      const { error } = await dbFrom("clienti_referenti")
+        .delete()
+        .in("id", idsToDelete)
+        .eq("cliente_id", normalizedClienteId);
+      if (error) throw new Error(error.message || "Errore rimozione referenti cliente");
+    }
+
+    await loadClienteReferentiSection(normalizedClienteId);
   }
 
   async function loadTaskLastAlerts(checklistId: string) {
@@ -6290,7 +6400,6 @@ function buildFormData(c: Checklist): FormData {
     if (lazySectionLoading[sectionId]) return;
     const alreadyLoaded =
       (sectionId === "section-dati-operativi" && lazyDataLoaded.cronoOperativi) ||
-      (sectionId === "section-referenti-cliente" && lazyDataLoaded.referenti) ||
       sectionId === "section-documenti-checklist" ||
       (sectionId === "section-servizi" && lazyDataLoaded.services && lazyDataLoaded.licenze) ||
       (sectionId === "section-licenze" && lazyDataLoaded.licenze) ||
@@ -6307,12 +6416,6 @@ function buildFormData(c: Checklist): FormData {
       if (sectionId === "section-dati-operativi") {
         await loadCronoOperativi(id);
         setLazyDataLoaded((prev) => ({ ...prev, cronoOperativi: true }));
-      } else if (sectionId === "section-referenti-cliente") {
-        if (checklist.cliente_id) {
-          await loadClienteReferentiSection(checklist.cliente_id);
-        } else {
-          setLazyDataLoaded((prev) => ({ ...prev, referenti: true }));
-        }
       } else if (sectionId === "section-servizi") {
         if (!lazyDataLoaded.services) await loadProjectServicesSection(id, checklist);
         if (!lazyDataLoaded.licenze) await loadProjectLicenzeSection(id);
@@ -6345,8 +6448,6 @@ function buildFormData(c: Checklist): FormData {
         setProjectSimsError(message);
       } else if (sectionId === "section-dati-operativi") {
         setCronoOperativiError(message);
-      } else if (sectionId === "section-referenti-cliente") {
-        setClienteReferentiError(message);
       } else if (sectionId === "section-checklist-operativa") {
         setError(message);
       }
@@ -6362,57 +6463,6 @@ function buildFormData(c: Checklist): FormData {
   function openProjectSection(sectionId: LazySectionId) {
     setProjectSectionExpanded(sectionId, true);
     setTimeout(() => scrollToProjectSection(sectionId), 80);
-  }
-
-  async function addClienteReferente() {
-    const clienteId = String(checklist?.cliente_id || "").trim();
-    if (!clienteId) {
-      setClienteReferentiError("Collega prima un cliente al progetto.");
-      return;
-    }
-
-    const nome = newClienteReferente.nome.trim();
-    if (!nome) {
-      setClienteReferentiError("Inserisci il nome del referente.");
-      return;
-    }
-
-    setClienteReferentiSaving(true);
-    setClienteReferentiError(null);
-    try {
-      const res = await fetch(`/api/clienti/${encodeURIComponent(clienteId)}/referenti`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({
-          nome,
-          telefono: newClienteReferente.telefono.trim(),
-          email: newClienteReferente.email.trim(),
-          ruolo: newClienteReferente.ruolo.trim(),
-        }),
-      });
-      const json = await res.json().catch(() => ({} as any));
-      if (!res.ok || json?.ok === false) {
-        throw new Error(String(json?.error || "Errore salvataggio referente"));
-      }
-
-      const inserted = (json?.referente || null) as ClienteReferente | null;
-      setClienteReferenti((prev) =>
-        inserted
-          ? [...prev, inserted].sort((a, b) =>
-              String(a.nome || "").localeCompare(String(b.nome || ""), "it")
-            )
-          : prev
-      );
-      setNewClienteReferente({ nome: "", telefono: "", email: "", ruolo: "" });
-      showToast("Referente cliente aggiunto");
-    } catch (err: any) {
-      const message = String(err?.message || "Errore salvataggio referente");
-      setClienteReferentiError(message);
-      showToast(`❌ ${message}`, "error");
-    } finally {
-      setClienteReferentiSaving(false);
-    }
   }
 
   function getEligibleOperatori(task: ChecklistTask | null) {
@@ -7346,6 +7396,7 @@ function buildFormData(c: Checklist): FormData {
   async function onSave() {
     if (!id || !formData) return;
     setItemsError(null);
+    setClienteReferentiError(null);
 
     let operatoreId: string;
     try {
@@ -7385,6 +7436,19 @@ function buildFormData(c: Checklist): FormData {
       : null;
     const primoImpiantoM2Calcolati =
       primoImpiantoM2Base == null ? null : primoImpiantoM2Base * primoImpiantoQuantita;
+    const targetClienteId = String(formData.cliente_id || "").trim();
+    const normalizedClienteReferenti = clienteReferenti.map((row) =>
+      normalizeClienteReferenteDraft(row)
+    );
+    const hasClienteReferentiToSave = normalizedClienteReferenti.some((row) =>
+      hasClienteReferenteDraftContent(row)
+    );
+    if (!targetClienteId && hasClienteReferentiToSave) {
+      setClienteReferentiError(
+        "Seleziona un cliente dall'anagrafica per salvare i referenti cliente."
+      );
+      return;
+    }
 
     const payload = {
       cliente: formData.cliente.trim() ? formData.cliente.trim() : null,
@@ -7583,6 +7647,21 @@ function buildFormData(c: Checklist): FormData {
       );
     }
 
+    if (targetClienteId) {
+      try {
+        await syncClienteReferentiDrafts(targetClienteId);
+      } catch (err: any) {
+        const message = String(err?.message || "Errore salvataggio referenti cliente");
+        setClienteReferentiError(message);
+        alert(message);
+        return;
+      }
+    } else {
+      setClienteReferenti([]);
+      setClienteReferentiSnapshot([]);
+      setClienteReferentiVersion((prev) => prev + 1);
+    }
+
     let savedImpianti: ChecklistImpianto[] | null = null;
     if (shouldSaveMultiImpianti) {
       try {
@@ -7761,6 +7840,10 @@ function buildFormData(c: Checklist): FormData {
 
   function onCancel() {
     if (originalData) setFormData(originalData);
+    setClienteReferenti(
+      clienteReferentiSnapshot.map((row) => normalizeClienteReferenteDraft(row))
+    );
+    setClienteReferentiError(null);
     setEditingLicenzaId(null);
     setEditingLicenza(null);
     setCabinetPendingFiles({});
@@ -8134,6 +8217,7 @@ function buildFormData(c: Checklist): FormData {
 
   const projectInterventiBlock = (
     <InterventiBlock
+      key={`interventi-${String(formData?.cliente_id || checklist?.cliente_id || "").trim()}-${clienteReferentiVersion}`}
       checklists={
         checklist
           ? [
@@ -8953,6 +9037,193 @@ function buildFormData(c: Checklist): FormData {
               }
               isEdit={isEdit}
             />
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "220px 1fr",
+                gap: 12,
+                alignItems: "start",
+                padding: "8px 0",
+                borderBottom: "1px solid #f1f1f1",
+              }}
+            >
+              <div style={{ fontSize: 12, opacity: 0.75, fontWeight: 700 }}>Referente cliente</div>
+              <div style={{ display: "grid", gap: 10 }}>
+                {!formData.cliente_id?.trim() ? (
+                  <div style={{ fontSize: 13, opacity: 0.75 }}>
+                    Seleziona un cliente dall&apos;anagrafica per gestire i referenti.
+                  </div>
+                ) : isEdit ? (
+                  <>
+                    {clienteReferentiError ? (
+                      <div style={{ fontSize: 12, color: "#b91c1c" }}>{clienteReferentiError}</div>
+                    ) : null}
+                    {clienteReferenti.length === 0 ? (
+                      <div style={{ fontSize: 13, opacity: 0.75 }}>
+                        Nessun referente cliente inserito.
+                      </div>
+                    ) : null}
+                    {clienteReferenti.map((referente, index) => (
+                      <div
+                        key={referente.id || `cliente-referente-${index}`}
+                        style={{
+                          border: "1px solid #e5e7eb",
+                          borderRadius: 10,
+                          padding: 10,
+                          display: "grid",
+                          gap: 8,
+                        }}
+                      >
+                        <div
+                          style={{
+                            display: "grid",
+                            gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+                            gap: 8,
+                          }}
+                        >
+                          <input
+                            value={referente.nome}
+                            onChange={(e) =>
+                              setClienteReferenti((prev) =>
+                                prev.map((row, rowIndex) =>
+                                  rowIndex === index
+                                    ? normalizeClienteReferenteDraft({
+                                        ...row,
+                                        nome: e.target.value,
+                                      })
+                                    : row
+                                )
+                              )
+                            }
+                            placeholder="Nome"
+                            style={{ width: "100%", padding: 10 }}
+                          />
+                          <input
+                            value={referente.telefono ?? ""}
+                            onChange={(e) =>
+                              setClienteReferenti((prev) =>
+                                prev.map((row, rowIndex) =>
+                                  rowIndex === index
+                                    ? normalizeClienteReferenteDraft({
+                                        ...row,
+                                        telefono: e.target.value,
+                                      })
+                                    : row
+                                )
+                              )
+                            }
+                            placeholder="Telefono"
+                            style={{ width: "100%", padding: 10 }}
+                          />
+                          <input
+                            value={referente.email ?? ""}
+                            onChange={(e) =>
+                              setClienteReferenti((prev) =>
+                                prev.map((row, rowIndex) =>
+                                  rowIndex === index
+                                    ? normalizeClienteReferenteDraft({
+                                        ...row,
+                                        email: e.target.value,
+                                      })
+                                    : row
+                                )
+                              )
+                            }
+                            placeholder="Email"
+                            style={{ width: "100%", padding: 10 }}
+                          />
+                          <input
+                            value={referente.ruolo ?? ""}
+                            onChange={(e) =>
+                              setClienteReferenti((prev) =>
+                                prev.map((row, rowIndex) =>
+                                  rowIndex === index
+                                    ? normalizeClienteReferenteDraft({
+                                        ...row,
+                                        ruolo: e.target.value,
+                                      })
+                                    : row
+                                )
+                              )
+                            }
+                            placeholder="Ruolo / riferimento"
+                            style={{ width: "100%", padding: 10 }}
+                          />
+                        </div>
+                        <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setClienteReferenti((prev) => {
+                                const next = prev.filter((_, rowIndex) => rowIndex !== index);
+                                return next;
+                              })
+                            }
+                            style={{
+                              padding: "8px 12px",
+                              borderRadius: 8,
+                              border: "1px solid #d1d5db",
+                              background: "#fff",
+                              cursor: "pointer",
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            Rimuovi
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                    <div>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setClienteReferenti((prev) => [
+                            ...prev,
+                            createEmptyClienteReferenteDraft(),
+                          ])
+                        }
+                        style={{
+                          padding: "8px 12px",
+                          borderRadius: 8,
+                          border: "1px solid #d1d5db",
+                          background: "#fff",
+                          cursor: "pointer",
+                          fontWeight: 600,
+                        }}
+                      >
+                        + Aggiungi referente
+                      </button>
+                    </div>
+                  </>
+                ) : clienteReferenti.length > 0 ? (
+                  <div style={{ display: "grid", gap: 8 }}>
+                    {clienteReferenti.map((referente, index) => (
+                      <div
+                        key={referente.id || `cliente-referente-view-${index}`}
+                        style={{
+                          border: "1px solid #e5e7eb",
+                          borderRadius: 10,
+                          padding: "10px 12px",
+                          background: "#fafafa",
+                          display: "grid",
+                          gap: 4,
+                        }}
+                      >
+                        <div style={{ fontWeight: 700 }}>{referente.nome || "—"}</div>
+                        <div style={{ fontSize: 13, color: "#374151" }}>
+                          {referente.ruolo || "Ruolo non indicato"}
+                        </div>
+                        <div style={{ fontSize: 13, color: "#4b5563" }}>
+                          {[referente.telefono, referente.email].filter(Boolean).join(" · ") || "—"}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div style={{ fontSize: 13, opacity: 0.75 }}>Nessun referente cliente</div>
+                )}
+              </div>
+            </div>
             <FieldRow
               label="Proforma"
               view={
@@ -10580,169 +10851,6 @@ function buildFormData(c: Checklist): FormData {
         onSubmitManual={sendProjectRinnoviAlert}
         onSaveRule={saveProjectRinnoviAlertRule}
       />
-      {renderLazySection(
-        "section-referenti-cliente",
-        "Referenti cliente",
-        <>
-          {!checklist?.cliente_id ? (
-            <div style={{ opacity: 0.75 }}>
-              Per aggiungere referenti cliente, seleziona o verifica l’anagrafica cliente collegata al progetto.
-            </div>
-          ) : (
-            <>
-              <div
-                style={{
-                  display: "flex",
-                  justifyContent: "flex-end",
-                  marginBottom: 12,
-                }}
-              >
-                <button
-                  type="button"
-                  onClick={() => newClienteReferenteNomeRef.current?.focus()}
-                  style={{
-                    padding: "8px 12px",
-                    borderRadius: 10,
-                    border: "1px solid #d1d5db",
-                    background: "white",
-                    cursor: "pointer",
-                    fontSize: 13,
-                    fontWeight: 700,
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  + Aggiungi referente
-                </button>
-              </div>
-              <div
-                style={{
-                  marginBottom: 12,
-                  padding: 12,
-                  border: "1px solid #eee",
-                  borderRadius: 12,
-                  background: "white",
-                  display: "grid",
-                  gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
-                  gap: 10,
-                  alignItems: "end",
-                }}
-              >
-                <label>
-                  Nome<br />
-                  <input
-                    ref={newClienteReferenteNomeRef}
-                    value={newClienteReferente.nome}
-                    onChange={(e) =>
-                      setNewClienteReferente((prev) => ({ ...prev, nome: e.target.value }))
-                    }
-                    placeholder="Nome referente"
-                    style={{ width: "100%", padding: 10 }}
-                  />
-                </label>
-                <label>
-                  Telefono<br />
-                  <input
-                    value={newClienteReferente.telefono}
-                    onChange={(e) =>
-                      setNewClienteReferente((prev) => ({ ...prev, telefono: e.target.value }))
-                    }
-                    placeholder="Telefono"
-                    style={{ width: "100%", padding: 10 }}
-                  />
-                </label>
-                <label>
-                  Email<br />
-                  <input
-                    value={newClienteReferente.email}
-                    onChange={(e) =>
-                      setNewClienteReferente((prev) => ({ ...prev, email: e.target.value }))
-                    }
-                    placeholder="Email"
-                    style={{ width: "100%", padding: 10 }}
-                  />
-                </label>
-                <label>
-                  Ruolo<br />
-                  <input
-                    value={newClienteReferente.ruolo}
-                    onChange={(e) =>
-                      setNewClienteReferente((prev) => ({ ...prev, ruolo: e.target.value }))
-                    }
-                    placeholder="Ruolo"
-                    style={{ width: "100%", padding: 10 }}
-                  />
-                </label>
-                <button
-                  type="button"
-                  onClick={addClienteReferente}
-                  disabled={clienteReferentiSaving}
-                  style={{
-                    padding: "10px 12px",
-                    borderRadius: 10,
-                    border: "1px solid #111",
-                    background: "#111",
-                    color: "white",
-                    cursor: clienteReferentiSaving ? "not-allowed" : "pointer",
-                    opacity: clienteReferentiSaving ? 0.7 : 1,
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  {clienteReferentiSaving ? "Salvataggio..." : "Aggiungi referente"}
-                </button>
-              </div>
-
-              {clienteReferentiError && (
-                <div style={{ color: "#b91c1c", fontSize: 12, marginBottom: 10 }}>
-                  {clienteReferentiError}
-                </div>
-              )}
-
-              {clienteReferenti.length === 0 ? (
-                <div style={{ opacity: 0.7 }}>Nessun referente cliente registrato</div>
-              ) : (
-                <div style={{ border: "1px solid #eee", borderRadius: 12, overflow: "hidden" }}>
-                  <div
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
-                      gap: 10,
-                      padding: "10px 12px",
-                      fontWeight: 700,
-                      borderBottom: "1px solid #eee",
-                      background: "#fafafa",
-                    }}
-                  >
-                    <div>Nome</div>
-                    <div>Telefono</div>
-                    <div>Email</div>
-                    <div>Ruolo</div>
-                  </div>
-                  {clienteReferenti.map((referente) => (
-                    <div
-                      key={referente.id}
-                      style={{
-                        display: "grid",
-                        gridTemplateColumns: "repeat(auto-fit, minmax(160px, 1fr))",
-                        gap: 10,
-                        padding: "10px 12px",
-                        borderBottom: "1px solid #f5f5f5",
-                        alignItems: "center",
-                        fontSize: 13,
-                      }}
-                    >
-                      <div style={{ fontWeight: 700 }}>{referente.nome || "—"}</div>
-                      <div>{referente.telefono || "—"}</div>
-                      <div>{referente.email || "—"}</div>
-                      <div>{referente.ruolo || "—"}</div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </>
-          )}
-        </>,
-        { loadingLabel: "Caricamento referenti cliente..." }
-      )}
       {renderLazySection(
         "section-documenti-checklist",
         "Documenti checklist",
