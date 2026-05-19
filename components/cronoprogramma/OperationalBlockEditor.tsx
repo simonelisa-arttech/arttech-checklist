@@ -57,6 +57,8 @@ type OperationalBlockEditorProps = {
   attachmentTitle: string;
   attachmentEntityType: string;
   attachmentEntityId?: string | null;
+  attachmentSlotId?: string | null;
+  attachmentMode?: "block" | "slot" | "combined";
   form: OperationalBlockFormState;
   onChange: Dispatch<SetStateAction<OperationalBlockFormState>>;
   onSave?: () => void;
@@ -125,6 +127,8 @@ export default function OperationalBlockEditor({
   attachmentTitle,
   attachmentEntityType,
   attachmentEntityId,
+  attachmentSlotId,
+  attachmentMode = "block",
   form,
   onChange,
   onSave,
@@ -586,6 +590,8 @@ export default function OperationalBlockEditor({
             title={attachmentTitle}
             entityType={attachmentEntityType}
             entityId={attachmentEntityId}
+            slotId={attachmentSlotId}
+            mode={attachmentMode}
             multiple
             storagePrefix="checklist-operativi"
             allowUploads={false}

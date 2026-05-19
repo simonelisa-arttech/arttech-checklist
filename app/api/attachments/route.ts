@@ -50,6 +50,15 @@ function resolveAttachmentCreatePayload(body: any) {
   };
 }
 
+function normalizeOptionalUuidLike(value: unknown) {
+  const normalized = String(value || "").trim();
+  return normalized || null;
+}
+
+function buildAttachmentSelect() {
+  return "id, source, provider, url, title, document_type, storage_path, mime_type, size_bytes, entity_type, entity_id, slot_id, created_by, created_at, visibile_al_cliente";
+}
+
 export async function GET(request: Request) {
   const auth = await requireOperatore(request);
   if (!auth.ok) return auth.response;
@@ -58,16 +67,36 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const entityType = String(searchParams.get("entity_type") || "").trim();
   const entityId = String(searchParams.get("entity_id") || "").trim();
+  const slotId = normalizeOptionalUuidLike(searchParams.get("slot_id"));
+  const mode = String(searchParams.get("mode") || "block")
+    .trim()
+    .toLowerCase();
   if (!entityType || !entityId) {
     return NextResponse.json({ error: "entity_type/entity_id mancanti" }, { status: 400 });
   }
 
-  const { data, error } = await supabaseAdmin
+  let query = supabaseAdmin
     .from("attachments")
-    .select("id, source, provider, url, title, document_type, storage_path, mime_type, size_bytes, entity_type, entity_id, created_by, created_at, visibile_al_cliente")
+    .select(buildAttachmentSelect())
     .eq("entity_type", entityType)
-    .eq("entity_id", entityId)
-    .order("created_at", { ascending: false });
+    .eq("entity_id", entityId);
+
+  if (mode === "slot") {
+    if (!slotId) {
+      return NextResponse.json({ ok: true, rows: [] });
+    }
+    query = query.eq("slot_id", slotId);
+  } else if (mode === "combined") {
+    if (slotId) {
+      query = query.or(`slot_id.is.null,slot_id.eq.${slotId}`);
+    } else {
+      query = query.is("slot_id", null);
+    }
+  } else {
+    query = query.is("slot_id", null);
+  }
+
+  const { data, error } = await query.order("created_at", { ascending: false });
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
   return NextResponse.json({ ok: true, rows: data || [] });
@@ -95,7 +124,7 @@ export async function PATCH(request: Request) {
     .from("attachments")
     .update({ visibile_al_cliente: visibileAlCliente })
     .eq("id", id)
-    .select("id, source, provider, url, title, document_type, storage_path, mime_type, size_bytes, entity_type, entity_id, created_by, created_at, visibile_al_cliente")
+    .select(buildAttachmentSelect())
     .maybeSingle();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
@@ -120,6 +149,7 @@ export async function POST(request: Request) {
   const source = String(body?.source || "").trim().toUpperCase();
   const entityType = String(body?.entity_type || "").trim();
   const entityId = String(body?.entity_id || "").trim();
+  const slotId = normalizeOptionalUuidLike(body?.slot_id);
   const { title, documentType } = resolveAttachmentCreatePayload(body);
   if (!(source === "UPLOAD" || source === "LINK")) {
     return NextResponse.json({ error: "source non valido" }, { status: 400 });
@@ -144,12 +174,13 @@ export async function POST(request: Request) {
       size_bytes: null,
       entity_type: entityType,
       entity_id: entityId,
+      slot_id: slotId,
       created_by: operatoreId,
     };
     const { data, error } = await supabaseAdmin
       .from("attachments")
       .insert(payload)
-      .select("id, source, provider, url, title, document_type, storage_path, mime_type, size_bytes, entity_type, entity_id, created_by, created_at")
+      .select(buildAttachmentSelect())
       .maybeSingle();
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     return NextResponse.json({ ok: true, row: data });
@@ -170,12 +201,13 @@ export async function POST(request: Request) {
     size_bytes: body?.size_bytes != null ? Number(body.size_bytes) : null,
     entity_type: entityType,
     entity_id: entityId,
+    slot_id: slotId,
     created_by: operatoreId,
   };
   const { data, error } = await supabaseAdmin
     .from("attachments")
     .insert(payload)
-    .select("id, source, provider, url, title, document_type, storage_path, mime_type, size_bytes, entity_type, entity_id, created_by, created_at")
+    .select(buildAttachmentSelect())
     .maybeSingle();
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ ok: true, row: data });

@@ -1430,6 +1430,8 @@ export default function CronoprogrammaPanel({
                                 : "CHECKLIST_OPERATIVI"
                             }
                             attachmentEntityId={r.checklist_id || r.row_ref_id}
+                            attachmentSlotId={r.slot_id || null}
+                            attachmentMode={r.slot_id ? "combined" : "block"}
                             form={
                               operativiDraftByKey[key] ||
                               (extractOperationalBlockForm
