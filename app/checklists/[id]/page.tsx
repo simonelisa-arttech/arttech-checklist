@@ -15,15 +15,14 @@ import Link from "next/link";
 import ConfigMancante from "@/components/ConfigMancante";
 import ClientiCombobox from "@/components/ClientiCombobox";
 import AttachmentsPanel from "@/components/AttachmentsPanel";
+import OperationalBlockEditor from "@/components/cronoprogramma/OperationalBlockEditor";
 import InterventiBlock, {
   type InterventiImpiantoOption,
   type PendingInterventoLink,
 } from "@/components/InterventiBlock";
-import PersonaleMultiSelect from "@/components/PersonaleMultiSelect";
 import OperativeNotesPanel from "@/components/OperativeNotesPanel";
 import RenewalsAlertModal from "@/components/RenewalsAlertModal";
 import RenewalsBlock from "@/components/RenewalsBlock";
-import SafetyComplianceBadge from "@/components/SafetyComplianceBadge";
 import Toast from "@/components/Toast";
 import { buildClienteEmailList } from "@/lib/clientiEmail";
 import {
@@ -54,7 +53,6 @@ import {
   splitMagazzinoFields,
 } from "@/lib/magazzino";
 import {
-  computeOperativiEndDate,
   estimatedMinutesToLegacyDays,
   getOperativiEstimatedMinutes,
   hoursInputToMinutes,
@@ -1369,43 +1367,6 @@ function extractCronoOperativi(meta?: CronoOperativiMeta | null) {
     commerciale_art_tech_nome: String(meta?.commerciale_art_tech_nome || ""),
     commerciale_art_tech_contatto: String(meta?.commerciale_art_tech_contatto || ""),
   });
-}
-
-function addReferente(list: CronoReferenteCliente[]) {
-  return [...list, { nome: "", contatto: "", ruolo: "" }];
-}
-
-function removeReferente(list: CronoReferenteCliente[], index: number) {
-  const next = list.filter((_, currentIndex) => currentIndex !== index);
-  return next.length > 0 ? next : [{ nome: "", contatto: "", ruolo: "" }];
-}
-
-function updateReferente(
-  list: CronoReferenteCliente[],
-  index: number,
-  field: keyof Omit<CronoReferenteCliente, "id">,
-  value: string
-) {
-  return list.map((row, currentIndex) =>
-    currentIndex === index ? { ...row, [field]: value } : row
-  );
-}
-
-function addSlot(list: CronoOperativiSlot[]) {
-  return [...list, createEmptyCronoOperativiSlot()];
-}
-
-function removeSlot(list: CronoOperativiSlot[], index: number) {
-  const next = list.filter((_, currentIndex) => currentIndex !== index);
-  return next.length > 0 ? next : [createEmptyCronoOperativiSlot()];
-}
-
-function updateSlot<
-  TField extends keyof Omit<CronoOperativiSlot, "id">
->(list: CronoOperativiSlot[], index: number, field: TField, value: CronoOperativiSlot[TField]) {
-  return list.map((row, currentIndex) =>
-    currentIndex === index ? { ...row, [field]: value } : row
-  );
 }
 
 function isNoleggioValue(value?: string | null) {
@@ -5939,432 +5900,6 @@ function buildFormData(c: Checklist): FormData {
     }));
   }
 
-  const renderCronoOperativiSection = (
-    title: string,
-    attachmentTitle: string,
-    attachmentEntityType: string,
-    form: CronoOperativiFormState,
-    setForm: Dispatch<SetStateAction<CronoOperativiFormState>>,
-    onSave: () => void,
-    saving: boolean,
-    meta: CronoOperativiMeta | null,
-    errorMessage: string | null,
-    notice: string | null,
-    fallbackStartDate: string,
-    warningMessage?: string | null
-  ) => (
-    <div
-      style={{
-        border: "1px solid #eee",
-        borderRadius: 12,
-        padding: 12,
-        background: "#fff",
-      }}
-    >
-      <div style={{ display: "grid", gap: 8, marginBottom: 10 }}>
-        <div style={{ fontWeight: 800 }}>{title}</div>
-        {warningMessage ? (
-          <div
-            style={{
-              padding: "8px 10px",
-              borderRadius: 10,
-              border: "1px solid #fdba74",
-              background: "#fff7ed",
-              color: "#9a3412",
-              fontSize: 12,
-              fontWeight: 700,
-            }}
-          >
-            {warningMessage}
-          </div>
-        ) : null}
-        <SafetyComplianceBadge
-          personaleText={form.personale_previsto}
-          personaleIds={form.personale_ids}
-        />
-      </div>
-      <div
-        style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(2, minmax(280px, 1fr))",
-          gap: 10,
-        }}
-      >
-        <div style={{ gridColumn: "1 / -1" }}>
-          <div style={{ fontSize: 12, marginBottom: 6 }}>Giornate attività</div>
-          <div style={{ display: "grid", gap: 8 }}>
-            {form.slots.map((slot, index) => {
-              const computedEndDate = computeOperativiEndDate(
-                slot.data_inizio || fallbackStartDate,
-                estimatedMinutesToLegacyDays(slot.durata_prevista_minuti)
-              );
-              return (
-                <div
-                  key={slot.id || `slot-${index}`}
-                  style={{
-                    border: "1px solid #e5e7eb",
-                    borderRadius: 10,
-                    padding: 8,
-                    display: "grid",
-                    gap: 8,
-                  }}
-                >
-                  <div
-                    style={{
-                      display: "grid",
-                      gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) auto",
-                      gap: 8,
-                      alignItems: "end",
-                    }}
-                  >
-                    <div>
-                      <div style={{ fontSize: 12, marginBottom: 4 }}>Data attività</div>
-                      <input
-                        type="date"
-                        value={slot.data_inizio}
-                        onChange={(e) =>
-                          setForm((prev) => ({
-                            ...prev,
-                            slots: updateSlot(prev.slots, index, "data_inizio", e.target.value),
-                          }))
-                        }
-                        style={{ width: "100%", padding: 8 }}
-                      />
-                    </div>
-                    <div>
-                      <div style={{ fontSize: 12, marginBottom: 4 }}>Ore previste</div>
-                      <input
-                        type="number"
-                        min={0}
-                        step={0.5}
-                        value={minutesToHoursInput(slot.durata_prevista_minuti)}
-                        onChange={(e) =>
-                          setForm((prev) => ({
-                            ...prev,
-                            slots: updateSlot(
-                              prev.slots,
-                              index,
-                              "durata_prevista_minuti",
-                              hoursInputToMinutes(e.target.value)
-                            ),
-                          }))
-                        }
-                        placeholder="8"
-                        style={{ width: "100%", padding: 8 }}
-                      />
-                    </div>
-                    <div>
-                      <div style={{ fontSize: 12, marginBottom: 4 }}>Orario</div>
-                      <input
-                        value={slot.orario}
-                        onChange={(e) =>
-                          setForm((prev) => ({
-                            ...prev,
-                            slots: updateSlot(prev.slots, index, "orario", e.target.value),
-                          }))
-                        }
-                        style={{ width: "100%", padding: 8 }}
-                      />
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setForm((prev) => ({
-                          ...prev,
-                          slots: removeSlot(prev.slots, index),
-                        }))
-                      }
-                      style={{
-                        padding: "8px 10px",
-                        borderRadius: 8,
-                        border: "1px solid #d1d5db",
-                        background: "#fff",
-                        cursor: "pointer",
-                        whiteSpace: "nowrap",
-                        height: 38,
-                      }}
-                    >
-                      Rimuovi
-                    </button>
-                  </div>
-                  {!slot.data_inizio && fallbackStartDate && index === 0 ? (
-                    <div style={{ fontSize: 11, opacity: 0.7 }}>
-                      Fallback automatico: {new Date(fallbackStartDate).toLocaleDateString("it-IT")}
-                    </div>
-                  ) : null}
-                  <div style={{ fontSize: 11, opacity: 0.7 }}>
-                    Data fine: {computedEndDate ? new Date(computedEndDate).toLocaleDateString("it-IT") : "—"}
-                  </div>
-                </div>
-              );
-            })}
-            <div style={{ display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
-              <button
-                type="button"
-                onClick={() =>
-                  setForm((prev) => ({
-                    ...prev,
-                    slots: addSlot(prev.slots),
-                  }))
-                }
-                style={{
-                  padding: "8px 12px",
-                  borderRadius: 8,
-                  border: "1px solid #d1d5db",
-                  background: "#fff",
-                  cursor: "pointer",
-                  fontWeight: 600,
-                }}
-              >
-                + Aggiungi giornata
-              </button>
-              <span style={{ fontSize: 12, fontWeight: 700 }}>
-                Totale ore previste:{" "}
-                {minutesToHoursInput(
-                  form.slots.reduce((total, slot) => total + (slot.durata_prevista_minuti ?? 0), 0)
-                ) || "0"}
-              </span>
-            </div>
-          </div>
-        </div>
-        <div>
-          <div style={{ fontSize: 12, marginBottom: 4 }}>Personale previsto / incarico</div>
-          <PersonaleMultiSelect
-            personaleIds={form.personale_ids}
-            legacyValue={form.personale_previsto}
-            onChange={({ personaleIds, personaleDisplay }) =>
-              setForm((prev) => ({
-                ...prev,
-                personale_ids: personaleIds,
-                personale_previsto: personaleDisplay,
-              }))
-            }
-          />
-        </div>
-        <div>
-          <div style={{ fontSize: 12, marginBottom: 4 }}>Mezzi</div>
-          <textarea
-            value={form.mezzi}
-            onChange={(e) => setForm((prev) => ({ ...prev, mezzi: e.target.value }))}
-            style={{ width: "100%", minHeight: 70, padding: 8 }}
-          />
-        </div>
-        <div>
-          <div style={{ fontSize: 12, marginBottom: 4 }}>Descrizione attività</div>
-          <textarea
-            value={form.descrizione_attivita}
-            onChange={(e) => setForm((prev) => ({ ...prev, descrizione_attivita: e.target.value }))}
-            style={{ width: "100%", minHeight: 70, padding: 8 }}
-          />
-        </div>
-        <div>
-          <div style={{ fontSize: 12, marginBottom: 4 }}>Indirizzo</div>
-          <textarea
-            value={form.indirizzo}
-            onChange={(e) => setForm((prev) => ({ ...prev, indirizzo: e.target.value }))}
-            style={{ width: "100%", minHeight: 70, padding: 8 }}
-          />
-        </div>
-        <div>
-          <div style={{ fontSize: 12, marginBottom: 4 }}>Referente cliente</div>
-          <div style={{ display: "grid", gap: 8 }}>
-            {form.referenti_cliente.map((referente, index) => (
-              <div
-                key={referente.id || `referente-${index}`}
-                style={{
-                  border: "1px solid #e5e7eb",
-                  borderRadius: 10,
-                  padding: 8,
-                  display: "grid",
-                  gap: 8,
-                }}
-              >
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)",
-                    gap: 8,
-                  }}
-                >
-                  <input
-                    value={referente.nome}
-                    onChange={(e) =>
-                      setForm((prev) => {
-                        const referentiCliente = updateReferente(
-                          prev.referenti_cliente,
-                          index,
-                          "nome",
-                          e.target.value
-                        );
-                        return {
-                          ...prev,
-                          referenti_cliente: referentiCliente,
-                          referente_cliente_nome: referentiCliente[0]?.nome || "",
-                        };
-                      })
-                    }
-                    placeholder="Nome"
-                    style={{ width: "100%", padding: 8 }}
-                  />
-                  <input
-                    value={referente.contatto}
-                    onChange={(e) =>
-                      setForm((prev) => {
-                        const referentiCliente = updateReferente(
-                          prev.referenti_cliente,
-                          index,
-                          "contatto",
-                          e.target.value
-                        );
-                        return {
-                          ...prev,
-                          referenti_cliente: referentiCliente,
-                          referente_cliente_contatto: referentiCliente[0]?.contatto || "",
-                        };
-                      })
-                    }
-                    placeholder="Contatto"
-                    style={{ width: "100%", padding: 8 }}
-                  />
-                </div>
-                <div
-                  style={{
-                    display: "grid",
-                    gridTemplateColumns: "minmax(0, 1fr) auto",
-                    gap: 8,
-                    alignItems: "center",
-                  }}
-                >
-                  <input
-                    value={referente.ruolo}
-                    onChange={(e) =>
-                      setForm((prev) => ({
-                        ...prev,
-                        referenti_cliente: updateReferente(
-                          prev.referenti_cliente,
-                          index,
-                          "ruolo",
-                          e.target.value
-                        ),
-                      }))
-                    }
-                    placeholder="es. Sicurezza / Elettrico / Permessi"
-                    style={{ width: "100%", padding: 8 }}
-                  />
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setForm((prev) => {
-                        const referentiCliente = removeReferente(prev.referenti_cliente, index);
-                        return {
-                          ...prev,
-                          referenti_cliente: referentiCliente,
-                          referente_cliente_nome: referentiCliente[0]?.nome || "",
-                          referente_cliente_contatto: referentiCliente[0]?.contatto || "",
-                        };
-                      })
-                    }
-                    style={{
-                      padding: "8px 10px",
-                      borderRadius: 8,
-                      border: "1px solid #d1d5db",
-                      background: "#fff",
-                      cursor: "pointer",
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    Rimuovi
-                  </button>
-                </div>
-              </div>
-            ))}
-            <div>
-              <button
-                type="button"
-                onClick={() =>
-                  setForm((prev) => ({
-                    ...prev,
-                    referenti_cliente: addReferente(prev.referenti_cliente),
-                  }))
-                }
-                style={{
-                  padding: "8px 12px",
-                  borderRadius: 8,
-                  border: "1px solid #d1d5db",
-                  background: "#fff",
-                  cursor: "pointer",
-                  fontWeight: 600,
-                }}
-              >
-                + Aggiungi referente
-              </button>
-            </div>
-          </div>
-        </div>
-        <div>
-          <div style={{ fontSize: 12, marginBottom: 4 }}>Commerciale Art Tech</div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-            <input
-              value={form.commerciale_art_tech_nome}
-              onChange={(e) =>
-                setForm((prev) => ({ ...prev, commerciale_art_tech_nome: e.target.value }))
-              }
-              placeholder="Nome"
-              style={{ width: "100%", padding: 8 }}
-            />
-            <input
-              value={form.commerciale_art_tech_contatto}
-              onChange={(e) =>
-                setForm((prev) => ({ ...prev, commerciale_art_tech_contatto: e.target.value }))
-              }
-              placeholder="Contatto"
-              style={{ width: "100%", padding: 8 }}
-            />
-          </div>
-        </div>
-      </div>
-      <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 10 }}>
-        <button
-          type="button"
-          onClick={onSave}
-          disabled={saving}
-          style={{
-            padding: "8px 12px",
-            borderRadius: 8,
-            border: "1px solid #111",
-            background: saving ? "#f3f4f6" : "#111",
-            color: saving ? "#111" : "white",
-            cursor: saving ? "not-allowed" : "pointer",
-            fontWeight: 700,
-          }}
-        >
-          {saving ? "Salvataggio..." : "Salva dati operativi"}
-        </button>
-        {meta?.updated_at ? (
-          <span style={{ fontSize: 12, opacity: 0.75 }}>
-            Ultimo aggiornamento: {new Date(meta.updated_at).toLocaleString("it-IT")}
-            {meta.updated_by_nome ? ` · ${meta.updated_by_nome}` : ""}
-          </span>
-        ) : null}
-      </div>
-      {errorMessage ? (
-        <div style={{ marginTop: 8, fontSize: 12, color: "#b91c1c" }}>{errorMessage}</div>
-      ) : null}
-      {notice ? (
-        <div style={{ marginTop: 8, fontSize: 12, color: "#166534" }}>{notice}</div>
-      ) : null}
-      <div style={{ marginTop: 12 }}>
-        <AttachmentsPanel
-          title={attachmentTitle}
-          entityType={attachmentEntityType}
-          entityId={id}
-          multiple
-          storagePrefix="checklist-operativi"
-          allowUploads={false}
-        />
-      </div>
-    </div>
-  );
   const serialiControllo = assetSerials.filter((s) => s.tipo === "CONTROLLO");
   const serialiModuli = assetSerials.filter((s) => s.tipo === "MODULO_LED");
   const m2Persisted = (() => {
@@ -10793,36 +10328,43 @@ function buildFormData(c: Checklist): FormData {
         "section-dati-operativi",
         "Dati operativi / cronoprogramma",
         <div style={{ display: "grid", gap: 12 }}>
-          {renderCronoOperativiSection(
-            "BLOCCO ATTIVITÀ",
-            "Allegati blocco attività (link Drive)",
-            "CHECKLIST_OPERATIVI",
-            cronoOperativiForm,
-            setCronoOperativiForm,
-            saveCronoOperativi,
-            cronoOperativiSaving,
-            cronoOperativiMeta,
-            cronoOperativiError,
-            cronoOperativiNotice,
-            formData?.data_tassativa || formData?.data_prevista || "",
-            null
-          )}
+          <OperationalBlockEditor
+            title="BLOCCO ATTIVITÀ"
+            attachmentTitle="Allegati blocco attività (link Drive)"
+            attachmentEntityType="CHECKLIST_OPERATIVI"
+            attachmentEntityId={id}
+            form={cronoOperativiForm}
+            onChange={setCronoOperativiForm}
+            onSave={saveCronoOperativi}
+            saving={cronoOperativiSaving}
+            meta={cronoOperativiMeta}
+            errorMessage={cronoOperativiError}
+            notice={cronoOperativiNotice}
+            fallbackStartDate={formData?.data_tassativa || formData?.data_prevista || ""}
+          />
           {isNoleggioProject
-            ? renderCronoOperativiSection(
-                "BLOCCO DISINSTALLAZIONE",
-                "Allegati blocco disinstallazione (link Drive)",
-                "CHECKLIST_DISINSTALLAZIONE",
-                cronoDisinstallazioneForm,
-                setCronoDisinstallazioneForm,
-                saveCronoDisinstallazione,
-                cronoDisinstallazioneSaving,
-                cronoDisinstallazioneMeta,
-                cronoDisinstallazioneError,
-                cronoDisinstallazioneNotice,
-                formData?.data_disinstallazione || cronoDisinstallazioneFallbackDate || "",
-                showDisinstallazioneCronoWarning
-                  ? "Compilare cronoprogramma disinstallazione"
-                  : null
+            ? (
+                <OperationalBlockEditor
+                  title="BLOCCO DISINSTALLAZIONE"
+                  attachmentTitle="Allegati blocco disinstallazione (link Drive)"
+                  attachmentEntityType="CHECKLIST_DISINSTALLAZIONE"
+                  attachmentEntityId={id}
+                  form={cronoDisinstallazioneForm}
+                  onChange={setCronoDisinstallazioneForm}
+                  onSave={saveCronoDisinstallazione}
+                  saving={cronoDisinstallazioneSaving}
+                  meta={cronoDisinstallazioneMeta}
+                  errorMessage={cronoDisinstallazioneError}
+                  notice={cronoDisinstallazioneNotice}
+                  fallbackStartDate={
+                    formData?.data_disinstallazione || cronoDisinstallazioneFallbackDate || ""
+                  }
+                  warningMessage={
+                    showDisinstallazioneCronoWarning
+                      ? "Compilare cronoprogramma disinstallazione"
+                      : null
+                  }
+                />
               )
             : null}
         </div>,
