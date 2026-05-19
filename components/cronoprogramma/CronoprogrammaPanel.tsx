@@ -3,8 +3,10 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import type { Dispatch, MutableRefObject, SetStateAction, UIEvent } from "react";
-import PersonaleMultiSelect from "@/components/PersonaleMultiSelect";
-import SafetyComplianceBadge from "@/components/SafetyComplianceBadge";
+import OperationalBlockEditor, {
+  type OperationalBlockFormState,
+  type OperationalBlockPlanningStatusOption,
+} from "@/components/cronoprogramma/OperationalBlockEditor";
 import { isTimelineRowOverdueNotDone } from "@/lib/cronoprogrammaStatus";
 import { formatOperativiDateLabel } from "@/lib/operativiSchedule";
 
@@ -17,6 +19,8 @@ type TimeBudgetSummary = {
   realeMinuti: number | null;
   liveStartedAt?: string[];
 };
+
+type OperativiDraft = OperationalBlockFormState;
 
 const REPORT_COMMENT_PREFIX = "__REPORT__:";
 
@@ -139,8 +143,8 @@ type CronoprogrammaPanelProps = {
   deletingCommentId: string | null;
   noteHistoryKey: string | null;
   setNoteHistoryKey: Dispatch<SetStateAction<string | null>>;
-  operativiDraftByKey: Record<string, OperativiFields>;
-  setOperativiDraftByKey: Dispatch<SetStateAction<Record<string, OperativiFields>>>;
+  operativiDraftByKey: Record<string, any>;
+  setOperativiDraftByKey: Dispatch<SetStateAction<Record<string, any>>>;
   conflictByKey: Record<string, any>;
   rowByKey: Record<string, TimelineRow>;
   setFatto: (row: TimelineRow, fatto: boolean) => void;
@@ -161,9 +165,11 @@ type CronoprogrammaPanelProps = {
     durata_giorni: number;
   };
   extractOperativi: (meta?: CronoMeta | null) => OperativiFields;
+  extractOperationalBlockForm?: (row: TimelineRow, meta?: CronoMeta | null) => OperativiDraft;
   buildConflictTooltip: (personale: string[], mezzi: string[]) => string;
   hasDefinedOperativi: (meta?: CronoMeta | null) => boolean;
-  emptyOperativi: OperativiFields;
+  emptyOperativi?: any;
+  emptyOperationalBlockForm?: OperativiDraft;
 };
 
 function renderPill(
@@ -204,6 +210,31 @@ function getActivityKindLabel(row: TimelineRow, operativi: OperativiFields | nul
   const mode = getActivityModeLabel(operativi);
   if (row.kind === "INTERVENTO" && mode === "REMOTO") return "ASSISTENZA REMOTA";
   return String(row.kind || "ATTIVITA").toUpperCase();
+}
+
+function ensureOperationalBlockForm(
+  operativi: OperativiFields | null | undefined,
+  emptyDraft?: OperativiDraft
+): OperativiDraft {
+  return {
+    ...(emptyDraft || {
+      slots: [{ data_inizio: "", durata_prevista_minuti: null, orario: "" }],
+      data_inizio: "",
+      durata_giorni: "",
+      personale_previsto: "",
+      personale_ids: [],
+      mezzi: "",
+      descrizione_attivita: "",
+      indirizzo: "",
+      orario: "",
+      referenti_cliente: [{ nome: "", contatto: "", ruolo: "" }],
+      referente_cliente_nome: "",
+      referente_cliente_contatto: "",
+      commerciale_art_tech_nome: "",
+      commerciale_art_tech_contatto: "",
+    }),
+    ...operativi,
+  };
 }
 
 function renderActivityKindBadge(label: string) {
@@ -470,11 +501,12 @@ export default function CronoprogrammaPanel({
   getRowKey,
   getRowSchedule,
   extractOperativi,
+  extractOperationalBlockForm,
   buildConflictTooltip,
   hasDefinedOperativi,
   emptyOperativi,
+  emptyOperationalBlockForm,
 }: CronoprogrammaPanelProps) {
-  const [openConflictKey, setOpenConflictKey] = useState<string | null>(null);
   const [expandedRowKey, setExpandedRowKey] = useState<string | null>(null);
   const [timbraturaStateByKey, setTimbraturaStateByKey] = useState<
     Record<string, "NON_INIZIATA" | "IN_CORSO" | "IN_PAUSA" | "COMPLETATA">
@@ -486,6 +518,14 @@ export default function CronoprogrammaPanel({
   const [manualActualOpenKey, setManualActualOpenKey] = useState<string | null>(null);
   const [manualActualHoursByKey, setManualActualHoursByKey] = useState<Record<string, string>>({});
   const [manualActualSavingKey, setManualActualSavingKey] = useState<string | null>(null);
+  const planningStatusOptions: OperationalBlockPlanningStatusOption[] = useMemo(
+    () =>
+      MANUAL_PLANNING_STATUSES.map((status) => ({
+        value: status,
+        label: status === "DA_CONFERMARE" ? "DA CONFERMARE" : status,
+      })),
+    []
+  );
 
   useEffect(() => {
     let active = true;
@@ -969,7 +1009,11 @@ export default function CronoprogrammaPanel({
             {outcomeFilteredRows.map((r: TimelineRow) => {
               const key = getRowKey(r.kind, r.row_ref_id, r.slot_id);
               const meta = metaByKey[key];
-              const operativi = operativiDraftByKey[key] || extractOperativi(meta);
+              const operativi =
+                operativiDraftByKey[key] ||
+                (extractOperationalBlockForm
+                  ? extractOperationalBlockForm(r, meta)
+                  : ensureOperationalBlockForm(extractOperativi(meta), emptyOperationalBlockForm));
               const schedule = getRowSchedule(r, meta);
               const fatto = Boolean(meta?.fatto ?? r.fatto);
               const overdueNotDone = isTimelineRowOverdueNotDone(r, meta);
@@ -990,6 +1034,8 @@ export default function CronoprogrammaPanel({
               const modeLabel = getActivityModeLabel(operativi);
               const kindLabel = getActivityKindLabel(r, operativi);
               const expanded = expandedRowKey === key;
+              const usesSharedOperationalEditor =
+                r.kind === "INSTALLAZIONE" || r.kind === "DISINSTALLAZIONE";
               const timbraturaState = timbraturaStateByKey[key] || "NON_INIZIATA";
               const timbraturaLoading = timbraturaLoadingKey === key;
               const timeBudget = timeBudgetByKey[key] || { stimatoMinuti: null, realeMinuti: null };
@@ -1360,226 +1406,238 @@ export default function CronoprogrammaPanel({
                         gap: 14,
                       }}
                     >
-                      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 12 }}>
-                        <label style={{ display: "grid", gap: 6 }}>
-                          <span style={{ fontSize: 12, fontWeight: 700, color: "#475569" }}>Data inizio</span>
-                          <input
-                            type="date"
-                            value={operativi.data_inizio ?? ""}
-                            onChange={(e) =>
+                      <div
+                        style={{
+                          display: "grid",
+                          gridTemplateColumns: usesSharedOperationalEditor
+                            ? "minmax(0, 1.2fr) minmax(320px, 0.8fr)"
+                            : "minmax(0, 1fr)",
+                          gap: 14,
+                          alignItems: "start",
+                        }}
+                      >
+                        {usesSharedOperationalEditor ? (
+                          <OperationalBlockEditor
+                            title={r.kind === "DISINSTALLAZIONE" ? "BLOCCO DISINSTALLAZIONE" : "BLOCCO ATTIVITÀ"}
+                            attachmentTitle={
+                              r.kind === "DISINSTALLAZIONE"
+                                ? "Allegati blocco disinstallazione (link Drive)"
+                                : "Allegati blocco attività (link Drive)"
+                            }
+                            attachmentEntityType={
+                              r.kind === "DISINSTALLAZIONE"
+                                ? "CHECKLIST_DISINSTALLAZIONE"
+                                : "CHECKLIST_OPERATIVI"
+                            }
+                            attachmentEntityId={r.checklist_id || r.row_ref_id}
+                            form={
+                              operativiDraftByKey[key] ||
+                              (extractOperationalBlockForm
+                                ? extractOperationalBlockForm(r, meta)
+                                : ensureOperationalBlockForm(extractOperativi(meta), emptyOperationalBlockForm))
+                            }
+                            onChange={(value) =>
                               setOperativiDraftByKey((prev) => ({
                                 ...prev,
-                                [key]: { ...(prev[key] || emptyOperativi), data_inizio: e.target.value },
+                                [key]:
+                                  typeof value === "function"
+                                    ? value(
+                                        prev[key] ||
+                                          (extractOperationalBlockForm
+                                            ? extractOperationalBlockForm(r, meta)
+                                            : ensureOperationalBlockForm(
+                                                extractOperativi(meta),
+                                                emptyOperationalBlockForm
+                                              ))
+                                      )
+                                    : value,
                               }))
                             }
-                            style={{ width: "100%", padding: 8, borderRadius: 10, border: "1px solid #d1d5db" }}
-                          />
-                        </label>
-
-                        <label style={{ display: "grid", gap: 6 }}>
-                          <span style={{ fontSize: 12, fontWeight: 700, color: "#475569" }}>Ore previste</span>
-                          <input
-                            type="number"
-                            min={0}
-                            step={0.5}
-                            value={operativi.durata_giorni ?? ""}
-                            onChange={(e) =>
-                              setOperativiDraftByKey((prev) => ({
-                                ...prev,
-                                [key]: { ...(prev[key] || emptyOperativi), durata_giorni: e.target.value },
-                              }))
+                            onSave={() => saveOperativi(r)}
+                            saving={savingOperativiKey === key}
+                            meta={meta}
+                            fallbackStartDate={schedule.data_inizio || r.data_prevista || ""}
+                            warningMessage={
+                              conflict?.hasConflict ? `Conflitto pianificazione: ${conflictTitle}` : null
                             }
-                            placeholder="8"
-                            style={{ width: "100%", padding: 8, borderRadius: 10, border: "1px solid #d1d5db" }}
+                            planningStatus={editablePlanningStatus === "SVOLTA" ? null : editablePlanningStatus}
+                            planningStatusOptions={
+                              visualPlanningStatus === "SVOLTA" ? undefined : planningStatusOptions
+                            }
+                            onPlanningStatusChange={
+                              visualPlanningStatus === "SVOLTA" || !setStatus
+                                ? undefined
+                                : (value) => setStatus(r, value as PlanningStatus)
+                            }
                           />
-                        </label>
+                        ) : (
+                          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 12 }}>
+                            <label style={{ display: "grid", gap: 6 }}>
+                              <span style={{ fontSize: 12, fontWeight: 700, color: "#475569" }}>Data inizio</span>
+                              <input
+                                type="date"
+                                value={operativi.data_inizio ?? ""}
+                                onChange={(e) =>
+                                  setOperativiDraftByKey((prev) => ({
+                                    ...prev,
+                                    [key]: { ...(prev[key] || ensureOperationalBlockForm(undefined, emptyOperationalBlockForm)), data_inizio: e.target.value },
+                                  }))
+                                }
+                                style={{ width: "100%", padding: 8, borderRadius: 10, border: "1px solid #d1d5db" }}
+                              />
+                            </label>
 
-                        <label style={{ display: "grid", gap: 6 }}>
-                          <span style={{ fontSize: 12, fontWeight: 700, color: "#475569" }}>Personale previsto / incarico</span>
-                          <div
-                            title={operativi.personale_previsto || undefined}
-                            style={{ border: "1px solid #e5e7eb", borderRadius: 10, background: "white", padding: 8 }}
-                          >
-                            <PersonaleMultiSelect
-                              personaleIds={operativi.personale_ids ?? []}
-                              legacyValue={operativi.personale_previsto}
-                              compact
-                              onChange={({ personaleIds, personaleDisplay }) =>
-                                setOperativiDraftByKey((prev) => ({
-                                  ...prev,
-                                  [key]: {
-                                    ...(prev[key] || emptyOperativi),
-                                    personale_ids: personaleIds,
-                                    personale_previsto: personaleDisplay,
-                                  },
-                                }))
-                              }
-                            />
-                            {conflict?.hasConflict ? (
-                              <>
-                                <button
-                                  type="button"
-                                  onClick={() => setOpenConflictKey((prev) => (prev === key ? null : key))}
-                                  style={{
-                                    marginTop: 8,
-                                    borderRadius: 999,
-                                    border: "1px solid #fca5a5",
-                                    background: "#fff1f2",
-                                    color: "#b91c1c",
-                                    padding: "4px 10px",
-                                    fontSize: 12,
-                                    fontWeight: 700,
-                                    cursor: "pointer",
-                                  }}
-                                >
-                                  ⚠ Conflitto
-                                </button>
-                                {openConflictKey === key ? (
-                                  <div
-                                    style={{
-                                      marginTop: 8,
-                                      border: "1px solid #fca5a5",
-                                      background: "white",
-                                      color: "#374151",
-                                      borderRadius: 10,
-                                      padding: "8px 10px",
-                                      fontSize: 12,
-                                      lineHeight: 1.45,
-                                    }}
-                                  >
-                                    {conflictTitle}
-                                  </div>
-                                ) : null}
-                              </>
-                            ) : null}
-                            <div style={{ marginTop: 8 }}>
-                              <SafetyComplianceBadge
-                                personaleIds={operativi.personale_ids}
-                                personaleText={operativi.personale_previsto}
-                                showSummary={false}
-                                detailsOnClick
+                            <label style={{ display: "grid", gap: 6 }}>
+                              <span style={{ fontSize: 12, fontWeight: 700, color: "#475569" }}>Ore previste</span>
+                              <input
+                                type="number"
+                                min={0}
+                                step={0.5}
+                                value={operativi.durata_giorni ?? ""}
+                                onChange={(e) =>
+                                  setOperativiDraftByKey((prev) => ({
+                                    ...prev,
+                                    [key]: { ...(prev[key] || ensureOperationalBlockForm(undefined, emptyOperationalBlockForm)), durata_giorni: e.target.value },
+                                  }))
+                                }
+                                placeholder="8"
+                                style={{ width: "100%", padding: 8, borderRadius: 10, border: "1px solid #d1d5db" }}
+                              />
+                            </label>
+
+                            <label style={{ display: "grid", gap: 6 }}>
+                              <span style={{ fontSize: 12, fontWeight: 700, color: "#475569" }}>Personale previsto / incarico</span>
+                              <input
+                                value={operativi.personale_previsto ?? ""}
+                                onChange={(e) =>
+                                  setOperativiDraftByKey((prev) => ({
+                                    ...prev,
+                                    [key]: { ...(prev[key] || ensureOperationalBlockForm(undefined, emptyOperationalBlockForm)), personale_previsto: e.target.value },
+                                  }))
+                                }
+                                placeholder="Personale previsto / incarico"
+                                style={{ width: "100%", padding: 8, borderRadius: 10, border: "1px solid #d1d5db" }}
+                              />
+                            </label>
+
+                            <label style={{ display: "grid", gap: 6 }}>
+                              <span style={{ fontSize: 12, fontWeight: 700, color: "#475569" }}>Mezzi</span>
+                              <textarea
+                                value={operativi.mezzi ?? ""}
+                                onChange={(e) =>
+                                  setOperativiDraftByKey((prev) => ({
+                                    ...prev,
+                                    [key]: { ...(prev[key] || ensureOperationalBlockForm(undefined, emptyOperationalBlockForm)), mezzi: e.target.value },
+                                  }))
+                                }
+                                placeholder="Mezzi"
+                                style={{ width: "100%", minHeight: 64, padding: 8, resize: "vertical", borderRadius: 10, border: "1px solid #d1d5db" }}
+                              />
+                            </label>
+
+                            <label style={{ display: "grid", gap: 6 }}>
+                              <span style={{ fontSize: 12, fontWeight: 700, color: "#475569" }}>Descrizione attività</span>
+                              <textarea
+                                value={operativi.descrizione_attivita ?? ""}
+                                onChange={(e) =>
+                                  setOperativiDraftByKey((prev) => ({
+                                    ...prev,
+                                    [key]: { ...(prev[key] || ensureOperationalBlockForm(undefined, emptyOperationalBlockForm)), descrizione_attivita: e.target.value },
+                                  }))
+                                }
+                                placeholder="Descrizione attività"
+                                style={{ width: "100%", minHeight: 64, padding: 8, resize: "vertical", borderRadius: 10, border: "1px solid #d1d5db" }}
+                              />
+                            </label>
+
+                            <label style={{ display: "grid", gap: 6 }}>
+                              <span style={{ fontSize: 12, fontWeight: 700, color: "#475569" }}>Indirizzo</span>
+                              <textarea
+                                value={operativi.indirizzo ?? ""}
+                                onChange={(e) =>
+                                  setOperativiDraftByKey((prev) => ({
+                                    ...prev,
+                                    [key]: { ...(prev[key] || ensureOperationalBlockForm(undefined, emptyOperationalBlockForm)), indirizzo: e.target.value },
+                                  }))
+                                }
+                                placeholder="Indirizzo"
+                                style={{ width: "100%", minHeight: 64, padding: 8, resize: "vertical", borderRadius: 10, border: "1px solid #d1d5db" }}
+                              />
+                            </label>
+
+                            <label style={{ display: "grid", gap: 6 }}>
+                              <span style={{ fontSize: 12, fontWeight: 700, color: "#475569" }}>Orario</span>
+                              <input
+                                value={operativi.orario ?? ""}
+                                onChange={(e) =>
+                                  setOperativiDraftByKey((prev) => ({
+                                    ...prev,
+                                    [key]: { ...(prev[key] || ensureOperationalBlockForm(undefined, emptyOperationalBlockForm)), orario: e.target.value },
+                                  }))
+                                }
+                                placeholder="Orario"
+                                style={{ width: "100%", padding: 8, borderRadius: 10, border: "1px solid #d1d5db" }}
+                              />
+                            </label>
+
+                            <div style={{ display: "grid", gap: 6 }}>
+                              <span style={{ fontSize: 12, fontWeight: 700, color: "#475569" }}>Referente cliente</span>
+                              <input
+                                value={operativi.referente_cliente_nome ?? ""}
+                                onChange={(e) =>
+                                  setOperativiDraftByKey((prev) => ({
+                                    ...prev,
+                                    [key]: { ...(prev[key] || ensureOperationalBlockForm(undefined, emptyOperationalBlockForm)), referente_cliente_nome: e.target.value },
+                                  }))
+                                }
+                                placeholder="Nome referente cliente"
+                                style={{ width: "100%", padding: 8, borderRadius: 10, border: "1px solid #d1d5db" }}
+                              />
+                              <input
+                                value={operativi.referente_cliente_contatto ?? ""}
+                                onChange={(e) =>
+                                  setOperativiDraftByKey((prev) => ({
+                                    ...prev,
+                                    [key]: { ...(prev[key] || ensureOperationalBlockForm(undefined, emptyOperationalBlockForm)), referente_cliente_contatto: e.target.value },
+                                  }))
+                                }
+                                placeholder="Contatto referente cliente"
+                                style={{ width: "100%", padding: 8, borderRadius: 10, border: "1px solid #d1d5db" }}
+                              />
+                            </div>
+
+                            <div style={{ display: "grid", gap: 6 }}>
+                              <span style={{ fontSize: 12, fontWeight: 700, color: "#475569" }}>Commerciale Art Tech</span>
+                              <input
+                                value={operativi.commerciale_art_tech_nome ?? ""}
+                                onChange={(e) =>
+                                  setOperativiDraftByKey((prev) => ({
+                                    ...prev,
+                                    [key]: { ...(prev[key] || ensureOperationalBlockForm(undefined, emptyOperationalBlockForm)), commerciale_art_tech_nome: e.target.value },
+                                  }))
+                                }
+                                placeholder="Nome commerciale Art Tech"
+                                style={{ width: "100%", padding: 8, borderRadius: 10, border: "1px solid #d1d5db" }}
+                              />
+                              <input
+                                value={operativi.commerciale_art_tech_contatto ?? ""}
+                                onChange={(e) =>
+                                  setOperativiDraftByKey((prev) => ({
+                                    ...prev,
+                                    [key]: {
+                                      ...(prev[key] || ensureOperationalBlockForm(undefined, emptyOperationalBlockForm)),
+                                      commerciale_art_tech_contatto: e.target.value,
+                                    },
+                                  }))
+                                }
+                                placeholder="Contatto commerciale Art Tech"
+                                style={{ width: "100%", padding: 8, borderRadius: 10, border: "1px solid #d1d5db" }}
                               />
                             </div>
                           </div>
-                        </label>
+                        )}
 
-                        <label style={{ display: "grid", gap: 6 }}>
-                          <span style={{ fontSize: 12, fontWeight: 700, color: "#475569" }}>Mezzi</span>
-                          <textarea
-                            value={operativi.mezzi ?? ""}
-                            onChange={(e) =>
-                              setOperativiDraftByKey((prev) => ({
-                                ...prev,
-                                [key]: { ...(prev[key] || emptyOperativi), mezzi: e.target.value },
-                              }))
-                            }
-                            placeholder="Mezzi"
-                            style={{ width: "100%", minHeight: 64, padding: 8, resize: "vertical", borderRadius: 10, border: "1px solid #d1d5db" }}
-                          />
-                        </label>
-
-                        <label style={{ display: "grid", gap: 6 }}>
-                          <span style={{ fontSize: 12, fontWeight: 700, color: "#475569" }}>Descrizione attività</span>
-                          <textarea
-                            value={operativi.descrizione_attivita ?? ""}
-                            onChange={(e) =>
-                              setOperativiDraftByKey((prev) => ({
-                                ...prev,
-                                [key]: { ...(prev[key] || emptyOperativi), descrizione_attivita: e.target.value },
-                              }))
-                            }
-                            placeholder="Descrizione attività"
-                            style={{ width: "100%", minHeight: 64, padding: 8, resize: "vertical", borderRadius: 10, border: "1px solid #d1d5db" }}
-                          />
-                        </label>
-
-                        <label style={{ display: "grid", gap: 6 }}>
-                          <span style={{ fontSize: 12, fontWeight: 700, color: "#475569" }}>Indirizzo</span>
-                          <textarea
-                            value={operativi.indirizzo ?? ""}
-                            onChange={(e) =>
-                              setOperativiDraftByKey((prev) => ({
-                                ...prev,
-                                [key]: { ...(prev[key] || emptyOperativi), indirizzo: e.target.value },
-                              }))
-                            }
-                            placeholder="Indirizzo"
-                            style={{ width: "100%", minHeight: 64, padding: 8, resize: "vertical", borderRadius: 10, border: "1px solid #d1d5db" }}
-                          />
-                        </label>
-
-                        <label style={{ display: "grid", gap: 6 }}>
-                          <span style={{ fontSize: 12, fontWeight: 700, color: "#475569" }}>Orario</span>
-                          <input
-                            value={operativi.orario ?? ""}
-                            onChange={(e) =>
-                              setOperativiDraftByKey((prev) => ({
-                                ...prev,
-                                [key]: { ...(prev[key] || emptyOperativi), orario: e.target.value },
-                              }))
-                            }
-                            placeholder="Orario"
-                            style={{ width: "100%", padding: 8, borderRadius: 10, border: "1px solid #d1d5db" }}
-                          />
-                        </label>
-
-                        <div style={{ display: "grid", gap: 6 }}>
-                          <span style={{ fontSize: 12, fontWeight: 700, color: "#475569" }}>Referente cliente</span>
-                          <input
-                            value={operativi.referente_cliente_nome ?? ""}
-                            onChange={(e) =>
-                              setOperativiDraftByKey((prev) => ({
-                                ...prev,
-                                [key]: { ...(prev[key] || emptyOperativi), referente_cliente_nome: e.target.value },
-                              }))
-                            }
-                            placeholder="Nome referente cliente"
-                            style={{ width: "100%", padding: 8, borderRadius: 10, border: "1px solid #d1d5db" }}
-                          />
-                          <input
-                            value={operativi.referente_cliente_contatto ?? ""}
-                            onChange={(e) =>
-                              setOperativiDraftByKey((prev) => ({
-                                ...prev,
-                                [key]: { ...(prev[key] || emptyOperativi), referente_cliente_contatto: e.target.value },
-                              }))
-                            }
-                            placeholder="Contatto referente cliente"
-                            style={{ width: "100%", padding: 8, borderRadius: 10, border: "1px solid #d1d5db" }}
-                          />
-                        </div>
-
-                        <div style={{ display: "grid", gap: 6 }}>
-                          <span style={{ fontSize: 12, fontWeight: 700, color: "#475569" }}>Commerciale Art Tech</span>
-                          <input
-                            value={operativi.commerciale_art_tech_nome ?? ""}
-                            onChange={(e) =>
-                              setOperativiDraftByKey((prev) => ({
-                                ...prev,
-                                [key]: { ...(prev[key] || emptyOperativi), commerciale_art_tech_nome: e.target.value },
-                              }))
-                            }
-                            placeholder="Nome commerciale Art Tech"
-                            style={{ width: "100%", padding: 8, borderRadius: 10, border: "1px solid #d1d5db" }}
-                          />
-                          <input
-                            value={operativi.commerciale_art_tech_contatto ?? ""}
-                            onChange={(e) =>
-                              setOperativiDraftByKey((prev) => ({
-                                ...prev,
-                                [key]: {
-                                  ...(prev[key] || emptyOperativi),
-                                  commerciale_art_tech_contatto: e.target.value,
-                                },
-                              }))
-                            }
-                            placeholder="Contatto commerciale Art Tech"
-                            style={{ width: "100%", padding: 8, borderRadius: 10, border: "1px solid #d1d5db" }}
-                          />
-                        </div>
-                      </div>
-
-                      <div style={{ display: "grid", gap: 8 }}>
+                        <div style={{ display: "grid", gap: 8 }}>
                         {latestReport && latestReportComment ? (
                           <div style={{ display: "grid", gap: 6 }}>
                             <div style={{ fontSize: 12, fontWeight: 700, color: "#475569" }}>Report intervento</div>
@@ -1671,95 +1729,99 @@ export default function CronoprogrammaPanel({
                         </div>
                       </div>
 
-                      <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
-                        {visualPlanningStatus !== "SVOLTA" ? (
-                          <label style={{ display: "inline-flex", alignItems: "center", gap: 8, fontWeight: 700 }}>
-                            <span>Stato</span>
-                            <select
-                              value={editablePlanningStatus === "SVOLTA" ? "DA_CONFERMARE" : editablePlanningStatus}
-                              onChange={(e) => setStatus(r, e.target.value as PlanningStatus)}
-                              disabled={savingStatusKey === key || stateLoading}
-                              style={{ padding: "8px 10px", borderRadius: 8, border: "1px solid #d1d5db" }}
-                            >
-                              {MANUAL_PLANNING_STATUSES.map((status) => (
-                                <option key={status} value={status}>
-                                  {status === "DA_CONFERMARE" ? "DA CONFERMARE" : status}
-                                </option>
-                              ))}
-                            </select>
-                          </label>
-                        ) : (
-                          <span style={{ fontSize: 12, fontWeight: 700, color: "#166534" }}>
-                            Stato gestito da FATTO
-                          </span>
-                        )}
-                        <label style={{ display: "inline-flex", alignItems: "center", gap: 8, fontWeight: 700 }}>
-                          <input
-                            type="checkbox"
-                            checked={fatto}
-                            onChange={(e) => setFatto(r, e.target.checked)}
-                            disabled={savingFattoKey === key || stateLoading}
-                          />
-                          Fatto
-                        </label>
-                        <label style={{ display: "inline-flex", alignItems: "center", gap: 8, fontWeight: 700 }}>
-                          <input
-                            type="checkbox"
-                            checked={hidden}
-                            onChange={(e) => setHidden(r, e.target.checked)}
-                            disabled={savingHiddenKey === key || stateLoading}
-                          />
-                          Nascosta
-                        </label>
-                        {openRescheduleModal ? (
-                          <button
-                            type="button"
-                            onClick={() => openRescheduleModal(r)}
-                            disabled={savingRescheduleKey === key || stateLoading}
-                            style={{
-                              padding: "8px 12px",
-                              borderRadius: 8,
-                              border: "1px solid #b45309",
-                              background: savingRescheduleKey === key ? "#ffedd5" : "#fff7ed",
-                              color: "#9a3412",
-                              fontWeight: 700,
-                              cursor: savingRescheduleKey === key ? "not-allowed" : "pointer",
-                              whiteSpace: "nowrap",
-                            }}
-                          >
-                            {savingRescheduleKey === key ? "..." : "Rimandato"}
-                          </button>
-                        ) : null}
-                        <button
-                          type="button"
-                          onClick={() => saveOperativi(r)}
-                          disabled={savingOperativiKey === key || stateLoading}
-                          style={{
-                            padding: "8px 12px",
-                            borderRadius: 8,
-                            border: "1px solid #111",
-                            background: savingOperativiKey === key ? "#f3f4f6" : "#111",
-                            color: savingOperativiKey === key ? "#111" : "white",
-                            cursor: savingOperativiKey === key ? "not-allowed" : "pointer",
-                            whiteSpace: "nowrap",
-                          }}
-                        >
-                          {savingOperativiKey === key ? "..." : "Salva"}
-                        </button>
-                        {r.checklist_id ? (
-                          <Link
-                            href={`/checklists/${r.checklist_id}`}
-                            style={{ color: "#2563eb", textDecoration: "underline", fontWeight: 600 }}
-                          >
-                            Apri progetto
-                          </Link>
-                        ) : null}
-                        {meta?.updated_at ? (
-                          <div style={{ fontSize: 11, opacity: 0.75 }}>
-                            {meta.updated_by_nome || "Operatore"} · {new Date(meta.updated_at).toLocaleString("it-IT")}
+                          <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
+                            {!usesSharedOperationalEditor && visualPlanningStatus !== "SVOLTA" ? (
+                              <label style={{ display: "inline-flex", alignItems: "center", gap: 8, fontWeight: 700 }}>
+                                <span>Stato</span>
+                                <select
+                                  value={editablePlanningStatus === "SVOLTA" ? "DA_CONFERMARE" : editablePlanningStatus}
+                                  onChange={(e) => setStatus(r, e.target.value as PlanningStatus)}
+                                  disabled={savingStatusKey === key || stateLoading}
+                                  style={{ padding: "8px 10px", borderRadius: 8, border: "1px solid #d1d5db" }}
+                                >
+                                  {MANUAL_PLANNING_STATUSES.map((status) => (
+                                    <option key={status} value={status}>
+                                      {status === "DA_CONFERMARE" ? "DA CONFERMARE" : status}
+                                    </option>
+                                  ))}
+                                </select>
+                              </label>
+                            ) : null}
+                            {visualPlanningStatus === "SVOLTA" ? (
+                              <span style={{ fontSize: 12, fontWeight: 700, color: "#166534" }}>
+                                Stato gestito da FATTO
+                              </span>
+                            ) : null}
+                            <label style={{ display: "inline-flex", alignItems: "center", gap: 8, fontWeight: 700 }}>
+                              <input
+                                type="checkbox"
+                                checked={fatto}
+                                onChange={(e) => setFatto(r, e.target.checked)}
+                                disabled={savingFattoKey === key || stateLoading}
+                              />
+                              Fatto
+                            </label>
+                            <label style={{ display: "inline-flex", alignItems: "center", gap: 8, fontWeight: 700 }}>
+                              <input
+                                type="checkbox"
+                                checked={hidden}
+                                onChange={(e) => setHidden(r, e.target.checked)}
+                                disabled={savingHiddenKey === key || stateLoading}
+                              />
+                              Nascosta
+                            </label>
+                            {openRescheduleModal ? (
+                              <button
+                                type="button"
+                                onClick={() => openRescheduleModal(r)}
+                                disabled={savingRescheduleKey === key || stateLoading}
+                                style={{
+                                  padding: "8px 12px",
+                                  borderRadius: 8,
+                                  border: "1px solid #b45309",
+                                  background: savingRescheduleKey === key ? "#ffedd5" : "#fff7ed",
+                                  color: "#9a3412",
+                                  fontWeight: 700,
+                                  cursor: savingRescheduleKey === key ? "not-allowed" : "pointer",
+                                  whiteSpace: "nowrap",
+                                }}
+                              >
+                                {savingRescheduleKey === key ? "..." : "Rimandato"}
+                              </button>
+                            ) : null}
+                            {!usesSharedOperationalEditor ? (
+                              <button
+                                type="button"
+                                onClick={() => saveOperativi(r)}
+                                disabled={savingOperativiKey === key || stateLoading}
+                                style={{
+                                  padding: "8px 12px",
+                                  borderRadius: 8,
+                                  border: "1px solid #111",
+                                  background: savingOperativiKey === key ? "#f3f4f6" : "#111",
+                                  color: savingOperativiKey === key ? "#111" : "white",
+                                  cursor: savingOperativiKey === key ? "not-allowed" : "pointer",
+                                  whiteSpace: "nowrap",
+                                }}
+                              >
+                                {savingOperativiKey === key ? "..." : "Salva"}
+                              </button>
+                            ) : null}
+                            {r.checklist_id ? (
+                              <Link
+                                href={`/checklists/${r.checklist_id}`}
+                                style={{ color: "#2563eb", textDecoration: "underline", fontWeight: 600 }}
+                              >
+                                Apri progetto
+                              </Link>
+                            ) : null}
+                            {!usesSharedOperationalEditor && meta?.updated_at ? (
+                              <div style={{ fontSize: 11, opacity: 0.75 }}>
+                                {meta.updated_by_nome || "Operatore"} · {new Date(meta.updated_at).toLocaleString("it-IT")}
+                              </div>
+                            ) : null}
                           </div>
-                        ) : null}
-                      </div>
+                        </div>
                     </div>
                   ) : null}
                 </div>

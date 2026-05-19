@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState, type UIEvent } from "react";
 import Link from "next/link";
 import ConfigMancante from "@/components/ConfigMancante";
 import CronoprogrammaPanel from "@/components/cronoprogramma/CronoprogrammaPanel";
+import type { OperationalBlockFormState } from "@/components/cronoprogramma/OperationalBlockEditor";
 import { isSupabaseConfigured } from "@/lib/supabaseClient";
 import { isTimelineRowOverdueNotDone } from "@/lib/cronoprogrammaStatus";
 import {
@@ -139,6 +140,8 @@ type OperativiFields = {
   commerciale_art_tech_contatto: string;
 };
 
+type OperativiDraft = OperationalBlockFormState;
+
 type RescheduleDraft = OperativiFields & {
   motivo_rimando: string;
 };
@@ -153,6 +156,23 @@ const EMPTY_OPERATIVI: OperativiFields = {
   descrizione_attivita: "",
   indirizzo: "",
   orario: "",
+  referente_cliente_nome: "",
+  referente_cliente_contatto: "",
+  commerciale_art_tech_nome: "",
+  commerciale_art_tech_contatto: "",
+};
+
+const EMPTY_OPERATIONAL_BLOCK_FORM: OperativiDraft = {
+  slots: [{ data_inizio: "", durata_prevista_minuti: null, orario: "" }],
+  data_inizio: "",
+  durata_giorni: "",
+  personale_previsto: "",
+  personale_ids: [],
+  mezzi: "",
+  descrizione_attivita: "",
+  indirizzo: "",
+  orario: "",
+  referenti_cliente: [{ nome: "", contatto: "", ruolo: "" }],
   referente_cliente_nome: "",
   referente_cliente_contatto: "",
   commerciale_art_tech_nome: "",
@@ -244,6 +264,112 @@ function extractRowOperativi(row: TimelineRow, meta?: CronoMeta | null): Operati
       slotEstimatedMinutes != null ? minutesToHoursInput(slotEstimatedMinutes) : base.durata_giorni,
     orario: String(row.slot_orario || base.orario || ""),
   };
+}
+
+function normalizeOperationalBlockSlot(value: unknown) {
+  const row = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+  const id = String(row.id || "").trim();
+  const minutesRaw = Number(row.durata_prevista_minuti);
+  return {
+    ...(id ? { id } : {}),
+    data_inizio: normalizeOperativiDate(String(row.data_inizio || "")),
+    durata_prevista_minuti:
+      Number.isFinite(minutesRaw) && minutesRaw >= 0 ? Math.round(minutesRaw) : null,
+    orario: String(row.orario || ""),
+  };
+}
+
+function buildOperationalBlockSlots(row: TimelineRow, meta?: CronoMeta | null) {
+  const slots = Array.isArray((meta as { slots?: unknown[] } | null | undefined)?.slots)
+    ? ((meta as { slots?: unknown[] }).slots || []).map((value) => normalizeOperationalBlockSlot(value))
+    : [];
+  const filtered = slots.filter(
+    (slot) => slot.data_inizio || slot.durata_prevista_minuti != null || slot.orario
+  );
+  if (filtered.length > 0) return filtered;
+
+  const slotEstimatedMinutes = getSlotEstimatedMinutes(row);
+  const rowSlot = {
+    ...(row.slot_id ? { id: row.slot_id } : {}),
+    data_inizio: normalizeOperativiDate(row.slot_date) || "",
+    durata_prevista_minuti: slotEstimatedMinutes,
+    orario: String(row.slot_orario || ""),
+  };
+  if (rowSlot.data_inizio || rowSlot.durata_prevista_minuti != null || rowSlot.orario) {
+    return [rowSlot];
+  }
+
+  const legacySlot = {
+    data_inizio: normalizeOperativiDate(meta?.data_inizio),
+    durata_prevista_minuti: getOperativiEstimatedMinutes(meta) ?? null,
+    orario: String(meta?.orario || ""),
+  };
+  if (legacySlot.data_inizio || legacySlot.durata_prevista_minuti != null || legacySlot.orario) {
+    return [legacySlot];
+  }
+
+  return EMPTY_OPERATIONAL_BLOCK_FORM.slots;
+}
+
+function syncOperationalBlockLegacyFields(form: OperativiDraft): OperativiDraft {
+  const slots = form.slots.length > 0 ? form.slots : EMPTY_OPERATIONAL_BLOCK_FORM.slots;
+  const firstSlot = slots[0];
+  return {
+    ...form,
+    slots,
+    data_inizio: firstSlot?.data_inizio || "",
+    durata_giorni:
+      firstSlot?.durata_prevista_minuti != null
+        ? minutesToHoursInput(firstSlot.durata_prevista_minuti)
+        : "",
+    orario: firstSlot?.orario || "",
+  };
+}
+
+function buildFallbackOperationalReferenti(meta?: CronoMeta | null) {
+  const referenti = Array.isArray((meta as { referenti_cliente?: unknown[] } | null | undefined)?.referenti_cliente)
+    ? (((meta as { referenti_cliente?: unknown[] }).referenti_cliente || []) as unknown[])
+        .map((value) => {
+          const row = value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+          const id = String(row.id || "").trim();
+          return {
+            ...(id ? { id } : {}),
+            nome: String(row.nome || "").trim(),
+            contatto: String(row.contatto || "").trim(),
+            ruolo: String(row.ruolo || "").trim(),
+          };
+        })
+        .filter((row) => row.nome || row.contatto || row.ruolo)
+    : [];
+  if (referenti.length > 0) return referenti;
+  const fallback = {
+    nome: String(meta?.referente_cliente_nome || ""),
+    contatto: String(meta?.referente_cliente_contatto || ""),
+    ruolo: "",
+  };
+  return fallback.nome || fallback.contatto ? [fallback] : EMPTY_OPERATIONAL_BLOCK_FORM.referenti_cliente;
+}
+
+function extractOperationalBlockForm(row: TimelineRow, meta?: CronoMeta | null): OperativiDraft {
+  const base = extractRowOperativi(row, meta);
+  const slots = buildOperationalBlockSlots(row, meta);
+  const referentiCliente = buildFallbackOperationalReferenti(meta);
+  return syncOperationalBlockLegacyFields({
+    slots,
+    data_inizio: base.data_inizio,
+    durata_giorni: base.durata_giorni,
+    personale_previsto: base.personale_previsto,
+    personale_ids: base.personale_ids,
+    mezzi: base.mezzi,
+    descrizione_attivita: base.descrizione_attivita,
+    indirizzo: base.indirizzo,
+    orario: base.orario,
+    referenti_cliente: referentiCliente,
+    referente_cliente_nome: referentiCliente[0]?.nome || base.referente_cliente_nome || "",
+    referente_cliente_contatto: referentiCliente[0]?.contatto || base.referente_cliente_contatto || "",
+    commerciale_art_tech_nome: base.commerciale_art_tech_nome,
+    commerciale_art_tech_contatto: base.commerciale_art_tech_contatto,
+  });
 }
 
 type OperativiScheduleLike = {
@@ -440,7 +566,7 @@ export default function CronoprogrammaPage() {
   const [savingOperativiKey, setSavingOperativiKey] = useState<string | null>(null);
   const [deletingCommentId, setDeletingCommentId] = useState<string | null>(null);
   const [noteHistoryKey, setNoteHistoryKey] = useState<string | null>(null);
-  const [operativiDraftByKey, setOperativiDraftByKey] = useState<Record<string, OperativiFields>>({});
+  const [operativiDraftByKey, setOperativiDraftByKey] = useState<Record<string, OperativiDraft>>({});
   const [completionRow, setCompletionRow] = useState<TimelineRow | null>(null);
   const [completionDraft, setCompletionDraft] = useState<CompletionDraft>(EMPTY_COMPLETION_DRAFT);
   const [completionError, setCompletionError] = useState<string | null>(null);
@@ -494,7 +620,10 @@ export default function CronoprogrammaPage() {
     }
   }
 
-  async function loadRowState(timelineRows: TimelineRow[]) {
+  async function loadRowState(
+    timelineRows: TimelineRow[],
+    options?: { resetDrafts?: boolean }
+  ) {
     if (!timelineRows.length) {
       setMetaByKey({});
       setCommentsByKey({});
@@ -540,8 +669,8 @@ export default function CronoprogrammaPage() {
         const next = { ...prev };
         for (const r of timelineRows) {
           const key = getRowKey(r.kind, r.row_ref_id, r.slot_id);
-          if (!next[key]) {
-            next[key] = extractRowOperativi(r, nextMeta[key]);
+          if (options?.resetDrafts || !next[key]) {
+            next[key] = extractOperationalBlockForm(r, nextMeta[key]);
           }
         }
         return next;
@@ -573,7 +702,7 @@ export default function CronoprogrammaPage() {
 
   function openRescheduleModal(row: TimelineRow) {
     const key = getRowKey(row.kind, row.row_ref_id, row.slot_id);
-    const baseOperativi = operativiDraftByKey[key] || extractRowOperativi(row, metaByKey[key] || null);
+    const baseOperativi = operativiDraftByKey[key] || extractOperationalBlockForm(row, metaByKey[key] || null);
     const currentSchedule = getRowSchedule(row, metaByKey[key] || null);
     setRescheduleRow(row);
     setRescheduleDraft({
@@ -743,7 +872,7 @@ export default function CronoprogrammaPage() {
       applyReturnedMetaUpdates(row.kind, row.row_ref_id, data?.metas || data?.meta);
       setOperativiDraftByKey((prev) => ({
         ...prev,
-        [key]: extractOperativi(data?.meta || null),
+        [key]: extractOperationalBlockForm(row, data?.meta || null),
       }));
       setRows((prev) =>
         prev.map((entry) => (isSameTimelineRow(entry, row) ? { ...entry, fatto: false } : entry))
@@ -856,8 +985,13 @@ export default function CronoprogrammaPage() {
 
   async function saveOperativi(row: TimelineRow) {
     const key = getRowKey(row.kind, row.row_ref_id, row.slot_id);
-    const draft = operativiDraftByKey[key] || EMPTY_OPERATIVI;
-    const durataPrevistaMinuti = hoursInputToMinutes(draft.durata_giorni);
+    const draft = operativiDraftByKey[key] || extractOperationalBlockForm(row, metaByKey[key] || null);
+    const normalizedDraft = syncOperationalBlockLegacyFields(draft);
+    const durataPrevistaMinuti = hoursInputToMinutes(normalizedDraft.durata_giorni);
+    const shouldSaveSharedBlock = row.kind === "INSTALLAZIONE" || row.kind === "DISINSTALLAZIONE";
+    const relatedRows = shouldSaveSharedBlock
+      ? rows.filter((entry) => entry.kind === row.kind && entry.row_ref_id === row.row_ref_id)
+      : [row];
     setSavingOperativiKey(key);
     setStateError(null);
     try {
@@ -868,8 +1002,8 @@ export default function CronoprogrammaPage() {
           action: "set_operativi",
           row_kind: row.kind,
           row_ref_id: row.row_ref_id,
-          slot_id: row.slot_id ?? null,
-          ...draft,
+          slot_id: shouldSaveSharedBlock ? null : row.slot_id ?? null,
+          ...normalizedDraft,
           durata_prevista_minuti: durataPrevistaMinuti,
           durata_giorni: estimatedMinutesToLegacyDays(durataPrevistaMinuti),
         }),
@@ -879,8 +1013,7 @@ export default function CronoprogrammaPage() {
         setStateError(data?.error || "Errore salvataggio dati operativi");
         return;
       }
-      setMetaByKey((prev) => ({ ...prev, [key]: data?.meta }));
-      setOperativiDraftByKey((prev) => ({ ...prev, [key]: extractOperativi(data?.meta || null) }));
+      await loadRowState(relatedRows, { resetDrafts: true });
     } finally {
       setSavingOperativiKey(null);
     }
@@ -1094,7 +1227,7 @@ export default function CronoprogrammaPage() {
     return checkOperativiConflicts(
       rows.map((row) => {
         const key = getRowKey(row.kind, row.row_ref_id, row.slot_id);
-        const operativi = operativiDraftByKey[key] || extractOperativi(metaByKey[key] || null);
+        const operativi = operativiDraftByKey[key] || extractOperationalBlockForm(row, metaByKey[key] || null);
         const schedule = getRowSchedule(row, operativi);
         return {
           key,
@@ -1749,9 +1882,10 @@ export default function CronoprogrammaPage() {
         getRowKey={getRowKey}
         getRowSchedule={getRowSchedule}
         extractOperativi={extractOperativi}
+        extractOperationalBlockForm={extractOperationalBlockForm}
         buildConflictTooltip={buildConflictTooltip}
         hasDefinedOperativi={hasDefinedOperativi}
-        emptyOperativi={EMPTY_OPERATIVI}
+        emptyOperationalBlockForm={EMPTY_OPERATIONAL_BLOCK_FORM}
       />
     </div>
   );
