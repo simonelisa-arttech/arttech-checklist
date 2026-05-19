@@ -1,6 +1,6 @@
 # AGENT MEMORY — AT SYSTEM / arttech-checklist
 
-Ultimo aggiornamento: 2026-05-13
+Ultimo aggiornamento: 2026-05-19
 
 ## Identita' progetto
 
@@ -85,6 +85,92 @@ Domini principali:
   2. rilanciare `npx tsc --noEmit`
 
 ## Snapshot funzionalita' completate da conoscere
+
+### Cronoprogramma slot-aware
+- il cronoprogramma e' ora il centro operativo dell'architettura
+- ogni giornata e' uno slot indipendente con:
+  - data
+  - ore
+  - orario
+  - timbrature
+  - note/report
+  - stato giornaliero
+- `cronoprogramma_meta` e' la source of truth dello stato operativo corrente
+- `cronoprogramma_meta_slots` contiene la pianificazione giornaliera
+- `cronoprogramma_activity_events` conserva storico business (`COMPLETATO`, `RIMANDATO`)
+- `cronoprogramma_comments` conserva note e report leggibili
+- `cronoprogramma_timbrature` e `cronoprogramma_timbrature_intervalli` sono per operatore e per slot
+
+### Stati operativi
+- campo corrente: `cronoprogramma_meta.status`
+- valori supportati:
+  - `BOZZA`
+  - `DA_CONFERMARE`
+  - `CONFERMATA`
+  - `RIMANDATA`
+  - `SVOLTA`
+  - `ANNULLATA`
+- fallback legacy:
+  - `fatto = true` -> `SVOLTA`
+  - ultimo evento `RIMANDATO` -> `RIMANDATA`
+  - default -> `DA_CONFERMARE`
+
+### Propagazione multi-giorno
+- propagati automaticamente tra slot dello stesso blocco `INSTALLAZIONE` / `DISINSTALLAZIONE`:
+  - status
+  - personale
+  - mezzi
+  - descrizione
+  - indirizzo
+  - referente cliente
+  - commerciale
+  - fatto / `SVOLTA`
+- restano separati per giornata:
+  - `slot_id`
+  - data
+  - ore
+  - orario
+  - timer
+  - timbrature
+  - note
+  - report
+  - commenti
+  - `RIMANDATO`
+
+### App operatori
+- l'app operatori usa solo `time_budget_current_operator`
+- timer e stato non sono piu' aggregati tra operatori
+- l'operatore vede solo la propria timbratura
+- l'UI ora mostra l'indirizzo attivita' al posto del personale
+- visibilita':
+  - mostra `CONFERMATA` e `RIMANDATA`
+  - nasconde `BOZZA`, `DA_CONFERMARE`, `ANNULLATA`, `SVOLTA`
+
+### Workflow FATTO / RIMANDATO
+- `FATTO` usa popup obbligatorio con:
+  - esito
+  - note finali
+  - problemi
+  - materiali
+- `RIMANDATO` usa popup con:
+  - motivo
+  - nuova data
+  - ore
+  - personale
+  - mezzi
+  - descrizione
+- `FATTO` oggi propaga `SVOLTA` sull'intero blocco multi-giorno
+- `RIMANDATO` resta slot-specifico
+
+### Direzione architetturale
+- il cronoprogramma deve diventare l'hub operativo unico
+- la pagina progetto dovra' diventare:
+  - overview
+  - accesso rapido
+  - riepilogo sintetico
+- e' stato estratto il componente shared:
+  - `components/cronoprogramma/OperationalBlockEditor.tsx`
+- la UI operativa della pagina progetto e' ancora presente ma ora usa il componente shared
 
 ### App operatori
 - `/operatori` e' app standalone mobile-friendly
@@ -175,7 +261,9 @@ Domini principali:
 
 ## Obiettivi aperti piu' probabili
 
-- raffinare i form rapidi Home
+- completare la centralizzazione dell'operativita' nel cronoprogramma
+- rendere attachments e link davvero slot-aware
+- introdurre dashboard coordinatore operativo
+- completare filtri safety / conflitti / mezzi / area geografica
+- raffinare il workflow `FATTO` per scelta giornata vs blocco
 - migliorare UX/onboarding app operatori
-- completare fatturazione globale
-- cronoprogramma smart / dashboard smart evoluta
