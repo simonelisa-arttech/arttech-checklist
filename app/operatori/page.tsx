@@ -55,6 +55,7 @@ type CronoMeta = {
   modalita_attivita?: string | null;
   personale_previsto?: string | null;
   personale_ids?: string[] | null;
+  indirizzo?: string | null;
   orario?: string | null;
 };
 
@@ -64,6 +65,7 @@ type OperativiFields = {
   modalita_attivita: string;
   personale_previsto: string;
   personale_ids: string[];
+  indirizzo: string;
   orario: string;
 };
 
@@ -287,6 +289,7 @@ function extractOperativi(meta?: CronoMeta | null): OperativiFields {
     personale_ids: Array.isArray(meta?.personale_ids)
       ? meta.personale_ids.map((value) => String(value || "").trim()).filter(Boolean)
       : [],
+    indirizzo: String(meta?.indirizzo || ""),
     orario: String(meta?.orario || ""),
   };
 }
@@ -1282,7 +1285,7 @@ export default function OperatoreAttivitaPage() {
                                 lineHeight: 1.5,
                               }}
                             >
-                              Persone: {operativi.personale_previsto || "—"}
+                              Indirizzo: {operativi.indirizzo || "Indirizzo non specificato"}
                             </span>
                           </div>
                         </div>
