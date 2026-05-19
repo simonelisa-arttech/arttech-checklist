@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import AttachmentsPanel from "@/components/AttachmentsPanel";
 import ConfigMancante from "@/components/ConfigMancante";
 import { dbFrom } from "@/lib/clientDbBroker";
 import { isTimelineRowOverdueNotDone } from "@/lib/cronoprogrammaStatus";
@@ -505,6 +506,7 @@ export default function OperatoreAttivitaPage() {
   const [noteDraftByKey, setNoteDraftByKey] = useState<Record<string, string>>({});
   const [savingCommentKey, setSavingCommentKey] = useState<string | null>(null);
   const [notePanelKey, setNotePanelKey] = useState<string | null>(null);
+  const [attachmentPanelKey, setAttachmentPanelKey] = useState<string | null>(null);
   const [stopReportRowKey, setStopReportRowKey] = useState<string | null>(null);
   const [stopReportDraftByKey, setStopReportDraftByKey] = useState<Record<string, StopReportDraft>>({});
   const [stopReportError, setStopReportError] = useState<string | null>(null);
@@ -1230,6 +1232,7 @@ export default function OperatoreAttivitaPage() {
                 const stopReportValidationMessage = getStopReportValidationMessage(stopReportDraft);
                 const canSubmitStopReport = !stopReportValidationMessage && !timbraturaLoading;
                 const showNotesPanel = notePanelKey === key;
+                const showAttachmentsPanel = attachmentPanelKey === key;
                 const modeLabel = getActivityModeLabel(operativi);
                 const kindLabel = getActivityKindLabel(row, operativi);
                 const visualPlanningStatus = getVisualPlanningStatus(meta);
@@ -1420,6 +1423,31 @@ export default function OperatoreAttivitaPage() {
                           >
                             {showNotesPanel ? "Chiudi note / report" : "Note / report"}
                           </button>
+                          {row.slot_id ? (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setAttachmentPanelKey((prev) => (prev === key ? null : key))
+                              }
+                              style={{
+                                display: "inline-flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                padding: "12px 14px",
+                                borderRadius: 12,
+                                border: showAttachmentsPanel
+                                  ? "1px solid #111827"
+                                  : "1px solid #d1d5db",
+                                background: showAttachmentsPanel ? "#f8fafc" : "white",
+                                color: "inherit",
+                                fontSize: 14,
+                                fontWeight: 800,
+                                cursor: "pointer",
+                              }}
+                            >
+                              {showAttachmentsPanel ? "Chiudi allegati giornata" : "Allegati giornata"}
+                            </button>
+                          ) : null}
                         </div>
                         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", fontSize: 12, color: "#64748b" }}>
                           {timbraturaState === "IN_CORSO" ? renderPill("IN CORSO", BADGE_COLORS.activityRemote, "⏸") : null}
@@ -1440,6 +1468,41 @@ export default function OperatoreAttivitaPage() {
                             : null}
                           {overdue ? renderPill("Urgente", BADGE_COLORS.statusExpired) : null}
                         </div>
+                        {showAttachmentsPanel && row.slot_id ? (
+                          <div
+                            style={{
+                              display: "grid",
+                              gap: 10,
+                              borderTop: "1px solid #e5e7eb",
+                              paddingTop: 12,
+                            }}
+                          >
+                            <div
+                              style={{
+                                fontSize: 12,
+                                fontWeight: 800,
+                                color: "#475569",
+                                textTransform: "uppercase",
+                                letterSpacing: 0.4,
+                              }}
+                            >
+                              Allegati giornata
+                            </div>
+                            <AttachmentsPanel
+                              title="Link / documenti operativi"
+                              entityType={
+                                row.kind === "DISINSTALLAZIONE"
+                                  ? "CHECKLIST_DISINSTALLAZIONE"
+                                  : "CHECKLIST_OPERATIVI"
+                              }
+                              entityId={row.checklist_id || row.row_ref_id}
+                              slotId={row.slot_id}
+                              mode="slot"
+                              readOnly
+                              allowUploads={false}
+                            />
+                          </div>
+                        ) : null}
                         {showNotesPanel ? (
                           <div
                             style={{

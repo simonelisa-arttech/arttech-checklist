@@ -54,6 +54,7 @@ type Props = {
   entityId: string | null;
   slotId?: string | null;
   mode?: AttachmentPanelMode;
+  readOnly?: boolean;
   title?: string;
   multiple?: boolean;
   storagePrefix?: string;
@@ -95,6 +96,7 @@ export default function AttachmentsPanel({
   entityId,
   slotId = null,
   mode = "block",
+  readOnly = false,
   title = "Allegati",
   multiple = false,
   storagePrefix,
@@ -421,12 +423,12 @@ export default function AttachmentsPanel({
     return scope === "slot" ? slotRows : blockRows;
   }
 
-  function renderRowsList(list: AttachmentRow[]) {
+  function renderRowsList(list: AttachmentRow[], emptyLabel = "Nessun allegato") {
     if (loading) {
       return <div style={{ opacity: 0.7, fontSize: 12 }}>Caricamento allegati...</div>;
     }
     if (list.length === 0) {
-      return <div style={{ opacity: 0.7, fontSize: 12 }}>Nessun allegato</div>;
+      return <div style={{ opacity: 0.7, fontSize: 12 }}>{emptyLabel}</div>;
     }
     return (
       <div style={{ border: "1px solid #eee", borderRadius: 10, overflow: "hidden" }}>
@@ -472,24 +474,26 @@ export default function AttachmentsPanel({
                 {r.provider ? ` · ${r.provider}` : ""}
                 {r.created_at ? ` · ${new Date(r.created_at).toLocaleString("it-IT")}` : ""}
               </div>
-              <label
-                style={{
-                  marginTop: 6,
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 6,
-                  fontSize: 11,
-                  color: "#475569",
-                }}
-              >
-                <input
-                  type="checkbox"
-                  checked={r.visibile_al_cliente === true}
-                  disabled={saving}
-                  onChange={(e) => updateVisibility(r, e.target.checked)}
-                />
-                Visibile al cliente
-              </label>
+              {!readOnly ? (
+                <label
+                  style={{
+                    marginTop: 6,
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 6,
+                    fontSize: 11,
+                    color: "#475569",
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={r.visibile_al_cliente === true}
+                    disabled={saving}
+                    onChange={(e) => updateVisibility(r, e.target.checked)}
+                  />
+                  Visibile al cliente
+                </label>
+              ) : null}
             </div>
             <div style={{ display: "flex", gap: 6 }}>
               <button type="button" onClick={() => openRow(r)} style={{ padding: "4px 8px" }}>
@@ -500,13 +504,15 @@ export default function AttachmentsPanel({
                   Copia
                 </button>
               )}
-              <button
-                type="button"
-                onClick={() => removeRow(r.id)}
-                style={{ padding: "4px 8px", color: "#b91c1c" }}
-              >
-                Elimina
-              </button>
+              {!readOnly ? (
+                <button
+                  type="button"
+                  onClick={() => removeRow(r.id)}
+                  style={{ padding: "4px 8px", color: "#b91c1c" }}
+                >
+                  Elimina
+                </button>
+              ) : null}
             </div>
           </div>
         ))}
@@ -544,7 +550,7 @@ export default function AttachmentsPanel({
           </div>
         ) : null}
 
-        {allowUploads ? (
+        {!readOnly && allowUploads ? (
           <div
             style={{
               display: "grid",
@@ -612,7 +618,7 @@ export default function AttachmentsPanel({
               Carica file
             </button>
           </div>
-        ) : (
+        ) : !readOnly ? (
           <div>
             <select
               value={currentDocumentType}
@@ -634,39 +640,44 @@ export default function AttachmentsPanel({
               ))}
             </select>
           </div>
+        ) : null}
+
+        {!readOnly ? (
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr auto", gap: 8 }}>
+            <input
+              value={currentLinkTitle}
+              onChange={(e) => setScopeLinkTitle(scope, e.target.value)}
+              placeholder="Titolo link (opzionale)"
+              disabled={!currentCanUse}
+              style={{ padding: 8 }}
+            />
+            <input
+              value={currentLinkUrl}
+              onChange={(e) => setScopeLinkUrl(scope, e.target.value)}
+              placeholder="https://drive.google.com/..."
+              disabled={!currentCanUse}
+              style={{ padding: 8 }}
+            />
+            <button
+              type="button"
+              disabled={!currentCanSave}
+              onClick={() => addLink(scope)}
+              style={{
+                padding: "8px 10px",
+                borderRadius: 8,
+                border: "1px solid #111",
+                background: "white",
+              }}
+            >
+              Aggiungi link
+            </button>
+          </div>
+        ) : null}
+
+        {renderRowsList(
+          currentRows,
+          scope === "slot" ? "Nessun allegato giornata" : "Nessun allegato"
         )}
-
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr auto", gap: 8 }}>
-          <input
-            value={currentLinkTitle}
-            onChange={(e) => setScopeLinkTitle(scope, e.target.value)}
-            placeholder="Titolo link (opzionale)"
-            disabled={!currentCanUse}
-            style={{ padding: 8 }}
-          />
-          <input
-            value={currentLinkUrl}
-            onChange={(e) => setScopeLinkUrl(scope, e.target.value)}
-            placeholder="https://drive.google.com/..."
-            disabled={!currentCanUse}
-            style={{ padding: 8 }}
-          />
-          <button
-            type="button"
-            disabled={!currentCanSave}
-            onClick={() => addLink(scope)}
-            style={{
-              padding: "8px 10px",
-              borderRadius: 8,
-              border: "1px solid #111",
-              background: "white",
-            }}
-          >
-            Aggiungi link
-          </button>
-        </div>
-
-        {renderRowsList(currentRows)}
       </div>
     );
   }
