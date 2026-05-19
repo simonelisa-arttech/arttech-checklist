@@ -21,6 +21,10 @@ type TimelineRow = {
   kind: "INSTALLAZIONE" | "DISINSTALLAZIONE" | "INTERVENTO";
   id: string;
   row_ref_id: string;
+  slot_id?: string | null;
+  slot_date?: string | null;
+  slot_hours?: number | null;
+  slot_orario?: string | null;
   data_prevista: string;
   data_tassativa: string;
   cliente: string;
@@ -167,13 +171,17 @@ type OperativiScheduleLike = {
 };
 
 function getRowSchedule(row: TimelineRow, value?: OperativiScheduleLike | null) {
+  const fallbackSlotMinutes =
+    Number.isFinite(Number(row.slot_hours)) && row.slot_hours != null
+      ? Math.round(Number(row.slot_hours) * 60)
+      : null;
   const durataGiorni =
     typeof value?.durata_giorni === "string"
       ? estimatedMinutesToLegacyDays(hoursInputToMinutes(value?.durata_giorni))
-      : estimatedMinutesToLegacyDays(getOperativiEstimatedMinutes(value));
+      : estimatedMinutesToLegacyDays(getOperativiEstimatedMinutes(value) ?? fallbackSlotMinutes);
   return buildOperativiSchedule(
-    value?.data_inizio ?? null,
-    row.data_tassativa || row.data_prevista,
+    value?.data_inizio ?? row.slot_date ?? null,
+    row.slot_date || row.data_tassativa || row.data_prevista,
     durataGiorni ?? null
   );
 }
@@ -188,8 +196,16 @@ function inferInterventoTipologia(text?: string | null) {
   return "INTERVENTO";
 }
 
-function getRowKey(rowKind: "INSTALLAZIONE" | "DISINSTALLAZIONE" | "INTERVENTO", rowRefId: string) {
-  return `${rowKind}:${rowRefId}`;
+function getRowKey(
+  rowKind: "INSTALLAZIONE" | "DISINSTALLAZIONE" | "INTERVENTO",
+  rowRefId: string,
+  slotId?: string | null
+) {
+  return slotId ? `${rowKind}:${rowRefId}:${slotId}` : `${rowKind}:${rowRefId}`;
+}
+
+function isSameTimelineRow(a: TimelineRow, b: TimelineRow) {
+  return getRowKey(a.kind, a.row_ref_id, a.slot_id) === getRowKey(b.kind, b.row_ref_id, b.slot_id);
 }
 
 function normalizePersonaleText(value?: string | null) {
@@ -261,7 +277,7 @@ function downloadCsv(
   ];
   const lines = [header.join(",")];
   for (const r of rows) {
-    const key = getRowKey(r.kind, r.row_ref_id);
+    const key = getRowKey(r.kind, r.row_ref_id, r.slot_id);
     const fatto = Boolean(metaByKey[key]?.fatto ?? r.fatto);
     const latestComment = commentsByKey[key]?.[0];
     const op = extractOperativi(metaByKey[key] || null);
@@ -362,6 +378,7 @@ export default function CronoprogrammaPage() {
         rows: timelineRows.map((r) => ({
           row_kind: r.kind,
           row_ref_id: r.row_ref_id,
+          slot_id: r.slot_id ?? null,
         })),
       };
       const res = await fetch("/api/cronoprogramma", {
@@ -391,7 +408,7 @@ export default function CronoprogrammaPage() {
       setOperativiDraftByKey((prev) => {
         const next = { ...prev };
         for (const r of timelineRows) {
-          const key = getRowKey(r.kind, r.row_ref_id);
+          const key = getRowKey(r.kind, r.row_ref_id, r.slot_id);
           if (!next[key]) {
             next[key] = extractOperativi(nextMeta[key]);
           }
@@ -424,7 +441,7 @@ export default function CronoprogrammaPage() {
   }
 
   function openRescheduleModal(row: TimelineRow) {
-    const key = getRowKey(row.kind, row.row_ref_id);
+    const key = getRowKey(row.kind, row.row_ref_id, row.slot_id);
     const baseOperativi = operativiDraftByKey[key] || extractOperativi(metaByKey[key] || null);
     const currentSchedule = getRowSchedule(row, metaByKey[key] || null);
     setRescheduleRow(row);
@@ -446,7 +463,7 @@ export default function CronoprogrammaPage() {
   }
 
   async function setFatto(row: TimelineRow, fatto: boolean) {
-    const key = getRowKey(row.kind, row.row_ref_id);
+    const key = getRowKey(row.kind, row.row_ref_id, row.slot_id);
     if (fatto) {
       openCompletionModal(row);
       return;
@@ -461,6 +478,7 @@ export default function CronoprogrammaPage() {
           action: "set_fatto",
           row_kind: row.kind,
           row_ref_id: row.row_ref_id,
+          slot_id: row.slot_id ?? null,
           fatto,
         }),
       });
@@ -471,9 +489,7 @@ export default function CronoprogrammaPage() {
       }
       setMetaByKey((prev) => ({ ...prev, [key]: data?.meta }));
       setRows((prev) =>
-        prev.map((r) =>
-          r.kind === row.kind && r.row_ref_id === row.row_ref_id ? { ...r, fatto } : r
-        )
+        prev.map((r) => (isSameTimelineRow(r, row) ? { ...r, fatto } : r))
       );
     } finally {
       setSavingFattoKey(null);
@@ -492,7 +508,7 @@ export default function CronoprogrammaPage() {
     }
 
     const row = completionRow;
-    const key = getRowKey(row.kind, row.row_ref_id);
+    const key = getRowKey(row.kind, row.row_ref_id, row.slot_id);
     setSavingFattoKey(key);
     setCompletionError(null);
     setStateError(null);
@@ -506,6 +522,7 @@ export default function CronoprogrammaPage() {
           action: "complete_activity",
           row_kind: row.kind,
           row_ref_id: row.row_ref_id,
+          slot_id: row.slot_id ?? null,
           esito_attivita: completionDraft.esito_attivita,
           note_finali: completionDraft.note_finali.trim(),
           problemi: completionDraft.problemi.trim(),
@@ -522,11 +539,7 @@ export default function CronoprogrammaPage() {
 
       setMetaByKey((prev) => ({ ...prev, [key]: data?.meta }));
       setRows((prev) =>
-        prev.map((entry) =>
-          entry.kind === row.kind && entry.row_ref_id === row.row_ref_id
-            ? { ...entry, fatto: true }
-            : entry
-        )
+        prev.map((entry) => (isSameTimelineRow(entry, row) ? { ...entry, fatto: true } : entry))
       );
       const insertedComments = Array.isArray(data?.comments)
         ? (data.comments as CronoComment[])
@@ -557,7 +570,7 @@ export default function CronoprogrammaPage() {
     }
 
     const row = rescheduleRow;
-    const key = getRowKey(row.kind, row.row_ref_id);
+    const key = getRowKey(row.kind, row.row_ref_id, row.slot_id);
     const durataPrevistaMinuti = hoursInputToMinutes(rescheduleDraft.durata_giorni);
     setSavingRescheduleKey(key);
     setRescheduleError(null);
@@ -572,6 +585,7 @@ export default function CronoprogrammaPage() {
           action: "reschedule_activity",
           row_kind: row.kind,
           row_ref_id: row.row_ref_id,
+          slot_id: row.slot_id ?? null,
           motivo_rimando: rescheduleDraft.motivo_rimando.trim(),
           data_inizio: rescheduleDraft.data_inizio,
           durata_prevista_minuti: durataPrevistaMinuti,
@@ -604,11 +618,7 @@ export default function CronoprogrammaPage() {
         [key]: extractOperativi(data?.meta || null),
       }));
       setRows((prev) =>
-        prev.map((entry) =>
-          entry.kind === row.kind && entry.row_ref_id === row.row_ref_id
-            ? { ...entry, fatto: false }
-            : entry
-        )
+        prev.map((entry) => (isSameTimelineRow(entry, row) ? { ...entry, fatto: false } : entry))
       );
       if (data?.comment?.id) {
         setCommentsByKey((prev) => ({
@@ -625,7 +635,7 @@ export default function CronoprogrammaPage() {
   }
 
   async function setHidden(row: TimelineRow, hidden: boolean) {
-    const key = getRowKey(row.kind, row.row_ref_id);
+    const key = getRowKey(row.kind, row.row_ref_id, row.slot_id);
     setSavingHiddenKey(key);
     setStateError(null);
     try {
@@ -636,6 +646,7 @@ export default function CronoprogrammaPage() {
           action: "set_hidden",
           row_kind: row.kind,
           row_ref_id: row.row_ref_id,
+          slot_id: row.slot_id ?? null,
           hidden,
         }),
       });
@@ -651,7 +662,7 @@ export default function CronoprogrammaPage() {
   }
 
   async function addComment(row: TimelineRow) {
-    const key = getRowKey(row.kind, row.row_ref_id);
+    const key = getRowKey(row.kind, row.row_ref_id, row.slot_id);
     const commento = String(noteDraftByKey[key] || "").trim();
     if (!commento) return;
     setSavingCommentKey(key);
@@ -665,6 +676,7 @@ export default function CronoprogrammaPage() {
           action: "add_comment",
           row_kind: row.kind,
           row_ref_id: row.row_ref_id,
+          slot_id: row.slot_id ?? null,
           commento,
         }),
       });
@@ -688,7 +700,7 @@ export default function CronoprogrammaPage() {
   }
 
   async function saveOperativi(row: TimelineRow) {
-    const key = getRowKey(row.kind, row.row_ref_id);
+    const key = getRowKey(row.kind, row.row_ref_id, row.slot_id);
     const draft = operativiDraftByKey[key] || EMPTY_OPERATIVI;
     const durataPrevistaMinuti = hoursInputToMinutes(draft.durata_giorni);
     setSavingOperativiKey(key);
@@ -701,6 +713,7 @@ export default function CronoprogrammaPage() {
           action: "set_operativi",
           row_kind: row.kind,
           row_ref_id: row.row_ref_id,
+          slot_id: row.slot_id ?? null,
           ...draft,
           durata_prevista_minuti: durataPrevistaMinuti,
           durata_giorni: estimatedMinutesToLegacyDays(durataPrevistaMinuti),
@@ -738,7 +751,7 @@ export default function CronoprogrammaPage() {
         setStateError(data?.error || "Errore eliminazione commento");
         return;
       }
-      const key = getRowKey(row.kind, row.row_ref_id);
+      const key = getRowKey(row.kind, row.row_ref_id, row.slot_id);
       setCommentsByKey((prev) => ({
         ...prev,
         [key]: sortCommentsNewestFirst((prev[key] || []).filter((c) => c.id !== safeId)),
@@ -849,7 +862,7 @@ export default function CronoprogrammaPage() {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     return rows.filter((r) => {
-      const key = getRowKey(r.kind, r.row_ref_id);
+      const key = getRowKey(r.kind, r.row_ref_id, r.slot_id);
       const fatto = Boolean(metaByKey[key]?.fatto ?? r.fatto);
       const hidden = Boolean(metaByKey[key]?.hidden);
       const operativi = extractOperativi(metaByKey[key] || null);
@@ -898,8 +911,8 @@ export default function CronoprogrammaPage() {
     const sorted = [...filtered];
     const field = sortBy;
     sorted.sort((a, b) => {
-      const aMeta = metaByKey[getRowKey(a.kind, a.row_ref_id)] || null;
-      const bMeta = metaByKey[getRowKey(b.kind, b.row_ref_id)] || null;
+      const aMeta = metaByKey[getRowKey(a.kind, a.row_ref_id, a.slot_id)] || null;
+      const bMeta = metaByKey[getRowKey(b.kind, b.row_ref_id, b.slot_id)] || null;
       const avSchedule = getRowSchedule(a, aMeta);
       const bvSchedule = getRowSchedule(b, bMeta);
       const av = field === "data_prevista" ? avSchedule.data_inizio : avSchedule.data_fine;
@@ -921,7 +934,7 @@ export default function CronoprogrammaPage() {
   const conflictByKey = useMemo(() => {
     return checkOperativiConflicts(
       rows.map((row) => {
-        const key = getRowKey(row.kind, row.row_ref_id);
+        const key = getRowKey(row.kind, row.row_ref_id, row.slot_id);
         const operativi = operativiDraftByKey[key] || extractOperativi(metaByKey[key] || null);
         const schedule = getRowSchedule(row, operativi);
         return {
@@ -959,7 +972,7 @@ export default function CronoprogrammaPage() {
   const rowByKey = useMemo(() => {
     const map: Record<string, TimelineRow> = {};
     for (const r of rows) {
-      map[getRowKey(r.kind, r.row_ref_id)] = r;
+      map[getRowKey(r.kind, r.row_ref_id, r.slot_id)] = r;
     }
     return map;
   }, [rows]);
@@ -1124,14 +1137,14 @@ export default function CronoprogrammaPage() {
               <button
                 type="button"
                 onClick={closeCompletionModal}
-                disabled={savingFattoKey === getRowKey(completionRow.kind, completionRow.row_ref_id)}
+                disabled={savingFattoKey === getRowKey(completionRow.kind, completionRow.row_ref_id, completionRow.slot_id)}
                 style={{
                   padding: "10px 14px",
                   borderRadius: 10,
                   border: "1px solid #d1d5db",
                   background: "white",
                   cursor:
-                    savingFattoKey === getRowKey(completionRow.kind, completionRow.row_ref_id)
+                    savingFattoKey === getRowKey(completionRow.kind, completionRow.row_ref_id, completionRow.slot_id)
                       ? "not-allowed"
                       : "pointer",
                 }}
@@ -1141,7 +1154,7 @@ export default function CronoprogrammaPage() {
               <button
                 type="button"
                 onClick={confirmCompletion}
-                disabled={savingFattoKey === getRowKey(completionRow.kind, completionRow.row_ref_id)}
+                disabled={savingFattoKey === getRowKey(completionRow.kind, completionRow.row_ref_id, completionRow.slot_id)}
                 style={{
                   padding: "10px 14px",
                   borderRadius: 10,
@@ -1150,12 +1163,12 @@ export default function CronoprogrammaPage() {
                   color: "white",
                   fontWeight: 700,
                   cursor:
-                    savingFattoKey === getRowKey(completionRow.kind, completionRow.row_ref_id)
+                    savingFattoKey === getRowKey(completionRow.kind, completionRow.row_ref_id, completionRow.slot_id)
                       ? "not-allowed"
                       : "pointer",
                 }}
               >
-                {savingFattoKey === getRowKey(completionRow.kind, completionRow.row_ref_id)
+                {savingFattoKey === getRowKey(completionRow.kind, completionRow.row_ref_id, completionRow.slot_id)
                   ? "Salvataggio..."
                   : "Conferma completamento"}
               </button>
@@ -1435,7 +1448,7 @@ export default function CronoprogrammaPage() {
                 type="button"
                 onClick={closeRescheduleModal}
                 disabled={
-                  savingRescheduleKey === getRowKey(rescheduleRow.kind, rescheduleRow.row_ref_id)
+                  savingRescheduleKey === getRowKey(rescheduleRow.kind, rescheduleRow.row_ref_id, rescheduleRow.slot_id)
                 }
                 style={{
                   padding: "10px 14px",
@@ -1443,7 +1456,7 @@ export default function CronoprogrammaPage() {
                   border: "1px solid #d1d5db",
                   background: "white",
                   cursor:
-                    savingRescheduleKey === getRowKey(rescheduleRow.kind, rescheduleRow.row_ref_id)
+                    savingRescheduleKey === getRowKey(rescheduleRow.kind, rescheduleRow.row_ref_id, rescheduleRow.slot_id)
                       ? "not-allowed"
                       : "pointer",
                 }}
@@ -1454,7 +1467,7 @@ export default function CronoprogrammaPage() {
                 type="button"
                 onClick={confirmReschedule}
                 disabled={
-                  savingRescheduleKey === getRowKey(rescheduleRow.kind, rescheduleRow.row_ref_id)
+                  savingRescheduleKey === getRowKey(rescheduleRow.kind, rescheduleRow.row_ref_id, rescheduleRow.slot_id)
                 }
                 style={{
                   padding: "10px 14px",
@@ -1464,12 +1477,12 @@ export default function CronoprogrammaPage() {
                   color: "white",
                   fontWeight: 700,
                   cursor:
-                    savingRescheduleKey === getRowKey(rescheduleRow.kind, rescheduleRow.row_ref_id)
+                    savingRescheduleKey === getRowKey(rescheduleRow.kind, rescheduleRow.row_ref_id, rescheduleRow.slot_id)
                       ? "not-allowed"
                       : "pointer",
                 }}
               >
-                {savingRescheduleKey === getRowKey(rescheduleRow.kind, rescheduleRow.row_ref_id)
+                {savingRescheduleKey === getRowKey(rescheduleRow.kind, rescheduleRow.row_ref_id, rescheduleRow.slot_id)
                   ? "Salvataggio..."
                   : "Conferma rimando"}
               </button>

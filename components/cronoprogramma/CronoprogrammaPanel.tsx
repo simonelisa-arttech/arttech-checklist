@@ -99,7 +99,11 @@ type CronoprogrammaPanelProps = {
   addComment: (row: TimelineRow) => void;
   saveOperativi: (row: TimelineRow) => void;
   deleteComment: (row: TimelineRow, commentId: string) => void;
-  getRowKey: (kind: "INSTALLAZIONE" | "DISINSTALLAZIONE" | "INTERVENTO", rowRefId: string) => string;
+  getRowKey: (
+    kind: "INSTALLAZIONE" | "DISINSTALLAZIONE" | "INTERVENTO",
+    rowRefId: string,
+    slotId?: string | null
+  ) => string;
   getRowSchedule: (row: TimelineRow, value?: any) => {
     data_inizio: string;
     data_fine: string;
@@ -400,13 +404,16 @@ export default function CronoprogrammaPanel({
     const rows = filteredSorted.map((row) => ({
       row_kind: String(row.kind || "").trim().toUpperCase(),
       row_ref_id: String(row.row_ref_id || "").trim(),
+      slot_id: String(row.slot_id || "").trim() || null,
     }));
 
     void (async () => {
       const next: Record<string, TimeBudgetSummary> = {};
       const nextTimbraturaState: Record<string, "NON_INIZIATA" | "IN_CORSO" | "IN_PAUSA" | "COMPLETATA"> = {};
       for (const row of rows) {
-        const key = `${row.row_kind}:${row.row_ref_id}`;
+        const key = row.slot_id
+          ? `${row.row_kind}:${row.row_ref_id}:${row.slot_id}`
+          : `${row.row_kind}:${row.row_ref_id}`;
         next[key] = { stimatoMinuti: null, realeMinuti: null, liveStartedAt: [] };
         nextTimbraturaState[key] = "NON_INIZIATA";
       }
@@ -483,7 +490,11 @@ export default function CronoprogrammaPanel({
   const outcomeFilteredRows = useMemo(() => {
     if (outcomeFilter === "TUTTI") return filteredSorted;
     return filteredSorted.filter((row) => {
-      const key = getRowKey(String(row.kind || "").trim().toUpperCase() as any, String(row.row_ref_id || "").trim());
+      const key = getRowKey(
+        String(row.kind || "").trim().toUpperCase() as any,
+        String(row.row_ref_id || "").trim(),
+        String(row.slot_id || "").trim() || null
+      );
       const comments = commentsByKey[key] || [];
       const latestReport = comments.find((comment) => Boolean(parseStructuredReport(comment)));
       const report = latestReport ? parseStructuredReport(latestReport) : null;
@@ -506,6 +517,7 @@ export default function CronoprogrammaPanel({
           action,
           row_kind: row.kind,
           row_ref_id: row.row_ref_id,
+          slot_id: row.slot_id ?? null,
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -588,6 +600,7 @@ export default function CronoprogrammaPanel({
           action: "set_tempo_reale",
           row_kind: row.kind,
           row_ref_id: row.row_ref_id,
+          slot_id: row.slot_id ?? null,
           durata_effettiva_minuti: minutes,
         }),
       });
@@ -838,7 +851,7 @@ export default function CronoprogrammaPanel({
         ) : (
           <div style={{ display: "grid", gap: 10, padding: 12 }}>
             {outcomeFilteredRows.map((r: TimelineRow) => {
-              const key = getRowKey(r.kind, r.row_ref_id);
+              const key = getRowKey(r.kind, r.row_ref_id, r.slot_id);
               const meta = metaByKey[key];
               const operativi = operativiDraftByKey[key] || extractOperativi(meta);
               const schedule = getRowSchedule(r, meta);
@@ -944,6 +957,13 @@ export default function CronoprogrammaPanel({
                             <span>
                               Data intervento:{" "}
                               {schedule.data_inizio ? formatOperativiDateLabel(schedule.data_inizio) : "—"}
+                            </span>
+                          ) : null}
+                          {r.kind !== "INTERVENTO" ? (
+                            <span>
+                              Slot: {schedule.data_inizio ? formatOperativiDateLabel(schedule.data_inizio) : "—"}
+                              {timeBudget.stimatoMinuti != null ? ` · ${formatMinutesCompact(timeBudget.stimatoMinuti)}` : ""}
+                              {operativi.orario ? ` · ${operativi.orario}` : r.slot_orario ? ` · ${r.slot_orario}` : ""}
                             </span>
                           ) : null}
                           <span>Cliente: {r.cliente || "—"}</span>

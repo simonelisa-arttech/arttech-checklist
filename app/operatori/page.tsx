@@ -19,6 +19,10 @@ type TimelineRow = {
   kind: "INSTALLAZIONE" | "DISINSTALLAZIONE" | "INTERVENTO";
   id: string;
   row_ref_id: string;
+  slot_id?: string | null;
+  slot_date?: string | null;
+  slot_hours?: number | null;
+  slot_orario?: string | null;
   data_prevista: string;
   data_tassativa: string;
   cliente: string;
@@ -40,6 +44,7 @@ type CronoMeta = {
   modalita_attivita?: string | null;
   personale_previsto?: string | null;
   personale_ids?: string[] | null;
+  orario?: string | null;
 };
 
 type OperativiFields = {
@@ -48,6 +53,7 @@ type OperativiFields = {
   modalita_attivita: string;
   personale_previsto: string;
   personale_ids: string[];
+  orario: string;
 };
 
 type TimeBudgetSummary = {
@@ -258,15 +264,26 @@ function extractOperativi(meta?: CronoMeta | null): OperativiFields {
     personale_ids: Array.isArray(meta?.personale_ids)
       ? meta.personale_ids.map((value) => String(value || "").trim()).filter(Boolean)
       : [],
+    orario: String(meta?.orario || ""),
   };
 }
 
-function getRowKey(rowKind: "INSTALLAZIONE" | "DISINSTALLAZIONE" | "INTERVENTO", rowRefId: string) {
-  return `${rowKind}:${rowRefId}`;
+function getRowKey(
+  rowKind: "INSTALLAZIONE" | "DISINSTALLAZIONE" | "INTERVENTO",
+  rowRefId: string,
+  slotId?: string | null
+) {
+  return slotId ? `${rowKind}:${rowRefId}:${slotId}` : `${rowKind}:${rowRefId}`;
 }
 
 function getRowSchedule(row: TimelineRow, value?: { data_inizio?: string | null; durata_giorni?: string | number | null } | null) {
-  return buildOperativiSchedule(value?.data_inizio ?? null, row.data_tassativa || row.data_prevista, value?.durata_giorni ?? null);
+  const fallbackHours =
+    Number.isFinite(Number(row.slot_hours)) && row.slot_hours != null ? String(row.slot_hours) : null;
+  return buildOperativiSchedule(
+    value?.data_inizio ?? row.slot_date ?? null,
+    row.slot_date || row.data_tassativa || row.data_prevista,
+    value?.durata_giorni ?? fallbackHours
+  );
 }
 
 function getActivityModeLabel(operativi: OperativiFields | null | undefined) {
@@ -513,6 +530,7 @@ export default function OperatoreAttivitaPage() {
             rows: timeline.map((row) => ({
               row_kind: row.kind,
               row_ref_id: row.row_ref_id,
+              slot_id: row.slot_id ?? null,
             })),
           }),
         });
@@ -523,7 +541,7 @@ export default function OperatoreAttivitaPage() {
 
         const nextMeta = (loadData?.meta || {}) as Record<string, CronoMeta>;
         const assignedRows = timeline.filter((row) => {
-          const key = getRowKey(row.kind, row.row_ref_id);
+          const key = getRowKey(row.kind, row.row_ref_id, row.slot_id);
           const meta = nextMeta[key];
           if (meta?.hidden) return false;
           const ids = Array.isArray(meta?.personale_ids) ? meta.personale_ids.map(String) : [];
@@ -547,7 +565,7 @@ export default function OperatoreAttivitaPage() {
         const nextTimeBudget: Record<string, TimeBudgetSummary> = {};
         const nextTimbraturaState: Record<string, "NON_INIZIATA" | "IN_CORSO" | "IN_PAUSA" | "COMPLETATA"> = {};
         for (const row of assignedRows) {
-          const key = getRowKey(row.kind, row.row_ref_id);
+          const key = getRowKey(row.kind, row.row_ref_id, row.slot_id);
           nextTimeBudget[key] = { stimatoMinuti: null, realeMinuti: null, liveStartedAt: [] };
           nextTimbraturaState[key] = "NON_INIZIATA";
         }
@@ -604,7 +622,7 @@ export default function OperatoreAttivitaPage() {
 
   const filteredRows = useMemo(() => {
     return rows.filter((row) => {
-      const key = getRowKey(row.kind, row.row_ref_id);
+      const key = getRowKey(row.kind, row.row_ref_id, row.slot_id);
       const meta = metaByKey[key];
       const comments = commentsByKey[key] || [];
       const latestReportComment = comments.find((comment) => Boolean(parseStructuredReport(comment))) || null;
@@ -630,7 +648,7 @@ export default function OperatoreAttivitaPage() {
     };
 
     for (const row of filteredRows) {
-      const key = getRowKey(row.kind, row.row_ref_id);
+      const key = getRowKey(row.kind, row.row_ref_id, row.slot_id);
       const activityDate = getActivityDateKey(row, metaByKey[key] || null);
       const timbraturaState = timbraturaStateByKey[key] || "NON_INIZIATA";
       if (timbraturaState === "IN_CORSO") {
@@ -645,8 +663,8 @@ export default function OperatoreAttivitaPage() {
     }
 
     const sortByDate = (a: TimelineRow, b: TimelineRow) => {
-      const aDate = getActivityDateKey(a, metaByKey[getRowKey(a.kind, a.row_ref_id)] || null);
-      const bDate = getActivityDateKey(b, metaByKey[getRowKey(b.kind, b.row_ref_id)] || null);
+      const aDate = getActivityDateKey(a, metaByKey[getRowKey(a.kind, a.row_ref_id, a.slot_id)] || null);
+      const bDate = getActivityDateKey(b, metaByKey[getRowKey(b.kind, b.row_ref_id, b.slot_id)] || null);
       return aDate.localeCompare(bDate);
     };
 
@@ -677,14 +695,14 @@ export default function OperatoreAttivitaPage() {
   }, [groupedRows]);
 
   async function refreshActivityDetails(row: TimelineRow) {
-    const key = getRowKey(row.kind, row.row_ref_id);
+    const key = getRowKey(row.kind, row.row_ref_id, row.slot_id);
     const res = await fetch("/api/cronoprogramma", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       credentials: "include",
       body: JSON.stringify({
         action: "load",
-        rows: [{ row_kind: row.kind, row_ref_id: row.row_ref_id }],
+        rows: [{ row_kind: row.kind, row_ref_id: row.row_ref_id, slot_id: row.slot_id ?? null }],
       }),
     });
     const data = await res.json().catch(() => ({}));
@@ -731,6 +749,7 @@ export default function OperatoreAttivitaPage() {
           action,
           row_kind: row.kind,
           row_ref_id: row.row_ref_id,
+          slot_id: row.slot_id ?? null,
           ...(extraPayload || {}),
         }),
       });
@@ -807,7 +826,7 @@ export default function OperatoreAttivitaPage() {
   }
 
   function openStopReport(row: TimelineRow) {
-    const key = getRowKey(row.kind, row.row_ref_id);
+    const key = getRowKey(row.kind, row.row_ref_id, row.slot_id);
     setStopReportError(null);
     setNotePanelKey(key);
     setStopReportDraftByKey((prev) => ({
@@ -818,7 +837,7 @@ export default function OperatoreAttivitaPage() {
   }
 
   async function submitStopReport(row: TimelineRow) {
-    const key = getRowKey(row.kind, row.row_ref_id);
+    const key = getRowKey(row.kind, row.row_ref_id, row.slot_id);
     const draft = stopReportDraftByKey[key] || EMPTY_STOP_REPORT;
     const validationMessage = getStopReportValidationMessage(draft);
     if (validationMessage) {
@@ -840,7 +859,7 @@ export default function OperatoreAttivitaPage() {
   }
 
   async function addInlineComment(row: TimelineRow) {
-    const key = getRowKey(row.kind, row.row_ref_id);
+    const key = getRowKey(row.kind, row.row_ref_id, row.slot_id);
     const commento = String(noteDraftByKey[key] || "").trim();
     if (!commento) return;
     try {
@@ -854,6 +873,7 @@ export default function OperatoreAttivitaPage() {
           action: "add_comment",
           row_kind: row.kind,
           row_ref_id: row.row_ref_id,
+          slot_id: row.slot_id ?? null,
           commento,
         }),
       });
@@ -1125,7 +1145,7 @@ export default function OperatoreAttivitaPage() {
                   <div style={{ flex: 1, height: 1, background: "#e5e7eb" }} />
                 </div>
                 {group.rows.map((row) => {
-                const key = getRowKey(row.kind, row.row_ref_id);
+                const key = getRowKey(row.kind, row.row_ref_id, row.slot_id);
                 const meta = metaByKey[key] || null;
                 const operativi = extractOperativi(meta);
                 const schedule = getRowSchedule(row, meta);
@@ -1186,6 +1206,12 @@ export default function OperatoreAttivitaPage() {
                         <div style={{ display: "grid", gap: 4, fontSize: 13, color: "#475569" }}>
                           <span>Cliente / progetto: {row.cliente || "—"}</span>
                           <span>Data: {schedule.data_inizio ? formatOperativiDateLabel(schedule.data_inizio) : "—"}</span>
+                          {row.slot_id || row.slot_hours != null || row.slot_orario ? (
+                            <span>
+                              Slot: {timeBudget.stimatoMinuti != null ? formatMinutesCompact(timeBudget.stimatoMinuti) : "—"}
+                              {operativi.orario ? ` · ${operativi.orario}` : row.slot_orario ? ` · ${row.slot_orario}` : ""}
+                            </span>
+                          ) : null}
                         </div>
                         <div style={{ display: "grid", gap: 6 }}>
                           <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", fontSize: 12, color: "#475569" }}>

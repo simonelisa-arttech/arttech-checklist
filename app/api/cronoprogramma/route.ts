@@ -12,7 +12,7 @@ import {
 } from "@/lib/operativiSchedule";
 
 type RowKind = "INSTALLAZIONE" | "DISINSTALLAZIONE" | "INTERVENTO" | "CHECKLIST_TASK";
-type RowRef = { row_kind: RowKind; row_ref_id: string };
+type RowRef = { row_kind: RowKind; row_ref_id: string; slot_id?: string | null };
 type OperativiInput = {
   data_inizio?: string | null;
   durata_giorni?: string | number | null;
@@ -67,8 +67,8 @@ const REPORT_COMMENT_PREFIX = "__REPORT__:";
 const REPORT_OUTCOME_VALUES = new Set(["COMPLETATO", "PARZIALE", "NON_COMPLETATO"]);
 type ReportOutcome = "COMPLETATO" | "PARZIALE" | "NON_COMPLETATO";
 
-function rowKey(rowKind: string, rowRefId: string) {
-  return `${rowKind}:${rowRefId}`;
+function rowKey(rowKind: string, rowRefId: string, slotId?: string | null) {
+  return slotId ? `${rowKind}:${rowRefId}:${slotId}` : `${rowKind}:${rowRefId}`;
 }
 
 function isValidRowKind(value: string): value is RowKind {
@@ -174,6 +174,26 @@ function cleanUuidArray(values: unknown) {
   );
 }
 
+function cleanOptionalUuid(value: unknown) {
+  const normalized = String(value || "").trim();
+  return isUuidLike(normalized) ? normalized : null;
+}
+
+function applyExactSlotFilter<T extends { eq: Function; is: Function }>(query: T, slotId?: string | null) {
+  return slotId ? query.eq("slot_id", slotId) : query.is("slot_id", null);
+}
+
+function matchesSlotAwareRow(
+  row: { row_kind?: string | null; row_ref_id?: string | null; slot_id?: string | null; id?: string | null },
+  target: { row_kind: string; row_ref_id: string; slot_id?: string | null }
+) {
+  return (
+    String(row?.row_kind || "") === target.row_kind &&
+    String(row?.row_ref_id || "") === target.row_ref_id &&
+    String(row?.slot_id || row?.id || "") === String(target.slot_id || "")
+  );
+}
+
 function isMissingColumnError(error: unknown, column: string) {
   const message = String((error as any)?.message || "").toLowerCase();
   const target = String(column || "").trim().toLowerCase();
@@ -217,6 +237,7 @@ function toOperativiPayload(input: OperativiInput) {
 
 function mapMetaRow(row: any) {
   return {
+    slot_id: cleanOptionalUuid(row?.slot_id),
     fatto: Boolean(row?.fatto),
     hidden: Boolean(row?.hidden),
     updated_at: row?.updated_at || null,
@@ -250,6 +271,7 @@ function mapMetaRow(row: any) {
 function mapCommentRow(row: any) {
   return {
     id: row?.id,
+    slot_id: cleanOptionalUuid(row?.slot_id),
     commento: row?.commento || "",
     created_at: row?.created_at || null,
     created_by_operatore: row?.created_by_operatore || null,
@@ -259,6 +281,7 @@ function mapCommentRow(row: any) {
 
 function mapSlotRow(row: any) {
   return {
+    id: cleanOptionalUuid(row?.id),
     position:
       Number.isFinite(Number(row?.position)) && Number(row?.position) >= 0
         ? Number(row?.position)
@@ -292,6 +315,7 @@ type TimeBudgetRow = {
   id?: string | null;
   row_kind?: string | null;
   row_ref_id?: string | null;
+  slot_id?: string | null;
   operatore_id?: string | null;
   durata_effettiva_minuti?: number | null;
   stato?: string | null;
@@ -311,7 +335,7 @@ type TimeBudgetSummary = {
 };
 
 function buildTimeBudgetSummaries(params: {
-  normalizedRows: Array<{ row_kind: string; row_ref_id: string }>;
+  normalizedRows: Array<{ row_kind: string; row_ref_id: string; slot_id?: string | null }>;
   wanted: Set<string>;
   metaByKey: Record<string, any>;
   timbratureRows: TimeBudgetRow[];
@@ -331,7 +355,7 @@ function buildTimeBudgetSummaries(params: {
   const summaries: Record<string, TimeBudgetSummary> = {};
 
   for (const row of normalizedRows) {
-    const key = rowKey(row.row_kind, row.row_ref_id);
+    const key = rowKey(row.row_kind, row.row_ref_id, row.slot_id);
     summaries[key] = {
       stimatoMinuti: getOperativiEstimatedMinutes(metaByKey[key]) ?? null,
       realeMinuti: null,
@@ -341,7 +365,11 @@ function buildTimeBudgetSummaries(params: {
   }
 
   for (const row of timbratureRows || []) {
-    const key = rowKey(String(row?.row_kind || ""), String(row?.row_ref_id || ""));
+    const key = rowKey(
+      String(row?.row_kind || ""),
+      String(row?.row_ref_id || ""),
+      cleanOptionalUuid(row?.slot_id)
+    );
     if (!wanted.has(key)) continue;
     if (operatoreId && String(row?.operatore_id || "").trim() !== operatoreId) continue;
     if (!summaries[key]) {
@@ -449,6 +477,109 @@ async function loadOperatorePersonaleId(supabaseAdmin: any, operatoreId: string)
   return data?.personale_id ? String(data.personale_id) : null;
 }
 
+function buildSyntheticMetaFromSlotRow(row: any) {
+  const slot = mapSlotRow(row);
+  return {
+    slot_id: slot.id,
+    fatto: false,
+    hidden: false,
+    updated_at: null,
+    updated_by_operatore: null,
+    updated_by_nome: null,
+    data_inizio: slot.data_inizio,
+    durata_giorni: slot.durata_giorni,
+    durata_prevista_minuti: slot.durata_prevista_minuti,
+    modalita_attivita: null,
+    personale_previsto: slot.personale_previsto,
+    personale_ids: slot.personale_ids,
+    mezzi: slot.mezzi,
+    descrizione_attivita: slot.descrizione_attivita,
+    indirizzo: slot.indirizzo,
+    orario: slot.orario,
+    referente_cliente_nome: slot.referente_cliente_nome,
+    referente_cliente_contatto: slot.referente_cliente_contatto,
+    commerciale_art_tech_nome: slot.commerciale_art_tech_nome,
+    commerciale_art_tech_contatto: slot.commerciale_art_tech_contatto,
+  };
+}
+
+async function loadExactMetaRow(
+  supabaseAdmin: any,
+  rowKind: string,
+  rowRefId: string,
+  slotId?: string | null
+) {
+  let query = supabaseAdmin
+    .from("cronoprogramma_meta")
+    .select("*, operatore:updated_by_operatore(nome)")
+    .eq("row_kind", rowKind)
+    .eq("row_ref_id", rowRefId);
+  query = applyExactSlotFilter(query, slotId);
+  return query.maybeSingle();
+}
+
+async function writeExactMetaRow(
+  supabaseAdmin: any,
+  rowKind: string,
+  rowRefId: string,
+  slotId: string | null,
+  payload: Record<string, unknown>
+) {
+  const existingRes = await loadExactMetaRow(supabaseAdmin, rowKind, rowRefId, slotId);
+  if (
+    existingRes.error &&
+    !String(existingRes.error.message || "").toLowerCase().includes("cronoprogramma_meta")
+  ) {
+    return { data: null, error: existingRes.error };
+  }
+
+  const basePayload = {
+    row_kind: rowKind,
+    row_ref_id: rowRefId,
+    slot_id: slotId,
+    ...payload,
+  };
+
+  const runWrite = async (writePayload: Record<string, unknown>) => {
+    if (existingRes.data?.id) {
+      return supabaseAdmin
+        .from("cronoprogramma_meta")
+        .update(writePayload)
+        .eq("id", existingRes.data.id)
+        .select("*, operatore:updated_by_operatore(nome)")
+        .maybeSingle();
+    }
+    return supabaseAdmin
+      .from("cronoprogramma_meta")
+      .insert(writePayload)
+      .select("*, operatore:updated_by_operatore(nome)")
+      .maybeSingle();
+  };
+
+  let result = await runWrite(basePayload);
+  if (result.error && String(result.error.message || "").toLowerCase().includes("personale_ids")) {
+    const { personale_ids: _skip, ...legacyPayload } = basePayload as Record<string, unknown>;
+    result = await runWrite(legacyPayload);
+  }
+  return result;
+}
+
+async function loadCurrentSlotsForActivity(
+  supabaseAdmin: any,
+  rowKind: string,
+  rowRefId: string,
+  slotId?: string | null
+) {
+  let query = supabaseAdmin
+    .from("cronoprogramma_meta_slots")
+    .select("*")
+    .eq("row_kind", rowKind)
+    .eq("row_ref_id", rowRefId)
+    .order("position", { ascending: true });
+  query = slotId ? query.eq("id", slotId) : query;
+  return query;
+}
+
 export async function POST(request: Request) {
   const debug = new URL(request.url).searchParams.get("debug") === "1";
   const auth = await requireOperatore(request);
@@ -529,6 +660,37 @@ export async function POST(request: Request) {
       }
     }
 
+    const activeChecklistIds = Array.from(
+      new Set((checklists || []).map((row: any) => String(row?.id || "").trim()).filter(Boolean))
+    );
+    let slotRows: any[] = [];
+    if (activeChecklistIds.length > 0) {
+      const slotRes = await supabaseAdmin
+        .from("cronoprogramma_meta_slots")
+        .select(
+          "id, row_kind, row_ref_id, position, data_inizio, durata_prevista_minuti, personale_previsto, personale_ids, mezzi, descrizione_attivita, indirizzo, orario, referente_cliente_nome, referente_cliente_contatto, commerciale_art_tech_nome, commerciale_art_tech_contatto"
+        )
+        .in("row_ref_id", activeChecklistIds as any)
+        .in("row_kind", ["INSTALLAZIONE", "DISINSTALLAZIONE"] as any)
+        .order("position", { ascending: true });
+      if (
+        slotRes.error &&
+        !String(slotRes.error.message || "").toLowerCase().includes("cronoprogramma_meta_slots")
+      ) {
+        return NextResponse.json({ error: slotRes.error.message }, { status: 500 });
+      }
+      slotRows = slotRes.data || [];
+    }
+
+    const slotsByChecklistAndKind = new Map<string, any[]>();
+    for (const row of slotRows) {
+      const slotId = cleanOptionalUuid((row as any).id);
+      if (!slotId) continue;
+      const key = rowKey(String((row as any).row_kind || ""), String((row as any).row_ref_id || ""));
+      if (!slotsByChecklistAndKind.has(key)) slotsByChecklistAndKind.set(key, []);
+      slotsByChecklistAndKind.get(key)?.push(mapSlotRow(row));
+    }
+
     const timeline: any[] = [];
 
     for (const c of checklists || []) {
@@ -538,11 +700,45 @@ export async function POST(request: Request) {
 
       if (["IN_CORSO", "IN_LAVORAZIONE"].includes(statoProgetto)) {
         const date = toIsoDay(cc.data_tassativa) || toIsoDay(cc.data_prevista);
-        if (date && date >= CUTOFF_DATE) {
+        const installSlots = slotsByChecklistAndKind.get(rowKey("INSTALLAZIONE", String(cc.id))) || [];
+        if (installSlots.length > 0) {
+          for (const slot of installSlots) {
+            const slotDate = toIsoDay(slot.data_inizio) || date;
+            if (!slotDate || slotDate < CUTOFF_DATE) continue;
+            timeline.push({
+              kind: "INSTALLAZIONE",
+              id: `install:${cc.id}:${slot.id}`,
+              row_ref_id: cc.id,
+              slot_id: slot.id,
+              slot_date: slotDate,
+              slot_hours:
+                Number.isFinite(Number(slot.durata_prevista_minuti)) && Number(slot.durata_prevista_minuti) >= 0
+                  ? Number(slot.durata_prevista_minuti) / 60
+                  : null,
+              slot_orario: slot.orario || null,
+              data_prevista: slotDate,
+              data_tassativa: slotDate,
+              cliente: String(cc.cliente || "—"),
+              checklist_id: cc.id,
+              progetto: String(cc.nome_checklist || cc.id),
+              proforma: cc.proforma ?? null,
+              tipologia: normalizeUpper(cc.noleggio_vendita || "INSTALLAZIONE"),
+              descrizione:
+                [cc.tipo_impianto || "", cc.noleggio_vendita || ""].filter(Boolean).join(" · ") ||
+                "Installazione pianificata",
+              stato: "PIANIFICATA",
+              fatto: false,
+            });
+          }
+        } else if (date && date >= CUTOFF_DATE) {
           timeline.push({
             kind: "INSTALLAZIONE",
             id: `install:${cc.id}`,
             row_ref_id: cc.id,
+            slot_id: null,
+            slot_date: null,
+            slot_hours: null,
+            slot_orario: null,
             data_prevista: toIsoDay(cc.data_prevista) || date,
             data_tassativa: toIsoDay(cc.data_tassativa) || date,
             cliente: String(cc.cliente || "—"),
@@ -561,11 +757,46 @@ export async function POST(request: Request) {
 
       if (isNoleggio && ["IN_CORSO", "IN_LAVORAZIONE", "CONSEGNATO"].includes(statoProgetto)) {
         const disinstallDate = toIsoDay(cc.data_disinstallazione);
-        if (disinstallDate && disinstallDate >= CUTOFF_DATE) {
+        const disinstallSlots =
+          slotsByChecklistAndKind.get(rowKey("DISINSTALLAZIONE", String(cc.id))) || [];
+        if (disinstallSlots.length > 0) {
+          for (const slot of disinstallSlots) {
+            const slotDate = toIsoDay(slot.data_inizio) || disinstallDate;
+            if (!slotDate || slotDate < CUTOFF_DATE) continue;
+            timeline.push({
+              kind: "DISINSTALLAZIONE",
+              id: `disinstall:${cc.id}:${slot.id}`,
+              row_ref_id: cc.id,
+              slot_id: slot.id,
+              slot_date: slotDate,
+              slot_hours:
+                Number.isFinite(Number(slot.durata_prevista_minuti)) && Number(slot.durata_prevista_minuti) >= 0
+                  ? Number(slot.durata_prevista_minuti) / 60
+                  : null,
+              slot_orario: slot.orario || null,
+              data_prevista: slotDate,
+              data_tassativa: slotDate,
+              cliente: String(cc.cliente || "—"),
+              checklist_id: cc.id,
+              progetto: String(cc.nome_checklist || cc.id),
+              proforma: cc.proforma ?? null,
+              tipologia: "NOLEGGIO",
+              descrizione:
+                [cc.tipo_impianto || "", "SMONTAGGIO NOLEGGIO"].filter(Boolean).join(" · ") ||
+                "Smontaggio noleggio pianificato",
+              stato: "PIANIFICATA",
+              fatto: false,
+            });
+          }
+        } else if (disinstallDate && disinstallDate >= CUTOFF_DATE) {
           timeline.push({
             kind: "DISINSTALLAZIONE",
             id: `disinstall:${cc.id}`,
             row_ref_id: cc.id,
+            slot_id: null,
+            slot_date: null,
+            slot_hours: null,
+            slot_orario: null,
             data_prevista: disinstallDate,
             data_tassativa: disinstallDate,
             cliente: String(cc.cliente || "—"),
@@ -596,6 +827,10 @@ export async function POST(request: Request) {
         kind: "INTERVENTO",
         id: `intervento:${ii.id}`,
         row_ref_id: ii.id,
+        slot_id: null,
+        slot_date: null,
+        slot_hours: null,
+        slot_orario: null,
         data_prevista: prevista,
         data_tassativa: tassativa,
         cliente: String(ii.cliente || c?.cliente || "—"),
@@ -625,6 +860,7 @@ export async function POST(request: Request) {
       .map((r) => ({
         row_kind: String(r?.row_kind || "").toUpperCase(),
         row_ref_id: String(r?.row_ref_id || "").trim(),
+        slot_id: cleanOptionalUuid(r?.slot_id),
       }))
       .filter((r) => isValidRowKind(r.row_kind) && r.row_ref_id);
 
@@ -712,7 +948,7 @@ export async function POST(request: Request) {
 
     const rowIds = Array.from(new Set(normalizedRows.map((r) => r.row_ref_id)));
     const rowKinds = Array.from(new Set(normalizedRows.map((r) => r.row_kind)));
-    const wanted = new Set(normalizedRows.map((r) => rowKey(r.row_kind, r.row_ref_id)));
+    const wanted = new Set(normalizedRows.map((r) => rowKey(r.row_kind, r.row_ref_id, r.slot_id)));
 
     let metaRows: any[] | null = null;
     let metaErr: any = null;
@@ -745,7 +981,7 @@ export async function POST(request: Request) {
       const res = await supabaseAdmin
         .from("cronoprogramma_meta_slots")
         .select(
-          "row_kind, row_ref_id, position, data_inizio, durata_prevista_minuti, personale_previsto, personale_ids, mezzi, descrizione_attivita, indirizzo, orario, referente_cliente_nome, referente_cliente_contatto, commerciale_art_tech_nome, commerciale_art_tech_contatto"
+          "id, row_kind, row_ref_id, position, data_inizio, durata_prevista_minuti, personale_previsto, personale_ids, mezzi, descrizione_attivita, indirizzo, orario, referente_cliente_nome, referente_cliente_contatto, commerciale_art_tech_nome, commerciale_art_tech_contatto"
         )
         .in("row_ref_id", rowIds)
         .in("row_kind", rowKinds as any)
@@ -783,7 +1019,7 @@ export async function POST(request: Request) {
 
     const { data: commentRows, error: commErr } = await supabaseAdmin
       .from("cronoprogramma_comments")
-      .select("id, row_kind, row_ref_id, commento, created_at, created_by_operatore, operatore:created_by_operatore(nome)")
+      .select("id, row_kind, row_ref_id, slot_id, commento, created_at, created_by_operatore, operatore:created_by_operatore(nome)")
       .in("row_ref_id", rowIds)
       .in("row_kind", rowKinds as any)
       .order("created_at", { ascending: false });
@@ -794,7 +1030,7 @@ export async function POST(request: Request) {
 
     const { data: timbratureRows, error: timbratureErr } = await supabaseAdmin
       .from("cronoprogramma_timbrature")
-      .select("id, row_kind, row_ref_id, operatore_id, durata_effettiva_minuti, stato, started_at")
+      .select("id, row_kind, row_ref_id, slot_id, operatore_id, durata_effettiva_minuti, stato, started_at")
       .in("row_ref_id", rowIds)
       .in("row_kind", rowKinds as any)
       .order("created_at", { ascending: false });
@@ -808,17 +1044,26 @@ export async function POST(request: Request) {
 
     const metaByKey: Record<string, any> = {};
     for (const row of metaRows || []) {
-      const key = rowKey(String((row as any).row_kind), String((row as any).row_ref_id));
+      const key = rowKey(
+        String((row as any).row_kind),
+        String((row as any).row_ref_id),
+        cleanOptionalUuid((row as any).slot_id)
+      );
       if (!wanted.has(key)) continue;
       metaByKey[key] = mapMetaRow(row as any);
     }
 
     const slotsByKey: Record<string, any[]> = {};
+    const slotById = new Map<string, any>();
     for (const row of slotRows || []) {
+      const slotId = cleanOptionalUuid((row as any).id);
       const key = rowKey(String((row as any).row_kind), String((row as any).row_ref_id));
-      if (!wanted.has(key)) continue;
       if (!slotsByKey[key]) slotsByKey[key] = [];
-      slotsByKey[key].push(mapSlotRow(row as any));
+      const mappedSlot = mapSlotRow(row as any);
+      slotsByKey[key].push(mappedSlot);
+      if (slotId) {
+        slotById.set(slotId, row as any);
+      }
     }
     for (const [key, slots] of Object.entries(slotsByKey)) {
       if (slots.length > 0) {
@@ -831,7 +1076,7 @@ export async function POST(request: Request) {
 
     const referentiByKey: Record<string, any[]> = {};
     for (const row of referentiRows || []) {
-      const key = rowKey(String((row as any).row_kind), String((row as any).row_ref_id));
+      const key = rowKey(String((row as any).row_kind), String((row as any).row_ref_id), null);
       if (!wanted.has(key)) continue;
       if (!referentiByKey[key]) referentiByKey[key] = [];
       referentiByKey[key].push(mapReferenteRow(row as any));
@@ -848,12 +1093,26 @@ export async function POST(request: Request) {
     const commentsByKey: Record<string, any[]> = {};
     const latestReportOutcomeByKey: Record<string, ReportOutcome | null> = {};
     for (const row of commentRows || []) {
-      const key = rowKey(String((row as any).row_kind), String((row as any).row_ref_id));
+      const key = rowKey(
+        String((row as any).row_kind),
+        String((row as any).row_ref_id),
+        cleanOptionalUuid((row as any).slot_id)
+      );
       if (!wanted.has(key)) continue;
       if (!commentsByKey[key]) commentsByKey[key] = [];
       commentsByKey[key].push(mapCommentRow(row));
       if (!(key in latestReportOutcomeByKey)) {
         latestReportOutcomeByKey[key] = parseStructuredReportOutcome((row as any).commento);
+      }
+    }
+
+    for (const row of normalizedRows) {
+      if (!row.slot_id) continue;
+      const key = rowKey(row.row_kind, row.row_ref_id, row.slot_id);
+      if (metaByKey[key]) continue;
+      const slotRow = slotById.get(row.slot_id);
+      if (slotRow && matchesSlotAwareRow(slotRow, row)) {
+        metaByKey[key] = buildSyntheticMetaFromSlotRow(slotRow);
       }
     }
 
@@ -917,6 +1176,7 @@ export async function POST(request: Request) {
   if (action === "complete_activity") {
     const rowKind = String(body?.row_kind || "").trim().toUpperCase();
     const rowRefId = String(body?.row_ref_id || "").trim();
+    const slotId = cleanOptionalUuid(body?.slot_id);
     const esitoAttivita = String(body?.esito_attivita || "").trim().toUpperCase();
     const noteFinali = String(body?.note_finali || "").trim();
     const problemi = cleanText(body?.problemi);
@@ -940,12 +1200,12 @@ export async function POST(request: Request) {
       materiali,
     };
 
-    const { data: currentMeta, error: currentMetaErr } = await supabaseAdmin
-      .from("cronoprogramma_meta")
-      .select("*")
-      .eq("row_kind", rowKind)
-      .eq("row_ref_id", rowRefId)
-      .maybeSingle();
+    const { data: currentMeta, error: currentMetaErr } = await loadExactMetaRow(
+      supabaseAdmin,
+      rowKind,
+      rowRefId,
+      slotId
+    );
 
     if (
       currentMetaErr &&
@@ -954,12 +1214,12 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: currentMetaErr.message }, { status: 500 });
     }
 
-    const { data: currentSlots, error: currentSlotsErr } = await supabaseAdmin
-      .from("cronoprogramma_meta_slots")
-      .select("*")
-      .eq("row_kind", rowKind)
-      .eq("row_ref_id", rowRefId)
-      .order("position", { ascending: true });
+    const { data: currentSlots, error: currentSlotsErr } = await loadCurrentSlotsForActivity(
+      supabaseAdmin,
+      rowKind,
+      rowRefId,
+      slotId
+    );
 
     if (
       currentSlotsErr &&
@@ -969,28 +1229,18 @@ export async function POST(request: Request) {
     }
 
     const payload = {
-      row_kind: rowKind,
-      row_ref_id: rowRefId,
       fatto: true,
       updated_at: nowIso,
       updated_by_operatore: operatore.id,
     };
 
-    let { data, error } = await supabaseAdmin
-      .from("cronoprogramma_meta")
-      .upsert(payload, { onConflict: "row_kind,row_ref_id" })
-      .select("*, operatore:updated_by_operatore(nome)")
-      .maybeSingle();
-
-    if (error && String(error.message || "").toLowerCase().includes("personale_ids")) {
-      const retry = await supabaseAdmin
-        .from("cronoprogramma_meta")
-        .upsert(payload, { onConflict: "row_kind,row_ref_id" })
-        .select("*, operatore:updated_by_operatore(nome)")
-        .maybeSingle();
-      data = retry.data;
-      error = retry.error;
-    }
+    const { data, error } = await writeExactMetaRow(
+      supabaseAdmin,
+      rowKind,
+      rowRefId,
+      slotId,
+      payload
+    );
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 });
@@ -999,6 +1249,7 @@ export async function POST(request: Request) {
     const { error: eventErr } = await supabaseAdmin.from("cronoprogramma_activity_events").insert({
       row_kind: rowKind,
       row_ref_id: rowRefId,
+      slot_id: slotId,
       event_type: "COMPLETATO",
       esito_attivita: report.esito_attivita,
       note_finali: report.note_finali,
@@ -1022,6 +1273,7 @@ export async function POST(request: Request) {
         {
           row_kind: rowKind,
           row_ref_id: rowRefId,
+          slot_id: slotId,
           commento: buildReadableCompletionComment(report),
           created_by_operatore: operatore.id,
           created_at: readableCommentCreatedAt,
@@ -1029,12 +1281,13 @@ export async function POST(request: Request) {
         {
           row_kind: rowKind,
           row_ref_id: rowRefId,
+          slot_id: slotId,
           commento: buildStructuredReportComment(report),
           created_by_operatore: operatore.id,
           created_at: structuredCommentCreatedAt,
         },
       ])
-      .select("id, row_kind, row_ref_id, commento, created_at, created_by_operatore, operatore:created_by_operatore(nome)");
+      .select("id, row_kind, row_ref_id, slot_id, commento, created_at, created_by_operatore, operatore:created_by_operatore(nome)");
 
     if (commentErr) {
       return NextResponse.json({ error: commentErr.message }, { status: 500 });
@@ -1050,6 +1303,7 @@ export async function POST(request: Request) {
   if (action === "reschedule_activity") {
     const rowKind = String(body?.row_kind || "").trim().toUpperCase();
     const rowRefId = String(body?.row_ref_id || "").trim();
+    const slotId = cleanOptionalUuid(body?.slot_id);
     if (!(rowKind === "INSTALLAZIONE" || rowKind === "DISINSTALLAZIONE" || rowKind === "INTERVENTO") || !rowRefId) {
       return NextResponse.json({ error: "row_kind/row_ref_id non validi" }, { status: 400 });
     }
@@ -1082,12 +1336,12 @@ export async function POST(request: Request) {
       commerciale_art_tech_contatto: cleanText(body?.commerciale_art_tech_contatto),
     };
 
-    const { data: currentMeta, error: currentMetaErr } = await supabaseAdmin
-      .from("cronoprogramma_meta")
-      .select("*")
-      .eq("row_kind", rowKind)
-      .eq("row_ref_id", rowRefId)
-      .maybeSingle();
+    const { data: currentMeta, error: currentMetaErr } = await loadExactMetaRow(
+      supabaseAdmin,
+      rowKind,
+      rowRefId,
+      slotId
+    );
 
     if (
       currentMetaErr &&
@@ -1096,12 +1350,12 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: currentMetaErr.message }, { status: 500 });
     }
 
-    const { data: currentSlots, error: currentSlotsErr } = await supabaseAdmin
-      .from("cronoprogramma_meta_slots")
-      .select("*")
-      .eq("row_kind", rowKind)
-      .eq("row_ref_id", rowRefId)
-      .order("position", { ascending: true });
+    const { data: currentSlots, error: currentSlotsErr } = await loadCurrentSlotsForActivity(
+      supabaseAdmin,
+      rowKind,
+      rowRefId,
+      slotId
+    );
 
     if (
       currentSlotsErr &&
@@ -1112,8 +1366,6 @@ export async function POST(request: Request) {
 
     const nowIso = new Date().toISOString();
     const metaPayload = {
-      row_kind: rowKind,
-      row_ref_id: rowRefId,
       fatto: false,
       hidden: false,
       ...toOperativiPayload({
@@ -1135,72 +1387,129 @@ export async function POST(request: Request) {
       updated_by_operatore: operatore.id,
     };
 
-    let { data: updatedMetaRow, error: metaErr } = await supabaseAdmin
-      .from("cronoprogramma_meta")
-      .upsert(metaPayload, { onConflict: "row_kind,row_ref_id" })
-      .select("*, operatore:updated_by_operatore(nome)")
-      .maybeSingle();
-
-    if (metaErr && String(metaErr.message || "").toLowerCase().includes("personale_ids")) {
-      const { personale_ids: _skip, ...legacyPayload } = metaPayload as Record<string, unknown>;
-      const retry = await supabaseAdmin
-        .from("cronoprogramma_meta")
-        .upsert(legacyPayload, { onConflict: "row_kind,row_ref_id" })
-        .select("*, operatore:updated_by_operatore(nome)")
-        .maybeSingle();
-      updatedMetaRow = retry.data;
-      metaErr = retry.error;
-    }
+    const { data: updatedMetaRow, error: metaErr } = await writeExactMetaRow(
+      supabaseAdmin,
+      rowKind,
+      rowRefId,
+      slotId,
+      metaPayload
+    );
 
     if (metaErr) {
       return NextResponse.json({ error: metaErr.message }, { status: 500 });
     }
 
-    const { error: deleteSlotsErr } = await supabaseAdmin
-      .from("cronoprogramma_meta_slots")
-      .delete()
-      .eq("row_kind", rowKind)
-      .eq("row_ref_id", rowRefId);
+    const currentSlotPosition =
+      Number.isFinite(Number((currentSlots || [])[0]?.position)) && Number((currentSlots || [])[0]?.position) >= 0
+        ? Number((currentSlots || [])[0]?.position)
+        : 0;
 
-    if (deleteSlotsErr) {
-      return NextResponse.json({ error: deleteSlotsErr.message }, { status: 500 });
-    }
-
-    const newSlotPayload = {
-      row_kind: rowKind,
-      row_ref_id: rowRefId,
-      ...toOperativiSlotPayload(
-        {
-          data_inizio: rescheduleInput.data_inizio,
-          durata_prevista_minuti: rescheduleInput.durata_prevista_minuti,
-          personale_previsto: rescheduleInput.personale_previsto,
-          personale_ids: rescheduleInput.personale_ids,
-          mezzi: rescheduleInput.mezzi,
-          descrizione_attivita: rescheduleInput.descrizione_attivita,
-          indirizzo: rescheduleInput.indirizzo,
-          orario: rescheduleInput.orario,
-          referente_cliente_nome: rescheduleInput.referente_cliente_nome,
-          referente_cliente_contatto: rescheduleInput.referente_cliente_contatto,
-          commerciale_art_tech_nome: rescheduleInput.commerciale_art_tech_nome,
-          commerciale_art_tech_contatto: rescheduleInput.commerciale_art_tech_contatto,
-        },
-        0
-      ),
-    };
+    const newSlotPayload = toOperativiSlotPayload(
+      {
+        data_inizio: rescheduleInput.data_inizio,
+        durata_prevista_minuti: rescheduleInput.durata_prevista_minuti,
+        personale_previsto: rescheduleInput.personale_previsto,
+        personale_ids: rescheduleInput.personale_ids,
+        mezzi: rescheduleInput.mezzi,
+        descrizione_attivita: rescheduleInput.descrizione_attivita,
+        indirizzo: rescheduleInput.indirizzo,
+        orario: rescheduleInput.orario,
+        referente_cliente_nome: rescheduleInput.referente_cliente_nome,
+        referente_cliente_contatto: rescheduleInput.referente_cliente_contatto,
+        commerciale_art_tech_nome: rescheduleInput.commerciale_art_tech_nome,
+        commerciale_art_tech_contatto: rescheduleInput.commerciale_art_tech_contatto,
+      },
+      slotId ? currentSlotPosition : 0
+    );
 
     let insertedSlots: any[] = [];
-    const { data: insertedSlotRows, error: insertSlotErr } = await supabaseAdmin
-      .from("cronoprogramma_meta_slots")
-      .insert([newSlotPayload])
-      .select(
-        "position, data_inizio, durata_giorni, durata_prevista_minuti, personale_previsto, personale_ids, mezzi, descrizione_attivita, indirizzo, orario, referente_cliente_nome, referente_cliente_contatto, commerciale_art_tech_nome, commerciale_art_tech_contatto"
-      )
-      .order("position", { ascending: true });
+    if (slotId) {
+      const { data: insertedSlotRows, error: updateSlotErr } = await supabaseAdmin
+        .from("cronoprogramma_meta_slots")
+        .update(newSlotPayload)
+        .eq("id", slotId)
+        .eq("row_kind", rowKind)
+        .eq("row_ref_id", rowRefId)
+        .select(
+          "id, position, data_inizio, durata_giorni, durata_prevista_minuti, personale_previsto, personale_ids, mezzi, descrizione_attivita, indirizzo, orario, referente_cliente_nome, referente_cliente_contatto, commerciale_art_tech_nome, commerciale_art_tech_contatto"
+        )
+        .order("position", { ascending: true });
+      if (updateSlotErr) {
+        return NextResponse.json({ error: updateSlotErr.message }, { status: 500 });
+      }
+      insertedSlots = (insertedSlotRows || []).map((row) => mapSlotRow(row));
+    } else {
+      const { error: deleteSlotsErr } = await supabaseAdmin
+        .from("cronoprogramma_meta_slots")
+        .delete()
+        .eq("row_kind", rowKind)
+        .eq("row_ref_id", rowRefId);
 
-    if (insertSlotErr) {
-      return NextResponse.json({ error: insertSlotErr.message }, { status: 500 });
+      if (deleteSlotsErr) {
+        return NextResponse.json({ error: deleteSlotsErr.message }, { status: 500 });
+      }
+
+      const { data: insertedSlotRows, error: insertSlotErr } = await supabaseAdmin
+        .from("cronoprogramma_meta_slots")
+        .insert([
+          {
+            row_kind: rowKind,
+            row_ref_id: rowRefId,
+            ...newSlotPayload,
+          },
+        ])
+        .select(
+          "id, position, data_inizio, durata_giorni, durata_prevista_minuti, personale_previsto, personale_ids, mezzi, descrizione_attivita, indirizzo, orario, referente_cliente_nome, referente_cliente_contatto, commerciale_art_tech_nome, commerciale_art_tech_contatto"
+        )
+        .order("position", { ascending: true });
+
+      if (insertSlotErr) {
+        return NextResponse.json({ error: insertSlotErr.message }, { status: 500 });
+      }
+      insertedSlots = (insertedSlotRows || []).map((row) => mapSlotRow(row));
     }
-    insertedSlots = (insertedSlotRows || []).map((row) => mapSlotRow(row));
+
+    if (rowKind === "DISINSTALLAZIONE") {
+      let primaryDate = rescheduleInput.data_inizio || null;
+      if (slotId) {
+        const { data: allDisinstallSlots } = await supabaseAdmin
+          .from("cronoprogramma_meta_slots")
+          .select("data_inizio")
+          .eq("row_kind", rowKind)
+          .eq("row_ref_id", rowRefId)
+          .order("data_inizio", { ascending: true });
+        primaryDate =
+          (allDisinstallSlots || [])
+            .map((slot: any) => normalizeOperativiDate(slot?.data_inizio))
+            .filter(Boolean)[0] || primaryDate;
+      }
+
+      const { error: checklistSyncErr } = await supabaseAdmin
+        .from("checklists")
+        .update({ data_disinstallazione: primaryDate })
+        .eq("id", rowRefId);
+
+      if (checklistSyncErr && !isMissingColumnError(checklistSyncErr, "data_disinstallazione")) {
+        return NextResponse.json(
+          { error: `Errore sync checklists.data_disinstallazione: ${checklistSyncErr.message}` },
+          { status: 500 }
+        );
+      }
+
+      const { error: impiantiSyncErr } = await supabaseAdmin
+        .from("checklist_impianti")
+        .update({ data_disinstallazione: primaryDate })
+        .eq("checklist_id", rowRefId);
+
+      if (impiantiSyncErr && !isMissingColumnError(impiantiSyncErr, "data_disinstallazione")) {
+        return NextResponse.json(
+          {
+            error: `Errore sync checklist_impianti.data_disinstallazione: ${impiantiSyncErr.message}`,
+          },
+          { status: 500 }
+        );
+      }
+    }
 
     const mappedMeta = mapMetaRow(updatedMetaRow as any);
     const newMeta = {
@@ -1211,6 +1520,7 @@ export async function POST(request: Request) {
     const { error: eventErr } = await supabaseAdmin.from("cronoprogramma_activity_events").insert({
       row_kind: rowKind,
       row_ref_id: rowRefId,
+      slot_id: slotId,
       event_type: "RIMANDATO",
       motivo_rimando: rescheduleInput.motivo_rimando,
       old_meta: currentMeta || null,
@@ -1230,11 +1540,12 @@ export async function POST(request: Request) {
       .insert({
         row_kind: rowKind,
         row_ref_id: rowRefId,
+        slot_id: slotId,
         commento: buildReadableRescheduleComment(rescheduleInput),
         created_by_operatore: operatore.id,
         created_at: nowIso,
       })
-      .select("id, row_kind, row_ref_id, commento, created_at, created_by_operatore, operatore:created_by_operatore(nome)")
+      .select("id, row_kind, row_ref_id, slot_id, commento, created_at, created_by_operatore, operatore:created_by_operatore(nome)")
       .single();
 
     if (commentErr) {
@@ -1251,35 +1562,25 @@ export async function POST(request: Request) {
   if (action === "set_fatto") {
     const rowKind = String(body?.row_kind || "").trim().toUpperCase();
     const rowRefId = String(body?.row_ref_id || "").trim();
+    const slotId = cleanOptionalUuid(body?.slot_id);
     const fatto = Boolean(body?.fatto);
     if (!(rowKind === "INSTALLAZIONE" || rowKind === "DISINSTALLAZIONE" || rowKind === "INTERVENTO") || !rowRefId) {
       return NextResponse.json({ error: "row_kind/row_ref_id non validi" }, { status: 400 });
     }
 
     const payload = {
-      row_kind: rowKind,
-      row_ref_id: rowRefId,
       fatto,
       updated_at: new Date().toISOString(),
       updated_by_operatore: operatore.id,
     };
 
-    let { data, error } = await supabaseAdmin
-      .from("cronoprogramma_meta")
-      .upsert(payload, { onConflict: "row_kind,row_ref_id" })
-      .select("*, operatore:updated_by_operatore(nome)")
-      .maybeSingle();
-
-    if (error && String(error.message || "").toLowerCase().includes("personale_ids")) {
-      const { personale_ids: _skip, ...payloadLegacy } = payload as Record<string, unknown>;
-      const retry = await supabaseAdmin
-        .from("cronoprogramma_meta")
-        .upsert(payloadLegacy, { onConflict: "row_kind,row_ref_id" })
-        .select("*, operatore:updated_by_operatore(nome)")
-        .maybeSingle();
-      data = retry.data;
-      error = retry.error;
-    }
+    const { data, error } = await writeExactMetaRow(
+      supabaseAdmin,
+      rowKind,
+      rowRefId,
+      slotId,
+      payload
+    );
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 });
@@ -1294,24 +1595,25 @@ export async function POST(request: Request) {
   if (action === "set_hidden") {
     const rowKind = String(body?.row_kind || "").trim().toUpperCase();
     const rowRefId = String(body?.row_ref_id || "").trim();
+    const slotId = cleanOptionalUuid(body?.slot_id);
     const hidden = Boolean(body?.hidden);
     if (!(rowKind === "INSTALLAZIONE" || rowKind === "DISINSTALLAZIONE" || rowKind === "INTERVENTO") || !rowRefId) {
       return NextResponse.json({ error: "row_kind/row_ref_id non validi" }, { status: 400 });
     }
 
     const payload = {
-      row_kind: rowKind,
-      row_ref_id: rowRefId,
       hidden,
       updated_at: new Date().toISOString(),
       updated_by_operatore: operatore.id,
     };
 
-    const { data, error } = await supabaseAdmin
-      .from("cronoprogramma_meta")
-      .upsert(payload, { onConflict: "row_kind,row_ref_id" })
-      .select("*, operatore:updated_by_operatore(nome)")
-      .maybeSingle();
+    const { data, error } = await writeExactMetaRow(
+      supabaseAdmin,
+      rowKind,
+      rowRefId,
+      slotId,
+      payload
+    );
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 });
@@ -1326,23 +1628,24 @@ export async function POST(request: Request) {
   if (action === "set_operativi") {
     const rowKind = String(body?.row_kind || "").trim().toUpperCase();
     const rowRefId = String(body?.row_ref_id || "").trim();
+    const slotId = cleanOptionalUuid(body?.slot_id);
     if (!(rowKind === "INSTALLAZIONE" || rowKind === "DISINSTALLAZIONE" || rowKind === "INTERVENTO") || !rowRefId) {
       return NextResponse.json({ error: "row_kind/row_ref_id non validi" }, { status: 400 });
     }
 
     const payload = {
-      row_kind: rowKind,
-      row_ref_id: rowRefId,
       ...toOperativiPayload(body || {}),
       updated_at: new Date().toISOString(),
       updated_by_operatore: operatore.id,
     };
 
-    const { data, error } = await supabaseAdmin
-      .from("cronoprogramma_meta")
-      .upsert(payload, { onConflict: "row_kind,row_ref_id" })
-      .select("*, operatore:updated_by_operatore(nome)")
-      .maybeSingle();
+    const { data, error } = await writeExactMetaRow(
+      supabaseAdmin,
+      rowKind,
+      rowRefId,
+      slotId,
+      payload
+    );
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 });
@@ -1350,7 +1653,7 @@ export async function POST(request: Request) {
 
     let slotsResponse: any[] | undefined;
     let normalizedSlotsForSync: ReturnType<typeof toOperativiSlotPayload>[] | null = null;
-    if (Array.isArray(body?.slots)) {
+    if (Array.isArray(body?.slots) && !slotId) {
       const { error: deleteSlotsErr } = await supabaseAdmin
         .from("cronoprogramma_meta_slots")
         .delete()
@@ -1381,7 +1684,7 @@ export async function POST(request: Request) {
           .from("cronoprogramma_meta_slots")
           .insert(insertPayload)
           .select(
-            "position, data_inizio, durata_prevista_minuti, personale_previsto, personale_ids, mezzi, descrizione_attivita, indirizzo, orario, referente_cliente_nome, referente_cliente_contatto, commerciale_art_tech_nome, commerciale_art_tech_contatto"
+            "id, position, data_inizio, durata_prevista_minuti, personale_previsto, personale_ids, mezzi, descrizione_attivita, indirizzo, orario, referente_cliente_nome, referente_cliente_contatto, commerciale_art_tech_nome, commerciale_art_tech_contatto"
           )
           .order("position", { ascending: true });
 
@@ -1393,13 +1696,62 @@ export async function POST(request: Request) {
       } else {
         slotsResponse = [];
       }
+    } else if (slotId) {
+      const { data: currentSlotRows, error: currentSlotErr } = await loadCurrentSlotsForActivity(
+        supabaseAdmin,
+        rowKind,
+        rowRefId,
+        slotId
+      );
+      if (
+        currentSlotErr &&
+        !String(currentSlotErr.message || "").toLowerCase().includes("cronoprogramma_meta_slots")
+      ) {
+        return NextResponse.json({ error: currentSlotErr.message }, { status: 500 });
+      }
+
+      const currentSlotPosition =
+        Number.isFinite(Number((currentSlotRows || [])[0]?.position)) &&
+        Number((currentSlotRows || [])[0]?.position) >= 0
+          ? Number((currentSlotRows || [])[0]?.position)
+          : 0;
+      const slotPayload = toOperativiSlotPayload(body || {}, currentSlotPosition);
+      const { data: updatedSlotRows, error: updateSlotErr } = await supabaseAdmin
+        .from("cronoprogramma_meta_slots")
+        .update(slotPayload)
+        .eq("id", slotId)
+        .eq("row_kind", rowKind)
+        .eq("row_ref_id", rowRefId)
+        .select(
+          "id, position, data_inizio, durata_prevista_minuti, personale_previsto, personale_ids, mezzi, descrizione_attivita, indirizzo, orario, referente_cliente_nome, referente_cliente_contatto, commerciale_art_tech_nome, commerciale_art_tech_contatto"
+        )
+        .order("position", { ascending: true });
+
+      if (updateSlotErr) {
+        return NextResponse.json({ error: updateSlotErr.message }, { status: 500 });
+      }
+
+      slotsResponse = (updatedSlotRows || []).map((row) => mapSlotRow(row));
     }
 
     if (rowKind === "DISINSTALLAZIONE") {
-      const primaryDate =
+      let primaryDate =
         normalizedSlotsForSync?.find((slot) => String(slot.data_inizio || "").trim())?.data_inizio ||
         normalizeOperativiDate(body?.data_inizio) ||
         null;
+
+      if (slotId) {
+        const { data: allDisinstallSlots } = await supabaseAdmin
+          .from("cronoprogramma_meta_slots")
+          .select("data_inizio")
+          .eq("row_kind", rowKind)
+          .eq("row_ref_id", rowRefId)
+          .order("data_inizio", { ascending: true });
+        primaryDate =
+          (allDisinstallSlots || [])
+            .map((slot: any) => normalizeOperativiDate(slot?.data_inizio))
+            .filter(Boolean)[0] || primaryDate;
+      }
 
       const { error: checklistSyncErr } = await supabaseAdmin
         .from("checklists")
@@ -1485,11 +1837,12 @@ export async function POST(request: Request) {
   if (action === "start_timbratura") {
     const rowKind = String(body?.row_kind || "").trim().toUpperCase();
     const rowRefId = String(body?.row_ref_id || "").trim();
+    const slotId = cleanOptionalUuid(body?.slot_id);
     if (!isValidRowKind(rowKind) || !isUuidLike(rowRefId)) {
       return NextResponse.json({ error: "row_kind/row_ref_id non validi" }, { status: 400 });
     }
 
-    const { data: existingOpen, error: existingErr } = await supabaseAdmin
+    let existingOpenQuery = supabaseAdmin
       .from("cronoprogramma_timbrature")
       .select("id")
       .eq("row_kind", rowKind)
@@ -1497,8 +1850,9 @@ export async function POST(request: Request) {
       .eq("operatore_id", operatore.id)
       .eq("stato", "IN_CORSO")
       .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
+      .limit(1);
+    existingOpenQuery = applyExactSlotFilter(existingOpenQuery, slotId);
+    const { data: existingOpen, error: existingErr } = await existingOpenQuery.maybeSingle();
 
     if (existingErr) {
       return NextResponse.json({ error: existingErr.message }, { status: 500 });
@@ -1520,6 +1874,7 @@ export async function POST(request: Request) {
       .insert({
         row_kind: rowKind,
         row_ref_id: rowRefId,
+        slot_id: slotId,
         operatore_id: operatore.id,
         personale_id: personaleId,
         started_at: nowIso,
@@ -1551,11 +1906,12 @@ export async function POST(request: Request) {
   if (action === "pause_timbratura") {
     const rowKind = String(body?.row_kind || "").trim().toUpperCase();
     const rowRefId = String(body?.row_ref_id || "").trim();
+    const slotId = cleanOptionalUuid(body?.slot_id);
     if (!isValidRowKind(rowKind) || !isUuidLike(rowRefId)) {
       return NextResponse.json({ error: "row_kind/row_ref_id non validi" }, { status: 400 });
     }
 
-    const { data: openTimbratura, error: openErr } = await supabaseAdmin
+    let openTimbraturaQuery = supabaseAdmin
       .from("cronoprogramma_timbrature")
       .select("id, started_at")
       .eq("row_kind", rowKind)
@@ -1563,8 +1919,9 @@ export async function POST(request: Request) {
       .eq("operatore_id", operatore.id)
       .eq("stato", "IN_CORSO")
       .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
+      .limit(1);
+    openTimbraturaQuery = applyExactSlotFilter(openTimbraturaQuery, slotId);
+    const { data: openTimbratura, error: openErr } = await openTimbraturaQuery.maybeSingle();
 
     if (openErr) {
       return NextResponse.json({ error: openErr.message }, { status: 500 });
@@ -1639,11 +1996,12 @@ export async function POST(request: Request) {
   if (action === "resume_timbratura") {
     const rowKind = String(body?.row_kind || "").trim().toUpperCase();
     const rowRefId = String(body?.row_ref_id || "").trim();
+    const slotId = cleanOptionalUuid(body?.slot_id);
     if (!isValidRowKind(rowKind) || !isUuidLike(rowRefId)) {
       return NextResponse.json({ error: "row_kind/row_ref_id non validi" }, { status: 400 });
     }
 
-    const { data: pausedTimbratura, error: pausedErr } = await supabaseAdmin
+    let pausedTimbraturaQuery = supabaseAdmin
       .from("cronoprogramma_timbrature")
       .select("id")
       .eq("row_kind", rowKind)
@@ -1651,8 +2009,9 @@ export async function POST(request: Request) {
       .eq("operatore_id", operatore.id)
       .eq("stato", "IN_PAUSA")
       .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
+      .limit(1);
+    pausedTimbraturaQuery = applyExactSlotFilter(pausedTimbraturaQuery, slotId);
+    const { data: pausedTimbratura, error: pausedErr } = await pausedTimbraturaQuery.maybeSingle();
 
     if (pausedErr) {
       return NextResponse.json({ error: pausedErr.message }, { status: 500 });
@@ -1691,11 +2050,12 @@ export async function POST(request: Request) {
   if (action === "stop_timbratura") {
     const rowKind = String(body?.row_kind || "").trim().toUpperCase();
     const rowRefId = String(body?.row_ref_id || "").trim();
+    const slotId = cleanOptionalUuid(body?.slot_id);
     if (!isValidRowKind(rowKind) || !isUuidLike(rowRefId)) {
       return NextResponse.json({ error: "row_kind/row_ref_id non validi" }, { status: 400 });
     }
 
-    const { data: openTimbratura, error: openErr } = await supabaseAdmin
+    let openTimbraturaQuery = supabaseAdmin
       .from("cronoprogramma_timbrature")
       .select("id, started_at")
       .eq("row_kind", rowKind)
@@ -1703,8 +2063,9 @@ export async function POST(request: Request) {
       .eq("operatore_id", operatore.id)
       .eq("stato", "IN_CORSO")
       .order("created_at", { ascending: false })
-      .limit(1)
-      .maybeSingle();
+      .limit(1);
+    openTimbraturaQuery = applyExactSlotFilter(openTimbraturaQuery, slotId);
+    const { data: openTimbratura, error: openErr } = await openTimbraturaQuery.maybeSingle();
 
     if (openErr) {
       return NextResponse.json({ error: openErr.message }, { status: 500 });
@@ -1800,6 +2161,7 @@ export async function POST(request: Request) {
         const { error: reportErr } = await supabaseAdmin.from("cronoprogramma_comments").insert({
           row_kind: rowKind,
           row_ref_id: rowRefId,
+          slot_id: slotId,
           commento: reportComment,
           created_by_operatore: operatore.id,
         });
@@ -1820,6 +2182,7 @@ export async function POST(request: Request) {
   if (action === "set_tempo_reale") {
     const rowKind = String(body?.row_kind || "").trim().toUpperCase();
     const rowRefId = String(body?.row_ref_id || "").trim();
+    const slotId = cleanOptionalUuid(body?.slot_id);
     const durataEffettivaMinuti = cleanNonNegativeInteger(body?.durata_effettiva_minuti);
     if (!isValidRowKind(rowKind) || !isUuidLike(rowRefId)) {
       return NextResponse.json({ error: "row_kind/row_ref_id non validi" }, { status: 400 });
@@ -1828,13 +2191,15 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Tempo reale non valido" }, { status: 400 });
     }
 
-    const { data: openTimbrature, error: openErr } = await supabaseAdmin
+    let openTimbratureQuery = supabaseAdmin
       .from("cronoprogramma_timbrature")
       .select("id")
       .eq("row_kind", rowKind)
       .eq("row_ref_id", rowRefId)
       .eq("operatore_id", operatore.id)
       .in("stato", ["IN_CORSO", "IN_PAUSA"]);
+    openTimbratureQuery = applyExactSlotFilter(openTimbratureQuery, slotId);
+    const { data: openTimbrature, error: openErr } = await openTimbratureQuery;
 
     if (openErr) {
       return NextResponse.json({ error: openErr.message }, { status: 500 });
@@ -1865,6 +2230,7 @@ export async function POST(request: Request) {
       .insert({
         row_kind: rowKind,
         row_ref_id: rowRefId,
+        slot_id: slotId,
         operatore_id: operatore.id,
         personale_id: personaleId,
         started_at: startedAt,
@@ -1893,6 +2259,7 @@ export async function POST(request: Request) {
   if (action === "add_comment") {
     const rowKind = String(body?.row_kind || "").trim().toUpperCase();
     const rowRefId = String(body?.row_ref_id || "").trim();
+    const slotId = cleanOptionalUuid(body?.slot_id);
     const commento = String(body?.commento || "").trim();
     if (!isValidRowKind(rowKind) || !rowRefId) {
       return NextResponse.json({ error: "row_kind/row_ref_id non validi" }, { status: 400 });
@@ -1906,10 +2273,11 @@ export async function POST(request: Request) {
       .insert({
         row_kind: rowKind,
         row_ref_id: rowRefId,
+        slot_id: slotId,
         commento,
         created_by_operatore: operatore.id,
       })
-      .select("id, row_kind, row_ref_id, commento, created_at, created_by_operatore, operatore:created_by_operatore(nome)")
+      .select("id, row_kind, row_ref_id, slot_id, commento, created_at, created_by_operatore, operatore:created_by_operatore(nome)")
       .single();
 
     if (error) {
