@@ -551,6 +551,8 @@ export default function CronoprogrammaPage() {
   const [statusFilter, setStatusFilter] = useState<PlanningStatusFilter>("TUTTE");
   const [q, setQ] = useState("");
   const [personaleFilter, setPersonaleFilter] = useState("");
+  const [focusChecklistId, setFocusChecklistId] = useState("");
+  const [focusKind, setFocusKind] = useState<"" | TimelineRow["kind"]>("");
   const [sortBy, setSortBy] = useState<"data_prevista" | "data_tassativa">("data_tassativa");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [presetFilterMode, setPresetFilterMode] = useState<"" | "7gg_scadute">("");
@@ -1075,6 +1077,19 @@ export default function CronoprogrammaPage() {
     setPresetFilterMode("7gg_scadute");
   }, []);
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const nextChecklistId = String(params.get("focusChecklistId") || "").trim();
+    const nextKind = String(params.get("focusKind") || "").trim().toUpperCase();
+    setFocusChecklistId(nextChecklistId);
+    setFocusKind(
+      nextKind === "INSTALLAZIONE" || nextKind === "DISINSTALLAZIONE" || nextKind === "INTERVENTO"
+        ? (nextKind as TimelineRow["kind"])
+        : ""
+    );
+  }, []);
+
   function applyQuickRange(days: 7 | 15 | 30) {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -1150,6 +1165,8 @@ export default function CronoprogrammaPage() {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     return rows.filter((r) => {
+      if (focusChecklistId && String(r.checklist_id || "").trim() !== focusChecklistId) return false;
+      if (focusKind && r.kind !== focusKind) return false;
       const key = getRowKey(r.kind, r.row_ref_id, r.slot_id);
       const fatto = Boolean(metaByKey[key]?.fatto ?? r.fatto);
       const hidden = Boolean(metaByKey[key]?.hidden);
@@ -1180,12 +1197,16 @@ export default function CronoprogrammaPage() {
       // (indipendentemente dal range date) per permettere il reset del flag.
       if (fatto && (showFatto || statusFilter === "SVOLTA")) return true;
       if (presetFilterMode === "7gg_scadute" && isOverdueNotDone) return true;
-      if (fromDate && schedule.data_fine < fromDate) return false;
-      if (toDate && schedule.data_inizio > toDate) return false;
+      if (!focusChecklistId) {
+        if (fromDate && schedule.data_fine < fromDate) return false;
+        if (toDate && schedule.data_inizio > toDate) return false;
+      }
       return true;
     });
   }, [
     rows,
+    focusChecklistId,
+    focusKind,
     fromDate,
     toDate,
     clienteFilter,
@@ -1780,6 +1801,52 @@ export default function CronoprogrammaPage() {
               </button>
             </div>
           </div>
+        </div>
+      ) : null}
+      {focusChecklistId ? (
+        <div
+          style={{
+            marginBottom: 12,
+            padding: "10px 12px",
+            borderRadius: 12,
+            border: "1px solid #93c5fd",
+            background: "#eff6ff",
+            color: "#1d4ed8",
+            display: "flex",
+            gap: 12,
+            alignItems: "center",
+            justifyContent: "space-between",
+            flexWrap: "wrap",
+          }}
+        >
+          <div style={{ fontSize: 13, fontWeight: 700 }}>
+            Focus attivo sul progetto corrente{focusKind ? ` · ${focusKind}` : ""}.
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              setFocusChecklistId("");
+              setFocusKind("");
+              if (typeof window !== "undefined") {
+                const url = new URL(window.location.href);
+                url.searchParams.delete("focusChecklistId");
+                url.searchParams.delete("focusKind");
+                window.history.replaceState({}, "", url.toString());
+              }
+            }}
+            style={{
+              border: "1px solid #93c5fd",
+              background: "#fff",
+              color: "#1d4ed8",
+              borderRadius: 999,
+              padding: "6px 10px",
+              fontSize: 12,
+              fontWeight: 700,
+              cursor: "pointer",
+            }}
+          >
+            Rimuovi focus
+          </button>
         </div>
       ) : null}
       <CronoprogrammaPanel

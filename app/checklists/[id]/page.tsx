@@ -53,6 +53,7 @@ import {
   splitMagazzinoFields,
 } from "@/lib/magazzino";
 import {
+  formatOperativiDateLabel,
   estimatedMinutesToLegacyDays,
   getOperativiEstimatedMinutes,
   hoursInputToMinutes,
@@ -814,6 +815,16 @@ type ProjectRinnovoRow = {
 type CronoOperativiMeta = {
   fatto?: boolean;
   hidden?: boolean;
+  status?: "BOZZA" | "DA_CONFERMARE" | "CONFERMATA" | "RIMANDATA" | "SVOLTA" | "ANNULLATA" | null;
+  status_visual?:
+    | "BOZZA"
+    | "DA_CONFERMARE"
+    | "CONFERMATA"
+    | "RIMANDATA"
+    | "SVOLTA"
+    | "ANNULLATA"
+    | "NASCOSTA"
+    | null;
   updated_at?: string | null;
   updated_by_operatore?: string | null;
   updated_by_nome?: string | null;
@@ -1367,6 +1378,43 @@ function extractCronoOperativi(meta?: CronoOperativiMeta | null) {
     commerciale_art_tech_nome: String(meta?.commerciale_art_tech_nome || ""),
     commerciale_art_tech_contatto: String(meta?.commerciale_art_tech_contatto || ""),
   });
+}
+
+function getCronoOperativiVisualStatus(
+  meta?: CronoOperativiMeta | null
+):
+  | "BOZZA"
+  | "DA_CONFERMARE"
+  | "CONFERMATA"
+  | "RIMANDATA"
+  | "SVOLTA"
+  | "ANNULLATA"
+  | "NASCOSTA" {
+  const visual = String(meta?.status_visual || "").trim().toUpperCase();
+  if (
+    visual === "BOZZA" ||
+    visual === "DA_CONFERMARE" ||
+    visual === "CONFERMATA" ||
+    visual === "RIMANDATA" ||
+    visual === "SVOLTA" ||
+    visual === "ANNULLATA" ||
+    visual === "NASCOSTA"
+  ) {
+    return visual;
+  }
+  if (meta?.hidden) return "NASCOSTA";
+  if (meta?.fatto) return "SVOLTA";
+  return "DA_CONFERMARE";
+}
+
+function getCronoOperativiStatusColors(status: ReturnType<typeof getCronoOperativiVisualStatus>) {
+  if (status === "BOZZA") return { background: "#f3f4f6", color: "#4b5563" };
+  if (status === "DA_CONFERMARE") return { background: "#fffbeb", color: "#b45309" };
+  if (status === "CONFERMATA") return { background: "#dbeafe", color: "#1d4ed8" };
+  if (status === "RIMANDATA") return { background: "#ffedd5", color: "#c2410c" };
+  if (status === "SVOLTA") return { background: "#dcfce7", color: "#166534" };
+  if (status === "ANNULLATA") return { background: "#fee2e2", color: "#b91c1c" };
+  return { background: "#f8fafc", color: "#475569" };
 }
 
 function isNoleggioValue(value?: string | null) {
@@ -2057,6 +2105,10 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
   const [cronoOperativiSaving, setCronoOperativiSaving] = useState(false);
   const [cronoOperativiError, setCronoOperativiError] = useState<string | null>(null);
   const [cronoOperativiNotice, setCronoOperativiNotice] = useState<string | null>(null);
+  const [showLegacyOperationalEditors, setShowLegacyOperationalEditors] = useState({
+    installazione: false,
+    disinstallazione: false,
+  });
   const [cronoDisinstallazioneMeta, setCronoDisinstallazioneMeta] =
     useState<CronoOperativiMeta | null>(null);
   const [cronoDisinstallazioneForm, setCronoDisinstallazioneForm] =
@@ -2120,6 +2172,299 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
     () => Boolean(disinstallazioneReferenceDate) && !Boolean(cronoDisinstallazioneFallbackDate),
     [cronoDisinstallazioneFallbackDate, disinstallazioneReferenceDate]
   );
+  const cronoprogrammaFocusBaseUrl = useMemo(
+    () => `/cronoprogramma?focusChecklistId=${encodeURIComponent(String(id || ""))}`,
+    [id]
+  );
+
+  function renderOperationalOverviewCard({
+    title,
+    rowKind,
+    meta,
+    form,
+    saving,
+    errorMessage,
+    notice,
+    warningMessage,
+    showLegacyEditor,
+    setShowLegacyEditor,
+    onSave,
+    onChange,
+    fallbackStartDate,
+    attachmentTitle,
+    attachmentEntityType,
+  }: {
+    title: string;
+    rowKind: "INSTALLAZIONE" | "DISINSTALLAZIONE";
+    meta: CronoOperativiMeta | null;
+    form: CronoOperativiFormState;
+    saving: boolean;
+    errorMessage: string | null;
+    notice: string | null;
+    warningMessage?: string | null;
+    showLegacyEditor: boolean;
+    setShowLegacyEditor: Dispatch<SetStateAction<boolean>>;
+    onSave: () => Promise<void>;
+    onChange: Dispatch<SetStateAction<CronoOperativiFormState>>;
+    fallbackStartDate: string;
+    attachmentTitle: string;
+    attachmentEntityType: string;
+  }) {
+    const visualStatus = getCronoOperativiVisualStatus(meta);
+    const statusColors = getCronoOperativiStatusColors(visualStatus);
+    const slots = buildCronoOperativiSlots(meta);
+    const nextSlots = slots
+      .filter((slot) => slot.data_inizio)
+      .sort((a, b) => String(a.data_inizio || "").localeCompare(String(b.data_inizio || "")));
+    const visibleSlots = nextSlots.slice(0, 3);
+    const personaleText = String(form.personale_previsto || "").trim() || "Non assegnato";
+    const referenti = buildFallbackReferentiCliente(meta).filter(
+      (referente) => referente.nome || referente.contatto || referente.ruolo
+    );
+    const overviewWarnings = [
+      warningMessage,
+      !nextSlots.length ? "Nessuna giornata pianificata" : null,
+      !String(form.personale_previsto || "").trim() ? "Personale non assegnato" : null,
+      !String(form.indirizzo || "").trim() ? "Indirizzo operativo non specificato" : null,
+    ].filter(Boolean) as string[];
+    const focusHref = `${cronoprogrammaFocusBaseUrl}&focusKind=${encodeURIComponent(rowKind)}`;
+
+    return (
+      <div
+        style={{
+          border: "1px solid #e5e7eb",
+          borderRadius: 14,
+          background: "#fff",
+          overflow: "hidden",
+        }}
+      >
+        <div
+          style={{
+            padding: 16,
+            display: "grid",
+            gap: 14,
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              gap: 12,
+              alignItems: "flex-start",
+              justifyContent: "space-between",
+              flexWrap: "wrap",
+            }}
+          >
+            <div style={{ display: "grid", gap: 8, minWidth: 0 }}>
+              <div style={{ fontWeight: 800, fontSize: 16 }}>{title}</div>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                <span
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    borderRadius: 999,
+                    padding: "4px 10px",
+                    fontSize: 12,
+                    fontWeight: 800,
+                    background: statusColors.background,
+                    color: statusColors.color,
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  {visualStatus === "DA_CONFERMARE" ? "DA CONFERMARE" : visualStatus}
+                </span>
+                {meta?.updated_at ? (
+                  <span style={{ fontSize: 12, color: "#6b7280" }}>
+                    {meta.updated_by_nome || "Operatore"} ·{" "}
+                    {new Date(meta.updated_at).toLocaleString("it-IT")}
+                  </span>
+                ) : null}
+              </div>
+            </div>
+            <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+              <Link
+                href={focusHref}
+                style={{
+                  padding: "10px 14px",
+                  borderRadius: 10,
+                  background: "#111827",
+                  color: "#fff",
+                  textDecoration: "none",
+                  fontWeight: 800,
+                  fontSize: 13,
+                }}
+              >
+                Apri gestione operativa nel cronoprogramma
+              </Link>
+              <button
+                type="button"
+                onClick={() => setShowLegacyEditor((prev) => !prev)}
+                style={{
+                  padding: "10px 14px",
+                  borderRadius: 10,
+                  border: "1px solid #d1d5db",
+                  background: "#fff",
+                  color: "#111827",
+                  fontWeight: 700,
+                  cursor: "pointer",
+                }}
+              >
+                {showLegacyEditor ? "Chiudi fallback locale" : "Apri fallback locale"}
+              </button>
+            </div>
+          </div>
+
+          {overviewWarnings.length > 0 ? (
+            <div style={{ display: "grid", gap: 6 }}>
+              {overviewWarnings.map((warning, index) => (
+                <div
+                  key={`${rowKind}-warning-${index}`}
+                  style={{
+                    padding: "8px 10px",
+                    borderRadius: 10,
+                    background: "#fff7ed",
+                    border: "1px solid #fdba74",
+                    color: "#9a3412",
+                    fontSize: 12,
+                    fontWeight: 700,
+                  }}
+                >
+                  {warning}
+                </div>
+              ))}
+            </div>
+          ) : null}
+
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+              gap: 12,
+            }}
+          >
+            <div
+              style={{
+                border: "1px solid #eef2f7",
+                borderRadius: 12,
+                padding: 12,
+                display: "grid",
+                gap: 8,
+              }}
+            >
+              <div style={{ fontSize: 12, fontWeight: 800, color: "#6b7280" }}>PROSSIME GIORNATE</div>
+              {visibleSlots.length > 0 ? (
+                <div style={{ display: "grid", gap: 6 }}>
+                  {visibleSlots.map((slot, index) => (
+                    <div key={`${rowKind}-slot-${slot.id || index}`} style={{ fontSize: 13, color: "#1f2937" }}>
+                      <span style={{ fontWeight: 700 }}>
+                        {slot.data_inizio ? formatOperativiDateLabel(slot.data_inizio) : "Data da definire"}
+                      </span>
+                      {slot.durata_prevista_minuti != null
+                        ? ` · ${minutesToHoursInput(slot.durata_prevista_minuti)}h`
+                        : ""}
+                      {slot.orario ? ` · ${slot.orario}` : ""}
+                    </div>
+                  ))}
+                  {nextSlots.length > visibleSlots.length ? (
+                    <div style={{ fontSize: 12, color: "#6b7280" }}>
+                      +{nextSlots.length - visibleSlots.length} giornate nel cronoprogramma
+                    </div>
+                  ) : null}
+                </div>
+              ) : (
+                <div style={{ fontSize: 13, color: "#6b7280" }}>Nessuna giornata pianificata</div>
+              )}
+            </div>
+
+            <div
+              style={{
+                border: "1px solid #eef2f7",
+                borderRadius: 12,
+                padding: 12,
+                display: "grid",
+                gap: 8,
+              }}
+            >
+              <div style={{ fontSize: 12, fontWeight: 800, color: "#6b7280" }}>SQUADRA E LOGISTICA</div>
+              <div style={{ fontSize: 13, color: "#1f2937", wordBreak: "break-word" }}>
+                <strong>Personale:</strong> {personaleText}
+              </div>
+              <div style={{ fontSize: 13, color: "#1f2937", wordBreak: "break-word" }}>
+                <strong>Indirizzo:</strong> {String(form.indirizzo || "").trim() || "Non specificato"}
+              </div>
+              <div style={{ fontSize: 13, color: "#1f2937", wordBreak: "break-word" }}>
+                <strong>Mezzi:</strong> {String(form.mezzi || "").trim() || "Non specificati"}
+              </div>
+            </div>
+
+            <div
+              style={{
+                border: "1px solid #eef2f7",
+                borderRadius: 12,
+                padding: 12,
+                display: "grid",
+                gap: 8,
+              }}
+            >
+              <div style={{ fontSize: 12, fontWeight: 800, color: "#6b7280" }}>CONTATTI E NOTE</div>
+              <div style={{ fontSize: 13, color: "#1f2937", wordBreak: "break-word" }}>
+                <strong>Referenti cliente:</strong>{" "}
+                {referenti.length > 0
+                  ? referenti
+                      .map((referente) =>
+                        [referente.nome, referente.ruolo, referente.contatto].filter(Boolean).join(" • ")
+                      )
+                      .join(" | ")
+                  : "Non specificati"}
+              </div>
+              <div style={{ fontSize: 13, color: "#1f2937", wordBreak: "break-word" }}>
+                <strong>Commerciale Art Tech:</strong>{" "}
+                {[form.commerciale_art_tech_nome, form.commerciale_art_tech_contatto]
+                  .filter(Boolean)
+                  .join(" • ") || "Non specificato"}
+              </div>
+              <div style={{ fontSize: 13, color: "#1f2937", wordBreak: "break-word" }}>
+                <strong>Descrizione:</strong> {String(form.descrizione_attivita || "").trim() || "Non specificata"}
+              </div>
+              <div style={{ fontSize: 12, color: "#6b7280" }}>
+                Allegati e link operativi restano disponibili nel cronoprogramma e nel fallback locale.
+              </div>
+            </div>
+          </div>
+
+          {(errorMessage || notice) && !showLegacyEditor ? (
+            <div style={{ display: "grid", gap: 6 }}>
+              {errorMessage ? (
+                <div style={{ fontSize: 12, color: "#b91c1c", fontWeight: 700 }}>{errorMessage}</div>
+              ) : null}
+              {notice ? (
+                <div style={{ fontSize: 12, color: "#166534", fontWeight: 700 }}>{notice}</div>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
+
+        {showLegacyEditor ? (
+          <div style={{ borderTop: "1px solid #eef2f7", padding: 16, background: "#f8fafc" }}>
+            <OperationalBlockEditor
+              title={title}
+              attachmentTitle={attachmentTitle}
+              attachmentEntityType={attachmentEntityType}
+              attachmentEntityId={id}
+              form={form}
+              onChange={onChange}
+              onSave={onSave}
+              saving={saving}
+              meta={meta}
+              errorMessage={errorMessage}
+              notice={notice}
+              fallbackStartDate={fallbackStartDate}
+              warningMessage={warningMessage}
+            />
+          </div>
+        ) : null}
+      </div>
+    );
+  }
   const estimatedCreatedByDisplay = useMemo(() => {
     const candidates: Array<{ name: string | null; at: string | null }> = [];
 
@@ -10328,43 +10673,56 @@ function buildFormData(c: Checklist): FormData {
         "section-dati-operativi",
         "Dati operativi / cronoprogramma",
         <div style={{ display: "grid", gap: 12 }}>
-          <OperationalBlockEditor
-            title="BLOCCO ATTIVITÀ"
-            attachmentTitle="Allegati blocco attività (link Drive)"
-            attachmentEntityType="CHECKLIST_OPERATIVI"
-            attachmentEntityId={id}
-            form={cronoOperativiForm}
-            onChange={setCronoOperativiForm}
-            onSave={saveCronoOperativi}
-            saving={cronoOperativiSaving}
-            meta={cronoOperativiMeta}
-            errorMessage={cronoOperativiError}
-            notice={cronoOperativiNotice}
-            fallbackStartDate={formData?.data_tassativa || formData?.data_prevista || ""}
-          />
+          {renderOperationalOverviewCard({
+            title: "BLOCCO ATTIVITÀ",
+            rowKind: "INSTALLAZIONE",
+            meta: cronoOperativiMeta,
+            form: cronoOperativiForm,
+            saving: cronoOperativiSaving,
+            errorMessage: cronoOperativiError,
+            notice: cronoOperativiNotice,
+            warningMessage: null,
+            showLegacyEditor: showLegacyOperationalEditors.installazione,
+            setShowLegacyEditor: (value) =>
+              setShowLegacyOperationalEditors((prev) => ({
+                ...prev,
+                installazione:
+                  typeof value === "function" ? value(prev.installazione) : value,
+              })),
+            onSave: saveCronoOperativi,
+            onChange: setCronoOperativiForm,
+            fallbackStartDate: formData?.data_tassativa || formData?.data_prevista || "",
+            attachmentTitle: "Allegati blocco attività (link Drive)",
+            attachmentEntityType: "CHECKLIST_OPERATIVI",
+          })}
           {isNoleggioProject
             ? (
-                <OperationalBlockEditor
-                  title="BLOCCO DISINSTALLAZIONE"
-                  attachmentTitle="Allegati blocco disinstallazione (link Drive)"
-                  attachmentEntityType="CHECKLIST_DISINSTALLAZIONE"
-                  attachmentEntityId={id}
-                  form={cronoDisinstallazioneForm}
-                  onChange={setCronoDisinstallazioneForm}
-                  onSave={saveCronoDisinstallazione}
-                  saving={cronoDisinstallazioneSaving}
-                  meta={cronoDisinstallazioneMeta}
-                  errorMessage={cronoDisinstallazioneError}
-                  notice={cronoDisinstallazioneNotice}
-                  fallbackStartDate={
-                    formData?.data_disinstallazione || cronoDisinstallazioneFallbackDate || ""
-                  }
-                  warningMessage={
+                renderOperationalOverviewCard({
+                  title: "BLOCCO DISINSTALLAZIONE",
+                  rowKind: "DISINSTALLAZIONE",
+                  meta: cronoDisinstallazioneMeta,
+                  form: cronoDisinstallazioneForm,
+                  saving: cronoDisinstallazioneSaving,
+                  errorMessage: cronoDisinstallazioneError,
+                  notice: cronoDisinstallazioneNotice,
+                  warningMessage:
                     showDisinstallazioneCronoWarning
                       ? "Compilare cronoprogramma disinstallazione"
-                      : null
-                  }
-                />
+                      : null,
+                  showLegacyEditor: showLegacyOperationalEditors.disinstallazione,
+                  setShowLegacyEditor: (value) =>
+                    setShowLegacyOperationalEditors((prev) => ({
+                      ...prev,
+                      disinstallazione:
+                        typeof value === "function" ? value(prev.disinstallazione) : value,
+                    })),
+                  onSave: saveCronoDisinstallazione,
+                  onChange: setCronoDisinstallazioneForm,
+                  fallbackStartDate:
+                    formData?.data_disinstallazione || cronoDisinstallazioneFallbackDate || "",
+                  attachmentTitle: "Allegati blocco disinstallazione (link Drive)",
+                  attachmentEntityType: "CHECKLIST_DISINSTALLAZIONE",
+                })
               )
             : null}
         </div>,
