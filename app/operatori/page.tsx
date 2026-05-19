@@ -36,9 +36,20 @@ type TimelineRow = {
   fatto: boolean;
 };
 
+type PlanningStatus =
+  | "BOZZA"
+  | "DA_CONFERMARE"
+  | "CONFERMATA"
+  | "RIMANDATA"
+  | "SVOLTA"
+  | "ANNULLATA";
+type VisualPlanningStatus = PlanningStatus | "NASCOSTA";
+
 type CronoMeta = {
   fatto: boolean;
   hidden: boolean;
+  status?: PlanningStatus | null;
+  status_visual?: VisualPlanningStatus | null;
   data_inizio?: string | null;
   durata_giorni?: number | null;
   modalita_attivita?: string | null;
@@ -103,7 +114,19 @@ const BADGE_COLORS = {
   activityIntervento: { bg: "#dcfce7", border: "#86efac", color: "#166534" },
   activityRemote: { bg: "#f3e8ff", border: "#d8b4fe", color: "#7e22ce" },
   activityDisinstall: { bg: "#ffedd5", border: "#fdba74", color: "#c2410c" },
+  planningConfirmed: { bg: "#dbeafe", border: "#93c5fd", color: "#1d4ed8" },
+  planningRescheduled: { bg: "#ffedd5", border: "#fdba74", color: "#c2410c" },
 } as const;
+
+const VISUAL_PLANNING_STATUS_VALUES = new Set([
+  "BOZZA",
+  "DA_CONFERMARE",
+  "CONFERMATA",
+  "RIMANDATA",
+  "SVOLTA",
+  "ANNULLATA",
+  "NASCOSTA",
+]);
 
 const EMPTY_STOP_REPORT: StopReportDraft = {
   esito: "COMPLETATO",
@@ -322,6 +345,22 @@ function renderModeBadge(mode: string) {
   return mode === "REMOTO"
     ? renderPill("REMOTO", BADGE_COLORS.activityRemote)
     : renderPill("ONSITE", BADGE_COLORS.activityInstall);
+}
+
+function getVisualPlanningStatus(meta?: CronoMeta | null): VisualPlanningStatus {
+  const visual = String(meta?.status_visual || "").trim().toUpperCase();
+  if (VISUAL_PLANNING_STATUS_VALUES.has(visual)) {
+    return visual as VisualPlanningStatus;
+  }
+  if (meta?.hidden) return "NASCOSTA";
+  if (meta?.fatto) return "SVOLTA";
+  return "DA_CONFERMARE";
+}
+
+function renderPlanningStatusBadge(status: VisualPlanningStatus) {
+  if (status === "CONFERMATA") return renderPill("CONFERMATA", BADGE_COLORS.planningConfirmed, "📌");
+  if (status === "RIMANDATA") return renderPill("RIMANDATA", BADGE_COLORS.planningRescheduled, "↺");
+  return null;
 }
 
 function formatMinutesCompact(value?: number | null) {
@@ -641,6 +680,10 @@ export default function OperatoreAttivitaPage() {
     return rows.filter((row) => {
       const key = getRowKey(row.kind, row.row_ref_id, row.slot_id);
       const meta = metaByKey[key];
+      const visualPlanningStatus = getVisualPlanningStatus(meta);
+      if (visualPlanningStatus !== "CONFERMATA" && visualPlanningStatus !== "RIMANDATA") {
+        return false;
+      }
       const comments = commentsByKey[key] || [];
       const latestReportComment = comments.find((comment) => Boolean(parseStructuredReport(comment))) || null;
       const latestReport = latestReportComment ? parseStructuredReport(latestReportComment) : null;
@@ -1186,6 +1229,7 @@ export default function OperatoreAttivitaPage() {
                 const showNotesPanel = notePanelKey === key;
                 const modeLabel = getActivityModeLabel(operativi);
                 const kindLabel = getActivityKindLabel(row, operativi);
+                const visualPlanningStatus = getVisualPlanningStatus(meta);
                 const timeBudget = timeBudgetByKey[key] || { stimatoMinuti: null, realeMinuti: null };
                 const displayedActualMinutes = getDisplayedActualMinutes(timeBudget, liveNowMs);
                 const liveElapsedMs = getLiveElapsedMs(timeBudget.liveStartedAt, liveNowMs);
@@ -1221,6 +1265,7 @@ export default function OperatoreAttivitaPage() {
                       <div style={{ display: "grid", gap: 8, minWidth: 0 }}>
                         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
                           {renderMainStatusBadge(activityDate, timbraturaState, todayIso)}
+                          {renderPlanningStatusBadge(visualPlanningStatus)}
                           {renderActivityKindBadge(kindLabel)}
                           {renderModeBadge(modeLabel)}
                         </div>

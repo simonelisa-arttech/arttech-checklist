@@ -12,6 +12,14 @@ import {
 } from "@/lib/operativiSchedule";
 
 type RowKind = "INSTALLAZIONE" | "DISINSTALLAZIONE" | "INTERVENTO" | "CHECKLIST_TASK";
+type PlanningStatus =
+  | "BOZZA"
+  | "DA_CONFERMARE"
+  | "CONFERMATA"
+  | "RIMANDATA"
+  | "SVOLTA"
+  | "ANNULLATA";
+type VisualPlanningStatus = PlanningStatus | "NASCOSTA";
 type RowRef = {
   row_kind: RowKind;
   row_ref_id: string;
@@ -70,6 +78,14 @@ type RescheduleActivityInput = {
 const CUTOFF = "2026-01-01";
 const REPORT_COMMENT_PREFIX = "__REPORT__:";
 const REPORT_OUTCOME_VALUES = new Set(["COMPLETATO", "PARZIALE", "NON_COMPLETATO"]);
+const PLANNING_STATUS_VALUES = new Set([
+  "BOZZA",
+  "DA_CONFERMARE",
+  "CONFERMATA",
+  "RIMANDATA",
+  "SVOLTA",
+  "ANNULLATA",
+]);
 type ReportOutcome = "COMPLETATO" | "PARZIALE" | "NON_COMPLETATO";
 
 function rowKey(rowKind: string, rowRefId: string, slotId?: string | null) {
@@ -97,6 +113,27 @@ function isOnOrAfterCutoff(value?: string | null) {
 function cleanText(v: unknown) {
   const s = String(v ?? "").trim();
   return s ? s : null;
+}
+
+function cleanPlanningStatus(value: unknown): PlanningStatus | null {
+  const status = String(value || "").trim().toUpperCase();
+  return PLANNING_STATUS_VALUES.has(status) ? (status as PlanningStatus) : null;
+}
+
+function deriveVisualPlanningStatus(input: {
+  status?: unknown;
+  fatto?: unknown;
+  hidden?: unknown;
+  latestEventType?: unknown;
+}): VisualPlanningStatus {
+  const storedStatus = cleanPlanningStatus(input?.status);
+  if (storedStatus) return storedStatus;
+  if (Boolean(input?.hidden)) return "NASCOSTA";
+  if (Boolean(input?.fatto)) return "SVOLTA";
+  if (String(input?.latestEventType || "").trim().toUpperCase() === "RIMANDATO") {
+    return "RIMANDATA";
+  }
+  return "DA_CONFERMARE";
 }
 
 function parseStructuredReportOutcome(commentValue: unknown): ReportOutcome | null {
@@ -245,6 +282,14 @@ function mapMetaRow(row: any) {
     slot_id: cleanOptionalUuid(row?.slot_id),
     fatto: Boolean(row?.fatto),
     hidden: Boolean(row?.hidden),
+    status: cleanPlanningStatus(row?.status),
+    status_visual: deriveVisualPlanningStatus({
+      status: row?.status,
+      fatto: row?.fatto,
+      hidden: row?.hidden,
+    }),
+    status_updated_at: row?.status_updated_at || null,
+    status_updated_by_operatore: row?.status_updated_by_operatore || null,
     updated_at: row?.updated_at || null,
     updated_by_operatore: row?.updated_by_operatore || null,
     updated_by_nome: row?.operatore?.nome || null,
@@ -497,6 +542,10 @@ function buildSyntheticMetaFromSlotRow(row: any) {
     slot_id: slot.id,
     fatto: false,
     hidden: false,
+    status: null,
+    status_visual: "DA_CONFERMARE" as VisualPlanningStatus,
+    status_updated_at: null,
+    status_updated_by_operatore: null,
     updated_at: null,
     updated_by_operatore: null,
     updated_by_nome: null,
@@ -1046,6 +1095,20 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: commErr.message }, { status: 500 });
     }
 
+    const { data: activityEventRows, error: activityEventErr } = await supabaseAdmin
+      .from("cronoprogramma_activity_events")
+      .select("row_kind, row_ref_id, slot_id, event_type, created_at")
+      .in("row_ref_id", rowIds)
+      .in("row_kind", rowKinds as any)
+      .order("created_at", { ascending: false });
+
+    if (
+      activityEventErr &&
+      !String(activityEventErr.message || "").toLowerCase().includes("cronoprogramma_activity_events")
+    ) {
+      return NextResponse.json({ error: activityEventErr.message }, { status: 500 });
+    }
+
     const { data: timbratureRows, error: timbratureErr } = await supabaseAdmin
       .from("cronoprogramma_timbrature")
       .select("id, row_kind, row_ref_id, slot_id, operatore_id, durata_effettiva_minuti, stato, started_at")
@@ -1124,6 +1187,19 @@ export async function POST(request: Request) {
       }
     }
 
+    const latestEventTypeByKey: Record<string, string | null> = {};
+    for (const row of activityEventRows || []) {
+      const key = rowKey(
+        String((row as any).row_kind),
+        String((row as any).row_ref_id),
+        cleanOptionalUuid((row as any).slot_id)
+      );
+      if (!wanted.has(key)) continue;
+      if (!(key in latestEventTypeByKey)) {
+        latestEventTypeByKey[key] = String((row as any).event_type || "").trim().toUpperCase() || null;
+      }
+    }
+
     for (const row of normalizedRows) {
       if (!row.slot_id) continue;
       const key = rowKey(row.row_kind, row.row_ref_id, row.slot_id);
@@ -1132,6 +1208,28 @@ export async function POST(request: Request) {
       if (slotRow && matchesSlotAwareRow(slotRow, row)) {
         metaByKey[key] = buildSyntheticMetaFromSlotRow(slotRow);
       }
+    }
+
+    for (const row of normalizedRows) {
+      const key = rowKey(row.row_kind, row.row_ref_id, row.slot_id);
+      const currentMeta = metaByKey[key] || {
+        slot_id: row.slot_id ?? null,
+        fatto: false,
+        hidden: false,
+        status: null,
+        status_updated_at: null,
+        status_updated_by_operatore: null,
+      };
+      metaByKey[key] = {
+        ...currentMeta,
+        status: cleanPlanningStatus(currentMeta?.status),
+        status_visual: deriveVisualPlanningStatus({
+          status: currentMeta?.status,
+          fatto: currentMeta?.fatto,
+          hidden: currentMeta?.hidden,
+          latestEventType: latestEventTypeByKey[key],
+        }),
+      };
     }
 
     const timbraturaIds = (timbratureRows || [])
@@ -1188,6 +1286,45 @@ export async function POST(request: Request) {
       comments: commentsByKey,
       time_budget: timeBudgetByKey,
       time_budget_current_operator: timeBudgetCurrentOperatorByKey,
+    });
+  }
+
+  if (action === "set_status") {
+    const rowKind = String(body?.row_kind || "").trim().toUpperCase();
+    const rowRefId = String(body?.row_ref_id || "").trim();
+    const slotId = cleanOptionalUuid(body?.slot_id);
+    const status = cleanPlanningStatus(body?.status);
+    if (!(rowKind === "INSTALLAZIONE" || rowKind === "DISINSTALLAZIONE" || rowKind === "INTERVENTO") || !rowRefId) {
+      return NextResponse.json({ error: "row_kind/row_ref_id non validi" }, { status: 400 });
+    }
+    if (!status) {
+      return NextResponse.json({ error: "Status non valido" }, { status: 400 });
+    }
+
+    const nowIso = new Date().toISOString();
+    const payload = {
+      status,
+      status_updated_at: nowIso,
+      status_updated_by_operatore: operatore.id,
+      updated_at: nowIso,
+      updated_by_operatore: operatore.id,
+    };
+
+    const { data, error } = await writeExactMetaRow(
+      supabaseAdmin,
+      rowKind,
+      rowRefId,
+      slotId,
+      payload
+    );
+
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+
+    return NextResponse.json({
+      ok: true,
+      meta: mapMetaRow(data as any),
     });
   }
 
@@ -1248,6 +1385,9 @@ export async function POST(request: Request) {
 
     const payload = {
       fatto: true,
+      status: "SVOLTA" as PlanningStatus,
+      status_updated_at: nowIso,
+      status_updated_by_operatore: operatore.id,
       updated_at: nowIso,
       updated_by_operatore: operatore.id,
     };
@@ -1386,6 +1526,9 @@ export async function POST(request: Request) {
     const metaPayload = {
       fatto: false,
       hidden: false,
+      status: "RIMANDATA" as PlanningStatus,
+      status_updated_at: nowIso,
+      status_updated_by_operatore: operatore.id,
       ...toOperativiPayload({
         data_inizio: rescheduleInput.data_inizio,
         durata_prevista_minuti: rescheduleInput.durata_prevista_minuti,
@@ -1586,8 +1729,23 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "row_kind/row_ref_id non validi" }, { status: 400 });
     }
 
+    const { data: currentMeta } = await loadExactMetaRow(supabaseAdmin, rowKind, rowRefId, slotId);
+    const currentStoredStatus = cleanPlanningStatus((currentMeta as any)?.status);
     const payload = {
       fatto,
+      ...(fatto
+        ? {
+            status: "SVOLTA" as PlanningStatus,
+            status_updated_at: new Date().toISOString(),
+            status_updated_by_operatore: operatore.id,
+          }
+        : currentStoredStatus === "SVOLTA"
+          ? {
+              status: "DA_CONFERMARE" as PlanningStatus,
+              status_updated_at: new Date().toISOString(),
+              status_updated_by_operatore: operatore.id,
+            }
+          : {}),
       updated_at: new Date().toISOString(),
       updated_by_operatore: operatore.id,
     };

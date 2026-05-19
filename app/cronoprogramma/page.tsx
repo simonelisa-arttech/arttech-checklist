@@ -38,9 +38,29 @@ type TimelineRow = {
   fatto: boolean;
 };
 
+type PlanningStatus =
+  | "BOZZA"
+  | "DA_CONFERMARE"
+  | "CONFERMATA"
+  | "RIMANDATA"
+  | "SVOLTA"
+  | "ANNULLATA";
+type VisualPlanningStatus = PlanningStatus | "NASCOSTA";
+type PlanningStatusFilter =
+  | "TUTTE"
+  | "BOZZA"
+  | "DA_CONFERMARE"
+  | "CONFERMATA"
+  | "RIMANDATA"
+  | "SVOLTA";
+
 type CronoMeta = {
   fatto: boolean;
   hidden: boolean;
+  status?: PlanningStatus | null;
+  status_visual?: VisualPlanningStatus | null;
+  status_updated_at?: string | null;
+  status_updated_by_operatore?: string | null;
   updated_at: string | null;
   updated_by_operatore: string | null;
   updated_by_nome: string | null;
@@ -142,6 +162,48 @@ const EMPTY_RESCHEDULE_DRAFT: RescheduleDraft = {
   ...EMPTY_OPERATIVI,
   motivo_rimando: "",
 };
+
+const PLANNING_STATUS_VALUES = new Set([
+  "BOZZA",
+  "DA_CONFERMARE",
+  "CONFERMATA",
+  "RIMANDATA",
+  "SVOLTA",
+  "ANNULLATA",
+]);
+const VISUAL_PLANNING_STATUS_VALUES = new Set([
+  "BOZZA",
+  "DA_CONFERMARE",
+  "CONFERMATA",
+  "RIMANDATA",
+  "SVOLTA",
+  "ANNULLATA",
+  "NASCOSTA",
+]);
+
+function normalizePlanningStatus(value: unknown): PlanningStatus | null {
+  const status = String(value || "").trim().toUpperCase();
+  return PLANNING_STATUS_VALUES.has(status) ? (status as PlanningStatus) : null;
+}
+
+function getVisualPlanningStatus(meta?: CronoMeta | null): VisualPlanningStatus {
+  const visual = String(meta?.status_visual || "").trim().toUpperCase();
+  if (VISUAL_PLANNING_STATUS_VALUES.has(visual)) {
+    return visual as VisualPlanningStatus;
+  }
+  const stored = normalizePlanningStatus(meta?.status);
+  if (stored) return stored;
+  if (meta?.hidden) return "NASCOSTA";
+  if (meta?.fatto) return "SVOLTA";
+  return "DA_CONFERMARE";
+}
+
+function getEditablePlanningStatus(meta?: CronoMeta | null): PlanningStatus {
+  const stored = normalizePlanningStatus(meta?.status);
+  if (stored) return stored;
+  const visual = getVisualPlanningStatus(meta);
+  return visual === "NASCOSTA" ? "DA_CONFERMARE" : (visual as PlanningStatus);
+}
 
 function extractOperativi(meta?: CronoMeta | null): OperativiFields {
   const stimatoMinuti = getOperativiEstimatedMinutes(meta);
@@ -359,6 +421,7 @@ export default function CronoprogrammaPage() {
   const [quickRangeDays, setQuickRangeDays] = useState<7 | 15 | 30 | null>(null);
   const [showFatto, setShowFatto] = useState(false);
   const [showHidden, setShowHidden] = useState(false);
+  const [statusFilter, setStatusFilter] = useState<PlanningStatusFilter>("TUTTE");
   const [q, setQ] = useState("");
   const [personaleFilter, setPersonaleFilter] = useState("");
   const [sortBy, setSortBy] = useState<"data_prevista" | "data_tassativa">("data_tassativa");
@@ -371,6 +434,7 @@ export default function CronoprogrammaPage() {
   const [stateError, setStateError] = useState<string | null>(null);
   const [savingFattoKey, setSavingFattoKey] = useState<string | null>(null);
   const [savingHiddenKey, setSavingHiddenKey] = useState<string | null>(null);
+  const [savingStatusKey, setSavingStatusKey] = useState<string | null>(null);
   const [savingCommentKey, setSavingCommentKey] = useState<string | null>(null);
   const [savingOperativiKey, setSavingOperativiKey] = useState<string | null>(null);
   const [deletingCommentId, setDeletingCommentId] = useState<string | null>(null);
@@ -688,6 +752,33 @@ export default function CronoprogrammaPage() {
     }
   }
 
+  async function setStatus(row: TimelineRow, status: PlanningStatus) {
+    const key = getRowKey(row.kind, row.row_ref_id, row.slot_id);
+    setSavingStatusKey(key);
+    setStateError(null);
+    try {
+      const res = await fetch("/api/cronoprogramma", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "set_status",
+          row_kind: row.kind,
+          row_ref_id: row.row_ref_id,
+          slot_id: row.slot_id ?? null,
+          status,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setStateError(data?.error || "Errore salvataggio stato pianificazione");
+        return;
+      }
+      setMetaByKey((prev) => ({ ...prev, [key]: data?.meta }));
+    } finally {
+      setSavingStatusKey(null);
+    }
+  }
+
   async function addComment(row: TimelineRow) {
     const key = getRowKey(row.kind, row.row_ref_id, row.slot_id);
     const commento = String(noteDraftByKey[key] || "").trim();
@@ -892,12 +983,15 @@ export default function CronoprogrammaPage() {
       const key = getRowKey(r.kind, r.row_ref_id, r.slot_id);
       const fatto = Boolean(metaByKey[key]?.fatto ?? r.fatto);
       const hidden = Boolean(metaByKey[key]?.hidden);
+      const visualStatus = getVisualPlanningStatus(metaByKey[key] || null);
+      const statusMatches = statusFilter === "TUTTE" || visualStatus === statusFilter;
       const operativi = extractOperativi(metaByKey[key] || null);
       const personalePrevisto = operativi.personale_previsto;
       const schedule = getRowSchedule(r, metaByKey[key] || null);
       const isOverdueNotDone = isTimelineRowOverdueNotDone(r, metaByKey[key] || null, today);
+      if (!statusMatches) return false;
       if (hidden && !showHidden) return false;
-      if (fatto && !showFatto) return false;
+      if (fatto && !showFatto && statusFilter !== "SVOLTA") return false;
       if (clienteFilter !== "TUTTI" && r.cliente !== clienteFilter) return false;
       if (kindFilter !== "TUTTI" && r.kind !== kindFilter) return false;
       if (
@@ -914,7 +1008,7 @@ export default function CronoprogrammaPage() {
       }
       // Se chiedo esplicitamente di vedere i "Fatto", li mostro sempre
       // (indipendentemente dal range date) per permettere il reset del flag.
-      if (fatto && showFatto) return true;
+      if (fatto && (showFatto || statusFilter === "SVOLTA")) return true;
       if (presetFilterMode === "7gg_scadute" && isOverdueNotDone) return true;
       if (fromDate && schedule.data_fine < fromDate) return false;
       if (toDate && schedule.data_inizio > toDate) return false;
@@ -928,6 +1022,7 @@ export default function CronoprogrammaPage() {
     kindFilter,
     q,
     personaleFilter,
+    statusFilter,
     metaByKey,
     presetFilterMode,
     showFatto,
@@ -1550,6 +1645,11 @@ export default function CronoprogrammaPage() {
           setPersonaleFilter(value);
           setPresetFilterMode("");
         }}
+        statusFilter={statusFilter}
+        setStatusFilter={(value) => {
+          setStatusFilter(value);
+          setPresetFilterMode("");
+        }}
         clienti={clienti}
         quickRangeDays={quickRangeDays}
         applyQuickRange={applyQuickRange}
@@ -1591,6 +1691,7 @@ export default function CronoprogrammaPage() {
         stateLoading={stateLoading}
         savingFattoKey={savingFattoKey}
         savingHiddenKey={savingHiddenKey}
+        savingStatusKey={savingStatusKey}
         savingCommentKey={savingCommentKey}
         savingOperativiKey={savingOperativiKey}
         savingRescheduleKey={savingRescheduleKey}
@@ -1602,6 +1703,7 @@ export default function CronoprogrammaPage() {
         conflictByKey={conflictByKey}
         rowByKey={rowByKey}
         setFatto={setFatto}
+        setStatus={setStatus}
         openRescheduleModal={openRescheduleModal}
         setHidden={setHidden}
         addComment={addComment}

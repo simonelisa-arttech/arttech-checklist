@@ -28,6 +28,21 @@ type StructuredReport = {
 };
 
 type OutcomeFilter = "TUTTI" | "COMPLETATO" | "PARZIALE" | "NON_COMPLETATO";
+type PlanningStatus =
+  | "BOZZA"
+  | "DA_CONFERMARE"
+  | "CONFERMATA"
+  | "RIMANDATA"
+  | "SVOLTA"
+  | "ANNULLATA";
+type VisualPlanningStatus = PlanningStatus | "NASCOSTA";
+type PlanningStatusFilter =
+  | "TUTTE"
+  | "BOZZA"
+  | "DA_CONFERMARE"
+  | "CONFERMATA"
+  | "RIMANDATA"
+  | "SVOLTA";
 
 const BADGE_COLORS = {
   statusExpired: { bg: "#fee2e2", border: "#fca5a5", color: "#b91c1c" },
@@ -38,7 +53,39 @@ const BADGE_COLORS = {
   activityIntervento: { bg: "#dcfce7", border: "#86efac", color: "#166534" },
   activityRemote: { bg: "#f3e8ff", border: "#d8b4fe", color: "#7e22ce" },
   activityDisinstall: { bg: "#ffedd5", border: "#fdba74", color: "#c2410c" },
+  planningDraft: { bg: "#f3f4f6", border: "#d1d5db", color: "#4b5563" },
+  planningPending: { bg: "#fffbeb", border: "#fcd34d", color: "#b45309" },
+  planningConfirmed: { bg: "#dbeafe", border: "#93c5fd", color: "#1d4ed8" },
+  planningRescheduled: { bg: "#ffedd5", border: "#fdba74", color: "#c2410c" },
+  planningDone: { bg: "#dcfce7", border: "#86efac", color: "#166534" },
+  planningCancelled: { bg: "#fee2e2", border: "#fca5a5", color: "#b91c1c" },
+  planningHidden: { bg: "#f8fafc", border: "#cbd5e1", color: "#475569" },
 } as const;
+
+const VISUAL_PLANNING_STATUS_VALUES = new Set([
+  "BOZZA",
+  "DA_CONFERMARE",
+  "CONFERMATA",
+  "RIMANDATA",
+  "SVOLTA",
+  "ANNULLATA",
+  "NASCOSTA",
+]);
+const EDITABLE_PLANNING_STATUSES: PlanningStatus[] = [
+  "BOZZA",
+  "DA_CONFERMARE",
+  "CONFERMATA",
+  "RIMANDATA",
+  "SVOLTA",
+  "ANNULLATA",
+];
+const MANUAL_PLANNING_STATUSES: PlanningStatus[] = [
+  "BOZZA",
+  "DA_CONFERMARE",
+  "CONFERMATA",
+  "RIMANDATA",
+  "ANNULLATA",
+];
 
 type CronoprogrammaPanelProps = {
   fromDate: string;
@@ -55,6 +102,8 @@ type CronoprogrammaPanelProps = {
   setQ: Dispatch<SetStateAction<string>>;
   personaleFilter: string;
   setPersonaleFilter: Dispatch<SetStateAction<string>>;
+  statusFilter?: PlanningStatusFilter;
+  setStatusFilter?: Dispatch<SetStateAction<PlanningStatusFilter>>;
   clienti: string[];
   quickRangeDays: 7 | 15 | 30 | null;
   applyQuickRange: (days: 7 | 15 | 30) => void;
@@ -83,6 +132,7 @@ type CronoprogrammaPanelProps = {
   stateLoading: boolean;
   savingFattoKey: string | null;
   savingHiddenKey: string | null;
+  savingStatusKey?: string | null;
   savingCommentKey: string | null;
   savingOperativiKey: string | null;
   savingRescheduleKey?: string | null;
@@ -94,6 +144,7 @@ type CronoprogrammaPanelProps = {
   conflictByKey: Record<string, any>;
   rowByKey: Record<string, TimelineRow>;
   setFatto: (row: TimelineRow, fatto: boolean) => void;
+  setStatus?: (row: TimelineRow, status: PlanningStatus) => void;
   openRescheduleModal?: (row: TimelineRow) => void;
   setHidden: (row: TimelineRow, hidden: boolean) => void;
   addComment: (row: TimelineRow) => void;
@@ -201,6 +252,36 @@ function renderRowStatusBadge({
     return renderPill("OK", BADGE_COLORS.statusOk);
   }
   return renderPill("ATTENZIONE", BADGE_COLORS.statusDueSoon);
+}
+
+function normalizeVisualPlanningStatus(value: unknown): VisualPlanningStatus {
+  const status = String(value || "").trim().toUpperCase();
+  return VISUAL_PLANNING_STATUS_VALUES.has(status)
+    ? (status as VisualPlanningStatus)
+    : "DA_CONFERMARE";
+}
+
+function getVisualPlanningStatus(meta?: CronoMeta | null): VisualPlanningStatus {
+  return normalizeVisualPlanningStatus(meta?.status_visual);
+}
+
+function getEditablePlanningStatus(meta?: CronoMeta | null): PlanningStatus {
+  const stored = String(meta?.status || "").trim().toUpperCase();
+  if (EDITABLE_PLANNING_STATUSES.includes(stored as PlanningStatus)) {
+    return stored as PlanningStatus;
+  }
+  const visual = getVisualPlanningStatus(meta);
+  return visual === "NASCOSTA" ? "DA_CONFERMARE" : (visual as PlanningStatus);
+}
+
+function renderPlanningStatusBadge(status: VisualPlanningStatus) {
+  if (status === "BOZZA") return renderPill("BOZZA", BADGE_COLORS.planningDraft);
+  if (status === "DA_CONFERMARE") return renderPill("DA CONFERMARE", BADGE_COLORS.planningPending);
+  if (status === "CONFERMATA") return renderPill("CONFERMATA", BADGE_COLORS.planningConfirmed);
+  if (status === "RIMANDATA") return renderPill("RIMANDATA", BADGE_COLORS.planningRescheduled);
+  if (status === "SVOLTA") return renderPill("SVOLTA", BADGE_COLORS.planningDone);
+  if (status === "ANNULLATA") return renderPill("ANNULLATA", BADGE_COLORS.planningCancelled);
+  return null;
 }
 
 function formatMinutesCompact(value?: number | null) {
@@ -338,6 +419,8 @@ export default function CronoprogrammaPanel({
   setQ,
   personaleFilter,
   setPersonaleFilter,
+  statusFilter = "TUTTE",
+  setStatusFilter = () => undefined,
   clienti,
   quickRangeDays,
   applyQuickRange,
@@ -366,6 +449,7 @@ export default function CronoprogrammaPanel({
   stateLoading,
   savingFattoKey,
   savingHiddenKey,
+  savingStatusKey = null,
   savingCommentKey,
   savingOperativiKey,
   savingRescheduleKey,
@@ -377,6 +461,7 @@ export default function CronoprogrammaPanel({
   conflictByKey,
   rowByKey,
   setFatto,
+  setStatus = () => undefined,
   openRescheduleModal,
   setHidden,
   addComment,
@@ -739,14 +824,29 @@ export default function CronoprogrammaPanel({
         }}
       >
         <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "flex-end", flex: 1 }}>
-          <label style={{ minWidth: 220, flex: "1 1 240px" }}>
-            Personale previsto
-            <input
-              value={personaleFilter}
-              onChange={(e) => setPersonaleFilter(e.target.value)}
+        <label style={{ minWidth: 220, flex: "1 1 240px" }}>
+          Personale previsto
+          <input
+            value={personaleFilter}
+            onChange={(e) => setPersonaleFilter(e.target.value)}
               placeholder="Nome o incarico"
               style={{ width: "100%", padding: 8, marginTop: 4 }}
             />
+          </label>
+          <label style={{ minWidth: 190 }}>
+            Stato operativo
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value as PlanningStatusFilter)}
+              style={{ width: "100%", padding: 8, marginTop: 4 }}
+            >
+              <option value="TUTTE">Tutte</option>
+              <option value="BOZZA">Bozze</option>
+              <option value="DA_CONFERMARE">Da confermare</option>
+              <option value="CONFERMATA">Confermate</option>
+              <option value="RIMANDATA">Rimandate</option>
+              <option value="SVOLTA">Svolte</option>
+            </select>
           </label>
           <label style={{ minWidth: 180 }}>
             Esito finale
@@ -874,6 +974,8 @@ export default function CronoprogrammaPanel({
               const fatto = Boolean(meta?.fatto ?? r.fatto);
               const overdueNotDone = isTimelineRowOverdueNotDone(r, meta);
               const hidden = Boolean(meta?.hidden);
+              const visualPlanningStatus = getVisualPlanningStatus(meta);
+              const editablePlanningStatus = getEditablePlanningStatus(meta);
               const operativoDefinito = hasDefinedOperativi(meta);
               const comments = commentsByKey[key] || [];
               const latestReportComment = comments.find((comment) => Boolean(parseStructuredReport(comment))) || null;
@@ -943,6 +1045,7 @@ export default function CronoprogrammaPanel({
                         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
                           {renderActivityKindBadge(kindLabel)}
                           {renderModeBadge(modeLabel)}
+                          {renderPlanningStatusBadge(visualPlanningStatus)}
                           {renderRowStatusBadge({ fatto, overdueNotDone, operativoDefinito, hidden })}
                           {conflict?.hasConflict
                             ? renderPill("CONFLITTO", { bg: "#fff1f2", border: "#fca5a5", color: "#b91c1c" }, "⚠")
@@ -1538,6 +1641,27 @@ export default function CronoprogrammaPanel({
                       </div>
 
                       <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
+                        {visualPlanningStatus !== "SVOLTA" ? (
+                          <label style={{ display: "inline-flex", alignItems: "center", gap: 8, fontWeight: 700 }}>
+                            <span>Stato</span>
+                            <select
+                              value={editablePlanningStatus === "SVOLTA" ? "DA_CONFERMARE" : editablePlanningStatus}
+                              onChange={(e) => setStatus(r, e.target.value as PlanningStatus)}
+                              disabled={savingStatusKey === key || stateLoading}
+                              style={{ padding: "8px 10px", borderRadius: 8, border: "1px solid #d1d5db" }}
+                            >
+                              {MANUAL_PLANNING_STATUSES.map((status) => (
+                                <option key={status} value={status}>
+                                  {status === "DA_CONFERMARE" ? "DA CONFERMARE" : status}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                        ) : (
+                          <span style={{ fontSize: 12, fontWeight: 700, color: "#166534" }}>
+                            Stato gestito da FATTO
+                          </span>
+                        )}
                         <label style={{ display: "inline-flex", alignItems: "center", gap: 8, fontWeight: 700 }}>
                           <input
                             type="checkbox"
