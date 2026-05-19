@@ -87,9 +87,30 @@ const PLANNING_STATUS_VALUES = new Set([
   "ANNULLATA",
 ]);
 type ReportOutcome = "COMPLETATO" | "PARZIALE" | "NON_COMPLETATO";
+const SHARED_OPERATIVI_META_FIELDS = [
+  "modalita_attivita",
+  "personale_previsto",
+  "personale_ids",
+  "mezzi",
+  "descrizione_attivita",
+  "indirizzo",
+  "referente_cliente_nome",
+  "referente_cliente_contatto",
+  "commerciale_art_tech_nome",
+  "commerciale_art_tech_contatto",
+];
+const SHARED_STATUS_META_FIELDS = [
+  "status",
+  "status_updated_at",
+  "status_updated_by_operatore",
+];
 
 function rowKey(rowKind: string, rowRefId: string, slotId?: string | null) {
   return slotId ? `${rowKind}:${rowRefId}:${slotId}` : `${rowKind}:${rowRefId}`;
+}
+
+function isSharedBlockKind(rowKind: string) {
+  return rowKind === "INSTALLAZIONE" || rowKind === "DISINSTALLAZIONE";
 }
 
 function isValidRowKind(value: string): value is RowKind {
@@ -219,6 +240,27 @@ function cleanUuidArray(values: unknown) {
 function cleanOptionalUuid(value: unknown) {
   const normalized = String(value || "").trim();
   return isUuidLike(normalized) ? normalized : null;
+}
+
+function hasMeaningfulMetaValue(value: unknown) {
+  if (Array.isArray(value)) return value.length > 0;
+  if (typeof value === "string") return value.trim().length > 0;
+  return value !== null && value !== undefined;
+}
+
+function applyMetaFallbackFields(target: Record<string, any>, source: Record<string, any> | null | undefined, fields: string[]) {
+  if (!source) return target;
+  for (const field of fields) {
+    if (!hasMeaningfulMetaValue(target[field]) && hasMeaningfulMetaValue(source[field])) {
+      target[field] = source[field];
+    }
+  }
+  return target;
+}
+
+function hasAnyMetaField(row: Record<string, any> | null | undefined, fields: string[]) {
+  if (!row) return false;
+  return fields.some((field) => hasMeaningfulMetaValue(row[field]));
 }
 
 function applyExactSlotFilter<T extends { eq: Function; is: Function }>(query: T, slotId?: string | null) {
@@ -564,6 +606,105 @@ function buildSyntheticMetaFromSlotRow(row: any) {
     commerciale_art_tech_nome: slot.commerciale_art_tech_nome,
     commerciale_art_tech_contatto: slot.commerciale_art_tech_contatto,
   };
+}
+
+function buildInheritedMetaForRow(params: {
+  currentMeta?: Record<string, any> | null;
+  blockMeta?: Record<string, any> | null;
+  donorMeta?: Record<string, any> | null;
+}) {
+  const { currentMeta, blockMeta, donorMeta } = params;
+  const merged = { ...(currentMeta || {}) };
+  applyMetaFallbackFields(merged, blockMeta, SHARED_OPERATIVI_META_FIELDS);
+  applyMetaFallbackFields(merged, donorMeta, SHARED_OPERATIVI_META_FIELDS);
+  applyMetaFallbackFields(merged, blockMeta, SHARED_STATUS_META_FIELDS);
+  applyMetaFallbackFields(merged, donorMeta, SHARED_STATUS_META_FIELDS);
+  if (!Array.isArray(merged.referenti_cliente) && Array.isArray(blockMeta?.referenti_cliente)) {
+    merged.referenti_cliente = blockMeta?.referenti_cliente;
+  }
+  if (!Array.isArray(merged.slots) && Array.isArray(blockMeta?.slots)) {
+    merged.slots = blockMeta?.slots;
+  }
+  return merged;
+}
+
+async function loadAllBlockSlots(
+  supabaseAdmin: any,
+  rowKind: string,
+  rowRefId: string
+) {
+  const { data, error } = await loadCurrentSlotsForActivity(supabaseAdmin, rowKind, rowRefId);
+  if (
+    error &&
+    !String(error.message || "").toLowerCase().includes("cronoprogramma_meta_slots")
+  ) {
+    return { data: null, error };
+  }
+  return {
+    data: (data || [])
+      .map((row: any) => cleanOptionalUuid(row?.id))
+      .filter(Boolean),
+    error: null,
+  };
+}
+
+async function writeMetaForScope(params: {
+  supabaseAdmin: any;
+  rowKind: string;
+  rowRefId: string;
+  slotId?: string | null;
+  payload: Record<string, unknown>;
+  includeBlockLegacy?: boolean;
+}) {
+  const { supabaseAdmin, rowKind, rowRefId, slotId, payload, includeBlockLegacy } = params;
+  const isBlockScoped = isSharedBlockKind(rowKind);
+  const { data: allSlotIds, error: slotsErr } =
+    isBlockScoped ? await loadAllBlockSlots(supabaseAdmin, rowKind, rowRefId) : { data: null, error: null };
+  if (slotsErr) {
+    return { data: null, error: slotsErr, metas: [] as any[] };
+  }
+
+  const targetSlotIds =
+    isBlockScoped && Array.isArray(allSlotIds) && allSlotIds.length > 0
+      ? allSlotIds
+      : [slotId ?? null];
+
+  const metas: any[] = [];
+  for (const targetSlotId of targetSlotIds) {
+    const { data, error } = await writeExactMetaRow(
+      supabaseAdmin,
+      rowKind,
+      rowRefId,
+      targetSlotId,
+      payload
+    );
+    if (error) {
+      return { data: null, error, metas };
+    }
+    if (data) metas.push(mapMetaRow(data));
+  }
+
+  if (includeBlockLegacy && isBlockScoped) {
+    const { data, error } = await writeExactMetaRow(
+      supabaseAdmin,
+      rowKind,
+      rowRefId,
+      null,
+      payload
+    );
+    if (error) {
+      return { data: null, error, metas };
+    }
+    if (data) metas.push(mapMetaRow(data));
+  }
+
+  const selectedMeta =
+    metas.find((item) => cleanOptionalUuid(item?.slot_id) === cleanOptionalUuid(slotId)) ||
+    metas.find((item) => cleanOptionalUuid(item?.slot_id) === null) ||
+    metas[0] ||
+    null;
+
+  return { data: selectedMeta, error: null, metas };
 }
 
 async function loadExactMetaRow(
@@ -1171,6 +1312,22 @@ export async function POST(request: Request) {
       }
     }
 
+    const donorMetaByBlockKey: Record<string, any> = {};
+    for (const [blockKey, slots] of Object.entries(slotsByKey)) {
+      const separatorIndex = blockKey.indexOf(":");
+      const blockRowKind = separatorIndex >= 0 ? blockKey.slice(0, separatorIndex) : "";
+      const blockRowRefId = separatorIndex >= 0 ? blockKey.slice(separatorIndex + 1) : "";
+      const slotList = Array.isArray(slots) ? [...slots] : [];
+      for (const slot of slotList.sort((a, b) => Number(a?.position || 0) - Number(b?.position || 0))) {
+        const slotKey = rowKey(blockRowKind, blockRowRefId, cleanOptionalUuid((slot as any)?.id));
+        const candidate = metaByKey[slotKey] || null;
+        if (hasAnyMetaField(candidate, [...SHARED_OPERATIVI_META_FIELDS, ...SHARED_STATUS_META_FIELDS])) {
+          donorMetaByBlockKey[blockKey] = candidate;
+          break;
+        }
+      }
+    }
+
     const commentsByKey: Record<string, any[]> = {};
     const latestReportOutcomeByKey: Record<string, ReportOutcome | null> = {};
     for (const row of commentRows || []) {
@@ -1212,7 +1369,15 @@ export async function POST(request: Request) {
 
     for (const row of normalizedRows) {
       const key = rowKey(row.row_kind, row.row_ref_id, row.slot_id);
-      const currentMeta = metaByKey[key] || {
+      const blockKey = rowKey(row.row_kind, row.row_ref_id, null);
+      const inheritedMeta = row.slot_id
+        ? buildInheritedMetaForRow({
+            currentMeta: metaByKey[key] || null,
+            blockMeta: metaByKey[blockKey] || null,
+            donorMeta: donorMetaByBlockKey[blockKey] || null,
+          })
+        : metaByKey[key] || null;
+      const currentMeta = inheritedMeta || {
         slot_id: row.slot_id ?? null,
         fatto: false,
         hidden: false,
@@ -1310,13 +1475,14 @@ export async function POST(request: Request) {
       updated_by_operatore: operatore.id,
     };
 
-    const { data, error } = await writeExactMetaRow(
+    const { data, error, metas } = await writeMetaForScope({
       supabaseAdmin,
       rowKind,
       rowRefId,
       slotId,
-      payload
-    );
+      payload,
+      includeBlockLegacy: isSharedBlockKind(rowKind),
+    });
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 });
@@ -1324,7 +1490,8 @@ export async function POST(request: Request) {
 
     return NextResponse.json({
       ok: true,
-      meta: mapMetaRow(data as any),
+      meta: data,
+      metas,
     });
   }
 
@@ -1392,13 +1559,14 @@ export async function POST(request: Request) {
       updated_by_operatore: operatore.id,
     };
 
-    const { data, error } = await writeExactMetaRow(
+    const { data, error, metas } = await writeMetaForScope({
       supabaseAdmin,
       rowKind,
       rowRefId,
       slotId,
-      payload
-    );
+      payload,
+      includeBlockLegacy: isSharedBlockKind(rowKind),
+    });
 
     if (error) {
       return NextResponse.json({ error: error.message }, { status: 500 });
@@ -1453,7 +1621,8 @@ export async function POST(request: Request) {
 
     return NextResponse.json({
       ok: true,
-      meta: mapMetaRow(data as any),
+      meta: data,
+      metas,
       comments: (insertedComments || []).map((row) => mapCommentRow(row)),
     });
   }

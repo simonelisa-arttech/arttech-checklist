@@ -55,6 +55,7 @@ type PlanningStatusFilter =
   | "SVOLTA";
 
 type CronoMeta = {
+  slot_id?: string | null;
   fatto: boolean;
   hidden: boolean;
   status?: PlanningStatus | null;
@@ -454,6 +455,45 @@ export default function CronoprogrammaPage() {
   const syncingScrollRef = useRef<"top" | "main" | "bottom" | null>(null);
   const [scrollContentWidth, setScrollContentWidth] = useState(4320);
 
+  function applyReturnedMetaUpdates(
+    rowKind: TimelineRow["kind"],
+    rowRefId: string,
+    updates: unknown,
+    options?: { syncRowsFatto?: boolean }
+  ) {
+    const normalizedUpdates = Array.isArray(updates)
+      ? (updates as CronoMeta[])
+      : updates && typeof updates === "object"
+        ? [updates as CronoMeta]
+        : [];
+    if (!normalizedUpdates.length) return;
+
+    const nextEntries = normalizedUpdates
+      .map((meta) => {
+        const slotId = meta?.slot_id ?? null;
+        return [getRowKey(rowKind, rowRefId, slotId), meta] as const;
+      })
+      .filter(([key]) => Boolean(key));
+
+    if (!nextEntries.length) return;
+
+    setMetaByKey((prev) => {
+      const next = { ...prev };
+      for (const [key, meta] of nextEntries) next[key] = meta;
+      return next;
+    });
+
+    if (options?.syncRowsFatto) {
+      const fattoByKey = new Map(nextEntries.map(([key, meta]) => [key, Boolean(meta?.fatto)]));
+      setRows((prev) =>
+        prev.map((entry) => {
+          const key = getRowKey(entry.kind, entry.row_ref_id, entry.slot_id);
+          return fattoByKey.has(key) ? { ...entry, fatto: Boolean(fattoByKey.get(key)) } : entry;
+        })
+      );
+    }
+  }
+
   async function loadRowState(timelineRows: TimelineRow[]) {
     if (!timelineRows.length) {
       setMetaByKey({});
@@ -628,10 +668,7 @@ export default function CronoprogrammaPage() {
         return;
       }
 
-      setMetaByKey((prev) => ({ ...prev, [key]: data?.meta }));
-      setRows((prev) =>
-        prev.map((entry) => (isSameTimelineRow(entry, row) ? { ...entry, fatto: true } : entry))
-      );
+      applyReturnedMetaUpdates(row.kind, row.row_ref_id, data?.metas || data?.meta, { syncRowsFatto: true });
       const insertedComments = Array.isArray(data?.comments)
         ? (data.comments as CronoComment[])
         : [];
@@ -703,7 +740,7 @@ export default function CronoprogrammaPage() {
         return;
       }
 
-      setMetaByKey((prev) => ({ ...prev, [key]: data?.meta }));
+      applyReturnedMetaUpdates(row.kind, row.row_ref_id, data?.metas || data?.meta);
       setOperativiDraftByKey((prev) => ({
         ...prev,
         [key]: extractOperativi(data?.meta || null),
