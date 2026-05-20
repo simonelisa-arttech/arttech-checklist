@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import ConfigMancante from "@/components/ConfigMancante";
@@ -340,6 +340,10 @@ export default function NuovaChecklistPage() {
     proforma_link_url: "",
   });
   const [licenzeError, setLicenzeError] = useState<string | null>(null);
+  const [creating, setCreating] = useState(false);
+  const createInFlightRef = useRef(false);
+  const createAttemptRef = useRef(0);
+  const createdChecklistIdRef = useRef<string | null>(null);
 
   const canCreate = useMemo(() => {
     return (
@@ -732,7 +736,30 @@ export default function NuovaChecklistPage() {
   }
 
   async function onCreate() {
+    if (createInFlightRef.current || creating) {
+      if (process.env.NODE_ENV !== "production") {
+        console.info("[nuova-checklist] duplicate create prevented", {
+          attempt: createAttemptRef.current,
+          timestamp: new Date().toISOString(),
+        });
+      }
+      return;
+    }
+
+    createInFlightRef.current = true;
+    setCreating(true);
+    createAttemptRef.current += 1;
+    const createAttemptId = `create-${Date.now()}-${createAttemptRef.current}`;
+
     try {
+      if (process.env.NODE_ENV !== "production") {
+        console.info("[nuova-checklist] create start", {
+          createAttemptId,
+          timestamp: new Date().toISOString(),
+          clienteId,
+          nomeChecklist: nomeChecklist.trim(),
+        });
+      }
       if (!canCreate) {
         alert("Compila almeno Cliente e Rif. Progetto.");
         return;
@@ -891,6 +918,16 @@ export default function NuovaChecklistPage() {
 
       if (errCreate) {
         if (isChecklistDuplicateError(errCreate)) {
+          if (createdChecklistIdRef.current) {
+            if (process.env.NODE_ENV !== "production") {
+              console.warn("[nuova-checklist] duplicate error suppressed after successful create", {
+                createAttemptId,
+                checklistId: createdChecklistIdRef.current,
+              });
+            }
+            router.push(`/checklists/${createdChecklistIdRef.current}`);
+            return;
+          }
           alert("Esiste gia' un progetto con questo cliente e questo Rif. Progetto.");
           return;
         }
@@ -903,6 +940,7 @@ export default function NuovaChecklistPage() {
         return;
       }
       const checklistId = created.id as string;
+      createdChecklistIdRef.current = checklistId;
       if (driveFallbackUsed && magazzinoFields.driveUrl) {
         alert(
           "Checklist creata. Il link Drive progetto non e' stato salvato: colonna non disponibile nello schema cache / ambiente non migrato."
@@ -1087,6 +1125,9 @@ export default function NuovaChecklistPage() {
     } catch (err: any) {
       const info = logSupabaseError(err);
       alert("Errore: " + (info || err?.message || String(err)));
+    } finally {
+      createInFlightRef.current = false;
+      setCreating(false);
     }
   }
 
@@ -2171,6 +2212,7 @@ export default function NuovaChecklistPage() {
 
               <div style={{ marginTop: 10, display: "flex", gap: 8 }}>
                 <button
+                  type="button"
                   onClick={() => removeRow(idx)}
                   disabled={rows.length === 1}
                   style={{
@@ -2190,6 +2232,7 @@ export default function NuovaChecklistPage() {
 
         <div style={{ marginTop: 12, display: "flex", gap: 10 }}>
           <button
+            type="button"
             onClick={addRow}
             style={{
               padding: "10px 14px",
@@ -2203,20 +2246,21 @@ export default function NuovaChecklistPage() {
           </button>
 
           <button
+            type="button"
             onClick={onCreate}
-            disabled={!canCreate}
+            disabled={!canCreate || creating}
             style={{
               marginLeft: "auto",
               padding: "10px 14px",
               borderRadius: 10,
               border: "1px solid #111",
-              cursor: canCreate ? "pointer" : "not-allowed",
+              cursor: canCreate && !creating ? "pointer" : "not-allowed",
               background: "#111",
               color: "white",
-              opacity: canCreate ? 1 : 0.5,
+              opacity: canCreate && !creating ? 1 : 0.5,
             }}
           >
-            Crea
+            {creating ? "Creazione..." : "Crea"}
           </button>
         </div>
       </div>
