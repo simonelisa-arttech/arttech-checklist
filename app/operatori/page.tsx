@@ -1361,6 +1361,26 @@ export default function OperatoreAttivitaPage() {
                               ▶ Inizia
                             </button>
                           ) : null}
+                          {timbraturaState === "IN_CORSO" ? (
+                            <button
+                              type="button"
+                              onClick={() => void handleTimbraturaAction(row, key, "pause_timbratura")}
+                              disabled={timbraturaLoading}
+                              style={{
+                                padding: "12px 14px",
+                                borderRadius: 12,
+                                border: "1px solid #fcd34d",
+                                background: "#fffbeb",
+                                color: "#b45309",
+                                fontSize: 14,
+                                fontWeight: 800,
+                                cursor: timbraturaLoading ? "wait" : "pointer",
+                                opacity: timbraturaLoading ? 0.7 : 1,
+                              }}
+                            >
+                              ⏸ Pausa
+                            </button>
+                          ) : null}
                           {timbraturaState === "IN_PAUSA" ? (
                             <button
                               type="button"
@@ -1381,7 +1401,7 @@ export default function OperatoreAttivitaPage() {
                               ▶ Riprendi
                             </button>
                           ) : null}
-                          {timbraturaState === "IN_CORSO" ? (
+                          {timbraturaState === "IN_CORSO" || timbraturaState === "IN_PAUSA" ? (
                             <button
                               type="button"
                               onClick={() => openStopReport(row)}
@@ -1577,7 +1597,7 @@ export default function OperatoreAttivitaPage() {
                               </div>
                             </div>
 
-                            {timbraturaState === "IN_CORSO" ? (
+                            {timbraturaState === "IN_CORSO" || timbraturaState === "IN_PAUSA" ? (
                               <div style={{ display: "grid", gap: 10 }}>
                                 <div style={{ fontSize: 12, fontWeight: 800, color: "#475569", textTransform: "uppercase", letterSpacing: 0.4 }}>
                                   Report finale

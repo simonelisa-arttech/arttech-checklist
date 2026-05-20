@@ -2495,11 +2495,11 @@ export async function POST(request: Request) {
 
     let openTimbraturaQuery = supabaseAdmin
       .from("cronoprogramma_timbrature")
-      .select("id, started_at")
+      .select("id, started_at, stato")
       .eq("row_kind", rowKind)
       .eq("row_ref_id", rowRefId)
       .eq("operatore_id", operatore.id)
-      .eq("stato", "IN_CORSO")
+      .in("stato", ["IN_CORSO", "IN_PAUSA"])
       .order("created_at", { ascending: false })
       .limit(1);
     openTimbraturaQuery = applyExactSlotFilter(openTimbraturaQuery, slotId);
@@ -2509,7 +2509,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: openErr.message }, { status: 500 });
     }
     if (!openTimbratura?.id) {
-      return NextResponse.json({ error: "Nessuna timbratura aperta per questa attività" }, { status: 404 });
+      return NextResponse.json({ error: "Nessuna timbratura aperta o in pausa per questa attività" }, { status: 404 });
     }
 
     const { data: openInterval, error: intervalErr } = await supabaseAdmin
@@ -2528,7 +2528,7 @@ export async function POST(request: Request) {
     const now = new Date();
     const intervalStartedAt = String(openInterval?.started_at || openTimbratura.started_at || "").trim();
     const startedAt = new Date(intervalStartedAt);
-    const durationMinutes = Number.isFinite(startedAt.getTime())
+    const currentIntervalMinutes = Number.isFinite(startedAt.getTime())
       ? Math.max(0, Math.round((now.getTime() - startedAt.getTime()) / 60000))
       : 0;
 
@@ -2539,7 +2539,7 @@ export async function POST(request: Request) {
               .from("cronoprogramma_timbrature_intervalli")
               .update({
                 ended_at: now.toISOString(),
-                durata_minuti: durationMinutes,
+                durata_minuti: currentIntervalMinutes,
               })
               .eq("id", openInterval.id)
           ).error
@@ -2550,7 +2550,7 @@ export async function POST(request: Request) {
                 timbratura_id: openTimbratura.id,
                 started_at: intervalStartedAt,
                 ended_at: now.toISOString(),
-                durata_minuti: durationMinutes,
+                durata_minuti: currentIntervalMinutes,
               })
           ).error;
 
@@ -2559,12 +2559,29 @@ export async function POST(request: Request) {
       }
     }
 
+    const { data: closedIntervals, error: intervalsErr } = await supabaseAdmin
+      .from("cronoprogramma_timbrature_intervalli")
+      .select("durata_minuti")
+      .eq("timbratura_id", openTimbratura.id);
+
+    if (intervalsErr) {
+      return NextResponse.json({ error: intervalsErr.message }, { status: 500 });
+    }
+
+    const totalDurationMinutes = (closedIntervals || []).reduce((sum, row: any) => {
+      const minutes =
+        Number.isFinite(Number(row?.durata_minuti)) && Number(row?.durata_minuti) >= 0
+          ? Number(row.durata_minuti)
+          : 0;
+      return sum + minutes;
+    }, 0);
+
     const { error } = await supabaseAdmin
       .from("cronoprogramma_timbrature")
       .update({
         ended_at: now.toISOString(),
         stato: "COMPLETATA",
-        durata_effettiva_minuti: durationMinutes,
+        durata_effettiva_minuti: totalDurationMinutes,
         updated_at: now.toISOString(),
       })
       .eq("id", openTimbratura.id);
@@ -2612,7 +2629,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({
       ok: true,
-      durata_effettiva_minuti: durationMinutes,
+      durata_effettiva_minuti: totalDurationMinutes,
       activity_state: activityState,
     });
   }
