@@ -1337,6 +1337,9 @@ export default function CronoprogrammaPanel({
                         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
                           {renderActivityKindBadge(kindLabel)}
                           {renderPlanningStatusBadge(visualPlanningStatus)}
+                          {r.is_unscheduled
+                            ? renderPill("DA CALENDARIZZARE", BADGE_COLORS.planningPending)
+                            : null}
                           {conflict?.hasConflict
                             ? renderPill("CONFLITTO", { bg: "#fff1f2", border: "#fca5a5", color: "#b91c1c" }, "⚠")
                             : null}
@@ -1391,7 +1394,9 @@ export default function CronoprogrammaPanel({
                       >
                         <div style={{ display: "grid", gap: 4, fontSize: 13, color: "#475569", justifyItems: "end" }}>
                           <span>
-                            {schedule.data_inizio ? `Data: ${scheduleLabel}` : "Da calendarizzare"}
+                            {r.is_unscheduled || !schedule.data_inizio
+                              ? "Da calendarizzare"
+                              : `Data: ${scheduleLabel}`}
                           </span>
                           <span>Orario: {orarioLabel}</span>
                           <span>Ore previste: {oreLabel}</span>

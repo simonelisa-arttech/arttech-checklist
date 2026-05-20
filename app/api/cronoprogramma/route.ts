@@ -1128,6 +1128,22 @@ export async function POST(request: Request) {
       slotRows = slotRes.data || [];
     }
 
+    let operativiMetaRows: any[] = [];
+    if (activeChecklistIds.length > 0) {
+      const metaRes = await supabaseAdmin
+        .from("cronoprogramma_meta")
+        .select("row_kind, row_ref_id, slot_id, status, fatto, hidden")
+        .in("row_ref_id", activeChecklistIds as any)
+        .in("row_kind", ["INSTALLAZIONE", "DISINSTALLAZIONE"] as any);
+      if (
+        metaRes.error &&
+        !String(metaRes.error.message || "").toLowerCase().includes("cronoprogramma_meta")
+      ) {
+        return NextResponse.json({ error: metaRes.error.message }, { status: 500 });
+      }
+      operativiMetaRows = metaRes.data || [];
+    }
+
     const slotsByChecklistAndKind = new Map<string, any[]>();
     for (const row of slotRows) {
       const slotId = cleanOptionalUuid((row as any).id);
@@ -1135,6 +1151,15 @@ export async function POST(request: Request) {
       const key = rowKey(String((row as any).row_kind || ""), String((row as any).row_ref_id || ""));
       if (!slotsByChecklistAndKind.has(key)) slotsByChecklistAndKind.set(key, []);
       slotsByChecklistAndKind.get(key)?.push(mapSlotRow(row));
+    }
+
+    const hasOperativiMetaByChecklistAndKind = new Set<string>();
+    for (const row of operativiMetaRows) {
+      const rowKind = String((row as any).row_kind || "").trim().toUpperCase();
+      const rowRefId = String((row as any).row_ref_id || "").trim();
+      if (!rowKind || !rowRefId) continue;
+      if (cleanOptionalUuid((row as any).slot_id)) continue;
+      hasOperativiMetaByChecklistAndKind.add(rowKey(rowKind, rowRefId));
     }
 
     const timeline: any[] = [];
@@ -1147,10 +1172,12 @@ export async function POST(request: Request) {
       if (["IN_CORSO", "IN_LAVORAZIONE"].includes(statoProgetto)) {
         const date = toIsoDay(cc.data_tassativa) || toIsoDay(cc.data_prevista);
         const installSlots = slotsByChecklistAndKind.get(rowKey("INSTALLAZIONE", String(cc.id))) || [];
+        let hasInstallScheduledRow = false;
         if (installSlots.length > 0) {
           for (const slot of installSlots) {
             const slotDate = toIsoDay(slot.data_inizio) || date;
             if (!slotDate || slotDate < CUTOFF_DATE) continue;
+            hasInstallScheduledRow = true;
             timeline.push({
               kind: "INSTALLAZIONE",
               id: `install:${cc.id}:${slot.id}`,
@@ -1174,9 +1201,11 @@ export async function POST(request: Request) {
                 "Installazione pianificata",
               stato: "PIANIFICATA",
               fatto: false,
+              is_unscheduled: false,
             });
           }
         } else if (date && date >= CUTOFF_DATE) {
+          hasInstallScheduledRow = true;
           timeline.push({
             kind: "INSTALLAZIONE",
             id: `install:${cc.id}`,
@@ -1197,6 +1226,34 @@ export async function POST(request: Request) {
               "Installazione pianificata",
             stato: "PIANIFICATA",
             fatto: false,
+            is_unscheduled: false,
+          });
+        }
+        if (
+          !hasInstallScheduledRow &&
+          (installSlots.length > 0 || hasOperativiMetaByChecklistAndKind.has(rowKey("INSTALLAZIONE", String(cc.id))))
+        ) {
+          timeline.push({
+            kind: "INSTALLAZIONE",
+            id: `install-unscheduled:${cc.id}`,
+            row_ref_id: cc.id,
+            slot_id: null,
+            slot_date: null,
+            slot_hours: null,
+            slot_orario: null,
+            data_prevista: "",
+            data_tassativa: "",
+            cliente: String(cc.cliente || "—"),
+            checklist_id: cc.id,
+            progetto: String(cc.nome_checklist || cc.id),
+            proforma: cc.proforma ?? null,
+            tipologia: normalizeUpper(cc.noleggio_vendita || "INSTALLAZIONE"),
+            descrizione:
+              [cc.tipo_impianto || "", cc.noleggio_vendita || ""].filter(Boolean).join(" · ") ||
+              "Installazione da calendarizzare",
+            stato: "DA_CALENDARIZZARE",
+            fatto: false,
+            is_unscheduled: true,
           });
         }
       }
@@ -1205,10 +1262,12 @@ export async function POST(request: Request) {
         const disinstallDate = toIsoDay(cc.data_disinstallazione);
         const disinstallSlots =
           slotsByChecklistAndKind.get(rowKey("DISINSTALLAZIONE", String(cc.id))) || [];
+        let hasDisinstallScheduledRow = false;
         if (disinstallSlots.length > 0) {
           for (const slot of disinstallSlots) {
             const slotDate = toIsoDay(slot.data_inizio) || disinstallDate;
             if (!slotDate || slotDate < CUTOFF_DATE) continue;
+            hasDisinstallScheduledRow = true;
             timeline.push({
               kind: "DISINSTALLAZIONE",
               id: `disinstall:${cc.id}:${slot.id}`,
@@ -1232,9 +1291,11 @@ export async function POST(request: Request) {
                 "Smontaggio noleggio pianificato",
               stato: "PIANIFICATA",
               fatto: false,
+              is_unscheduled: false,
             });
           }
         } else if (disinstallDate && disinstallDate >= CUTOFF_DATE) {
+          hasDisinstallScheduledRow = true;
           timeline.push({
             kind: "DISINSTALLAZIONE",
             id: `disinstall:${cc.id}`,
@@ -1255,6 +1316,35 @@ export async function POST(request: Request) {
               "Smontaggio noleggio pianificato",
             stato: "PIANIFICATA",
             fatto: false,
+            is_unscheduled: false,
+          });
+        }
+        if (
+          !hasDisinstallScheduledRow &&
+          (disinstallSlots.length > 0 ||
+            hasOperativiMetaByChecklistAndKind.has(rowKey("DISINSTALLAZIONE", String(cc.id))))
+        ) {
+          timeline.push({
+            kind: "DISINSTALLAZIONE",
+            id: `disinstall-unscheduled:${cc.id}`,
+            row_ref_id: cc.id,
+            slot_id: null,
+            slot_date: null,
+            slot_hours: null,
+            slot_orario: null,
+            data_prevista: "",
+            data_tassativa: "",
+            cliente: String(cc.cliente || "—"),
+            checklist_id: cc.id,
+            progetto: String(cc.nome_checklist || cc.id),
+            proforma: cc.proforma ?? null,
+            tipologia: "NOLEGGIO",
+            descrizione:
+              [cc.tipo_impianto || "", "SMONTAGGIO NOLEGGIO"].filter(Boolean).join(" · ") ||
+              "Smontaggio noleggio da calendarizzare",
+            stato: "DA_CALENDARIZZARE",
+            fatto: false,
+            is_unscheduled: true,
           });
         }
       }
@@ -1288,6 +1378,7 @@ export async function POST(request: Request) {
         descrizione: String(ii.descrizione || "Intervento"),
         stato: statoIntervento,
         fatto: false,
+        is_unscheduled: false,
       });
     }
 

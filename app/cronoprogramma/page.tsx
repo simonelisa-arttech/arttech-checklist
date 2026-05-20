@@ -26,6 +26,7 @@ type TimelineRow = {
   slot_date?: string | null;
   slot_hours?: number | null;
   slot_orario?: string | null;
+  is_unscheduled?: boolean;
   data_prevista: string;
   data_tassativa: string;
   cliente: string;
@@ -1120,6 +1121,7 @@ export default function CronoprogrammaPage() {
         const timeline = ((data?.events as TimelineRow[]) || []).map((r) => ({
           ...r,
           tipologia: String(r.tipologia || inferInterventoTipologia(r.descrizione)).toUpperCase(),
+          is_unscheduled: Boolean(r.is_unscheduled),
         }));
         setRows(timeline);
         await loadRowState(timeline);
@@ -1198,8 +1200,10 @@ export default function CronoprogrammaPage() {
       if (fatto && (showFatto || statusFilter === "SVOLTA")) return true;
       if (presetFilterMode === "7gg_scadute" && isOverdueNotDone) return true;
       if (!focusChecklistId) {
-        if (fromDate && schedule.data_fine < fromDate) return false;
-        if (toDate && schedule.data_inizio > toDate) return false;
+        if (!r.is_unscheduled) {
+          if (fromDate && schedule.data_fine < fromDate) return false;
+          if (toDate && schedule.data_inizio > toDate) return false;
+        }
       }
       return true;
     });
@@ -1224,6 +1228,11 @@ export default function CronoprogrammaPage() {
     const sorted = [...filtered];
     const field = sortBy;
     sorted.sort((a, b) => {
+      const aUnscheduled = Boolean(a.is_unscheduled);
+      const bUnscheduled = Boolean(b.is_unscheduled);
+      if (aUnscheduled !== bUnscheduled) {
+        return aUnscheduled ? 1 : -1;
+      }
       const aMeta = metaByKey[getRowKey(a.kind, a.row_ref_id, a.slot_id)] || null;
       const bMeta = metaByKey[getRowKey(b.kind, b.row_ref_id, b.slot_id)] || null;
       const avSchedule = getRowSchedule(a, aMeta);
