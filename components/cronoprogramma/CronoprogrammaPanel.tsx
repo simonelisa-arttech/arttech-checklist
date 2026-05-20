@@ -1,12 +1,14 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import Link from "next/link";
 import type { Dispatch, MutableRefObject, SetStateAction, UIEvent } from "react";
+import AttachmentsPanel from "@/components/AttachmentsPanel";
 import OperationalBlockEditor, {
   type OperationalBlockFormState,
   type OperationalBlockPlanningStatusOption,
 } from "@/components/cronoprogramma/OperationalBlockEditor";
+import SafetyComplianceBadge from "@/components/SafetyComplianceBadge";
 import { isTimelineRowOverdueNotDone } from "@/lib/cronoprogrammaStatus";
 import { formatOperativiDateLabel } from "@/lib/operativiSchedule";
 
@@ -456,6 +458,63 @@ function getBudgetDeltaSummary(stimatoMinuti: number | null, realeMinuti: number
   };
 }
 
+function summarizeAssignedPeople(value: string | null | undefined) {
+  const names = String(value || "")
+    .split(/[\n,;|]+/)
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+  if (names.length === 0) return "Non assegnato";
+  if (names.length <= 2) return names.join(", ");
+  return `${names.slice(0, 2).join(", ")} +${names.length - 2}`;
+}
+
+function buildOperativiReferentiSummary(operativi: any) {
+  const fromList = Array.isArray(operativi?.referenti_cliente)
+    ? operativi.referenti_cliente
+        .map((referente: any) =>
+          [referente?.nome, referente?.ruolo, referente?.contatto]
+            .map((value) => String(value || "").trim())
+            .filter(Boolean)
+            .join(" • ")
+        )
+        .filter(Boolean)
+    : [];
+  if (fromList.length > 0) return fromList.join(" | ");
+  const fallback = [
+    String(operativi?.referente_cliente_nome || "").trim(),
+    String(operativi?.referente_cliente_contatto || "").trim(),
+  ].filter(Boolean);
+  return fallback.join(" • ") || "Non specificati";
+}
+
+function renderDetailInfoCard(title: string, content: ReactNode) {
+  return (
+    <div
+      style={{
+        border: "1px solid #e5e7eb",
+        borderRadius: 12,
+        background: "white",
+        padding: 12,
+        display: "grid",
+        gap: 8,
+      }}
+    >
+      <div
+        style={{
+          fontSize: 12,
+          fontWeight: 800,
+          color: "#6b7280",
+          textTransform: "uppercase",
+          letterSpacing: 0.4,
+        }}
+      >
+        {title}
+      </div>
+      <div style={{ fontSize: 13, color: "#1f2937", overflowWrap: "anywhere" }}>{content}</div>
+    </div>
+  );
+}
+
 export default function CronoprogrammaPanel({
   fromDate,
   setFromDate,
@@ -527,6 +586,7 @@ export default function CronoprogrammaPanel({
   emptyOperationalBlockForm,
 }: CronoprogrammaPanelProps) {
   const [expandedRowKey, setExpandedRowKey] = useState<string | null>(null);
+  const [editingRowKey, setEditingRowKey] = useState<string | null>(null);
   const [timbraturaStateByKey, setTimbraturaStateByKey] = useState<
     Record<string, "NON_INIZIATA" | "IN_CORSO" | "IN_PAUSA" | "COMPLETATA">
   >({});
@@ -957,6 +1017,16 @@ export default function CronoprogrammaPanel({
     }
   }
 
+  function toggleExpandedRow(key: string) {
+    setExpandedRowKey((prev) => {
+      const isClosing = prev === key;
+      if (isClosing) {
+        setEditingRowKey((editingPrev) => (editingPrev === key ? null : editingPrev));
+      }
+      return isClosing ? null : key;
+    });
+  }
+
   return (
     <>
       <div
@@ -1221,6 +1291,18 @@ export default function CronoprogrammaPanel({
               const manualActualOpen = manualActualOpenKey === key;
               const manualActualSaving = manualActualSavingKey === key;
               const manualActualValue = manualActualHoursByKey[key] ?? "";
+              const editing = editingRowKey === key;
+              const peopleSummary = summarizeAssignedPeople(operativi.personale_previsto);
+              const scheduleLabel = schedule.data_inizio
+                ? formatOperativiDateLabel(schedule.data_inizio)
+                : "Da calendarizzare";
+              const orarioLabel = r.slot_id
+                ? r.slot_orario || operativi.orario || "—"
+                : operativi.orario || r.slot_orario || "—";
+              const oreLabel = formatMinutesCompact(timeBudget.stimatoMinuti);
+              const slotList =
+                Array.isArray(operativi?.slots) && operativi.slots.length > 0 ? operativi.slots : [];
+              const referentiSummary = buildOperativiReferentiSummary(operativi);
 
               return (
                 <div
@@ -1236,20 +1318,10 @@ export default function CronoprogrammaPanel({
                   title={conflict?.hasConflict ? conflictTitle : undefined}
                 >
                   <div
-                    role="button"
-                    tabIndex={0}
-                    onClick={() => setExpandedRowKey((prev) => (prev === key ? null : key))}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" || e.key === " ") {
-                        e.preventDefault();
-                        setExpandedRowKey((prev) => (prev === key ? null : key));
-                      }
-                    }}
                     style={{
                       padding: "12px 14px",
                       display: "grid",
                       gap: 10,
-                      cursor: "pointer",
                       borderLeft: overdueNotDone ? "4px solid #f59e0b" : "4px solid transparent",
                     }}
                   >
@@ -1264,32 +1336,20 @@ export default function CronoprogrammaPanel({
                       <div style={{ display: "grid", gap: 8, flex: "1 1 420px", minWidth: 0 }}>
                         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
                           {renderActivityKindBadge(kindLabel)}
-                          {renderModeBadge(modeLabel)}
                           {renderPlanningStatusBadge(visualPlanningStatus)}
-                          {renderRowStatusBadge({ fatto, overdueNotDone, operativoDefinito, hidden })}
                           {conflict?.hasConflict
                             ? renderPill("CONFLITTO", { bg: "#fff1f2", border: "#fca5a5", color: "#b91c1c" }, "⚠")
                             : null}
+                          <SafetyComplianceBadge
+                            personaleText={operativi.personale_previsto}
+                            personaleIds={operativi.personale_ids}
+                            showSummary={false}
+                          />
                         </div>
                         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center", minWidth: 0 }}>
                           <div style={{ fontWeight: 800, fontSize: 16, color: "#111827", wordBreak: "break-word" }}>
                             {r.progetto || "Attività cronoprogramma"}
                           </div>
-                          {r.checklist_id ? (
-                            <Link
-                              href={`/checklists/${r.checklist_id}`}
-                              onClick={(e) => e.stopPropagation()}
-                              style={{
-                                fontSize: 12,
-                                fontWeight: 600,
-                                color: "#2563eb",
-                                textDecoration: "none",
-                                whiteSpace: "nowrap",
-                              }}
-                            >
-                              Apri progetto →
-                            </Link>
-                          ) : null}
                         </div>
                         <div
                           style={{
@@ -1314,126 +1374,7 @@ export default function CronoprogrammaPanel({
                             lineHeight: 1.5,
                           }}
                         >
-                          <strong>Persone:</strong> {operativi.personale_previsto || "—"}
-                        </div>
-                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
-                          {timbraturaState === "IN_CORSO"
-                            ? renderPill("IN CORSO", BADGE_COLORS.activityRemote, "⏸")
-                            : null}
-                          {timbraturaState === "IN_PAUSA"
-                            ? renderPill("IN PAUSA", BADGE_COLORS.statusDueSoon, "⏸")
-                            : null}
-                          {timbraturaState === "COMPLETATA"
-                            ? renderPill("COMPLETATA", BADGE_COLORS.statusOk, "✓")
-                            : null}
-                          {timbraturaState === "IN_CORSO"
-                            ? renderPill(`LIVE ${formatLiveElapsed(liveElapsedMs)}`, BADGE_COLORS.activityRemote, "⏱")
-                            : null}
-                          {timbraturaState === "IN_PAUSA"
-                            ? renderPill(`Accumulato ${formatMinutesCompact(displayedActualMinutes)}`, BADGE_COLORS.statusDueSoon, "⏱")
-                            : null}
-                          {latestReport
-                            ? renderPill(
-                                `Esito ${latestReport.esito.replaceAll("_", " ")}`,
-                                latestReport.esito === "COMPLETATO"
-                                  ? BADGE_COLORS.statusOk
-                                  : latestReport.esito === "PARZIALE"
-                                    ? BADGE_COLORS.statusDueSoon
-                                    : BADGE_COLORS.statusExpired
-                              )
-                            : null}
-                          {timbraturaState === "NON_INIZIATA" ? (
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                void handleTimbraturaAction(r, key, "start_timbratura");
-                              }}
-                              disabled={timbraturaLoading}
-                              style={{
-                                padding: "6px 10px",
-                                borderRadius: 999,
-                                border: "1px solid #86efac",
-                                background: "#f0fdf4",
-                                color: "#166534",
-                                fontSize: 12,
-                                fontWeight: 700,
-                                cursor: timbraturaLoading ? "wait" : "pointer",
-                                opacity: timbraturaLoading ? 0.7 : 1,
-                              }}
-                            >
-                              ▶ Inizia
-                            </button>
-                          ) : null}
-                          {timbraturaState === "IN_CORSO" ? (
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                void handleTimbraturaAction(r, key, "pause_timbratura");
-                              }}
-                              disabled={timbraturaLoading}
-                              style={{
-                                padding: "6px 10px",
-                                borderRadius: 999,
-                                border: "1px solid #fcd34d",
-                                background: "#fffbeb",
-                                color: "#b45309",
-                                fontSize: 12,
-                                fontWeight: 700,
-                                cursor: timbraturaLoading ? "wait" : "pointer",
-                                opacity: timbraturaLoading ? 0.7 : 1,
-                              }}
-                            >
-                              ⏸ Pausa
-                            </button>
-                          ) : null}
-                          {timbraturaState === "IN_PAUSA" ? (
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                void handleTimbraturaAction(r, key, "resume_timbratura");
-                              }}
-                              disabled={timbraturaLoading}
-                              style={{
-                                padding: "6px 10px",
-                                borderRadius: 999,
-                                border: "1px solid #93c5fd",
-                                background: "#dbeafe",
-                                color: "#1d4ed8",
-                                fontSize: 12,
-                                fontWeight: 700,
-                                cursor: timbraturaLoading ? "wait" : "pointer",
-                                opacity: timbraturaLoading ? 0.7 : 1,
-                              }}
-                            >
-                              ▶ Riprendi
-                            </button>
-                          ) : null}
-                          {timbraturaState === "IN_CORSO" ? (
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                void handleTimbraturaAction(r, key, "stop_timbratura");
-                              }}
-                              disabled={timbraturaLoading}
-                              style={{
-                                padding: "6px 10px",
-                                borderRadius: 999,
-                                border: "1px solid #fca5a5",
-                                background: "#fee2e2",
-                                color: "#b91c1c",
-                                fontSize: 12,
-                                fontWeight: 700,
-                                cursor: timbraturaLoading ? "wait" : "pointer",
-                                opacity: timbraturaLoading ? 0.7 : 1,
-                              }}
-                            >
-                              ⏹ Termina
-                            </button>
-                          ) : null}
+                          <strong>Persone:</strong> {peopleSummary}
                         </div>
                       </div>
                       <div
@@ -1449,29 +1390,11 @@ export default function CronoprogrammaPanel({
                         }}
                       >
                         <div style={{ display: "grid", gap: 4, fontSize: 13, color: "#475569", justifyItems: "end" }}>
-                          {r.kind === "INTERVENTO" ? (
-                            <span>
-                              Data intervento:{" "}
-                              {schedule.data_inizio ? formatOperativiDateLabel(schedule.data_inizio) : "—"}
-                            </span>
-                          ) : (
-                            <span>
-                              Slot: {schedule.data_inizio ? formatOperativiDateLabel(schedule.data_inizio) : "—"}
-                              {timeBudget.stimatoMinuti != null ? ` · ${formatMinutesCompact(timeBudget.stimatoMinuti)}` : ""}
-                              {r.slot_id
-                                ? r.slot_orario
-                                  ? ` · ${r.slot_orario}`
-                                  : operativi.orario
-                                    ? ` · ${operativi.orario}`
-                                    : ""
-                                : operativi.orario
-                                  ? ` · ${operativi.orario}`
-                                  : r.slot_orario
-                                    ? ` · ${r.slot_orario}`
-                                    : ""}
-                            </span>
-                          )}
-                          <span>{schedule.data_fine ? `Fine ${formatOperativiDateLabel(schedule.data_fine)}` : "Fine —"}</span>
+                          <span>
+                            {schedule.data_inizio ? `Data: ${scheduleLabel}` : "Da calendarizzare"}
+                          </span>
+                          <span>Orario: {orarioLabel}</span>
+                          <span>Ore previste: {oreLabel}</span>
                         </div>
                         <div
                           style={{
@@ -1484,88 +1407,27 @@ export default function CronoprogrammaPanel({
                             color: "#475569",
                           }}
                         >
-                          <span>Stimato: {formatMinutesCompact(timeBudget.stimatoMinuti)}</span>
-                          {hasRealMinutes ? <span>Reale: {formatMinutesCompact(displayedActualMinutes)}</span> : <span>Reale: —</span>}
-                          {hasRealMinutes ? <span>Delta: {budgetDelta?.deltaLabel || "—"}</span> : <span>Delta: —</span>}
-                          {hasRealMinutes ? budgetDelta?.badge || null : null}
+                          {renderModeBadge(modeLabel)}
+                          {renderRowStatusBadge({ fatto, overdueNotDone, operativoDefinito, hidden })}
                         </div>
-                        {!hasRealMinutes ? (
-                          manualActualOpen ? (
-                            <span
-                              onClick={(e) => e.stopPropagation()}
-                              style={{
-                                display: "inline-flex",
-                                gap: 8,
-                                alignItems: "center",
-                                justifyContent: "flex-end",
-                                flexWrap: "wrap",
-                              }}
-                            >
-                              <input
-                                type="number"
-                                min="0"
-                                step="0.25"
-                                value={manualActualValue}
-                                onChange={(e) =>
-                                  setManualActualHoursByKey((prev) => ({ ...prev, [key]: e.target.value }))
-                                }
-                                placeholder="Ore"
-                                style={{
-                                  width: 88,
-                                  padding: "6px 8px",
-                                  borderRadius: 10,
-                                  border: "1px solid #d1d5db",
-                                  background: "white",
-                                }}
-                              />
-                              <button
-                                type="button"
-                                onClick={() => void handleSaveManualActual(r, key)}
-                                disabled={manualActualSaving || !String(manualActualValue).trim()}
-                                style={{
-                                  padding: "6px 10px",
-                                  borderRadius: 999,
-                                  border: "1px solid #93c5fd",
-                                  background: "#dbeafe",
-                                  color: "#1d4ed8",
-                                  fontSize: 12,
-                                  fontWeight: 700,
-                                  cursor:
-                                    manualActualSaving || !String(manualActualValue).trim()
-                                      ? "not-allowed"
-                                      : "pointer",
-                                  opacity: manualActualSaving || !String(manualActualValue).trim() ? 0.7 : 1,
-                                }}
-                              >
-                                {manualActualSaving ? "Salvataggio..." : "Salva"}
-                              </button>
-                            </span>
-                          ) : (
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setManualActualOpenKey(key);
-                                setManualActualHoursByKey((prev) => ({
-                                  ...prev,
-                                  [key]: prev[key] ?? "",
-                                }));
-                              }}
-                              style={{
-                                padding: "6px 10px",
-                                borderRadius: 999,
-                                border: "1px solid #cbd5e1",
-                                background: "white",
-                                color: "#0f172a",
-                                fontSize: 12,
-                                fontWeight: 700,
-                                cursor: "pointer",
-                              }}
-                            >
-                              Inserisci tempo impiegato
-                            </button>
-                          )
-                        ) : null}
+                        <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                          <button
+                            type="button"
+                            onClick={() => toggleExpandedRow(key)}
+                            style={{
+                              padding: "8px 12px",
+                              borderRadius: 999,
+                              border: "1px solid #111827",
+                              background: expanded ? "#111827" : "white",
+                              color: expanded ? "white" : "#111827",
+                              fontSize: 12,
+                              fontWeight: 800,
+                              cursor: "pointer",
+                            }}
+                          >
+                            {expanded ? "Chiudi dettagli" : "Dettagli"}
+                          </button>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -1581,73 +1443,198 @@ export default function CronoprogrammaPanel({
                         gap: 14,
                       }}
                     >
+                      <div style={{ display: "flex", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
+                        <button
+                          type="button"
+                          onClick={() => setEditingRowKey((prev) => (prev === key ? null : key))}
+                          style={{
+                            padding: "8px 12px",
+                            borderRadius: 10,
+                            border: "1px solid #111827",
+                            background: editing ? "#111827" : "white",
+                            color: editing ? "white" : "#111827",
+                            fontWeight: 800,
+                            cursor: "pointer",
+                          }}
+                        >
+                          {editing ? "Chiudi modifica operativa" : "Modifica operativa"}
+                        </button>
+                        {visualPlanningStatus === "SVOLTA" ? (
+                          <span style={{ fontSize: 12, fontWeight: 700, color: "#166534" }}>
+                            Stato gestito da FATTO
+                          </span>
+                        ) : !usesSharedOperationalEditor ? (
+                          <label style={{ display: "inline-flex", alignItems: "center", gap: 8, fontWeight: 700 }}>
+                            <span>Stato</span>
+                            <select
+                              value={editablePlanningStatus === "SVOLTA" ? "DA_CONFERMARE" : editablePlanningStatus}
+                              onChange={(e) => setStatus(r, e.target.value as PlanningStatus)}
+                              disabled={savingStatusKey === key || stateLoading}
+                              style={{ padding: "8px 10px", borderRadius: 8, border: "1px solid #d1d5db" }}
+                            >
+                              {MANUAL_PLANNING_STATUSES.map((status) => (
+                                <option key={status} value={status}>
+                                  {status === "DA_CONFERMARE" ? "DA CONFERMARE" : status}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                        ) : null}
+                        <label style={{ display: "inline-flex", alignItems: "center", gap: 8, fontWeight: 700 }}>
+                          <input
+                            type="checkbox"
+                            checked={fatto}
+                            onChange={(e) => setFatto(r, e.target.checked)}
+                            disabled={savingFattoKey === key || stateLoading}
+                          />
+                          Fatto
+                        </label>
+                        <label style={{ display: "inline-flex", alignItems: "center", gap: 8, fontWeight: 700 }}>
+                          <input
+                            type="checkbox"
+                            checked={hidden}
+                            onChange={(e) => setHidden(r, e.target.checked)}
+                            disabled={savingHiddenKey === key || stateLoading}
+                          />
+                          Nascosta
+                        </label>
+                        {openRescheduleModal ? (
+                          <button
+                            type="button"
+                            onClick={() => openRescheduleModal(r)}
+                            disabled={savingRescheduleKey === key || stateLoading}
+                            style={{
+                              padding: "8px 12px",
+                              borderRadius: 8,
+                              border: "1px solid #b45309",
+                              background: savingRescheduleKey === key ? "#ffedd5" : "#fff7ed",
+                              color: "#9a3412",
+                              fontWeight: 700,
+                              cursor: savingRescheduleKey === key ? "not-allowed" : "pointer",
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            {savingRescheduleKey === key ? "..." : "Rimandato"}
+                          </button>
+                        ) : null}
+                        {r.checklist_id ? (
+                          <Link
+                            href={`/checklists/${r.checklist_id}`}
+                            style={{ color: "#2563eb", textDecoration: "underline", fontWeight: 600 }}
+                          >
+                            Apri progetto
+                          </Link>
+                        ) : null}
+                      </div>
+
                       <div
                         style={{
                           display: "grid",
-                          gridTemplateColumns: usesSharedOperationalEditor
-                            ? "minmax(0, 1.2fr) minmax(320px, 0.8fr)"
-                            : "minmax(0, 1fr)",
-                          gap: 14,
+                          gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))",
+                          gap: 12,
                           alignItems: "start",
                         }}
                       >
-                        {usesSharedOperationalEditor ? (
-                          <OperationalBlockEditor
-                            title={r.kind === "DISINSTALLAZIONE" ? "BLOCCO DISINSTALLAZIONE" : "BLOCCO ATTIVITÀ"}
-                            attachmentTitle={
-                              r.kind === "DISINSTALLAZIONE"
-                                ? "Allegati blocco disinstallazione (link Drive)"
-                                : "Allegati blocco attività (link Drive)"
-                            }
-                            attachmentEntityType={
-                              r.kind === "DISINSTALLAZIONE"
-                                ? "CHECKLIST_DISINSTALLAZIONE"
-                                : "CHECKLIST_OPERATIVI"
-                            }
-                            attachmentEntityId={r.checklist_id || r.row_ref_id}
-                            attachmentSlotId={r.slot_id || null}
-                            attachmentMode={r.slot_id ? "combined" : "block"}
-                            form={
-                              operativiDraftByKey[key] ||
-                              (extractOperationalBlockForm
-                                ? extractOperationalBlockForm(r, meta)
-                                : ensureOperationalBlockForm(extractOperativi(meta), emptyOperationalBlockForm))
-                            }
-                            onChange={(value) =>
-                              setOperativiDraftByKey((prev) => ({
-                                ...prev,
-                                [key]:
-                                  typeof value === "function"
-                                    ? value(
-                                        prev[key] ||
-                                          (extractOperationalBlockForm
-                                            ? extractOperationalBlockForm(r, meta)
-                                            : ensureOperationalBlockForm(
-                                                extractOperativi(meta),
-                                                emptyOperationalBlockForm
-                                              ))
-                                      )
-                                    : value,
-                              }))
-                            }
-                            onSave={() => saveOperativi(r)}
-                            saving={savingOperativiKey === key}
-                            meta={meta}
-                            fallbackStartDate={schedule.data_inizio || r.data_prevista || ""}
-                            warningMessage={
-                              conflict?.hasConflict ? `Conflitto pianificazione: ${conflictTitle}` : null
-                            }
-                            planningStatus={editablePlanningStatus === "SVOLTA" ? null : editablePlanningStatus}
-                            planningStatusOptions={
-                              visualPlanningStatus === "SVOLTA" ? undefined : planningStatusOptions
-                            }
-                            onPlanningStatusChange={
-                              visualPlanningStatus === "SVOLTA" || !setStatus
-                                ? undefined
-                                : (value) => setStatus(r, value as PlanningStatus)
-                            }
-                          />
-                        ) : (
+                        {renderDetailInfoCard("Indirizzo", String(operativi.indirizzo || "").trim() || "Non specificato")}
+                        {renderDetailInfoCard("Descrizione attività", String(operativi.descrizione_attivita || "").trim() || "Non specificata")}
+                        {renderDetailInfoCard("Mezzi", String(operativi.mezzi || "").trim() || "Non specificati")}
+                        {renderDetailInfoCard("Referenti cliente", referentiSummary)}
+                        {renderDetailInfoCard(
+                          "Commerciale Art Tech",
+                          [operativi.commerciale_art_tech_nome, operativi.commerciale_art_tech_contatto]
+                            .filter(Boolean)
+                            .join(" • ") || "Non specificato"
+                        )}
+                        {renderDetailInfoCard(
+                          "Giornate / slot",
+                          slotList.length > 0 ? (
+                            <div style={{ display: "grid", gap: 6 }}>
+                              {slotList.map((slot: any, index: number) => (
+                                <div key={slot.id || `${key}-slot-${index}`}>
+                                  <strong>
+                                    {slot?.data_inizio ? formatOperativiDateLabel(slot.data_inizio) : "Data da definire"}
+                                  </strong>
+                                  {slot?.durata_prevista_minuti != null
+                                    ? ` · ${formatMinutesCompact(slot.durata_prevista_minuti)}`
+                                    : ""}
+                                  {slot?.orario ? ` · ${slot.orario}` : ""}
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            "Nessuna giornata pianificata"
+                          )
+                        )}
+                      </div>
+
+                      {editing ? (
+                        <div
+                          style={{
+                            border: "1px solid #dbe4ee",
+                            borderRadius: 14,
+                            background: "white",
+                            padding: 12,
+                            display: "grid",
+                            gap: 12,
+                          }}
+                        >
+                          {usesSharedOperationalEditor ? (
+                            <OperationalBlockEditor
+                              title={r.kind === "DISINSTALLAZIONE" ? "BLOCCO DISINSTALLAZIONE" : "BLOCCO ATTIVITÀ"}
+                              attachmentTitle={
+                                r.kind === "DISINSTALLAZIONE"
+                                  ? "Allegati blocco disinstallazione (link Drive)"
+                                  : "Allegati blocco attività (link Drive)"
+                              }
+                              attachmentEntityType={
+                                r.kind === "DISINSTALLAZIONE"
+                                  ? "CHECKLIST_DISINSTALLAZIONE"
+                                  : "CHECKLIST_OPERATIVI"
+                              }
+                              attachmentEntityId={r.checklist_id || r.row_ref_id}
+                              attachmentSlotId={r.slot_id || null}
+                              attachmentMode={r.slot_id ? "combined" : "block"}
+                              form={
+                                operativiDraftByKey[key] ||
+                                (extractOperationalBlockForm
+                                  ? extractOperationalBlockForm(r, meta)
+                                  : ensureOperationalBlockForm(extractOperativi(meta), emptyOperationalBlockForm))
+                              }
+                              onChange={(value) =>
+                                setOperativiDraftByKey((prev) => ({
+                                  ...prev,
+                                  [key]:
+                                    typeof value === "function"
+                                      ? value(
+                                          prev[key] ||
+                                            (extractOperationalBlockForm
+                                              ? extractOperationalBlockForm(r, meta)
+                                              : ensureOperationalBlockForm(
+                                                  extractOperativi(meta),
+                                                  emptyOperationalBlockForm
+                                                ))
+                                        )
+                                      : value,
+                                }))
+                              }
+                              onSave={() => saveOperativi(r)}
+                              saving={savingOperativiKey === key}
+                              meta={meta}
+                              fallbackStartDate={schedule.data_inizio || r.data_prevista || ""}
+                              warningMessage={
+                                conflict?.hasConflict ? `Conflitto pianificazione: ${conflictTitle}` : null
+                              }
+                              planningStatus={editablePlanningStatus === "SVOLTA" ? null : editablePlanningStatus}
+                              planningStatusOptions={
+                                visualPlanningStatus === "SVOLTA" ? undefined : planningStatusOptions
+                              }
+                              onPlanningStatusChange={
+                                visualPlanningStatus === "SVOLTA" || !setStatus
+                                  ? undefined
+                                  : (value) => setStatus(r, value as PlanningStatus)
+                              }
+                            />
+                          ) : (
                           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 12 }}>
                             <label style={{ display: "grid", gap: 6 }}>
                               <span style={{ fontSize: 12, fontWeight: 700, color: "#475569" }}>Data inizio</span>
@@ -1812,9 +1799,32 @@ export default function CronoprogrammaPanel({
                               />
                             </div>
                           </div>
-                        )}
+                          )}
 
-                        <div style={{ display: "grid", gap: 8 }}>
+                          {!usesSharedOperationalEditor ? (
+                            <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                              <button
+                                type="button"
+                                onClick={() => saveOperativi(r)}
+                                disabled={savingOperativiKey === key || stateLoading}
+                                style={{
+                                  padding: "8px 12px",
+                                  borderRadius: 8,
+                                  border: "1px solid #111",
+                                  background: savingOperativiKey === key ? "#f3f4f6" : "#111",
+                                  color: savingOperativiKey === key ? "#111" : "white",
+                                  cursor: savingOperativiKey === key ? "not-allowed" : "pointer",
+                                  whiteSpace: "nowrap",
+                                }}
+                              >
+                                {savingOperativiKey === key ? "..." : "Salva"}
+                              </button>
+                            </div>
+                          ) : null}
+                        </div>
+                      ) : null}
+
+                      <div style={{ display: "grid", gap: 12 }}>
                         <div style={{ display: "grid", gap: 6 }}>
                           <div style={{ fontSize: 12, fontWeight: 700, color: "#475569" }}>
                             Timbrature operatori
@@ -1884,6 +1894,189 @@ export default function CronoprogrammaPanel({
                               Totale gruppo: {formatMinutesCompact(displayedActualMinutes)}
                             </div>
                           </div>
+                        </div>
+                        <div style={{ display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+                          {timbraturaState === "IN_CORSO"
+                            ? renderPill("IN CORSO", BADGE_COLORS.activityRemote, "⏸")
+                            : null}
+                          {timbraturaState === "IN_PAUSA"
+                            ? renderPill("IN PAUSA", BADGE_COLORS.statusDueSoon, "⏸")
+                            : null}
+                          {timbraturaState === "COMPLETATA"
+                            ? renderPill("COMPLETATA", BADGE_COLORS.statusOk, "✓")
+                            : null}
+                          {timbraturaState === "IN_CORSO"
+                            ? renderPill(`LIVE ${formatLiveElapsed(liveElapsedMs)}`, BADGE_COLORS.activityRemote, "⏱")
+                            : null}
+                          {timbraturaState === "IN_PAUSA"
+                            ? renderPill(`Accumulato ${formatMinutesCompact(displayedActualMinutes)}`, BADGE_COLORS.statusDueSoon, "⏱")
+                            : null}
+                          {latestReport
+                            ? renderPill(
+                                `Esito ${latestReport.esito.replaceAll("_", " ")}`,
+                                latestReport.esito === "COMPLETATO"
+                                  ? BADGE_COLORS.statusOk
+                                  : latestReport.esito === "PARZIALE"
+                                    ? BADGE_COLORS.statusDueSoon
+                                    : BADGE_COLORS.statusExpired
+                              )
+                            : null}
+                          {timbraturaState === "NON_INIZIATA" ? (
+                            <button
+                              type="button"
+                              onClick={() => void handleTimbraturaAction(r, key, "start_timbratura")}
+                              disabled={timbraturaLoading}
+                              style={{
+                                padding: "6px 10px",
+                                borderRadius: 999,
+                                border: "1px solid #86efac",
+                                background: "#f0fdf4",
+                                color: "#166534",
+                                fontSize: 12,
+                                fontWeight: 700,
+                                cursor: timbraturaLoading ? "wait" : "pointer",
+                                opacity: timbraturaLoading ? 0.7 : 1,
+                              }}
+                            >
+                              ▶ Inizia
+                            </button>
+                          ) : null}
+                          {timbraturaState === "IN_CORSO" ? (
+                            <button
+                              type="button"
+                              onClick={() => void handleTimbraturaAction(r, key, "pause_timbratura")}
+                              disabled={timbraturaLoading}
+                              style={{
+                                padding: "6px 10px",
+                                borderRadius: 999,
+                                border: "1px solid #fcd34d",
+                                background: "#fffbeb",
+                                color: "#b45309",
+                                fontSize: 12,
+                                fontWeight: 700,
+                                cursor: timbraturaLoading ? "wait" : "pointer",
+                                opacity: timbraturaLoading ? 0.7 : 1,
+                              }}
+                            >
+                              ⏸ Pausa
+                            </button>
+                          ) : null}
+                          {timbraturaState === "IN_PAUSA" ? (
+                            <button
+                              type="button"
+                              onClick={() => void handleTimbraturaAction(r, key, "resume_timbratura")}
+                              disabled={timbraturaLoading}
+                              style={{
+                                padding: "6px 10px",
+                                borderRadius: 999,
+                                border: "1px solid #93c5fd",
+                                background: "#dbeafe",
+                                color: "#1d4ed8",
+                                fontSize: 12,
+                                fontWeight: 700,
+                                cursor: timbraturaLoading ? "wait" : "pointer",
+                                opacity: timbraturaLoading ? 0.7 : 1,
+                              }}
+                            >
+                              ▶ Riprendi
+                            </button>
+                          ) : null}
+                          {timbraturaState === "IN_CORSO" ? (
+                            <button
+                              type="button"
+                              onClick={() => void handleTimbraturaAction(r, key, "stop_timbratura")}
+                              disabled={timbraturaLoading}
+                              style={{
+                                padding: "6px 10px",
+                                borderRadius: 999,
+                                border: "1px solid #fca5a5",
+                                background: "#fee2e2",
+                                color: "#b91c1c",
+                                fontSize: 12,
+                                fontWeight: 700,
+                                cursor: timbraturaLoading ? "wait" : "pointer",
+                                opacity: timbraturaLoading ? 0.7 : 1,
+                              }}
+                            >
+                              ⏹ Termina
+                            </button>
+                          ) : null}
+                          {!hasRealMinutes ? (
+                            manualActualOpen ? (
+                              <span
+                                style={{
+                                  display: "inline-flex",
+                                  gap: 8,
+                                  alignItems: "center",
+                                  justifyContent: "flex-end",
+                                  flexWrap: "wrap",
+                                }}
+                              >
+                                <input
+                                  type="number"
+                                  min="0"
+                                  step="0.25"
+                                  value={manualActualValue}
+                                  onChange={(e) =>
+                                    setManualActualHoursByKey((prev) => ({ ...prev, [key]: e.target.value }))
+                                  }
+                                  placeholder="Ore"
+                                  style={{
+                                    width: 88,
+                                    padding: "6px 8px",
+                                    borderRadius: 10,
+                                    border: "1px solid #d1d5db",
+                                    background: "white",
+                                  }}
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => void handleSaveManualActual(r, key)}
+                                  disabled={manualActualSaving || !String(manualActualValue).trim()}
+                                  style={{
+                                    padding: "6px 10px",
+                                    borderRadius: 999,
+                                    border: "1px solid #93c5fd",
+                                    background: "#dbeafe",
+                                    color: "#1d4ed8",
+                                    fontSize: 12,
+                                    fontWeight: 700,
+                                    cursor:
+                                      manualActualSaving || !String(manualActualValue).trim()
+                                        ? "not-allowed"
+                                        : "pointer",
+                                    opacity:
+                                      manualActualSaving || !String(manualActualValue).trim() ? 0.7 : 1,
+                                  }}
+                                >
+                                  {manualActualSaving ? "Salvataggio..." : "Salva tempo"}
+                                </button>
+                              </span>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  setManualActualOpenKey(key);
+                                  setManualActualHoursByKey((prev) => ({
+                                    ...prev,
+                                    [key]: prev[key] ?? "",
+                                  }));
+                                }}
+                                style={{
+                                  padding: "6px 10px",
+                                  borderRadius: 999,
+                                  border: "1px solid #cbd5e1",
+                                  background: "white",
+                                  color: "#0f172a",
+                                  fontSize: 12,
+                                  fontWeight: 700,
+                                  cursor: "pointer",
+                                }}
+                              >
+                                Inserisci tempo impiegato
+                              </button>
+                            )
+                          ) : null}
                         </div>
                         {latestReport && latestReportComment ? (
                           <div style={{ display: "grid", gap: 6 }}>
@@ -1974,101 +2167,27 @@ export default function CronoprogrammaPanel({
                             <span style={{ opacity: 0.7 }}>Nessuna nota</span>
                           )}
                         </div>
-                      </div>
-
-                          <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
-                            {!usesSharedOperationalEditor && visualPlanningStatus !== "SVOLTA" ? (
-                              <label style={{ display: "inline-flex", alignItems: "center", gap: 8, fontWeight: 700 }}>
-                                <span>Stato</span>
-                                <select
-                                  value={editablePlanningStatus === "SVOLTA" ? "DA_CONFERMARE" : editablePlanningStatus}
-                                  onChange={(e) => setStatus(r, e.target.value as PlanningStatus)}
-                                  disabled={savingStatusKey === key || stateLoading}
-                                  style={{ padding: "8px 10px", borderRadius: 8, border: "1px solid #d1d5db" }}
-                                >
-                                  {MANUAL_PLANNING_STATUSES.map((status) => (
-                                    <option key={status} value={status}>
-                                      {status === "DA_CONFERMARE" ? "DA CONFERMARE" : status}
-                                    </option>
-                                  ))}
-                                </select>
-                              </label>
-                            ) : null}
-                            {visualPlanningStatus === "SVOLTA" ? (
-                              <span style={{ fontSize: 12, fontWeight: 700, color: "#166534" }}>
-                                Stato gestito da FATTO
-                              </span>
-                            ) : null}
-                            <label style={{ display: "inline-flex", alignItems: "center", gap: 8, fontWeight: 700 }}>
-                              <input
-                                type="checkbox"
-                                checked={fatto}
-                                onChange={(e) => setFatto(r, e.target.checked)}
-                                disabled={savingFattoKey === key || stateLoading}
-                              />
-                              Fatto
-                            </label>
-                            <label style={{ display: "inline-flex", alignItems: "center", gap: 8, fontWeight: 700 }}>
-                              <input
-                                type="checkbox"
-                                checked={hidden}
-                                onChange={(e) => setHidden(r, e.target.checked)}
-                                disabled={savingHiddenKey === key || stateLoading}
-                              />
-                              Nascosta
-                            </label>
-                            {openRescheduleModal ? (
-                              <button
-                                type="button"
-                                onClick={() => openRescheduleModal(r)}
-                                disabled={savingRescheduleKey === key || stateLoading}
-                                style={{
-                                  padding: "8px 12px",
-                                  borderRadius: 8,
-                                  border: "1px solid #b45309",
-                                  background: savingRescheduleKey === key ? "#ffedd5" : "#fff7ed",
-                                  color: "#9a3412",
-                                  fontWeight: 700,
-                                  cursor: savingRescheduleKey === key ? "not-allowed" : "pointer",
-                                  whiteSpace: "nowrap",
-                                }}
-                              >
-                                {savingRescheduleKey === key ? "..." : "Rimandato"}
-                              </button>
-                            ) : null}
-                            {!usesSharedOperationalEditor ? (
-                              <button
-                                type="button"
-                                onClick={() => saveOperativi(r)}
-                                disabled={savingOperativiKey === key || stateLoading}
-                                style={{
-                                  padding: "8px 12px",
-                                  borderRadius: 8,
-                                  border: "1px solid #111",
-                                  background: savingOperativiKey === key ? "#f3f4f6" : "#111",
-                                  color: savingOperativiKey === key ? "#111" : "white",
-                                  cursor: savingOperativiKey === key ? "not-allowed" : "pointer",
-                                  whiteSpace: "nowrap",
-                                }}
-                              >
-                                {savingOperativiKey === key ? "..." : "Salva"}
-                              </button>
-                            ) : null}
-                            {r.checklist_id ? (
-                              <Link
-                                href={`/checklists/${r.checklist_id}`}
-                                style={{ color: "#2563eb", textDecoration: "underline", fontWeight: 600 }}
-                              >
-                                Apri progetto
-                              </Link>
-                            ) : null}
-                            {!usesSharedOperationalEditor && meta?.updated_at ? (
-                              <div style={{ fontSize: 11, opacity: 0.75 }}>
-                                {meta.updated_by_nome || "Operatore"} · {new Date(meta.updated_at).toLocaleString("it-IT")}
-                              </div>
-                            ) : null}
+                        {usesSharedOperationalEditor ? (
+                          <div style={{ display: "grid", gap: 6 }}>
+                            <div style={{ fontSize: 12, fontWeight: 700, color: "#475569" }}>
+                              Allegati operativi
+                            </div>
+                            <AttachmentsPanel
+                              title="Allegati generali / giornata"
+                              entityType={
+                                r.kind === "DISINSTALLAZIONE"
+                                  ? "CHECKLIST_DISINSTALLAZIONE"
+                                  : "CHECKLIST_OPERATIVI"
+                              }
+                              entityId={r.checklist_id || r.row_ref_id}
+                              slotId={r.slot_id || null}
+                              mode={r.slot_id ? "combined" : "block"}
+                              readOnly
+                              allowUploads={false}
+                            />
                           </div>
-                        </div>
+                        ) : null}
+                      </div>
                     </div>
                   ) : null}
                 </div>
