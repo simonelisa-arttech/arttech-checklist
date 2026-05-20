@@ -19,6 +19,16 @@ type TimeBudgetSummary = {
   realeMinuti: number | null;
   liveStartedAt?: string[];
 };
+type OperatorTimeEntry = {
+  operatore_id: string | null;
+  nome_operatore: string;
+  stato: "NON_INIZIATA" | "IN_CORSO" | "IN_PAUSA" | "COMPLETATA";
+  durata_totale_minuti: number;
+  live_started_at?: string[];
+  slot_id?: string | null;
+  row_kind: string;
+  row_ref_id: string;
+};
 
 type OperativiDraft = OperationalBlockFormState;
 
@@ -325,6 +335,15 @@ function formatMinutesCompact(value?: number | null) {
   return `${hours} h ${minutes} min`;
 }
 
+function renderOperatorTimbraturaStateBadge(
+  state: "NON_INIZIATA" | "IN_CORSO" | "IN_PAUSA" | "COMPLETATA"
+) {
+  if (state === "IN_CORSO") return renderPill("IN CORSO", BADGE_COLORS.planningConfirmed, "⏱");
+  if (state === "IN_PAUSA") return renderPill("IN PAUSA", BADGE_COLORS.planningPending, "⏸");
+  if (state === "COMPLETATA") return renderPill("COMPLETATA", BADGE_COLORS.planningDone, "✓");
+  return renderPill("NON INIZIATA", BADGE_COLORS.statusNeutral);
+}
+
 function getLiveElapsedMs(startedAtList: string[] | undefined, nowMs: number) {
   return (startedAtList || []).reduce((sum, value) => {
     const parsed = new Date(String(value || "")).getTime();
@@ -513,6 +532,9 @@ export default function CronoprogrammaPanel({
   >({});
   const [timbraturaLoadingKey, setTimbraturaLoadingKey] = useState<string | null>(null);
   const [timeBudgetByKey, setTimeBudgetByKey] = useState<Record<string, TimeBudgetSummary>>({});
+  const [operatorTimeEntriesByKey, setOperatorTimeEntriesByKey] = useState<
+    Record<string, OperatorTimeEntry[]>
+  >({});
   const [liveNowMs, setLiveNowMs] = useState(() => Date.now());
   const [outcomeFilter, setOutcomeFilter] = useState<OutcomeFilter>("TUTTI");
   const [manualActualOpenKey, setManualActualOpenKey] = useState<string | null>(null);
@@ -531,6 +553,7 @@ export default function CronoprogrammaPanel({
     let active = true;
     if (filteredSorted.length === 0) {
       setTimeBudgetByKey({});
+      setOperatorTimeEntriesByKey({});
       setTimbraturaStateByKey({});
       return;
     }
@@ -547,12 +570,14 @@ export default function CronoprogrammaPanel({
 
     void (async () => {
       const next: Record<string, TimeBudgetSummary> = {};
+      const nextOperatorEntries: Record<string, OperatorTimeEntry[]> = {};
       const nextTimbraturaState: Record<string, "NON_INIZIATA" | "IN_CORSO" | "IN_PAUSA" | "COMPLETATA"> = {};
       for (const row of rows) {
         const key = row.slot_id
           ? `${row.row_kind}:${row.row_ref_id}:${row.slot_id}`
           : `${row.row_kind}:${row.row_ref_id}`;
         next[key] = { stimatoMinuti: null, realeMinuti: null, liveStartedAt: [] };
+        nextOperatorEntries[key] = [];
         nextTimbraturaState[key] = "NON_INIZIATA";
       }
 
@@ -571,11 +596,16 @@ export default function CronoprogrammaPanel({
         if (!res.ok) {
           console.error("Errore caricamento riepilogo cronoprogramma", data);
           setTimeBudgetByKey(next);
+          setOperatorTimeEntriesByKey(nextOperatorEntries);
           setTimbraturaStateByKey(nextTimbraturaState);
           return;
         }
 
         const serverBudget = data?.time_budget && typeof data.time_budget === "object" ? data.time_budget : {};
+        const serverOperatorEntries =
+          data?.operator_time_entries && typeof data.operator_time_entries === "object"
+            ? data.operator_time_entries
+            : {};
         for (const [key, value] of Object.entries(serverBudget)) {
           if (!next[key]) continue;
           const summary = value as Record<string, unknown>;
@@ -605,12 +635,44 @@ export default function CronoprogrammaPanel({
                   ? "COMPLETATA"
                   : "NON_INIZIATA";
         }
+        for (const [key, value] of Object.entries(serverOperatorEntries)) {
+          if (!nextOperatorEntries[key]) continue;
+          nextOperatorEntries[key] = Array.isArray(value)
+            ? value.map((entry) => {
+                const row = entry as Record<string, unknown>;
+                return {
+                  operatore_id: String(row?.operatore_id || "").trim() || null,
+                  nome_operatore: String(row?.nome_operatore || "Operatore"),
+                  stato:
+                    String(row?.stato || "").trim().toUpperCase() === "IN_CORSO"
+                      ? "IN_CORSO"
+                      : String(row?.stato || "").trim().toUpperCase() === "IN_PAUSA"
+                        ? "IN_PAUSA"
+                        : String(row?.stato || "").trim().toUpperCase() === "COMPLETATA"
+                          ? "COMPLETATA"
+                          : "NON_INIZIATA",
+                  durata_totale_minuti:
+                    Number.isFinite(Number(row?.durata_totale_minuti)) &&
+                    Number(row?.durata_totale_minuti) >= 0
+                      ? Number(row?.durata_totale_minuti)
+                      : 0,
+                  live_started_at: Array.isArray(row?.live_started_at)
+                    ? row.live_started_at.map((item) => String(item || "").trim()).filter(Boolean)
+                    : [],
+                  slot_id: String(row?.slot_id || "").trim() || null,
+                  row_kind: String(row?.row_kind || ""),
+                  row_ref_id: String(row?.row_ref_id || ""),
+                } satisfies OperatorTimeEntry;
+              })
+            : [];
+        }
       } catch (error) {
         if (!active) return;
         console.error("Errore caricamento riepilogo cronoprogramma", error);
       }
 
       setTimeBudgetByKey(next);
+      setOperatorTimeEntriesByKey(nextOperatorEntries);
       setTimbraturaStateByKey(nextTimbraturaState);
     })();
 
@@ -618,6 +680,116 @@ export default function CronoprogrammaPanel({
       active = false;
     };
   }, [filteredSorted]);
+
+  async function refreshOperatorTimeDetails(row: TimelineRow) {
+    const key = getRowKey(row.kind, row.row_ref_id, row.slot_id);
+    try {
+      const res = await fetch("/api/cronoprogramma", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          action: "load",
+          rows: [
+            {
+              row_kind: row.kind,
+              row_ref_id: row.row_ref_id,
+              slot_id: row.slot_id ?? null,
+              slot_hours:
+                Number.isFinite(Number(row.slot_hours)) && row.slot_hours != null
+                  ? Number(row.slot_hours)
+                  : null,
+            },
+          ],
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        console.error("Errore refresh dettaglio timbrature operatori", data);
+        return;
+      }
+
+      const summary =
+        data?.time_budget && typeof data.time_budget === "object"
+          ? (data.time_budget as Record<string, Record<string, unknown>>)[key]
+          : null;
+      if (summary) {
+        const sourceRow = rowByKey[key] || row;
+        const slotEstimatedMinutes = getSlotEstimatedMinutes(sourceRow);
+        setTimeBudgetByKey((prev) => ({
+          ...prev,
+          [key]: {
+            stimatoMinuti:
+              slotEstimatedMinutes != null
+                ? slotEstimatedMinutes
+                : Number.isFinite(Number(summary?.stimatoMinuti)) &&
+                    Number(summary?.stimatoMinuti) >= 0
+                  ? Number(summary?.stimatoMinuti)
+                  : null,
+            realeMinuti:
+              Number.isFinite(Number(summary?.realeMinuti)) && Number(summary?.realeMinuti) >= 0
+                ? Number(summary?.realeMinuti)
+                : null,
+            liveStartedAt: Array.isArray(summary?.liveStartedAt)
+              ? summary.liveStartedAt.map((value) => String(value || "").trim()).filter(Boolean)
+              : [],
+          },
+        }));
+        const stato = String(summary?.stato || "").trim().toUpperCase();
+        setTimbraturaStateByKey((prev) => ({
+          ...prev,
+          [key]:
+            stato === "IN_CORSO"
+              ? "IN_CORSO"
+              : stato === "IN_PAUSA"
+                ? "IN_PAUSA"
+                : stato === "COMPLETATA"
+                  ? "COMPLETATA"
+                  : "NON_INIZIATA",
+        }));
+      }
+
+      const entries =
+        data?.operator_time_entries && typeof data.operator_time_entries === "object"
+          ? (data.operator_time_entries as Record<string, unknown[]>)[key]
+          : [];
+      setOperatorTimeEntriesByKey((prev) => ({
+        ...prev,
+        [key]: Array.isArray(entries)
+          ? entries.map((entry) => {
+              const operatorRow = entry as Record<string, unknown>;
+              return {
+                operatore_id: String(operatorRow?.operatore_id || "").trim() || null,
+                nome_operatore: String(operatorRow?.nome_operatore || "Operatore"),
+                stato:
+                  String(operatorRow?.stato || "").trim().toUpperCase() === "IN_CORSO"
+                    ? "IN_CORSO"
+                    : String(operatorRow?.stato || "").trim().toUpperCase() === "IN_PAUSA"
+                      ? "IN_PAUSA"
+                      : String(operatorRow?.stato || "").trim().toUpperCase() === "COMPLETATA"
+                        ? "COMPLETATA"
+                        : "NON_INIZIATA",
+                durata_totale_minuti:
+                  Number.isFinite(Number(operatorRow?.durata_totale_minuti)) &&
+                  Number(operatorRow?.durata_totale_minuti) >= 0
+                    ? Number(operatorRow?.durata_totale_minuti)
+                    : 0,
+                live_started_at: Array.isArray(operatorRow?.live_started_at)
+                  ? operatorRow.live_started_at
+                      .map((item) => String(item || "").trim())
+                      .filter(Boolean)
+                  : [],
+                slot_id: String(operatorRow?.slot_id || "").trim() || null,
+                row_kind: String(operatorRow?.row_kind || ""),
+                row_ref_id: String(operatorRow?.row_ref_id || ""),
+              } satisfies OperatorTimeEntry;
+            })
+          : [],
+      }));
+    } catch (error) {
+      console.error("Errore refresh dettaglio timbrature operatori", error);
+    }
+  }
 
   useEffect(() => {
     const hasLive = Object.values(timbraturaStateByKey).some((state) => state === "IN_CORSO");
@@ -717,6 +889,7 @@ export default function CronoprogrammaPanel({
           };
         });
       }
+      await refreshOperatorTimeDetails(row);
     } catch (err) {
       console.error("Errore timbratura cronoprogramma", err);
     } finally {
@@ -770,6 +943,7 @@ export default function CronoprogrammaPanel({
             ? "COMPLETATA"
             : prev[key] || "NON_INIZIATA",
       }));
+      await refreshOperatorTimeDetails(row);
       setManualActualOpenKey((prev) => (prev === key ? null : prev));
       setManualActualHoursByKey((prev) => ({
         ...prev,
@@ -1039,6 +1213,7 @@ export default function CronoprogrammaPanel({
               const timbraturaState = timbraturaStateByKey[key] || "NON_INIZIATA";
               const timbraturaLoading = timbraturaLoadingKey === key;
               const timeBudget = timeBudgetByKey[key] || { stimatoMinuti: null, realeMinuti: null };
+              const operatorTimeEntries = operatorTimeEntriesByKey[key] || [];
               const displayedActualMinutes = getDisplayedActualMinutes(timeBudget, liveNowMs);
               const liveElapsedMs = getLiveElapsedMs(timeBudget.liveStartedAt, liveNowMs);
               const budgetDelta = getBudgetDeltaSummary(timeBudget.stimatoMinuti, displayedActualMinutes);
@@ -1640,6 +1815,76 @@ export default function CronoprogrammaPanel({
                         )}
 
                         <div style={{ display: "grid", gap: 8 }}>
+                        <div style={{ display: "grid", gap: 6 }}>
+                          <div style={{ fontSize: 12, fontWeight: 700, color: "#475569" }}>
+                            Timbrature operatori
+                          </div>
+                          <div
+                            style={{
+                              background: "white",
+                              border: "1px solid #eef2f7",
+                              borderRadius: 8,
+                              padding: "10px 12px",
+                              display: "grid",
+                              gap: 10,
+                            }}
+                          >
+                            <div style={{ fontSize: 12, color: "#475569", fontWeight: 700 }}>
+                              Stimato gruppo: {formatMinutesCompact(timeBudget.stimatoMinuti)}
+                            </div>
+                            {operatorTimeEntries.length === 0 ? (
+                              <div style={{ fontSize: 12, opacity: 0.7 }}>
+                                Nessuna timbratura operatore
+                              </div>
+                            ) : (
+                              <div style={{ display: "grid", gap: 8 }}>
+                                {operatorTimeEntries.map((entry, index) => {
+                                  const liveMinutes =
+                                    entry.stato === "IN_CORSO"
+                                      ? Math.round(getLiveElapsedMs(entry.live_started_at, liveNowMs) / 60000)
+                                      : 0;
+                                  const totalMinutes = entry.durata_totale_minuti + liveMinutes;
+                                  return (
+                                    <div
+                                      key={`${entry.operatore_id || entry.nome_operatore}-${index}`}
+                                      style={{
+                                        display: "grid",
+                                        gridTemplateColumns: "minmax(0, 1fr) auto auto",
+                                        gap: 8,
+                                        alignItems: "center",
+                                        borderBottom:
+                                          index < operatorTimeEntries.length - 1
+                                            ? "1px solid #f1f5f9"
+                                            : undefined,
+                                        paddingBottom:
+                                          index < operatorTimeEntries.length - 1 ? 8 : 0,
+                                      }}
+                                    >
+                                      <div
+                                        style={{
+                                          fontSize: 13,
+                                          fontWeight: 700,
+                                          color: "#0f172a",
+                                          minWidth: 0,
+                                          overflowWrap: "anywhere",
+                                        }}
+                                      >
+                                        {entry.nome_operatore || "Operatore"}
+                                      </div>
+                                      <div style={{ fontSize: 13, color: "#334155", fontWeight: 700 }}>
+                                        {formatMinutesCompact(totalMinutes)}
+                                      </div>
+                                      <div>{renderOperatorTimbraturaStateBadge(entry.stato)}</div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
+                            <div style={{ fontSize: 12, color: "#475569", fontWeight: 700 }}>
+                              Totale gruppo: {formatMinutesCompact(displayedActualMinutes)}
+                            </div>
+                          </div>
+                        </div>
                         {latestReport && latestReportComment ? (
                           <div style={{ display: "grid", gap: 6 }}>
                             <div style={{ fontSize: 12, fontWeight: 700, color: "#475569" }}>Report intervento</div>

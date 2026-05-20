@@ -409,6 +409,7 @@ type TimeBudgetRow = {
   row_ref_id?: string | null;
   slot_id?: string | null;
   operatore_id?: string | null;
+  operatore?: { nome?: string | null } | null;
   durata_effettiva_minuti?: number | null;
   stato?: string | null;
   started_at?: string | null;
@@ -425,6 +426,25 @@ type TimeBudgetSummary = {
   stato: TimeBudgetState;
   liveStartedAt: string[];
 };
+type OperatorTimeEntry = {
+  operatore_id: string | null;
+  nome_operatore: string;
+  stato: TimeBudgetState;
+  durata_totale_minuti: number;
+  live_started_at: string[];
+  slot_id: string | null;
+  row_kind: string;
+  row_ref_id: string;
+};
+
+function mergeTimeBudgetState(current: TimeBudgetState, incoming: TimeBudgetState): TimeBudgetState {
+  if (incoming === "IN_CORSO") return "IN_CORSO";
+  if (incoming === "IN_PAUSA") return current === "IN_CORSO" ? current : "IN_PAUSA";
+  if (incoming === "COMPLETATA") {
+    return current === "IN_CORSO" || current === "IN_PAUSA" ? current : "COMPLETATA";
+  }
+  return current;
+}
 
 function buildTimeBudgetSummaries(params: {
   normalizedRows: Array<{
@@ -532,6 +552,110 @@ function buildTimeBudgetSummaries(params: {
   }
 
   return summaries;
+}
+
+function buildOperatorTimeEntries(params: {
+  normalizedRows: Array<{
+    row_kind: string;
+    row_ref_id: string;
+    slot_id?: string | null;
+  }>;
+  wanted: Set<string>;
+  timbratureRows: TimeBudgetRow[];
+  intervalsByTimbraturaId: Record<string, TimeBudgetIntervalRow[]>;
+}) {
+  const { normalizedRows, wanted, timbratureRows, intervalsByTimbraturaId } = params;
+  const entriesByKey: Record<string, Record<string, OperatorTimeEntry>> = {};
+
+  for (const row of normalizedRows) {
+    const key = rowKey(row.row_kind, row.row_ref_id, row.slot_id);
+    entriesByKey[key] = {};
+  }
+
+  for (const row of timbratureRows || []) {
+    const rowKind = String(row?.row_kind || "").trim();
+    const rowRefId = String(row?.row_ref_id || "").trim();
+    const slotId = cleanOptionalUuid(row?.slot_id);
+    const key = rowKey(rowKind, rowRefId, slotId);
+    if (!wanted.has(key)) continue;
+
+    const operatoreId = String(row?.operatore_id || "").trim() || null;
+    const operatorBucketKey = operatoreId || `__unknown__:${String(row?.id || "").trim()}`;
+    const timbraturaId = String(row?.id || "").trim();
+    const intervals = intervalsByTimbraturaId[timbraturaId] || [];
+    let closedMinutes = 0;
+    let hasIntervalData = false;
+    const liveStartedAt: string[] = [];
+
+    for (const interval of intervals) {
+      const durationMinutes = Number(interval?.durata_minuti);
+      const endedAt = String(interval?.ended_at || "").trim();
+      const startedAt = String(interval?.started_at || "").trim();
+      if (Number.isFinite(durationMinutes) && durationMinutes >= 0 && endedAt) {
+        hasIntervalData = true;
+        closedMinutes += durationMinutes;
+      } else if (!endedAt && startedAt) {
+        hasIntervalData = true;
+        liveStartedAt.push(startedAt);
+      }
+    }
+
+    const durataEffettivaMinuti = Number(row?.durata_effettiva_minuti);
+    const closedMinutesToAdd =
+      hasIntervalData
+        ? closedMinutes
+        : Number.isFinite(durataEffettivaMinuti) && durataEffettivaMinuti >= 0
+          ? durataEffettivaMinuti
+          : 0;
+    const stato = normalizeUpper(row?.stato);
+    const normalizedState: TimeBudgetState =
+      stato === "IN_CORSO"
+        ? "IN_CORSO"
+        : stato === "IN_PAUSA"
+          ? "IN_PAUSA"
+          : stato === "COMPLETATA"
+            ? "COMPLETATA"
+            : "NON_INIZIATA";
+
+    const currentEntry = entriesByKey[key]?.[operatorBucketKey] || {
+      operatore_id: operatoreId,
+      nome_operatore: String(row?.operatore?.nome || operatoreId || "Operatore"),
+      stato: "NON_INIZIATA" as TimeBudgetState,
+      durata_totale_minuti: 0,
+      live_started_at: [],
+      slot_id: slotId,
+      row_kind: rowKind,
+      row_ref_id: rowRefId,
+    };
+
+    currentEntry.nome_operatore = String(
+      row?.operatore?.nome || currentEntry.nome_operatore || operatoreId || "Operatore"
+    );
+    currentEntry.stato = mergeTimeBudgetState(currentEntry.stato, normalizedState);
+    currentEntry.durata_totale_minuti += closedMinutesToAdd;
+    if (liveStartedAt.length > 0) {
+      currentEntry.live_started_at.push(...liveStartedAt);
+    } else if (!hasIntervalData && normalizedState === "IN_CORSO") {
+      const startedAt = String(row?.started_at || "").trim();
+      if (startedAt) currentEntry.live_started_at.push(startedAt);
+    }
+
+    if (!entriesByKey[key]) entriesByKey[key] = {};
+    entriesByKey[key][operatorBucketKey] = currentEntry;
+  }
+
+  return Object.fromEntries(
+    Object.entries(entriesByKey).map(([key, groupedEntries]) => {
+      const rows = Object.values(groupedEntries).sort((a, b) => {
+        const stateRank = (state: TimeBudgetState) =>
+          state === "IN_CORSO" ? 0 : state === "IN_PAUSA" ? 1 : state === "COMPLETATA" ? 2 : 3;
+        const rankDiff = stateRank(a.stato) - stateRank(b.stato);
+        if (rankDiff !== 0) return rankDiff;
+        return a.nome_operatore.localeCompare(b.nome_operatore, "it");
+      });
+      return [key, rows];
+    })
+  ) as Record<string, OperatorTimeEntry[]>;
 }
 
 function toOperativiSlotPayload(input: OperativiSlotInput, position: number) {
@@ -1370,7 +1494,7 @@ export async function POST(request: Request) {
 
     const { data: timbratureRows, error: timbratureErr } = await supabaseAdmin
       .from("cronoprogramma_timbrature")
-      .select("id, row_kind, row_ref_id, slot_id, operatore_id, durata_effettiva_minuti, stato, started_at")
+      .select("id, row_kind, row_ref_id, slot_id, operatore_id, operatore:operatore_id(nome), durata_effettiva_minuti, stato, started_at")
       .in("row_ref_id", rowIds)
       .in("row_kind", rowKinds as any)
       .order("created_at", { ascending: false });
@@ -1562,6 +1686,12 @@ export async function POST(request: Request) {
       intervalsByTimbraturaId,
       operatoreId: operatore.id,
     });
+    const operatorTimeEntriesByKey = buildOperatorTimeEntries({
+      normalizedRows,
+      wanted,
+      timbratureRows: (timbratureRows || []) as TimeBudgetRow[],
+      intervalsByTimbraturaId,
+    });
 
     return NextResponse.json({
       ok: true,
@@ -1569,6 +1699,7 @@ export async function POST(request: Request) {
       comments: commentsByKey,
       time_budget: timeBudgetByKey,
       time_budget_current_operator: timeBudgetCurrentOperatorByKey,
+      operator_time_entries: operatorTimeEntriesByKey,
     });
   }
 
