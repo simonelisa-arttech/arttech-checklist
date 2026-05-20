@@ -122,6 +122,59 @@ function updateReferente(
   );
 }
 
+function normalizeOperationalBlockSlot(
+  value: Partial<OperationalBlockSlot> | null | undefined
+): OperationalBlockSlot {
+  return {
+    ...(value?.id ? { id: String(value.id).trim() } : {}),
+    data_inizio: String(value?.data_inizio || ""),
+    durata_prevista_minuti:
+      value?.durata_prevista_minuti == null || !Number.isFinite(Number(value.durata_prevista_minuti))
+        ? null
+        : Number(value.durata_prevista_minuti),
+    orario: String(value?.orario || ""),
+  };
+}
+
+function normalizeOperationalBlockReferente(
+  value: Partial<OperationalBlockReferente> | null | undefined
+): OperationalBlockReferente {
+  return {
+    ...(value?.id ? { id: String(value.id).trim() } : {}),
+    nome: String(value?.nome || ""),
+    contatto: String(value?.contatto || ""),
+    ruolo: String(value?.ruolo || ""),
+  };
+}
+
+function normalizeOperationalBlockForm(form: OperationalBlockFormState): OperationalBlockFormState {
+  const slots = Array.isArray(form?.slots)
+    ? form.slots.map((slot) => normalizeOperationalBlockSlot(slot))
+    : [];
+  const referentiCliente = Array.isArray(form?.referenti_cliente)
+    ? form.referenti_cliente.map((referente) => normalizeOperationalBlockReferente(referente))
+    : [];
+  return {
+    slots: slots.length > 0 ? slots : [createEmptyOperationalBlockSlot()],
+    data_inizio: String(form?.data_inizio || ""),
+    durata_giorni: String(form?.durata_giorni || ""),
+    personale_previsto: String(form?.personale_previsto || ""),
+    personale_ids: Array.isArray(form?.personale_ids)
+      ? form.personale_ids.map((value) => String(value || "").trim()).filter(Boolean)
+      : [],
+    mezzi: String(form?.mezzi || ""),
+    descrizione_attivita: String(form?.descrizione_attivita || ""),
+    indirizzo: String(form?.indirizzo || ""),
+    orario: String(form?.orario || ""),
+    referenti_cliente:
+      referentiCliente.length > 0 ? referentiCliente : [{ nome: "", contatto: "", ruolo: "" }],
+    referente_cliente_nome: String(form?.referente_cliente_nome || ""),
+    referente_cliente_contatto: String(form?.referente_cliente_contatto || ""),
+    commerciale_art_tech_nome: String(form?.commerciale_art_tech_nome || ""),
+    commerciale_art_tech_contatto: String(form?.commerciale_art_tech_contatto || ""),
+  };
+}
+
 export default function OperationalBlockEditor({
   title,
   attachmentTitle,
@@ -143,6 +196,24 @@ export default function OperationalBlockEditor({
   planningStatusOptions,
   onPlanningStatusChange,
 }: OperationalBlockEditorProps) {
+  const normalizedForm = normalizeOperationalBlockForm(form);
+  const normalizedPlanningStatusOptions = Array.isArray(planningStatusOptions)
+    ? planningStatusOptions
+    : [];
+  const normalizedAttachmentEntityId = String(attachmentEntityId || "").trim();
+  const normalizedAttachmentEntityType = String(attachmentEntityType || "").trim();
+  const normalizedAttachmentSlotId = String(attachmentSlotId || "").trim() || null;
+  const resolvedAttachmentMode =
+    attachmentMode === "combined"
+      ? normalizedAttachmentSlotId
+        ? "combined"
+        : "block"
+      : attachmentMode === "slot"
+        ? normalizedAttachmentSlotId
+          ? "slot"
+          : null
+        : "block";
+
   return (
     <div
       style={{
@@ -170,8 +241,8 @@ export default function OperationalBlockEditor({
           </div>
         ) : null}
         <SafetyComplianceBadge
-          personaleText={form.personale_previsto}
-          personaleIds={form.personale_ids}
+          personaleText={normalizedForm.personale_previsto}
+          personaleIds={normalizedForm.personale_ids}
         />
       </div>
       <div
@@ -184,7 +255,7 @@ export default function OperationalBlockEditor({
         <div style={{ gridColumn: "1 / -1" }}>
           <div style={{ fontSize: 12, marginBottom: 6 }}>Giornate attività</div>
           <div style={{ display: "grid", gap: 8 }}>
-            {form.slots.map((slot, index) => {
+            {normalizedForm.slots.map((slot, index) => {
               const computedEndDate = computeOperativiEndDate(
                 slot.data_inizio || fallbackStartDate,
                 estimatedMinutesToLegacyDays(slot.durata_prevista_minuti)
@@ -217,7 +288,7 @@ export default function OperationalBlockEditor({
                         onChange={(e) =>
                           onChange((prev) => ({
                             ...prev,
-                            slots: updateSlot(prev.slots, index, "data_inizio", e.target.value),
+                            slots: updateSlot(normalizeOperationalBlockForm(prev).slots, index, "data_inizio", e.target.value),
                           }))
                         }
                         style={{ width: "100%", padding: 8 }}
@@ -235,7 +306,7 @@ export default function OperationalBlockEditor({
                           onChange((prev) => ({
                             ...prev,
                             slots: updateSlot(
-                              prev.slots,
+                              normalizeOperationalBlockForm(prev).slots,
                               index,
                               "durata_prevista_minuti",
                               hoursInputToMinutes(e.target.value)
@@ -254,7 +325,7 @@ export default function OperationalBlockEditor({
                         onChange={(e) =>
                           onChange((prev) => ({
                             ...prev,
-                            slots: updateSlot(prev.slots, index, "orario", e.target.value),
+                            slots: updateSlot(normalizeOperationalBlockForm(prev).slots, index, "orario", e.target.value),
                           }))
                         }
                         style={{ width: "100%", padding: 8 }}
@@ -266,7 +337,7 @@ export default function OperationalBlockEditor({
                         onClick={() =>
                           onChange((prev) => ({
                             ...prev,
-                            slots: removeSlot(prev.slots, index),
+                            slots: removeSlot(normalizeOperationalBlockForm(prev).slots, index),
                           }))
                         }
                         style={{
@@ -301,7 +372,7 @@ export default function OperationalBlockEditor({
                   onClick={() =>
                     onChange((prev) => ({
                       ...prev,
-                      slots: addSlot(prev.slots),
+                      slots: addSlot(normalizeOperationalBlockForm(prev).slots),
                     }))
                   }
                   style={{
@@ -319,13 +390,13 @@ export default function OperationalBlockEditor({
               <span style={{ fontSize: 12, fontWeight: 700 }}>
                 Totale ore previste:{" "}
                 {minutesToHoursInput(
-                  form.slots.reduce((total, slot) => total + (slot.durata_prevista_minuti ?? 0), 0)
+                  normalizedForm.slots.reduce((total, slot) => total + (slot.durata_prevista_minuti ?? 0), 0)
                 ) || "0"}
               </span>
             </div>
           </div>
         </div>
-        {planningStatusOptions?.length && onPlanningStatusChange ? (
+        {normalizedPlanningStatusOptions.length > 0 && onPlanningStatusChange ? (
           <div>
             <div style={{ fontSize: 12, marginBottom: 4 }}>Stato operativo</div>
             <select
@@ -335,7 +406,7 @@ export default function OperationalBlockEditor({
               style={{ width: "100%", padding: 8 }}
             >
               <option value="">Seleziona stato</option>
-              {planningStatusOptions.map((option) => (
+              {normalizedPlanningStatusOptions.map((option) => (
                 <option key={option.value} value={option.value}>
                   {option.label}
                 </option>
@@ -346,8 +417,8 @@ export default function OperationalBlockEditor({
         <div>
           <div style={{ fontSize: 12, marginBottom: 4 }}>Personale previsto / incarico</div>
           <PersonaleMultiSelect
-            personaleIds={form.personale_ids}
-            legacyValue={form.personale_previsto}
+            personaleIds={normalizedForm.personale_ids}
+            legacyValue={normalizedForm.personale_previsto}
             onChange={({ personaleIds, personaleDisplay }) =>
               onChange((prev) => ({
                 ...prev,
@@ -361,7 +432,7 @@ export default function OperationalBlockEditor({
         <div>
           <div style={{ fontSize: 12, marginBottom: 4 }}>Mezzi</div>
           <textarea
-            value={form.mezzi}
+            value={normalizedForm.mezzi}
             disabled={readOnly}
             onChange={(e) => onChange((prev) => ({ ...prev, mezzi: e.target.value }))}
             style={{ width: "100%", minHeight: 70, padding: 8 }}
@@ -370,7 +441,7 @@ export default function OperationalBlockEditor({
         <div>
           <div style={{ fontSize: 12, marginBottom: 4 }}>Descrizione attività</div>
           <textarea
-            value={form.descrizione_attivita}
+            value={normalizedForm.descrizione_attivita}
             disabled={readOnly}
             onChange={(e) => onChange((prev) => ({ ...prev, descrizione_attivita: e.target.value }))}
             style={{ width: "100%", minHeight: 70, padding: 8 }}
@@ -379,7 +450,7 @@ export default function OperationalBlockEditor({
         <div>
           <div style={{ fontSize: 12, marginBottom: 4 }}>Indirizzo</div>
           <textarea
-            value={form.indirizzo}
+            value={normalizedForm.indirizzo}
             disabled={readOnly}
             onChange={(e) => onChange((prev) => ({ ...prev, indirizzo: e.target.value }))}
             style={{ width: "100%", minHeight: 70, padding: 8 }}
@@ -388,7 +459,7 @@ export default function OperationalBlockEditor({
         <div>
           <div style={{ fontSize: 12, marginBottom: 4 }}>Referente cliente</div>
           <div style={{ display: "grid", gap: 8 }}>
-            {form.referenti_cliente.map((referente, index) => (
+            {normalizedForm.referenti_cliente.map((referente, index) => (
               <div
                 key={referente.id || `referente-${index}`}
                 style={{
@@ -412,7 +483,7 @@ export default function OperationalBlockEditor({
                     onChange={(e) =>
                       onChange((prev) => {
                         const referentiCliente = updateReferente(
-                          prev.referenti_cliente,
+                          normalizeOperationalBlockForm(prev).referenti_cliente,
                           index,
                           "nome",
                           e.target.value
@@ -433,7 +504,7 @@ export default function OperationalBlockEditor({
                     onChange={(e) =>
                       onChange((prev) => {
                         const referentiCliente = updateReferente(
-                          prev.referenti_cliente,
+                          normalizeOperationalBlockForm(prev).referenti_cliente,
                           index,
                           "contatto",
                           e.target.value
@@ -464,7 +535,7 @@ export default function OperationalBlockEditor({
                       onChange((prev) => ({
                         ...prev,
                         referenti_cliente: updateReferente(
-                          prev.referenti_cliente,
+                          normalizeOperationalBlockForm(prev).referenti_cliente,
                           index,
                           "ruolo",
                           e.target.value
@@ -479,7 +550,10 @@ export default function OperationalBlockEditor({
                       type="button"
                       onClick={() =>
                         onChange((prev) => {
-                          const referentiCliente = removeReferente(prev.referenti_cliente, index);
+                          const referentiCliente = removeReferente(
+                            normalizeOperationalBlockForm(prev).referenti_cliente,
+                            index
+                          );
                           return {
                             ...prev,
                             referenti_cliente: referentiCliente,
@@ -510,7 +584,9 @@ export default function OperationalBlockEditor({
                   onClick={() =>
                     onChange((prev) => ({
                       ...prev,
-                      referenti_cliente: addReferente(prev.referenti_cliente),
+                      referenti_cliente: addReferente(
+                        normalizeOperationalBlockForm(prev).referenti_cliente
+                      ),
                     }))
                   }
                   style={{
@@ -532,7 +608,7 @@ export default function OperationalBlockEditor({
           <div style={{ fontSize: 12, marginBottom: 4 }}>Commerciale Art Tech</div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
             <input
-              value={form.commerciale_art_tech_nome}
+              value={normalizedForm.commerciale_art_tech_nome}
               disabled={readOnly}
               onChange={(e) =>
                 onChange((prev) => ({ ...prev, commerciale_art_tech_nome: e.target.value }))
@@ -541,7 +617,7 @@ export default function OperationalBlockEditor({
               style={{ width: "100%", padding: 8 }}
             />
             <input
-              value={form.commerciale_art_tech_contatto}
+              value={normalizedForm.commerciale_art_tech_contatto}
               disabled={readOnly}
               onChange={(e) =>
                 onChange((prev) => ({ ...prev, commerciale_art_tech_contatto: e.target.value }))
@@ -584,14 +660,14 @@ export default function OperationalBlockEditor({
       {notice ? (
         <div style={{ marginTop: 8, fontSize: 12, color: "#166534" }}>{notice}</div>
       ) : null}
-      {attachmentEntityId ? (
+      {normalizedAttachmentEntityId && normalizedAttachmentEntityType && resolvedAttachmentMode ? (
         <div style={{ marginTop: 12 }}>
           <AttachmentsPanel
             title={attachmentTitle}
-            entityType={attachmentEntityType}
-            entityId={attachmentEntityId}
-            slotId={attachmentSlotId}
-            mode={attachmentMode}
+            entityType={normalizedAttachmentEntityType}
+            entityId={normalizedAttachmentEntityId}
+            slotId={normalizedAttachmentSlotId}
+            mode={resolvedAttachmentMode}
             multiple
             storagePrefix="checklist-operativi"
             allowUploads={false}
