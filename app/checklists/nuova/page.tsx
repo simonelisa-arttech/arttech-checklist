@@ -59,11 +59,11 @@ function createEmptyClienteReferente(): ClienteReferente {
 }
 
 function normalizeClienteReferenteDraft(value: Partial<ClienteReferente> | null | undefined): ClienteReferente {
+  const sanitizedId = sanitizeUuidForPayload(value?.id);
+  const sanitizedClienteId = sanitizeUuidForPayload(value?.cliente_id);
   return {
-    ...(String(value?.id || "").trim() ? { id: String(value?.id || "").trim() } : {}),
-    ...(String(value?.cliente_id || "").trim()
-      ? { cliente_id: String(value?.cliente_id || "").trim() }
-      : {}),
+    ...(sanitizedId ? { id: sanitizedId } : {}),
+    ...(sanitizedClienteId ? { cliente_id: sanitizedClienteId } : {}),
     nome: String(value?.nome || "").trim(),
     telefono: String(value?.telefono || "").trim(),
     email: String(value?.email || "").trim(),
@@ -225,9 +225,31 @@ function stripPendingFrontendId(value?: string | null) {
   return isRealUuid(normalized) ? normalized : normalized;
 }
 
-function sanitizeUuidForPayload(value?: string | null) {
-  const normalized = stripPendingFrontendId(value);
-  return normalized && isRealUuid(normalized) ? normalized : null;
+function sanitizeUuidForPayload(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  if (trimmed.startsWith("pending:")) return null;
+  if (trimmed.startsWith("__tmp__")) return null;
+  return isRealUuid(trimmed) ? trimmed : null;
+}
+
+function payloadContainsPendingFrontendId(value: unknown): boolean {
+  if (typeof value === "string") {
+    const trimmed = value.trim();
+    return trimmed.startsWith("pending:") || trimmed.startsWith("__tmp__");
+  }
+  if (Array.isArray(value)) return value.some((entry) => payloadContainsPendingFrontendId(entry));
+  if (value && typeof value === "object") {
+    return Object.values(value).some((entry) => payloadContainsPendingFrontendId(entry));
+  }
+  return false;
+}
+
+function warnPendingPayload(flow: string, payload: unknown) {
+  if (process.env.NODE_ENV === "production") return;
+  if (!payloadContainsPendingFrontendId(payload)) return;
+  console.warn(`[nuova-checklist] pending frontend id detected in ${flow}`, payload);
 }
 
 export default function NuovaChecklistPage() {
@@ -461,16 +483,23 @@ export default function NuovaChecklistPage() {
     const currentIds = new Set(rowsToPersist.map((row) => row.id).filter(Boolean) as string[]);
     const idsToDelete = Array.from(snapshotById.keys()).filter((id) => !currentIds.has(id));
 
-    for (const row of rowsToPersist.filter((value) => value.id)) {
+    for (const row of rowsToPersist.filter((value) => sanitizeUuidForPayload(value.id))) {
+      const referenteId = sanitizeUuidForPayload(row.id);
+      if (!referenteId) continue;
       const payload = {
         nome: row.nome,
         telefono: row.telefono || null,
         email: row.email || null,
         ruolo: row.ruolo || null,
       };
+      warnPendingPayload("clienti_referenti.update", {
+        id: referenteId,
+        cliente_id: normalizedClienteId,
+        ...payload,
+      });
       const { error } = await dbFrom("clienti_referenti")
         .update(payload)
-        .eq("id", row.id as string)
+        .eq("id", referenteId)
         .eq("cliente_id", normalizedClienteId);
       if (error) throw new Error(error.message || "Errore aggiornamento referente cliente");
     }
@@ -486,6 +515,7 @@ export default function NuovaChecklistPage() {
         attivo: true,
       }));
     if (rowsToInsert.length > 0) {
+      warnPendingPayload("clienti_referenti.insert", rowsToInsert);
       const { error } = await dbFrom("clienti_referenti").insert(rowsToInsert);
       if (error) throw new Error(error.message || "Errore inserimento referenti cliente");
     }
@@ -890,11 +920,13 @@ export default function NuovaChecklistPage() {
       }
 
       {
+        const materializePayload = { checklist_id: sanitizeUuidForPayload(checklistId) };
+        warnPendingPayload("checklists.materialize-tasks", materializePayload);
         const res = await fetch("/api/checklists/materialize-tasks", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           credentials: "include",
-          body: JSON.stringify({ checklist_id: checklistId }),
+          body: JSON.stringify(materializePayload),
         });
         const json = await res.json().catch(() => ({}));
         if (!res.ok) {
@@ -914,12 +946,13 @@ export default function NuovaChecklistPage() {
         alert("Errore seed checklist template: " + (info || tmplErr.message));
       } else if (tmpl && tmpl.length > 0) {
         const payloadChecks = (tmpl as any[]).map((r) => ({
-          checklist_id: checklistId,
+          checklist_id: sanitizeUuidForPayload(checklistId),
           sezione: r.sezione,
           voce: r.voce,
           stato: "DA FARE",
           note: null,
         }));
+        warnPendingPayload("checklist_checks.insert", payloadChecks);
 
         const { error: seedErr } = await dbFrom("checklist_checks")
           .insert(payloadChecks);
@@ -965,7 +998,7 @@ export default function NuovaChecklistPage() {
 
       if (normalizedRows.length > 0) {
         const payloadItems = normalizedRows.map((r) => ({
-          checklist_id: checklistId,
+          checklist_id: sanitizeUuidForPayload(checklistId),
           codice: r.codice ? r.codice : null,
           descrizione: isCustomCode(r.codice)
             ? r.descrizione_custom || null
@@ -976,6 +1009,7 @@ export default function NuovaChecklistPage() {
           note: r.note ? r.note : null,
           proforma_link_url: r.proforma_link_url ? r.proforma_link_url : null,
         }));
+        warnPendingPayload("checklist_items.insert", payloadItems);
 
         const { error: errItems } = await dbFrom("checklist_items")
           .insert(payloadItems);
@@ -989,13 +1023,14 @@ export default function NuovaChecklistPage() {
 
       if (draftLicenze.length > 0) {
         const payloadLicenze = draftLicenze.map((l) => ({
-          checklist_id: checklistId,
+          checklist_id: sanitizeUuidForPayload(checklistId),
           tipo: l.tipo,
           scadenza: l.scadenza,
           stato: "attiva",
           note: l.note ? l.note : null,
           proforma_link_url: l.proforma_link_url ? l.proforma_link_url : null,
         }));
+        warnPendingPayload("licenses.insert", payloadLicenze);
         const { error: licErr } = await dbFrom("licenses").insert(payloadLicenze);
         if (licErr) {
           alert("Errore inserimento licenze: " + licErr.message);
@@ -1005,7 +1040,7 @@ export default function NuovaChecklistPage() {
 
       const serialPayload = [
         ...serialiControllo.map((s) => ({
-          checklist_id: checklistId,
+          checklist_id: sanitizeUuidForPayload(checklistId),
           tipo: "CONTROLLO",
           device_code: stripPendingFrontendId(s.device_code),
           device_descrizione: stripPendingFrontendId(s.device_descrizione),
@@ -1013,7 +1048,7 @@ export default function NuovaChecklistPage() {
           note: s.note ? s.note.trim() : null,
         })),
         ...serialiModuli.map((s) => ({
-          checklist_id: checklistId,
+          checklist_id: sanitizeUuidForPayload(checklistId),
           tipo: "MODULO_LED",
           device_code: stripPendingFrontendId(s.device_code),
           device_descrizione: stripPendingFrontendId(s.device_descrizione),
@@ -1022,6 +1057,7 @@ export default function NuovaChecklistPage() {
         })),
       ].filter((row) => Boolean(row.seriale));
       if (serialPayload.length > 0) {
+        warnPendingPayload("asset_serials.insert", serialPayload);
         const { error: serialErr } = await dbFrom("asset_serials").insert(serialPayload);
         if (serialErr) {
           const code = (serialErr as any)?.code;
@@ -1035,11 +1071,13 @@ export default function NuovaChecklistPage() {
       }
 
       try {
+        const notificationPayload = { checklist_id: sanitizeUuidForPayload(checklistId) };
+        warnPendingPayload("notifications.on-checklist-create", notificationPayload);
         await fetch("/api/notifications/on-checklist-create", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           credentials: "include",
-          body: JSON.stringify({ checklist_id: checklistId }),
+          body: JSON.stringify(notificationPayload),
         });
       } catch (err) {
         console.error("Errore invio notification_rules su creazione checklist", err);
