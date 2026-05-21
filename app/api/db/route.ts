@@ -51,6 +51,12 @@ const TABLE_RULES: Record<
     orderCols: ["updated_at", "created_at"],
     requiredEqAnyOf: ["id", "cliente_id"],
   },
+  clienti_referenti: {
+    ops: ["select", "insert", "update", "delete"],
+    filterCols: ["id", "cliente_id", "attivo", "email", "nome"],
+    orderCols: ["updated_at", "created_at", "nome"],
+    requiredEqAnyOf: ["id", "cliente_id"],
+  },
   checklist_items: {
     ops: ["select", "insert", "update", "delete", "upsert"],
     filterCols: ["id", "checklist_id"],
