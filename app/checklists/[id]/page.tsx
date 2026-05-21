@@ -1357,6 +1357,74 @@ function buildFallbackReferentiCliente(meta?: CronoOperativiMeta | null): CronoR
   return fallback.nome || fallback.contatto ? [fallback] : [{ nome: "", contatto: "", ruolo: "" }];
 }
 
+function hasCronoReferenteClienteContent(
+  value: Partial<CronoReferenteCliente> | null | undefined
+) {
+  return Boolean(
+    String(value?.nome || "").trim() ||
+      String(value?.contatto || "").trim() ||
+      String(value?.ruolo || "").trim()
+  );
+}
+
+function buildAvailableCronoReferentiFromClienteReferenti(
+  referenti: ClienteReferente[]
+): CronoReferenteCliente[] {
+  const seen = new Set<string>();
+  return referenti
+    .map((referente) => {
+      const normalized = normalizeClienteReferenteDraft(referente);
+      return {
+        ...(normalized.id ? { id: normalized.id } : {}),
+        nome: normalized.nome,
+        contatto: normalized.telefono || normalized.email || "",
+        ruolo: normalized.ruolo || "",
+      };
+    })
+    .filter((referente) => hasCronoReferenteClienteContent(referente))
+    .filter((referente) => {
+      const key = [
+        String(referente.id || "").trim().toLowerCase(),
+        referente.nome.trim().toLowerCase(),
+        referente.contatto.trim().toLowerCase(),
+        referente.ruolo.trim().toLowerCase(),
+      ].join("|");
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+}
+
+function applySuggestedCronoOperativiDefaults(
+  form: CronoOperativiFormState,
+  suggestedAddress: string,
+  availableReferenti: CronoReferenteCliente[]
+) {
+  let next = syncCronoOperativiLegacyFields(form);
+  let changed = false;
+
+  if (!String(next.indirizzo || "").trim() && suggestedAddress) {
+    next = { ...next, indirizzo: suggestedAddress };
+    changed = true;
+  }
+
+  const hasReferenti = next.referenti_cliente.some((referente) =>
+    hasCronoReferenteClienteContent(referente)
+  );
+  if (!hasReferenti && availableReferenti.length === 1) {
+    const [selectedReferente] = availableReferenti;
+    next = {
+      ...next,
+      referenti_cliente: [selectedReferente],
+      referente_cliente_nome: selectedReferente.nome || "",
+      referente_cliente_contatto: selectedReferente.contatto || "",
+    };
+    changed = true;
+  }
+
+  return changed ? next : form;
+}
+
 function extractCronoOperativi(meta?: CronoOperativiMeta | null) {
   const slots = buildCronoOperativiSlots(meta);
   const referentiCliente = buildFallbackReferentiCliente(meta);
@@ -2176,6 +2244,37 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
     () => `/cronoprogramma?focusChecklistId=${encodeURIComponent(String(id || ""))}`,
     [id]
   );
+  const availableOperationalReferenti = useMemo(
+    () => buildAvailableCronoReferentiFromClienteReferenti(clienteReferenti),
+    [clienteReferenti]
+  );
+  const suggestedOperationalAddress = useMemo(() => {
+    const directAddress = String(formData?.impianto_indirizzo || "").trim();
+    if (directAddress) return directAddress;
+    const impiantoAddress =
+      impianti
+        .map((impianto) => String(impianto?.impianto_indirizzo || "").trim())
+        .find(Boolean) || "";
+    if (impiantoAddress) return impiantoAddress;
+    return String(checklist?.impianto_indirizzo || "").trim();
+  }, [checklist?.impianto_indirizzo, formData?.impianto_indirizzo, impianti]);
+
+  useEffect(() => {
+    setCronoOperativiForm((prev) =>
+      applySuggestedCronoOperativiDefaults(
+        prev,
+        suggestedOperationalAddress,
+        availableOperationalReferenti
+      )
+    );
+    setCronoDisinstallazioneForm((prev) =>
+      applySuggestedCronoOperativiDefaults(
+        prev,
+        suggestedOperationalAddress,
+        availableOperationalReferenti
+      )
+    );
+  }, [availableOperationalReferenti, suggestedOperationalAddress]);
 
   function renderOperationalOverviewCard({
     title,
@@ -2193,6 +2292,8 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
     fallbackStartDate,
     attachmentTitle,
     attachmentEntityType,
+    availableReferentiCliente,
+    suggestedAddress,
   }: {
     title: string;
     rowKind: "INSTALLAZIONE" | "DISINSTALLAZIONE";
@@ -2209,6 +2310,8 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
     fallbackStartDate: string;
     attachmentTitle: string;
     attachmentEntityType: string;
+    availableReferentiCliente: CronoReferenteCliente[];
+    suggestedAddress: string;
   }) {
     const visualStatus = getCronoOperativiVisualStatus(meta);
     const statusColors = getCronoOperativiStatusColors(visualStatus);
@@ -2450,6 +2553,8 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
               attachmentTitle={attachmentTitle}
               attachmentEntityType={attachmentEntityType}
               attachmentEntityId={id}
+              availableReferentiCliente={availableReferentiCliente}
+              suggestedAddress={suggestedAddress}
               form={form}
               onChange={onChange}
               onSave={onSave}
@@ -10694,6 +10799,8 @@ function buildFormData(c: Checklist): FormData {
             fallbackStartDate: formData?.data_tassativa || formData?.data_prevista || "",
             attachmentTitle: "Allegati blocco attività (link Drive)",
             attachmentEntityType: "CHECKLIST_OPERATIVI",
+            availableReferentiCliente: availableOperationalReferenti,
+            suggestedAddress: suggestedOperationalAddress,
           })}
           {isNoleggioProject
             ? (
@@ -10722,6 +10829,8 @@ function buildFormData(c: Checklist): FormData {
                     formData?.data_disinstallazione || cronoDisinstallazioneFallbackDate || "",
                   attachmentTitle: "Allegati blocco disinstallazione (link Drive)",
                   attachmentEntityType: "CHECKLIST_DISINSTALLAZIONE",
+                  availableReferentiCliente: availableOperationalReferenti,
+                  suggestedAddress: suggestedOperationalAddress,
                 })
               )
             : null}

@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import type { Dispatch, SetStateAction } from "react";
 import AttachmentsPanel from "@/components/AttachmentsPanel";
 import PersonaleMultiSelect from "@/components/PersonaleMultiSelect";
@@ -52,6 +53,13 @@ export type OperationalBlockPlanningStatusOption = {
   label: string;
 };
 
+export type OperationalBlockAvailableReferente = {
+  id?: string;
+  nome: string;
+  contatto: string;
+  ruolo: string;
+};
+
 type OperationalBlockEditorProps = {
   title: string;
   attachmentTitle: string;
@@ -72,6 +80,8 @@ type OperationalBlockEditorProps = {
   planningStatus?: string | null;
   planningStatusOptions?: OperationalBlockPlanningStatusOption[];
   onPlanningStatusChange?: (value: string) => void;
+  availableReferentiCliente?: OperationalBlockAvailableReferente[];
+  suggestedAddress?: string | null;
 };
 
 function createEmptyOperationalBlockSlot(): OperationalBlockSlot {
@@ -147,6 +157,24 @@ function normalizeOperationalBlockReferente(
   };
 }
 
+function hasReferenteContent(value: Partial<OperationalBlockReferente> | null | undefined) {
+  return Boolean(String(value?.nome || "").trim() || String(value?.contatto || "").trim() || String(value?.ruolo || "").trim());
+}
+
+function isSameReferente(
+  left: Partial<OperationalBlockReferente> | null | undefined,
+  right: Partial<OperationalBlockReferente> | null | undefined
+) {
+  const leftId = String(left?.id || "").trim();
+  const rightId = String(right?.id || "").trim();
+  if (leftId && rightId) return leftId === rightId;
+  return (
+    String(left?.nome || "").trim().toLowerCase() === String(right?.nome || "").trim().toLowerCase() &&
+    String(left?.contatto || "").trim().toLowerCase() === String(right?.contatto || "").trim().toLowerCase() &&
+    String(left?.ruolo || "").trim().toLowerCase() === String(right?.ruolo || "").trim().toLowerCase()
+  );
+}
+
 function normalizeOperationalBlockForm(form: OperationalBlockFormState): OperationalBlockFormState {
   const slots = Array.isArray(form?.slots)
     ? form.slots.map((slot) => normalizeOperationalBlockSlot(slot))
@@ -195,11 +223,20 @@ export default function OperationalBlockEditor({
   planningStatus,
   planningStatusOptions,
   onPlanningStatusChange,
+  availableReferentiCliente,
+  suggestedAddress,
 }: OperationalBlockEditorProps) {
+  const [selectedReferenteId, setSelectedReferenteId] = useState("");
   const normalizedForm = normalizeOperationalBlockForm(form);
   const normalizedPlanningStatusOptions = Array.isArray(planningStatusOptions)
     ? planningStatusOptions
     : [];
+  const normalizedAvailableReferenti = Array.isArray(availableReferentiCliente)
+    ? availableReferentiCliente
+        .map((value) => normalizeOperationalBlockReferente(value))
+        .filter((value) => hasReferenteContent(value))
+    : [];
+  const normalizedSuggestedAddress = String(suggestedAddress || "").trim();
   const normalizedAttachmentEntityId = String(attachmentEntityId || "").trim();
   const normalizedAttachmentEntityType = String(attachmentEntityType || "").trim();
   const normalizedAttachmentSlotId = String(attachmentSlotId || "").trim() || null;
@@ -449,6 +486,30 @@ export default function OperationalBlockEditor({
         </div>
         <div>
           <div style={{ fontSize: 12, marginBottom: 4 }}>Indirizzo</div>
+          {!readOnly && normalizedSuggestedAddress ? (
+            <div style={{ marginBottom: 6, display: "flex", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
+              <div style={{ fontSize: 11, color: "#6b7280" }}>
+                Suggerito da progetto/impianto: {normalizedSuggestedAddress}
+              </div>
+              {!String(normalizedForm.indirizzo || "").trim() ? (
+                <button
+                  type="button"
+                  onClick={() => onChange((prev) => ({ ...prev, indirizzo: normalizedSuggestedAddress }))}
+                  style={{
+                    padding: "4px 8px",
+                    borderRadius: 8,
+                    border: "1px solid #d1d5db",
+                    background: "#fff",
+                    cursor: "pointer",
+                    fontSize: 12,
+                    fontWeight: 700,
+                  }}
+                >
+                  Usa indirizzo progetto
+                </button>
+              ) : null}
+            </div>
+          ) : null}
           <textarea
             value={normalizedForm.indirizzo}
             disabled={readOnly}
@@ -459,6 +520,87 @@ export default function OperationalBlockEditor({
         <div>
           <div style={{ fontSize: 12, marginBottom: 4 }}>Referente cliente</div>
           <div style={{ display: "grid", gap: 8 }}>
+            {!readOnly && normalizedAvailableReferenti.length > 0 ? (
+              <div
+                style={{
+                  display: "grid",
+                  gridTemplateColumns: "minmax(0, 1fr) auto",
+                  gap: 8,
+                  alignItems: "end",
+                }}
+              >
+                <div>
+                  <div style={{ fontSize: 11, marginBottom: 4, color: "#6b7280" }}>
+                    Usa un referente già presente nel progetto
+                  </div>
+                  <select
+                    value={selectedReferenteId}
+                    onChange={(e) => setSelectedReferenteId(e.target.value)}
+                    style={{ width: "100%", padding: 8 }}
+                  >
+                    <option value="">Seleziona referente cliente</option>
+                    {normalizedAvailableReferenti.map((referente, index) => {
+                      const optionValue = referente.id || `available-${index}`;
+                      const optionLabel = [referente.nome, referente.ruolo, referente.contatto]
+                        .filter(Boolean)
+                        .join(" • ");
+                      return (
+                        <option key={optionValue} value={optionValue}>
+                          {optionLabel || `Referente ${index + 1}`}
+                        </option>
+                      );
+                    })}
+                  </select>
+                </div>
+                <button
+                  type="button"
+                  disabled={!selectedReferenteId}
+                  onClick={() => {
+                    const selected =
+                      normalizedAvailableReferenti.find(
+                        (referente, index) =>
+                          (referente.id || `available-${index}`) === selectedReferenteId
+                      ) || null;
+                    if (!selected) return;
+                    onChange((prev) => {
+                      const normalizedPrev = normalizeOperationalBlockForm(prev);
+                      if (
+                        normalizedPrev.referenti_cliente.some((referente) =>
+                          isSameReferente(referente, selected)
+                        )
+                      ) {
+                        return prev;
+                      }
+                      const isSingleEmptyRow =
+                        normalizedPrev.referenti_cliente.length === 1 &&
+                        !hasReferenteContent(normalizedPrev.referenti_cliente[0]);
+                      const referentiCliente = isSingleEmptyRow
+                        ? [selected]
+                        : [...normalizedPrev.referenti_cliente, selected];
+                      return {
+                        ...prev,
+                        referenti_cliente: referentiCliente,
+                        referente_cliente_nome: referentiCliente[0]?.nome || "",
+                        referente_cliente_contatto: referentiCliente[0]?.contatto || "",
+                      };
+                    });
+                    setSelectedReferenteId("");
+                  }}
+                  style={{
+                    padding: "8px 12px",
+                    borderRadius: 8,
+                    border: "1px solid #d1d5db",
+                    background: "#fff",
+                    cursor: selectedReferenteId ? "pointer" : "not-allowed",
+                    fontWeight: 600,
+                    opacity: selectedReferenteId ? 1 : 0.6,
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  Aggiungi referente
+                </button>
+              </div>
+            ) : null}
             {normalizedForm.referenti_cliente.map((referente, index) => (
               <div
                 key={referente.id || `referente-${index}`}
