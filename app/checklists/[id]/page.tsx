@@ -1453,6 +1453,22 @@ function buildAvailableCronoReferentiFromClienteReferenti(
     });
 }
 
+function buildOperationalReferenteFromInterventoForm(
+  form:
+    | Pick<ProjectInterventoForm, "referente_cliente_nome" | "referente_cliente_contatto">
+    | null
+    | undefined
+): CronoReferenteCliente | null {
+  const nome = String(form?.referente_cliente_nome || "").trim();
+  const contatto = String(form?.referente_cliente_contatto || "").trim();
+  if (!nome || !contatto) return null;
+  return {
+    nome,
+    contatto,
+    ruolo: "",
+  };
+}
+
 function applySuggestedCronoOperativiDefaults(
   form: CronoOperativiFormState,
   suggestedAddress: string,
@@ -3558,6 +3574,11 @@ function buildFormData(c: Checklist): FormData {
           inserted.id,
           newInterventoOperativi
         );
+        const targetClienteId = String((formData?.cliente_id || checklist?.cliente_id || "")).trim();
+        const manualReferente = buildOperationalReferenteFromInterventoForm(newProjectIntervento);
+        if (targetClienteId && manualReferente) {
+          await syncOperationalReferentiToCliente(targetClienteId, [manualReferente]);
+        }
       } catch (e: any) {
         setProjectInterventiError(
           String(e?.message || "Intervento creato ma dati operativi non salvati")
@@ -3693,6 +3714,11 @@ function buildFormData(c: Checklist): FormData {
         projectInterventoEditId,
         extractProjectInterventoOperativi(projectInterventoEditForm)
       );
+      const targetClienteId = String((formData?.cliente_id || checklist?.cliente_id || "")).trim();
+      const manualReferente = buildOperationalReferenteFromInterventoForm(projectInterventoEditForm);
+      if (targetClienteId && manualReferente) {
+        await syncOperationalReferentiToCliente(targetClienteId, [manualReferente]);
+      }
     } catch (e: any) {
       setProjectInterventiError(
         String(e?.message || "Intervento aggiornato ma dati operativi non salvati")
