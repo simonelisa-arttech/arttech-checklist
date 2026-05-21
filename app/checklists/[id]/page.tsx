@@ -1367,6 +1367,64 @@ function hasCronoReferenteClienteContent(
   );
 }
 
+function normalizeReferenteMatchText(value: string | null | undefined) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, " ");
+}
+
+function normalizeReferenteContactMatchValue(value: string | null | undefined) {
+  const trimmed = String(value || "").trim().toLowerCase();
+  if (!trimmed) return "";
+  if (trimmed.includes("@")) return trimmed;
+  const digitsOnly = trimmed.replace(/\D+/g, "");
+  return digitsOnly || trimmed;
+}
+
+function isOperationalReferenteSyncCandidate(
+  value: Partial<CronoReferenteCliente> | null | undefined
+) {
+  return Boolean(
+    normalizeReferenteMatchText(value?.nome) &&
+      normalizeReferenteContactMatchValue(value?.contatto)
+  );
+}
+
+function buildClienteReferenteDraftFromOperationalReferente(
+  value: Partial<CronoReferenteCliente> | null | undefined,
+  clienteId: string
+): ClienteReferente {
+  const normalizedClienteId = String(clienteId || "").trim();
+  const normalizedNome = String(value?.nome || "").trim();
+  const normalizedContatto = String(value?.contatto || "").trim();
+  const normalizedRuolo = String(value?.ruolo || "").trim();
+  const isEmail = normalizedContatto.includes("@");
+  return normalizeClienteReferenteDraft({
+    cliente_id: normalizedClienteId,
+    nome: normalizedNome,
+    telefono: isEmail ? "" : normalizedContatto,
+    email: isEmail ? normalizedContatto : "",
+    ruolo: normalizedRuolo,
+    attivo: true,
+  });
+}
+
+function hasMatchingClienteReferente(
+  existing: ClienteReferente,
+  candidate: Partial<CronoReferenteCliente> | null | undefined
+) {
+  const existingNome = normalizeReferenteMatchText(existing.nome);
+  const candidateNome = normalizeReferenteMatchText(candidate?.nome);
+  if (!existingNome || !candidateNome || existingNome !== candidateNome) return false;
+  const existingContacts = [
+    normalizeReferenteContactMatchValue(existing.telefono),
+    normalizeReferenteContactMatchValue(existing.email),
+  ].filter(Boolean);
+  const candidateContact = normalizeReferenteContactMatchValue(candidate?.contatto);
+  return Boolean(candidateContact && existingContacts.includes(candidateContact));
+}
+
 function buildAvailableCronoReferentiFromClienteReferenti(
   referenti: ClienteReferente[]
 ): CronoReferenteCliente[] {
@@ -4781,6 +4839,10 @@ function buildFormData(c: Checklist): FormData {
     setNotice(null);
     try {
       const { nextMeta, nextForm } = await persistCronoOperativiForm(id, rowKind, form);
+      const targetClienteId = String((formData?.cliente_id || checklist?.cliente_id || "")).trim();
+      if (targetClienteId) {
+        await syncOperationalReferentiToCliente(targetClienteId, nextForm.referenti_cliente);
+      }
       setMeta(nextMeta);
       setForm(nextForm);
       if (rowKind === "DISINSTALLAZIONE") {
@@ -5466,6 +5528,60 @@ function buildFormData(c: Checklist): FormData {
         .in("id", idsToDelete)
         .eq("cliente_id", normalizedClienteId);
       if (error) throw new Error(error.message || "Errore rimozione referenti cliente");
+    }
+
+    await loadClienteReferentiSection(normalizedClienteId);
+  }
+
+  async function syncOperationalReferentiToCliente(
+    targetClienteId: string,
+    referentiOperativi: CronoReferenteCliente[]
+  ) {
+    const normalizedClienteId = String(targetClienteId || "").trim();
+    if (!normalizedClienteId || !Array.isArray(referentiOperativi) || referentiOperativi.length === 0) {
+      return;
+    }
+
+    const existingReferenti = clienteReferenti.map((row) => normalizeClienteReferenteDraft(row));
+    const uniqueCandidates = referentiOperativi
+      .filter((referente) => isOperationalReferenteSyncCandidate(referente))
+      .filter(
+        (referente, index, list) =>
+          index ===
+          list.findIndex((current) => {
+            const currentNome = normalizeReferenteMatchText(current.nome);
+            const currentContatto = normalizeReferenteContactMatchValue(current.contatto);
+            return (
+              currentNome === normalizeReferenteMatchText(referente.nome) &&
+              currentContatto === normalizeReferenteContactMatchValue(referente.contatto)
+            );
+          })
+      );
+
+    const rowsToInsert = uniqueCandidates
+      .filter(
+        (referente) =>
+          !existingReferenti.some((existing) => hasMatchingClienteReferente(existing, referente))
+      )
+      .map((referente) =>
+        buildClienteReferenteDraftFromOperationalReferente(referente, normalizedClienteId)
+      )
+      .filter((referente) => hasClienteReferenteDraftContent(referente));
+
+    if (rowsToInsert.length === 0) return;
+
+    const payload = rowsToInsert.map((referente) => ({
+      cliente_id: normalizedClienteId,
+      nome: referente.nome,
+      telefono: referente.telefono || null,
+      email: referente.email || null,
+      ruolo: referente.ruolo || null,
+      attivo: true,
+    }));
+
+    const { error } = await dbFrom("clienti_referenti").insert(payload);
+    if (error) {
+      throw new Error(error.message || "Errore sincronizzazione referenti cliente");
     }
 
     await loadClienteReferentiSection(normalizedClienteId);
