@@ -392,8 +392,7 @@ function buildInterventoReferentiList(
   const referenti = Array.isArray(form.referentiCliente)
     ? form.referentiCliente.map((value) => normalizeInterventoReferente(value))
     : [];
-  const filtered = referenti.filter((value) => hasInterventoReferenteContent(value));
-  if (filtered.length > 0) return filtered;
+  if (referenti.length > 0) return referenti;
   const fallback = normalizeInterventoReferente({
     nome: form.referenteClienteNome,
     contatto: form.referenteClienteContatto,
