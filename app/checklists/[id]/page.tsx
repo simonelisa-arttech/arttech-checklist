@@ -4838,10 +4838,11 @@ function buildFormData(c: Checklist): FormData {
     setError(null);
     setNotice(null);
     try {
+      const submittedForm = syncCronoOperativiLegacyFields(form);
       const { nextMeta, nextForm } = await persistCronoOperativiForm(id, rowKind, form);
       const targetClienteId = String((formData?.cliente_id || checklist?.cliente_id || "")).trim();
       if (targetClienteId) {
-        await syncOperationalReferentiToCliente(targetClienteId, nextForm.referenti_cliente);
+        await syncOperationalReferentiToCliente(targetClienteId, submittedForm.referenti_cliente);
       }
       setMeta(nextMeta);
       setForm(nextForm);
