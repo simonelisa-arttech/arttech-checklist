@@ -178,6 +178,11 @@ type Props = {
   reopenIntervento: (id: string) => void;
   operatorSettingsHref?: string;
   currentProjectLabel?: string | null;
+  lockedCommercialeArtTech?: boolean;
+  projectCommercialeArtTech?: {
+    nome?: string | null;
+    contatto?: string | null;
+  } | null;
 };
 
 const FATTURAZIONE_MENU_OPTIONS = [
@@ -475,6 +480,11 @@ function renderOperativiFields(
     referentiContext?: ChecklistReferentiContext;
     selectedReferenteId?: string;
     onSelectReferente?: (value: string) => void;
+    lockedCommercialeArtTech?: boolean;
+    projectCommercialeArtTech?: {
+      nome?: string | null;
+      contatto?: string | null;
+    } | null;
   }
 ) {
   const showModalitaAttivita = Boolean(options?.showModalitaAttivita);
@@ -483,6 +493,8 @@ function renderOperativiFields(
   const referentiContext = options?.referentiContext;
   const referenti = referentiContext?.referenti || [];
   const normalizedReferentiCliente = buildInterventoReferentiList(form);
+  const lockedCommercialeArtTech = Boolean(options?.lockedCommercialeArtTech);
+  const projectCommercialeArtTech = options?.projectCommercialeArtTech ?? null;
   return (
     <div style={{ marginTop: 10 }}>
       <div style={{ display: "grid", gap: 8, marginBottom: 8 }}>
@@ -824,20 +836,49 @@ function renderOperativiFields(
         </div>
         <div>
           <div style={{ fontSize: 12, marginBottom: 4 }}>Commerciale Art Tech</div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-            <input
-              value={form.commercialeArtTechNome}
-              onChange={(e) => setForm({ ...form, commercialeArtTechNome: e.target.value })}
-              placeholder="Nome"
-              style={{ width: "100%", padding: 8 }}
-            />
-            <input
-              value={form.commercialeArtTechContatto}
-              onChange={(e) => setForm({ ...form, commercialeArtTechContatto: e.target.value })}
-              placeholder="Contatto"
-              style={{ width: "100%", padding: 8 }}
-            />
-          </div>
+          {lockedCommercialeArtTech ? (
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr",
+                gap: 8,
+                border: "1px solid #e5e7eb",
+                borderRadius: 10,
+                padding: 10,
+                background: "#f8fafc",
+              }}
+            >
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 4 }}>Nome</div>
+                <div style={{ fontSize: 14, color: "#111827", wordBreak: "break-word" }}>
+                  {String(projectCommercialeArtTech?.nome || form.commercialeArtTechNome || "").trim() ||
+                    "Non selezionato nel progetto"}
+                </div>
+              </div>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 4 }}>Contatto</div>
+                <div style={{ fontSize: 14, color: "#111827", wordBreak: "break-word" }}>
+                  {String(projectCommercialeArtTech?.contatto || form.commercialeArtTechContatto || "").trim() ||
+                    "—"}
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+              <input
+                value={form.commercialeArtTechNome}
+                onChange={(e) => setForm({ ...form, commercialeArtTechNome: e.target.value })}
+                placeholder="Nome"
+                style={{ width: "100%", padding: 8 }}
+              />
+              <input
+                value={form.commercialeArtTechContatto}
+                onChange={(e) => setForm({ ...form, commercialeArtTechContatto: e.target.value })}
+                placeholder="Contatto"
+                style={{ width: "100%", padding: 8 }}
+              />
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -923,6 +964,8 @@ export default function InterventiBlock({
   reopenIntervento,
   operatorSettingsHref = "/impostazioni/operatori",
   currentProjectLabel,
+  lockedCommercialeArtTech = false,
+  projectCommercialeArtTech = null,
 }: Props) {
   const fattureDaEmettere = interventi.filter((item) => isFatturaDaEmettere(item));
   const topScrollbarRef = useRef<HTMLDivElement | null>(null);
@@ -1362,6 +1405,8 @@ export default function InterventiBlock({
                 referenti: [],
                 loading: false,
               },
+            lockedCommercialeArtTech,
+            projectCommercialeArtTech,
             selectedReferenteId: newReferenteId,
             onSelectReferente: (referenteId) =>
               applyReferenteSelection(
@@ -2086,6 +2131,8 @@ export default function InterventiBlock({
                               referenti: [],
                               loading: false,
                             },
+                          lockedCommercialeArtTech,
+                          projectCommercialeArtTech,
                           selectedReferenteId: editReferenteId,
                           onSelectReferente: (referenteId) =>
                             applyReferenteSelection(

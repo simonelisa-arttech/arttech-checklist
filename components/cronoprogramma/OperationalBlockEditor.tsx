@@ -82,6 +82,11 @@ type OperationalBlockEditorProps = {
   onPlanningStatusChange?: (value: string) => void;
   availableReferentiCliente?: OperationalBlockAvailableReferente[];
   suggestedAddress?: string | null;
+  lockedCommercialeArtTech?: boolean;
+  projectCommercialeArtTech?: {
+    nome?: string | null;
+    contatto?: string | null;
+  } | null;
 };
 
 function createEmptyOperationalBlockSlot(): OperationalBlockSlot {
@@ -225,6 +230,8 @@ export default function OperationalBlockEditor({
   onPlanningStatusChange,
   availableReferentiCliente,
   suggestedAddress,
+  lockedCommercialeArtTech = false,
+  projectCommercialeArtTech = null,
 }: OperationalBlockEditorProps) {
   const [selectedReferenteId, setSelectedReferenteId] = useState("");
   const normalizedForm = normalizeOperationalBlockForm(form);
@@ -237,6 +244,10 @@ export default function OperationalBlockEditor({
         .filter((value) => hasReferenteContent(value))
     : [];
   const normalizedSuggestedAddress = String(suggestedAddress || "").trim();
+  const normalizedCommercialeDisplay = {
+    nome: String(projectCommercialeArtTech?.nome || normalizedForm.commerciale_art_tech_nome || "").trim(),
+    contatto: String(projectCommercialeArtTech?.contatto || normalizedForm.commerciale_art_tech_contatto || "").trim(),
+  };
   const normalizedAttachmentEntityId = String(attachmentEntityId || "").trim();
   const normalizedAttachmentEntityType = String(attachmentEntityType || "").trim();
   const normalizedAttachmentSlotId = String(attachmentSlotId || "").trim() || null;
@@ -748,26 +759,53 @@ export default function OperationalBlockEditor({
         </div>
         <div>
           <div style={{ fontSize: 12, marginBottom: 4 }}>Commerciale Art Tech</div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-            <input
-              value={normalizedForm.commerciale_art_tech_nome}
-              disabled={readOnly}
-              onChange={(e) =>
-                onChange((prev) => ({ ...prev, commerciale_art_tech_nome: e.target.value }))
-              }
-              placeholder="Nome"
-              style={{ width: "100%", padding: 8 }}
-            />
-            <input
-              value={normalizedForm.commerciale_art_tech_contatto}
-              disabled={readOnly}
-              onChange={(e) =>
-                onChange((prev) => ({ ...prev, commerciale_art_tech_contatto: e.target.value }))
-              }
-              placeholder="Contatto"
-              style={{ width: "100%", padding: 8 }}
-            />
-          </div>
+          {lockedCommercialeArtTech ? (
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr",
+                gap: 8,
+                border: "1px solid #e5e7eb",
+                borderRadius: 10,
+                padding: 10,
+                background: "#f8fafc",
+              }}
+            >
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 4 }}>Nome</div>
+                <div style={{ fontSize: 14, color: "#111827", wordBreak: "break-word" }}>
+                  {normalizedCommercialeDisplay.nome || "Non selezionato nel progetto"}
+                </div>
+              </div>
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 4 }}>Contatto</div>
+                <div style={{ fontSize: 14, color: "#111827", wordBreak: "break-word" }}>
+                  {normalizedCommercialeDisplay.contatto || "—"}
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+              <input
+                value={normalizedForm.commerciale_art_tech_nome}
+                disabled={readOnly}
+                onChange={(e) =>
+                  onChange((prev) => ({ ...prev, commerciale_art_tech_nome: e.target.value }))
+                }
+                placeholder="Nome"
+                style={{ width: "100%", padding: 8 }}
+              />
+              <input
+                value={normalizedForm.commerciale_art_tech_contatto}
+                disabled={readOnly}
+                onChange={(e) =>
+                  onChange((prev) => ({ ...prev, commerciale_art_tech_contatto: e.target.value }))
+                }
+                placeholder="Contatto"
+                style={{ width: "100%", padding: 8 }}
+              />
+            </div>
+          )}
         </div>
       </div>
       {onSave ? (

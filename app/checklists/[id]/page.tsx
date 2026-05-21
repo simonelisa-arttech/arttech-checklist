@@ -80,6 +80,7 @@ type Checklist = {
   id: string;
   cliente: string;
   cliente_id: string | null;
+  commerciale_art_tech_operatore_id?: string | null;
   nome_checklist: string;
   proforma: string | null;
   proforma_link_url?: string | null;
@@ -412,6 +413,17 @@ function isRealUuid(value?: string | null) {
   return REAL_UUID_REGEX.test(String(value || "").trim());
 }
 
+function normalizeProjectCommercialeOperatoreId(value?: string | null) {
+  const normalized = String(value || "").trim();
+  return isRealUuid(normalized) ? normalized : "";
+}
+
+function sanitizeCommercialDisplayValue(value?: string | null) {
+  const normalized = String(value || "").trim();
+  if (!normalized || isRealUuid(normalized)) return "";
+  return normalized;
+}
+
 function isTemporaryChecklistImpiantoSelection(value?: string | null) {
   const normalized = String(value || "").trim();
   if (!normalized || isRealUuid(normalized)) return false;
@@ -668,6 +680,7 @@ type AlertOperatore = {
   id: string;
   nome: string | null;
   email?: string | null;
+  telefono?: string | null;
   attivo: boolean;
   cliente?: string | null;
   ruolo?: string | null;
@@ -737,6 +750,7 @@ function buildEmptyProjectInterventoForm(
 type FormData = {
   cliente: string;
   cliente_id: string;
+  commerciale_art_tech_operatore_id: string;
   nome_checklist: string;
   proforma: string;
   proforma_link_url: string;
@@ -1464,8 +1478,7 @@ function buildAvailableCronoReferentiFromClienteReferenti(
 function applySuggestedCronoOperativiDefaults(
   form: CronoOperativiFormState,
   suggestedAddress: string,
-  availableReferenti: CronoReferenteCliente[],
-  suggestedCommercialeArtTechName = ""
+  availableReferenti: CronoReferenteCliente[]
 ) {
   let next = syncCronoOperativiLegacyFields(form);
   let changed = false;
@@ -1489,30 +1502,46 @@ function applySuggestedCronoOperativiDefaults(
     changed = true;
   }
 
-  if (!String(next.commerciale_art_tech_nome || "").trim() && suggestedCommercialeArtTechName) {
-    next = {
-      ...next,
-      commerciale_art_tech_nome: suggestedCommercialeArtTechName,
-    };
-    changed = true;
-  }
-
   return changed ? next : form;
 }
 
-function applySuggestedInterventoCommercialeArtTechName(
-  form: ProjectInterventoForm,
-  suggestedCommercialeArtTechName = ""
-): ProjectInterventoForm {
-  if (
-    !suggestedCommercialeArtTechName ||
-    String(form.commerciale_art_tech_nome || "").trim()
-  ) {
-    return form;
+function applyResolvedCommercialeToCronoOperativiForm(
+  form: CronoOperativiFormState,
+  commerciale: { nome?: string | null; contatto?: string | null } | null
+): CronoOperativiFormState {
+  const nome = sanitizeCommercialDisplayValue(commerciale?.nome);
+  const contatto = sanitizeCommercialDisplayValue(commerciale?.contatto);
+  if (!nome && !contatto) {
+    return {
+      ...form,
+      commerciale_art_tech_nome: sanitizeCommercialDisplayValue(form.commerciale_art_tech_nome),
+      commerciale_art_tech_contatto: sanitizeCommercialDisplayValue(form.commerciale_art_tech_contatto),
+    };
   }
   return {
     ...form,
-    commerciale_art_tech_nome: suggestedCommercialeArtTechName,
+    commerciale_art_tech_nome: nome,
+    commerciale_art_tech_contatto: contatto,
+  };
+}
+
+function applyResolvedCommercialeToInterventoForm(
+  form: ProjectInterventoForm,
+  commerciale: { nome?: string | null; contatto?: string | null } | null
+): ProjectInterventoForm {
+  const nome = sanitizeCommercialDisplayValue(commerciale?.nome);
+  const contatto = sanitizeCommercialDisplayValue(commerciale?.contatto);
+  if (!nome && !contatto) {
+    return {
+      ...form,
+      commerciale_art_tech_nome: sanitizeCommercialDisplayValue(form.commerciale_art_tech_nome),
+      commerciale_art_tech_contatto: sanitizeCommercialDisplayValue(form.commerciale_art_tech_contatto),
+    };
+  }
+  return {
+    ...form,
+    commerciale_art_tech_nome: nome,
+    commerciale_art_tech_contatto: contatto,
   };
 }
 
@@ -2154,6 +2183,7 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
   const [error, setError] = useState<string | null>(null);
   const [currentOperatoreId, setCurrentOperatoreId] = useState<string>("");
   const [operatoriMap, setOperatoriMap] = useState<Map<string, string>>(new Map());
+  const [operatoriDirectory, setOperatoriDirectory] = useState<AlertOperatore[]>([]);
   const [alertOperatori, setAlertOperatori] = useState<AlertOperatore[]>([]);
   const [alertTask, setAlertTask] = useState<ChecklistTask | null>(null);
   const [alertDestinatarioId, setAlertDestinatarioId] = useState("");
@@ -2339,23 +2369,45 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
     () => buildAvailableCronoReferentiFromClienteReferenti(clienteReferenti),
     [clienteReferenti]
   );
-  const suggestedCommercialeArtTechName = useMemo(
-    () =>
-      resolveOperatoreDisplayValue(
-        {
-          explicitName: checklist?.created_by_name,
-          operatoreId: checklist?.created_by_operatore,
-          fallbackRef: checklist?.created_by,
-        },
-        operatoriMap
-      ) ?? "",
-    [
-      checklist?.created_by,
-      checklist?.created_by_name,
-      checklist?.created_by_operatore,
-      operatoriMap,
-    ]
+  const commercialiArtTechOptions = useMemo(
+    () => {
+      const activeRows = operatoriDirectory.filter(
+        (row) => row.attivo && String(row.ruolo || "").trim().toUpperCase() === "COMMERCIALE"
+      );
+      const currentId = normalizeProjectCommercialeOperatoreId(
+        formData?.commerciale_art_tech_operatore_id || checklist?.commerciale_art_tech_operatore_id
+      );
+      const currentRow =
+        currentId &&
+        String(
+          operatoriDirectory.find((row) => row.id === currentId)?.ruolo || ""
+        ).trim().toUpperCase() === "COMMERCIALE"
+          ? operatoriDirectory.find((row) => row.id === currentId) || null
+          : null;
+      if (currentRow && !activeRows.some((row) => row.id === currentRow.id)) {
+        return [currentRow, ...activeRows];
+      }
+      return activeRows;
+    },
+    [checklist?.commerciale_art_tech_operatore_id, formData?.commerciale_art_tech_operatore_id, operatoriDirectory]
   );
+  const projectCommercialeArtTech = useMemo(() => {
+    const operatoreId = normalizeProjectCommercialeOperatoreId(
+      formData?.commerciale_art_tech_operatore_id || checklist?.commerciale_art_tech_operatore_id
+    );
+    if (!operatoreId) return null;
+    const found = operatoriDirectory.find((row) => row.id === operatoreId) || null;
+    if (!found) return null;
+    return {
+      operatoreId,
+      nome: String(found.nome || "").trim(),
+      contatto: String(found.telefono || "").trim(),
+    };
+  }, [
+    checklist?.commerciale_art_tech_operatore_id,
+    formData?.commerciale_art_tech_operatore_id,
+    operatoriDirectory,
+  ]);
   const suggestedOperationalAddress = useMemo(() => {
     const directAddress = String(formData?.impianto_indirizzo || "").trim();
     if (directAddress) return directAddress;
@@ -2415,26 +2467,32 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
       applySuggestedCronoOperativiDefaults(
         prev,
         suggestedOperationalAddress,
-        availableOperationalReferenti,
-        suggestedCommercialeArtTechName
+        availableOperationalReferenti
       )
     );
     setCronoDisinstallazioneForm((prev) =>
       applySuggestedCronoOperativiDefaults(
         prev,
         suggestedOperationalAddress,
-        availableOperationalReferenti,
-        suggestedCommercialeArtTechName
+        availableOperationalReferenti
       )
     );
-  }, [availableOperationalReferenti, suggestedCommercialeArtTechName, suggestedOperationalAddress]);
+  }, [availableOperationalReferenti, suggestedOperationalAddress]);
 
   useEffect(() => {
-    if (!suggestedCommercialeArtTechName) return;
-    setNewProjectIntervento((prev) =>
-      applySuggestedInterventoCommercialeArtTechName(prev, suggestedCommercialeArtTechName)
+    setCronoOperativiForm((prev) =>
+      applyResolvedCommercialeToCronoOperativiForm(prev, projectCommercialeArtTech)
     );
-  }, [suggestedCommercialeArtTechName]);
+    setCronoDisinstallazioneForm((prev) =>
+      applyResolvedCommercialeToCronoOperativiForm(prev, projectCommercialeArtTech)
+    );
+    setNewProjectIntervento((prev) =>
+      applyResolvedCommercialeToInterventoForm(prev, projectCommercialeArtTech)
+    );
+    setProjectInterventoEditForm((prev) =>
+      prev ? applyResolvedCommercialeToInterventoForm(prev, projectCommercialeArtTech) : prev
+    );
+  }, [projectCommercialeArtTech]);
 
   function scrollToImpiantiDetail() {
     const node = document.getElementById("impianti-detail-section");
@@ -2729,6 +2787,8 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
               notice={notice}
               fallbackStartDate={fallbackStartDate}
               warningMessage={warningMessage}
+              lockedCommercialeArtTech
+              projectCommercialeArtTech={projectCommercialeArtTech}
             />
           </div>
         ) : null}
@@ -3227,6 +3287,9 @@ function buildFormData(c: Checklist): FormData {
     return {
       cliente: asText(c.cliente),
       cliente_id: asText(c.cliente_id),
+      commerciale_art_tech_operatore_id: normalizeProjectCommercialeOperatoreId(
+        c.commerciale_art_tech_operatore_id
+      ),
       nome_checklist: asText(c.nome_checklist),
       proforma: asText(c.proforma),
       proforma_link_url: asText(c.proforma_link_url),
@@ -3289,21 +3352,25 @@ function buildFormData(c: Checklist): FormData {
   function extractProjectInterventoOperativi(
     form: ProjectInterventoForm
   ): InterventoOperativiFormState {
+    const normalizedForm = applyResolvedCommercialeToInterventoForm(
+      form,
+      projectCommercialeArtTech
+    );
     return {
-      data_inizio: form.data_inizio,
-      durata_giorni: form.durata_giorni,
-      modalita_attivita: form.modalita_attivita,
-      personale_previsto: form.personale_previsto,
-      personale_ids: form.personale_ids,
-      mezzi: form.mezzi,
-      descrizione_attivita: form.descrizione_attivita,
-      indirizzo: form.indirizzo,
-      orario: form.orario,
-      referenti_cliente: form.referenti_cliente,
-      referente_cliente_nome: form.referente_cliente_nome,
-      referente_cliente_contatto: form.referente_cliente_contatto,
-      commerciale_art_tech_nome: form.commerciale_art_tech_nome,
-      commerciale_art_tech_contatto: form.commerciale_art_tech_contatto,
+      data_inizio: normalizedForm.data_inizio,
+      durata_giorni: normalizedForm.durata_giorni,
+      modalita_attivita: normalizedForm.modalita_attivita,
+      personale_previsto: normalizedForm.personale_previsto,
+      personale_ids: normalizedForm.personale_ids,
+      mezzi: normalizedForm.mezzi,
+      descrizione_attivita: normalizedForm.descrizione_attivita,
+      indirizzo: normalizedForm.indirizzo,
+      orario: normalizedForm.orario,
+      referenti_cliente: normalizedForm.referenti_cliente,
+      referente_cliente_nome: normalizedForm.referente_cliente_nome,
+      referente_cliente_contatto: normalizedForm.referente_cliente_contatto,
+      commerciale_art_tech_nome: normalizedForm.commerciale_art_tech_nome,
+      commerciale_art_tech_contatto: normalizedForm.commerciale_art_tech_contatto,
     };
   }
 
@@ -3688,10 +3755,13 @@ function buildFormData(c: Checklist): FormData {
     await loadInterventoRowAttachmentCounts(list);
     setProjectInterventiNotice("Intervento aggiunto.");
     setNewProjectIntervento(
-      buildEmptyProjectInterventoForm(
-        checklist.proforma || "",
-        magazzino.codice || "",
-        suggestedCommercialeArtTechName
+      applyResolvedCommercialeToInterventoForm(
+        buildEmptyProjectInterventoForm(
+          checklist.proforma || "",
+          magazzino.codice || "",
+          projectCommercialeArtTech?.nome || ""
+        ),
+        projectCommercialeArtTech
       )
     );
     setProjectInterventoFiles([]);
@@ -3701,9 +3771,9 @@ function buildFormData(c: Checklist): FormData {
       if (created) {
         setProjectInterventoEditId(created.id);
         setProjectInterventoEditForm(
-          applySuggestedInterventoCommercialeArtTechName(
+          applyResolvedCommercialeToInterventoForm(
             applyProjectInterventoOperativiForm(buildProjectInterventoForm(created), newInterventoOperativi),
-            suggestedCommercialeArtTechName
+            projectCommercialeArtTech
           )
         );
         setProjectInterventiExpandedId(created.id);
@@ -3713,17 +3783,17 @@ function buildFormData(c: Checklist): FormData {
 
   async function startEditInterventoRow(it: InterventoRow) {
     setProjectInterventoEditId(it.id);
-    const baseForm = applySuggestedInterventoCommercialeArtTechName(
+    const baseForm = applyResolvedCommercialeToInterventoForm(
       buildProjectInterventoForm(it),
-      suggestedCommercialeArtTechName
+      projectCommercialeArtTech
     );
     setProjectInterventoEditForm(baseForm);
     try {
       const { form } = await loadInterventoOperativi(it.id);
       setProjectInterventoEditForm(
-        applySuggestedInterventoCommercialeArtTechName(
+        applyResolvedCommercialeToInterventoForm(
           applyProjectInterventoOperativiForm(baseForm, form),
-          suggestedCommercialeArtTechName
+          projectCommercialeArtTech
         )
       );
     } catch (e: any) {
@@ -4913,7 +4983,10 @@ function buildFormData(c: Checklist): FormData {
     rowKind: CronoOperativiRowKind,
     form: CronoOperativiFormState
   ) {
-    const normalizedForm = syncCronoOperativiLegacyFields(form);
+    const normalizedForm = applyResolvedCommercialeToCronoOperativiForm(
+      syncCronoOperativiLegacyFields(form),
+      projectCommercialeArtTech
+    );
     const firstSlot = normalizedForm.slots[0] || createEmptyCronoOperativiSlot();
     const durataPrevistaMinuti = firstSlot.durata_prevista_minuti;
     const referentiCliente = normalizedForm.referenti_cliente.map((referente) => ({
@@ -5380,13 +5453,19 @@ function buildFormData(c: Checklist): FormData {
       setFormData(nextForm);
       setOriginalData(nextForm);
       setNewProjectIntervento(
-        buildEmptyProjectInterventoForm(
-          headChecklist.proforma || "",
-          splitMagazzinoFields(
-            headChecklist.magazzino_importazione,
-            headChecklist.magazzino_drive_url
-          ).codice,
-          suggestedCommercialeArtTechName
+        applyResolvedCommercialeToInterventoForm(
+          buildEmptyProjectInterventoForm(
+            headChecklist.proforma || "",
+            splitMagazzinoFields(
+              headChecklist.magazzino_importazione,
+              headChecklist.magazzino_drive_url
+            ).codice,
+            ""
+          ),
+          {
+            nome: "",
+            contatto: "",
+          }
         )
       );
       if (isPerfEnabled()) {
@@ -5873,7 +5952,7 @@ function buildFormData(c: Checklist): FormData {
         const { data, error: opErr } = await db<any[]>({
           table: "operatori",
           op: "select",
-          select: "id, nome, email, attivo, alert_enabled, alert_tasks, cliente, ruolo",
+          select: "id, nome, email, telefono, attivo, alert_enabled, alert_tasks, cliente, ruolo",
           limit: 1000,
         });
         if (opErr) {
@@ -5885,10 +5964,22 @@ function buildFormData(c: Checklist): FormData {
         const activeOperatori = enabledOperatori.filter((o: any) =>
           isSameClienteOperator(checklistCliente, o?.cliente ?? null)
         );
+        const directoryList: AlertOperatore[] = ((data || []) as any[]).map((o: any) => ({
+          id: o.id,
+          nome: o.nome ?? null,
+          email: o.email ?? null,
+          telefono: o.telefono ?? null,
+          attivo: Boolean(o.attivo),
+          cliente: o.cliente ?? null,
+          ruolo: o.ruolo ?? null,
+          alert_enabled: Boolean(o.alert_enabled),
+          alert_tasks: normalizeAlertTasks(o.alert_tasks),
+        }));
         const list: AlertOperatore[] = activeOperatori.map((o: any) => ({
           id: o.id,
           nome: o.nome ?? null,
           email: o.email ?? null,
+          telefono: o.telefono ?? null,
           attivo: true,
           cliente: o.cliente ?? null,
           ruolo: o.ruolo ?? null,
@@ -5901,6 +5992,7 @@ function buildFormData(c: Checklist): FormData {
           if (id && nome) map.set(id, nome);
         });
         setOperatoriMap(map);
+        setOperatoriDirectory(directoryList);
         setAlertOperatori(list);
 
         const tplRes = await fetch("/api/alert-templates", {
@@ -7691,6 +7783,8 @@ function buildFormData(c: Checklist): FormData {
     const payload = {
       cliente: formData.cliente.trim() ? formData.cliente.trim() : null,
       cliente_id: formData.cliente_id?.trim() ? formData.cliente_id.trim() : null,
+      commerciale_art_tech_operatore_id:
+        normalizeProjectCommercialeOperatoreId(formData.commerciale_art_tech_operatore_id) || null,
       nome_checklist: formData.nome_checklist.trim()
         ? formData.nome_checklist.trim()
         : null,
@@ -8492,6 +8586,8 @@ function buildFormData(c: Checklist): FormData {
       getOperatoreNome={(value) => operatoriMap.get(String(value || "")) || String(value || "—")}
       currentOperatoreRole={alertOperatori.find((row) => row.id === currentOperatoreId)?.ruolo ?? null}
       currentProjectLabel={checklist?.nome_checklist || "—"}
+      lockedCommercialeArtTech
+      projectCommercialeArtTech={projectCommercialeArtTech}
       newIntervento={{
         data: newProjectIntervento.data,
         dataTassativa: newProjectIntervento.data_tassativa,
@@ -9275,6 +9371,52 @@ function buildFormData(c: Checklist): FormData {
                     }
                     placeholder="Cerca cliente..."
                   />
+                ) : undefined
+              }
+              isEdit={isEdit}
+            />
+            <FieldRow
+              label="Commerciale Art Tech"
+              view={
+                projectCommercialeArtTech ? (
+                  <div style={{ display: "grid", gap: 4 }}>
+                    <div style={{ fontWeight: 700 }}>{projectCommercialeArtTech.nome || "—"}</div>
+                    <div style={{ fontSize: 13, color: "#4b5563" }}>
+                      {projectCommercialeArtTech.contatto || "Telefono non disponibile"}
+                    </div>
+                  </div>
+                ) : (
+                  "—"
+                )
+              }
+              edit={
+                isEdit ? (
+                  <div style={{ display: "grid", gap: 6 }}>
+                    <select
+                      value={formData.commerciale_art_tech_operatore_id}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          commerciale_art_tech_operatore_id: e.target.value,
+                        })
+                      }
+                      style={{ width: "100%", padding: 10 }}
+                    >
+                      <option value="">Seleziona commerciale Art Tech</option>
+                      {commercialiArtTechOptions.map((option) => (
+                        <option key={option.id} value={option.id}>
+                          {[option.nome, option.telefono].filter(Boolean).join(" · ")}
+                        </option>
+                      ))}
+                    </select>
+                    <div style={{ fontSize: 12, color: "#6b7280" }}>
+                      {projectCommercialeArtTech
+                        ? [projectCommercialeArtTech.nome, projectCommercialeArtTech.contatto]
+                            .filter(Boolean)
+                            .join(" · ")
+                        : "Nessun commerciale selezionato"}
+                    </div>
+                  </div>
                 ) : undefined
               }
               isEdit={isEdit}

@@ -43,6 +43,8 @@ type CatalogItem = {
 type ReferenteArtTechOption = {
   id: string;
   nome: string;
+  telefono?: string | null;
+  ruolo?: string | null;
 };
 
 type ClienteReferente = {
@@ -260,6 +262,7 @@ export default function NuovaChecklistPage() {
   const [catalogItems, setCatalogItems] = useState<CatalogItem[]>([]);
   const [deviceCatalogItems, setDeviceCatalogItems] = useState<CatalogItem[]>([]);
   const [referenteArtTechOptions, setReferenteArtTechOptions] = useState<ReferenteArtTechOption[]>([]);
+  const [commercialeArtTechOptions, setCommercialeArtTechOptions] = useState<ReferenteArtTechOption[]>([]);
   const [currentOperatoreId, setCurrentOperatoreId] = useState<string>("");
   const [clienteReferenti, setClienteReferenti] = useState<ClienteReferente[]>([
     createEmptyClienteReferente(),
@@ -272,6 +275,7 @@ export default function NuovaChecklistPage() {
   const [cliente, setCliente] = useState("");
   const [clienteId, setClienteId] = useState<string | null>(null);
   const [referenteArtTechId, setReferenteArtTechId] = useState("");
+  const [commercialeArtTechOperatoreId, setCommercialeArtTechOperatoreId] = useState("");
   const [nomeChecklist, setNomeChecklist] = useState("");
   const [proforma, setProforma] = useState("");
   const [proformaLinkUrl, setProformaLinkUrl] = useState("");
@@ -357,6 +361,14 @@ export default function NuovaChecklistPage() {
       referenteArtTechOptions.find((option) => option.id === referenteArtTechId)?.nome || "",
     [referenteArtTechOptions, referenteArtTechId]
   );
+  const commercialeArtTechLabel = useMemo(() => {
+    const selected = commercialeArtTechOptions.find(
+      (option) => option.id === commercialeArtTechOperatoreId
+    );
+    return selected
+      ? [selected.nome, selected.telefono].filter(Boolean).join(" · ")
+      : "";
+  }, [commercialeArtTechOperatoreId, commercialeArtTechOptions]);
   const m2Calcolati = useMemo(
     () => {
       const base = calcM2FromDimensioni(dimensioni, numeroFacce);
@@ -569,9 +581,34 @@ export default function NuovaChecklistPage() {
               const id = String(row.id || "").trim();
               const nome = String(row.nome || "").trim();
               if (!id || !nome) return null;
-              return { id, nome };
+              return {
+                id,
+                nome,
+                telefono: String(row.telefono || "").trim() || null,
+                ruolo: String(row.ruolo || "").trim() || null,
+              };
             })
             .filter(Boolean) as ReferenteArtTechOption[]
+        );
+        setCommercialeArtTechOptions(
+          ((((payload?.data as any[]) || []) as Array<Record<string, any>>)
+            .filter(
+              (row) =>
+                row?.attivo === true &&
+                String(row.ruolo || "").trim().toUpperCase() === "COMMERCIALE"
+            )
+            .map((row) => {
+              const id = String(row.id || "").trim();
+              const nome = String(row.nome || "").trim();
+              if (!id || !nome) return null;
+              return {
+                id,
+                nome,
+                telefono: String(row.telefono || "").trim() || null,
+                ruolo: String(row.ruolo || "").trim() || null,
+              };
+            })
+            .filter(Boolean) as ReferenteArtTechOption[])
         );
       }
     })();
@@ -790,6 +827,7 @@ export default function NuovaChecklistPage() {
         cliente_id: sanitizeUuidForPayload(clienteId),
         referente_art_tech_id: sanitizeUuidForPayload(referenteArtTechId),
         referente_art_tech_nome: referenteArtTechNome,
+        commerciale_art_tech_operatore_id: sanitizeUuidForPayload(commercialeArtTechOperatoreId),
         nome_checklist: nomeChecklist.trim(),
         proforma: proforma.trim() ? proforma.trim() : null,
         proforma_link_url: proformaLinkUrl.trim() ? proformaLinkUrl.trim() : null,
@@ -1352,6 +1390,25 @@ export default function NuovaChecklistPage() {
                 Seleziona il referente Art Tech
               </div>
             ) : null}
+          </label>
+
+          <label>
+            Commerciale Art Tech<br />
+            <select
+              value={commercialeArtTechOperatoreId}
+              onChange={(e) => setCommercialeArtTechOperatoreId(e.target.value)}
+              style={{ width: "100%", padding: 10 }}
+            >
+              <option value="">Seleziona commerciale Art Tech</option>
+              {commercialeArtTechOptions.map((option) => (
+                <option key={option.id} value={option.id}>
+                  {[option.nome, option.telefono].filter(Boolean).join(" · ")}
+                </option>
+              ))}
+            </select>
+            <div style={{ fontSize: 12, color: "#6b7280", marginTop: 6 }}>
+              {commercialeArtTechLabel || "Nessun commerciale selezionato"}
+            </div>
           </label>
 
           <label>

@@ -11,6 +11,7 @@ type OperatoreRow = {
   nome: string;
   ruolo: string;
   email: string;
+  telefono?: string | null;
   attivo: boolean;
   alert_enabled?: boolean;
   riceve_notifiche?: boolean;
@@ -38,7 +39,7 @@ const RUOLI = [
 ];
 
 const OPERATORI_GRID_COLUMNS =
-  "minmax(220px, 2fr) minmax(180px, 1.6fr) minmax(120px, 0.9fr) minmax(120px, 0.9fr) minmax(180px, 1fr)";
+  "minmax(260px, 2.1fr) minmax(180px, 1.4fr) minmax(120px, 0.9fr) minmax(120px, 0.9fr) minmax(180px, 1fr)";
 
 const compactBooleanBadgeStyle = (enabled: boolean) =>
   ({
@@ -150,6 +151,7 @@ export default function OperatoriPage() {
       nome: r.nome ?? "",
       ruolo: r.ruolo ?? "",
       email: r.email ?? "",
+      telefono: r.telefono ?? "",
       attivo: Boolean(r.attivo),
       alert_enabled: Boolean(r.alert_enabled),
       riceve_notifiche: r.riceve_notifiche !== false,
@@ -182,6 +184,7 @@ export default function OperatoriPage() {
         nome: "",
         ruolo: "",
         email: "",
+        telefono: "",
         attivo: true,
         alert_enabled: false,
         riceve_notifiche: true,
@@ -211,6 +214,7 @@ export default function OperatoriPage() {
       nome: row.nome.trim() ? row.nome.trim() : null,
       ruolo: row.ruolo.trim() ? row.ruolo.trim() : null,
       email: row.email.trim() ? row.email.trim() : null,
+      telefono: row.telefono?.trim() ? row.telefono.trim() : null,
       attivo: row.attivo,
       alert_enabled: Boolean(row.alert_enabled),
       riceve_notifiche: row.riceve_notifiche !== false,
@@ -683,6 +687,12 @@ export default function OperatoriPage() {
                         minWidth: 0,
                         overflowWrap: "anywhere",
                       }}
+                    />
+                    <input
+                      value={row.telefono ?? ""}
+                      onChange={(e) => updateRow(idx, { telefono: e.target.value })}
+                      placeholder="Telefono"
+                      style={{ width: "100%", padding: 8, minWidth: 0 }}
                     />
                   </div>
                   <select

@@ -8,6 +8,7 @@ type OperatorePayload = {
   nome: string | null;
   ruolo: string | null;
   email: string | null;
+  telefono?: string | null;
   attivo: boolean;
   alert_enabled: boolean;
   riceve_notifiche?: boolean;
@@ -32,7 +33,7 @@ export async function GET(request: Request) {
   let { data, error } = await supabase
     .from("operatori")
     .select(
-      "id, user_id, nome, ruolo, email, attivo, alert_enabled, riceve_notifiche, can_access_impostazioni, can_access_backoffice, can_access_operator_app, alert_tasks"
+      "id, user_id, nome, ruolo, email, telefono, attivo, alert_enabled, riceve_notifiche, can_access_impostazioni, can_access_backoffice, can_access_operator_app, alert_tasks"
     )
     .order("ruolo", { ascending: true })
     .order("nome", { ascending: true });
@@ -40,7 +41,7 @@ export async function GET(request: Request) {
     const fallback = await supabase
       .from("operatori")
       .select(
-        "id, user_id, nome, ruolo, email, attivo, alert_enabled, can_access_impostazioni, can_access_backoffice, can_access_operator_app, alert_tasks"
+        "id, user_id, nome, ruolo, email, telefono, attivo, alert_enabled, can_access_impostazioni, can_access_backoffice, can_access_operator_app, alert_tasks"
       )
       .order("ruolo", { ascending: true })
       .order("nome", { ascending: true });
