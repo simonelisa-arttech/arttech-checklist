@@ -470,6 +470,12 @@ function formatChecklistImpiantoLabel(impianto: ChecklistImpianto, index: number
   return parts.length > 0 ? `Impianto #${position} — ${parts.join(" • ")}` : `Impianto #${position}`;
 }
 
+function formatImpiantoPasso(value?: string | null) {
+  const raw = String(value || "").trim();
+  if (!raw) return null;
+  return raw.toUpperCase().startsWith("P") ? raw : `P${raw}`;
+}
+
 function normalizeChecklistImpianto(value: unknown, checklistId?: string | null): ChecklistImpianto | null {
   const row = value && typeof value === "object" ? (value as Record<string, unknown>) : null;
   if (!row) return null;
@@ -2360,6 +2366,49 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
     if (impiantoAddress) return impiantoAddress;
     return String(checklist?.impianto_indirizzo || "").trim();
   }, [checklist?.impianto_indirizzo, formData?.impianto_indirizzo, impianti]);
+  const impiantiOverviewList = useMemo(() => {
+    const sourceImpianti =
+      impianti.length > 0
+        ? impianti
+        : [
+            {
+              id: "legacy-overview",
+              position: 0,
+              impianto_quantita:
+                Number.isFinite(Number(checklist?.impianto_quantita)) &&
+                Number(checklist?.impianto_quantita) > 0
+                  ? Number(checklist?.impianto_quantita)
+                  : 1,
+              dimensioni: String(checklist?.dimensioni || "").trim() || null,
+              passo: String(checklist?.passo || "").trim() || null,
+              tipo_impianto: String(checklist?.tipo_impianto || "").trim() || null,
+            },
+          ];
+
+    return sourceImpianti.map((impianto, index) => {
+      const position =
+        Number.isFinite(Number(impianto.position)) ? Number(impianto.position) + 1 : index + 1;
+      const quantita =
+        Number.isFinite(Number(impianto.impianto_quantita)) &&
+        Number(impianto.impianto_quantita) > 0
+          ? `${Math.floor(Number(impianto.impianto_quantita))}x`
+          : null;
+      const dimensioni = String(impianto.dimensioni || "").trim() || null;
+      const passo = formatImpiantoPasso(impianto.passo);
+      const tipo = getChecklistImpiantoTipoValue(impianto);
+      return {
+        key: String(impianto.id || `impianto-overview-${index}`),
+        position,
+        summary: [quantita, dimensioni, passo, tipo].filter(Boolean).join(" • ") || "Impianto da completare",
+      };
+    });
+  }, [
+    checklist?.dimensioni,
+    checklist?.impianto_quantita,
+    checklist?.passo,
+    checklist?.tipo_impianto,
+    impianti,
+  ]);
 
   useEffect(() => {
     setCronoOperativiForm((prev) =>
@@ -2386,6 +2435,11 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
       applySuggestedInterventoCommercialeArtTechName(prev, suggestedCommercialeArtTechName)
     );
   }, [suggestedCommercialeArtTechName]);
+
+  function scrollToImpiantiDetail() {
+    const node = document.getElementById("impianti-detail-section");
+    if (node) node.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
 
   function renderOperationalOverviewCard({
     title,
@@ -9646,6 +9700,74 @@ function buildFormData(c: Checklist): FormData {
             }}
           >
             <div style={{ fontWeight: 800, marginBottom: 6 }}>IMPIANTO</div>
+            {!isEdit ? (
+              <div
+                style={{
+                  display: "grid",
+                  gap: 8,
+                  marginBottom: 12,
+                  paddingBottom: 12,
+                  borderBottom: "1px solid #f1f5f9",
+                }}
+              >
+                <div
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    gap: 10,
+                    flexWrap: "wrap",
+                  }}
+                >
+                  <div style={{ fontSize: 12, fontWeight: 700, opacity: 0.75 }}>
+                    Riepilogo compatto collegato al dettaglio IMPIANTI
+                  </div>
+                  <button
+                    type="button"
+                    onClick={scrollToImpiantiDetail}
+                    style={{
+                      padding: "6px 10px",
+                      borderRadius: 8,
+                      border: "1px solid #d1d5db",
+                      background: "#fff",
+                      cursor: "pointer",
+                      fontSize: 12,
+                      fontWeight: 700,
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    Vai al dettaglio impianti
+                  </button>
+                </div>
+                <div style={{ display: "grid", gap: 8 }}>
+                  {impiantiOverviewList.map((entry) => (
+                    <button
+                      key={entry.key}
+                      type="button"
+                      onClick={scrollToImpiantiDetail}
+                      style={{
+                        textAlign: "left",
+                        border: "1px solid #e5e7eb",
+                        borderRadius: 10,
+                        padding: "10px 12px",
+                        background: "#fafafa",
+                        cursor: "pointer",
+                        display: "grid",
+                        gap: 4,
+                      }}
+                    >
+                      <div style={{ fontSize: 13, fontWeight: 800, color: "#111827" }}>
+                        Impianto #{entry.position}
+                      </div>
+                      <div style={{ fontSize: 13, color: "#374151", lineHeight: 1.45 }}>
+                        {entry.summary}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+            {isEdit ? (
             <FieldRow
               label="Descrizione impianto (TEC)"
               view={
@@ -9682,6 +9804,8 @@ function buildFormData(c: Checklist): FormData {
               }
               isEdit={isEdit}
             />
+            ) : null}
+            {isEdit ? (
             <FieldRow
               label="Dimensioni + m²"
               view={`${checklist.dimensioni || "—"} — ${
@@ -9739,6 +9863,8 @@ function buildFormData(c: Checklist): FormData {
               }
               isEdit={isEdit}
             />
+            ) : null}
+            {isEdit ? (
             <FieldRow
               label="Quantita impianti"
               view={
@@ -9768,6 +9894,8 @@ function buildFormData(c: Checklist): FormData {
               }
               isEdit={isEdit}
             />
+            ) : null}
+            {isEdit ? (
             <FieldRow
               label="Passo"
               view={checklist.passo || "—"}
@@ -9782,6 +9910,8 @@ function buildFormData(c: Checklist): FormData {
               }
               isEdit={isEdit}
             />
+            ) : null}
+            {isEdit ? (
             <FieldRow
               label="Tipo impianto"
               view={
@@ -9810,6 +9940,8 @@ function buildFormData(c: Checklist): FormData {
               }
               isEdit={isEdit}
             />
+            ) : null}
+            {isEdit ? (
             <FieldRow
               label="Indirizzo impianto"
               view={renderTextOrLink(checklist.impianto_indirizzo)}
@@ -9827,6 +9959,8 @@ function buildFormData(c: Checklist): FormData {
               }
               isEdit={isEdit}
             />
+            ) : null}
+            {isEdit ? (
             <FieldRow
               label="Tipo struttura"
               view={checklist.tipo_struttura || "—"}
@@ -9863,6 +9997,7 @@ function buildFormData(c: Checklist): FormData {
               }
               isEdit={isEdit}
             />
+            ) : null}
             <FieldRow
               label="Data installazione prevista"
               view={
@@ -10415,6 +10550,7 @@ function buildFormData(c: Checklist): FormData {
         </div>
       )}
       <div
+          id="impianti-detail-section"
           style={{
             border: "1px solid #eee",
             borderRadius: 12,
@@ -10916,66 +11052,6 @@ function buildFormData(c: Checklist): FormData {
             );
           })}
 
-          <div
-            style={{
-              borderTop: "1px solid #e5e7eb",
-              paddingTop: 10,
-              display: "grid",
-              gap: 8,
-            }}
-          >
-            <div style={{ fontWeight: 800, fontSize: 13 }}>RIEPILOGO IMPIANTI</div>
-            <div style={{ display: "grid", gap: 6 }}>
-              {impianti.map((imp, index) => {
-                const nitLabel =
-                  Number.isFinite(Number(imp.nit)) && Number(imp.nit) > 0
-                    ? `${Math.floor(Number(imp.nit))} nit`
-                    : "—";
-                const parts = [
-                  `${Number(imp.impianto_quantita) > 0 ? Number(imp.impianto_quantita) : 1}x`,
-                  String(imp.dimensioni || "").trim(),
-                  String(imp.passo || "").trim(),
-                  getChecklistImpiantoTipoValue(imp),
-                  String(imp.tipo_struttura || "").trim(),
-                ].filter(Boolean);
-                return (
-                  <div
-                    key={`summary-${imp.id || index}`}
-                    style={{
-                      fontSize: 13,
-                      lineHeight: 1.45,
-                      color: "#374151",
-                      marginBottom: 2,
-                      wordBreak: "break-word",
-                    }}
-                  >
-                    <span style={{ fontWeight: 700, color: "#111827" }}>#{index + 1} → </span>
-                    {parts.length > 0 ? parts.join(" • ") : "Impianto da completare"}
-                    <span style={{ color: "#6b7280" }}>{` • NIT: ${nitLabel}`}</span>
-                    {(imp.cabinet_configurazioni || []).length > 0 ? (
-                      <div style={{ marginTop: 4, paddingLeft: 18 }}>
-                        <div style={{ fontWeight: 700, color: "#1f2937" }}>CABINET:</div>
-                        {(imp.cabinet_configurazioni || []).map((cabinet, cabinetIndex) => {
-                          const qty =
-                            Number.isFinite(Number(cabinet.numero_cabinet)) &&
-                            Number(cabinet.numero_cabinet) > 0
-                              ? `${Math.floor(Number(cabinet.numero_cabinet))}x`
-                              : "—";
-                          const dimensione = String(cabinet.dimensione_cabinet || "").trim() || "—";
-                          const fornitore = String(cabinet.fornitore || "").trim() || "—";
-                          return (
-                            <div key={`summary-cabinet-${cabinet.id || cabinetIndex}`}>
-                              {`- ${qty} ${dimensione} | Fornitore: ${fornitore}`}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    ) : null}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
         </div>
       {renderLazySection(
         "section-dati-operativi",
