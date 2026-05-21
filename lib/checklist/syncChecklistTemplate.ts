@@ -1,3 +1,5 @@
+import { randomUUID } from "crypto";
+
 type TemplateTaskRow = {
   id: string;
   sezione: string | number | null;
@@ -696,7 +698,7 @@ async function syncTemplatesToChecklistIds(
         stato: "DA_FARE",
       });
       checklistTasks.push({
-        id: `pending:${checklistId}:${template.id}`,
+        id: randomUUID(),
         checklist_id: checklistId,
         ...buildTemplatePayload(template),
         stato: "DA_FARE",
