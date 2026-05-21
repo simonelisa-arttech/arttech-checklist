@@ -64,6 +64,12 @@ export type InterventoFormState = {
   descrizioneAttivita: string;
   indirizzo: string;
   orario: string;
+  referentiCliente: Array<{
+    id?: string;
+    nome: string;
+    contatto: string;
+    ruolo: string;
+  }>;
   referenteClienteNome: string;
   referenteClienteContatto: string;
   commercialeArtTechNome: string;
@@ -352,6 +358,83 @@ function isTemporaryImpiantoSelection(value?: string | null) {
   return normalized.startsWith("__tmp__") || normalized.startsWith("pending:");
 }
 
+function normalizeInterventoReferente(
+  value:
+    | Partial<InterventoFormState["referentiCliente"][number]>
+    | null
+    | undefined
+) {
+  const id = String(value?.id || "").trim();
+  return {
+    ...(id ? { id } : {}),
+    nome: String(value?.nome || "").trim(),
+    contatto: String(value?.contatto || "").trim(),
+    ruolo: String(value?.ruolo || "").trim(),
+  };
+}
+
+function hasInterventoReferenteContent(
+  value:
+    | Partial<InterventoFormState["referentiCliente"][number]>
+    | null
+    | undefined
+) {
+  return Boolean(
+    String(value?.nome || "").trim() ||
+      String(value?.contatto || "").trim() ||
+      String(value?.ruolo || "").trim()
+  );
+}
+
+function buildInterventoReferentiList(
+  form: Pick<InterventoFormState, "referentiCliente" | "referenteClienteNome" | "referenteClienteContatto">
+) {
+  const referenti = Array.isArray(form.referentiCliente)
+    ? form.referentiCliente.map((value) => normalizeInterventoReferente(value))
+    : [];
+  const filtered = referenti.filter((value) => hasInterventoReferenteContent(value));
+  if (filtered.length > 0) return filtered;
+  const fallback = normalizeInterventoReferente({
+    nome: form.referenteClienteNome,
+    contatto: form.referenteClienteContatto,
+    ruolo: "",
+  });
+  return hasInterventoReferenteContent(fallback) ? [fallback] : [{ nome: "", contatto: "", ruolo: "" }];
+}
+
+function applyReferentiToInterventoForm(
+  form: InterventoFormState,
+  referentiCliente: InterventoFormState["referentiCliente"]
+): InterventoFormState {
+  const normalizedReferenti = referentiCliente.length > 0 ? referentiCliente : [{ nome: "", contatto: "", ruolo: "" }];
+  return {
+    ...form,
+    referentiCliente: normalizedReferenti,
+    referenteClienteNome: normalizedReferenti[0]?.nome || "",
+    referenteClienteContatto: normalizedReferenti[0]?.contatto || "",
+  };
+}
+
+function isSameInterventoReferente(
+  left:
+    | Partial<InterventoFormState["referentiCliente"][number]>
+    | null
+    | undefined,
+  right:
+    | Partial<InterventoFormState["referentiCliente"][number]>
+    | null
+    | undefined
+) {
+  const leftId = String(left?.id || "").trim();
+  const rightId = String(right?.id || "").trim();
+  if (leftId && rightId) return leftId === rightId;
+  return (
+    String(left?.nome || "").trim().toLowerCase() === String(right?.nome || "").trim().toLowerCase() &&
+    String(left?.contatto || "").trim().toLowerCase() === String(right?.contatto || "").trim().toLowerCase() &&
+    String(left?.ruolo || "").trim().toLowerCase() === String(right?.ruolo || "").trim().toLowerCase()
+  );
+}
+
 function applyImpiantoPrefill(
   form: InterventoFormState,
   selectedId: string,
@@ -400,6 +483,7 @@ function renderOperativiFields(
   const fallbackStartDate = form.dataTassativa || form.data;
   const referentiContext = options?.referentiContext;
   const referenti = referentiContext?.referenti || [];
+  const normalizedReferentiCliente = buildInterventoReferentiList(form);
   return (
     <div style={{ marginTop: 10 }}>
       <div style={{ display: "grid", gap: 8, marginBottom: 8 }}>
@@ -538,50 +622,205 @@ function renderOperativiFields(
               </div>
             ) : null}
             {options?.onSelectReferente ? (
-              <div style={{ marginBottom: 8 }}>
-                <select
-                  value={options.selectedReferenteId || ""}
-                  onChange={(e) => options.onSelectReferente?.(e.target.value)}
-                  disabled={!form.checklistId || referentiContext?.loading}
-                  style={{ width: "100%", padding: 8 }}
-                >
-                  <option value="">
-                    {!form.checklistId
-                      ? "Seleziona prima il progetto"
-                      : referentiContext?.loading
-                      ? "Caricamento referenti..."
-                      : referenti.length === 0
-                      ? "Nessun referente registrato"
-                      : "Seleziona referente cliente"}
-                  </option>
-                  {referenti.map((referente) => (
-                    <option key={referente.id} value={referente.id}>
-                      {[
-                        referente.nome || "—",
-                        referente.ruolo || null,
-                        referente.telefono || referente.email || null,
-                      ]
-                        .filter(Boolean)
-                        .join(" · ")}
+              <div
+                style={{
+                  marginBottom: 8,
+                  display: "grid",
+                  gridTemplateColumns: "minmax(0, 1fr) auto",
+                  gap: 8,
+                  alignItems: "end",
+                }}
+              >
+                <div>
+                  <div style={{ fontSize: 11, marginBottom: 4, color: "#6b7280" }}>
+                    Usa un referente già presente nel progetto
+                  </div>
+                  <select
+                    value={options.selectedReferenteId || ""}
+                    onChange={(e) => options.onSelectReferente?.(e.target.value)}
+                    disabled={!form.checklistId || referentiContext?.loading}
+                    style={{ width: "100%", padding: 8 }}
+                  >
+                    <option value="">
+                      {!form.checklistId
+                        ? "Seleziona prima il progetto"
+                        : referentiContext?.loading
+                        ? "Caricamento referenti..."
+                        : referenti.length === 0
+                        ? "Nessun referente registrato"
+                        : "Seleziona referente cliente"}
                     </option>
-                  ))}
-                </select>
+                    {referenti.map((referente) => (
+                      <option key={referente.id} value={referente.id}>
+                        {[
+                          referente.nome || "—",
+                          referente.ruolo || null,
+                          referente.telefono || referente.email || null,
+                        ]
+                          .filter(Boolean)
+                          .join(" · ")}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+                <button
+                  type="button"
+                  disabled={!options.selectedReferenteId}
+                  onClick={() => {
+                    const referente = referenti.find(
+                      (item) => item.id === String(options.selectedReferenteId || "").trim()
+                    );
+                    if (!referente) return;
+                    const nextReferente = normalizeInterventoReferente({
+                      id: referente.id,
+                      nome: referente.nome,
+                      contatto: referente.telefono || referente.email || "",
+                      ruolo: referente.ruolo || "",
+                    });
+                    if (
+                      normalizedReferentiCliente.some((current) =>
+                        isSameInterventoReferente(current, nextReferente)
+                      )
+                    ) {
+                      return;
+                    }
+                    const isSingleEmptyRow =
+                      normalizedReferentiCliente.length === 1 &&
+                      !hasInterventoReferenteContent(normalizedReferentiCliente[0]);
+                    const nextReferenti = isSingleEmptyRow
+                      ? [nextReferente]
+                      : [...normalizedReferentiCliente, nextReferente];
+                    setForm(applyReferentiToInterventoForm(form, nextReferenti));
+                    options.onSelectReferente?.("");
+                  }}
+                  style={{
+                    padding: "8px 12px",
+                    borderRadius: 8,
+                    border: "1px solid #d1d5db",
+                    background: "#fff",
+                    cursor: options.selectedReferenteId ? "pointer" : "not-allowed",
+                    fontWeight: 600,
+                    opacity: options.selectedReferenteId ? 1 : 0.6,
+                    whiteSpace: "nowrap",
+                  }}
+                >
+                  Aggiungi referente
+                </button>
               </div>
             ) : null}
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-            <input
-              value={form.referenteClienteNome}
-              onChange={(e) => setForm({ ...form, referenteClienteNome: e.target.value })}
-              placeholder={isRemote ? "Referente tecnico" : "Nome"}
-              style={{ width: "100%", padding: 8 }}
-            />
-            <input
-              value={form.referenteClienteContatto}
-              onChange={(e) => setForm({ ...form, referenteClienteContatto: e.target.value })}
-              placeholder={isRemote ? "Telefono o email" : "Contatto"}
-              style={{ width: "100%", padding: 8 }}
-            />
-          </div>
+            <div style={{ display: "grid", gap: 8 }}>
+              {normalizedReferentiCliente.map((referente, index) => (
+                <div
+                  key={referente.id || `referente-${index}`}
+                  style={{
+                    border: "1px solid #e5e7eb",
+                    borderRadius: 10,
+                    padding: 8,
+                    display: "grid",
+                    gap: 8,
+                  }}
+                >
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)",
+                      gap: 8,
+                    }}
+                  >
+                    <input
+                      value={referente.nome}
+                      onChange={(e) => {
+                        const nextReferenti = normalizedReferentiCliente.map((row, rowIndex) =>
+                          rowIndex === index
+                            ? { ...row, nome: e.target.value }
+                            : row
+                        );
+                        setForm(applyReferentiToInterventoForm(form, nextReferenti));
+                      }}
+                      placeholder={isRemote ? "Referente tecnico" : "Nome"}
+                      style={{ width: "100%", padding: 8 }}
+                    />
+                    <input
+                      value={referente.contatto}
+                      onChange={(e) => {
+                        const nextReferenti = normalizedReferentiCliente.map((row, rowIndex) =>
+                          rowIndex === index
+                            ? { ...row, contatto: e.target.value }
+                            : row
+                        );
+                        setForm(applyReferentiToInterventoForm(form, nextReferenti));
+                      }}
+                      placeholder={isRemote ? "Telefono o email" : "Contatto"}
+                      style={{ width: "100%", padding: 8 }}
+                    />
+                  </div>
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "minmax(0, 1fr) auto",
+                      gap: 8,
+                      alignItems: "center",
+                    }}
+                  >
+                    <input
+                      value={referente.ruolo}
+                      onChange={(e) => {
+                        const nextReferenti = normalizedReferentiCliente.map((row, rowIndex) =>
+                          rowIndex === index
+                            ? { ...row, ruolo: e.target.value }
+                            : row
+                        );
+                        setForm(applyReferentiToInterventoForm(form, nextReferenti));
+                      }}
+                      placeholder="es. Sicurezza / Elettrico / Permessi"
+                      style={{ width: "100%", padding: 8 }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const nextReferenti = normalizedReferentiCliente.filter(
+                          (_, rowIndex) => rowIndex !== index
+                        );
+                        setForm(applyReferentiToInterventoForm(form, nextReferenti));
+                      }}
+                      style={{
+                        padding: "8px 10px",
+                        borderRadius: 8,
+                        border: "1px solid #d1d5db",
+                        background: "#fff",
+                        cursor: "pointer",
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      Rimuovi
+                    </button>
+                  </div>
+                </div>
+              ))}
+              <div>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setForm(
+                      applyReferentiToInterventoForm(form, [
+                        ...normalizedReferentiCliente,
+                        { nome: "", contatto: "", ruolo: "" },
+                      ])
+                    )
+                  }
+                  style={{
+                    padding: "8px 12px",
+                    borderRadius: 8,
+                    border: "1px solid #d1d5db",
+                    background: "#fff",
+                    cursor: "pointer",
+                    fontWeight: 600,
+                  }}
+                >
+                  + Aggiungi referente
+                </button>
+              </div>
+            </div>
           </div>
         </div>
         <div>
@@ -807,22 +1046,6 @@ export default function InterventiBlock({
   ) {
     setSelectedReferenteId(referenteId);
     if (!referenteId) return;
-
-    const context = referentiContextByChecklistId[String(checklistId || "").trim()];
-    const referente = context?.referenti?.find((item) => item.id === referenteId);
-    if (!referente) return;
-
-    const contatto = String(referente.telefono || "").trim() || String(referente.email || "").trim();
-    const indirizzo =
-      String(context?.indirizzoProgetto || "").trim() ||
-      String(referente.indirizzo_preferito || "").trim();
-
-    setForm({
-      ...form,
-      referenteClienteNome: referente.nome || form.referenteClienteNome,
-      referenteClienteContatto: contatto || form.referenteClienteContatto,
-      indirizzo: indirizzo || form.indirizzo,
-    });
   }
 
   useEffect(() => {

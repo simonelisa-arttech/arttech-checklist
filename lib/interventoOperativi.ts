@@ -17,6 +17,15 @@ export type InterventoOperativiMeta = {
   descrizione_attivita?: string | null;
   indirizzo?: string | null;
   orario?: string | null;
+  referenti_cliente?:
+    | Array<{
+        id?: string | null;
+        nome?: string | null;
+        contatto?: string | null;
+        ruolo?: string | null;
+        position?: number | null;
+      }>
+    | null;
   referente_cliente_nome?: string | null;
   referente_cliente_contatto?: string | null;
   commerciale_art_tech_nome?: string | null;
@@ -24,6 +33,13 @@ export type InterventoOperativiMeta = {
   updated_at?: string | null;
   updated_by_operatore?: string | null;
   updated_by_operatore_nome?: string | null;
+};
+
+export type InterventoOperativiReferente = {
+  id?: string;
+  nome: string;
+  contatto: string;
+  ruolo: string;
 };
 
 export type InterventoOperativiFormState = {
@@ -36,6 +52,7 @@ export type InterventoOperativiFormState = {
   descrizione_attivita: string;
   indirizzo: string;
   orario: string;
+  referenti_cliente: InterventoOperativiReferente[];
   referente_cliente_nome: string;
   referente_cliente_contatto: string;
   commerciale_art_tech_nome: string;
@@ -52,6 +69,7 @@ export const EMPTY_INTERVENTO_OPERATIVI: InterventoOperativiFormState = {
   descrizione_attivita: "",
   indirizzo: "",
   orario: "",
+  referenti_cliente: [{ nome: "", contatto: "", ruolo: "" }],
   referente_cliente_nome: "",
   referente_cliente_contatto: "",
   commerciale_art_tech_nome: "",
@@ -68,10 +86,47 @@ export function hoursInputToMinutes(value?: string | number | null) {
   return Math.round(hours * 60);
 }
 
+function normalizeReferente(
+  value:
+    | {
+        id?: string | null;
+        nome?: string | null;
+        contatto?: string | null;
+        ruolo?: string | null;
+      }
+    | null
+    | undefined
+): InterventoOperativiReferente {
+  const id = String(value?.id || "").trim();
+  return {
+    ...(id ? { id } : {}),
+    nome: String(value?.nome || "").trim(),
+    contatto: String(value?.contatto || "").trim(),
+    ruolo: String(value?.ruolo || "").trim(),
+  };
+}
+
+function buildFallbackReferentiCliente(
+  meta?: InterventoOperativiMeta | null
+): InterventoOperativiReferente[] {
+  const referenti = Array.isArray(meta?.referenti_cliente)
+    ? meta.referenti_cliente.map((value) => normalizeReferente(value))
+    : [];
+  const filtered = referenti.filter((row) => row.nome || row.contatto || row.ruolo);
+  if (filtered.length > 0) return filtered;
+  const fallback = {
+    nome: String(meta?.referente_cliente_nome || "").trim(),
+    contatto: String(meta?.referente_cliente_contatto || "").trim(),
+    ruolo: "",
+  };
+  return fallback.nome || fallback.contatto ? [fallback] : [{ nome: "", contatto: "", ruolo: "" }];
+}
+
 export function extractInterventoOperativi(
   meta?: InterventoOperativiMeta | null
 ): InterventoOperativiFormState {
   const stimatoMinuti = getOperativiEstimatedMinutes(meta);
+  const referentiCliente = buildFallbackReferentiCliente(meta);
   return {
     data_inizio: normalizeOperativiDate(meta?.data_inizio),
     durata_giorni: stimatoMinuti != null ? minutesToHoursInput(stimatoMinuti) : "",
@@ -84,8 +139,9 @@ export function extractInterventoOperativi(
     descrizione_attivita: String(meta?.descrizione_attivita || ""),
     indirizzo: String(meta?.indirizzo || ""),
     orario: String(meta?.orario || ""),
-    referente_cliente_nome: String(meta?.referente_cliente_nome || ""),
-    referente_cliente_contatto: String(meta?.referente_cliente_contatto || ""),
+    referenti_cliente: referentiCliente,
+    referente_cliente_nome: referentiCliente[0]?.nome || "",
+    referente_cliente_contatto: referentiCliente[0]?.contatto || "",
     commerciale_art_tech_nome: String(meta?.commerciale_art_tech_nome || ""),
     commerciale_art_tech_contatto: String(meta?.commerciale_art_tech_contatto || ""),
   };
@@ -117,6 +173,11 @@ export async function saveInterventoOperativi(
   form: InterventoOperativiFormState
 ) {
   const durataPrevistaMinuti = hoursInputToMinutes(form.durata_giorni);
+  const referentiCliente = Array.isArray(form.referenti_cliente)
+    ? form.referenti_cliente
+        .map((value) => normalizeReferente(value))
+        .filter((value) => value.nome || value.contatto || value.ruolo)
+    : [];
   const res = await fetch("/api/cronoprogramma", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -134,8 +195,9 @@ export async function saveInterventoOperativi(
       descrizione_attivita: form.descrizione_attivita,
       indirizzo: form.indirizzo,
       orario: form.orario,
-      referente_cliente_nome: form.referente_cliente_nome,
-      referente_cliente_contatto: form.referente_cliente_contatto,
+      referenti_cliente: referentiCliente,
+      referente_cliente_nome: referentiCliente[0]?.nome || form.referente_cliente_nome,
+      referente_cliente_contatto: referentiCliente[0]?.contatto || form.referente_cliente_contatto,
       commerciale_art_tech_nome: form.commerciale_art_tech_nome,
       commerciale_art_tech_contatto: form.commerciale_art_tech_contatto,
     }),

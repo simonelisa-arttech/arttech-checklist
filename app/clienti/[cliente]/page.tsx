@@ -1355,6 +1355,7 @@ export default function ClientePage({
     descrizioneAttivita: "",
     indirizzo: "",
     orario: "",
+    referentiCliente: [{ nome: "", contatto: "", ruolo: "" }],
     referenteClienteNome: "",
     referenteClienteContatto: "",
     commercialeArtTechNome: "",
@@ -1384,6 +1385,7 @@ export default function ClientePage({
     descrizioneAttivita: "",
     indirizzo: "",
     orario: "",
+    referentiCliente: [{ nome: "", contatto: "", ruolo: "" }],
     referenteClienteNome: "",
     referenteClienteContatto: "",
     commercialeArtTechNome: "",
@@ -1400,6 +1402,12 @@ export default function ClientePage({
     descrizioneAttivita: string;
     indirizzo: string;
     orario: string;
+    referentiCliente: Array<{
+      id?: string;
+      nome: string;
+      contatto: string;
+      ruolo: string;
+    }>;
     referenteClienteNome: string;
     referenteClienteContatto: string;
     commercialeArtTechNome: string;
@@ -1417,6 +1425,7 @@ export default function ClientePage({
       descrizione_attivita: form.descrizioneAttivita,
       indirizzo: form.indirizzo,
       orario: form.orario,
+      referenti_cliente: form.referentiCliente,
       referente_cliente_nome: form.referenteClienteNome,
       referente_cliente_contatto: form.referenteClienteContatto,
       commerciale_art_tech_nome: form.commercialeArtTechNome,
@@ -1439,6 +1448,7 @@ export default function ClientePage({
       descrizioneAttivita: form.descrizione_attivita,
       indirizzo: form.indirizzo,
       orario: form.orario,
+      referentiCliente: form.referenti_cliente,
       referenteClienteNome: form.referente_cliente_nome,
       referenteClienteContatto: form.referente_cliente_contatto,
       commercialeArtTechNome: form.commerciale_art_tech_nome,
@@ -2628,6 +2638,7 @@ export default function ClientePage({
       descrizioneAttivita: "",
       indirizzo: "",
       orario: "",
+      referentiCliente: [{ nome: "", contatto: "", ruolo: "" }],
       referenteClienteNome: "",
       referenteClienteContatto: "",
       commercialeArtTechNome: "",
@@ -4220,6 +4231,7 @@ export default function ClientePage({
       descrizioneAttivita: "",
       indirizzo: "",
       orario: "",
+      referentiCliente: [{ nome: "", contatto: "", ruolo: "" }],
       referenteClienteNome: "",
       referenteClienteContatto: "",
       commercialeArtTechNome: "",
@@ -8198,6 +8210,7 @@ ${rinnovi30ggBreakdown.debugSample
                 descrizioneAttivita: newIntervento.descrizioneAttivita,
                 indirizzo: newIntervento.indirizzo,
                 orario: newIntervento.orario,
+                referentiCliente: newIntervento.referentiCliente,
                 referenteClienteNome: newIntervento.referenteClienteNome,
                 referenteClienteContatto: newIntervento.referenteClienteContatto,
                 commercialeArtTechNome: newIntervento.commercialeArtTechNome,
@@ -8228,6 +8241,7 @@ ${rinnovi30ggBreakdown.debugSample
                   descrizioneAttivita: value.descrizioneAttivita,
                   indirizzo: value.indirizzo,
                   orario: value.orario,
+                  referentiCliente: value.referentiCliente,
                   referenteClienteNome: value.referenteClienteNome,
                   referenteClienteContatto: value.referenteClienteContatto,
                   commercialeArtTechNome: value.commercialeArtTechNome,
@@ -8271,6 +8285,7 @@ ${rinnovi30ggBreakdown.debugSample
                   descrizioneAttivita: value.descrizioneAttivita,
                   indirizzo: value.indirizzo,
                   orario: value.orario,
+                  referentiCliente: value.referentiCliente,
                   referenteClienteNome: value.referenteClienteNome,
                   referenteClienteContatto: value.referenteClienteContatto,
                   commercialeArtTechNome: value.commercialeArtTechNome,

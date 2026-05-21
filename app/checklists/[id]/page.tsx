@@ -1453,22 +1453,6 @@ function buildAvailableCronoReferentiFromClienteReferenti(
     });
 }
 
-function buildOperationalReferenteFromInterventoForm(
-  form:
-    | Pick<ProjectInterventoForm, "referente_cliente_nome" | "referente_cliente_contatto">
-    | null
-    | undefined
-): CronoReferenteCliente | null {
-  const nome = String(form?.referente_cliente_nome || "").trim();
-  const contatto = String(form?.referente_cliente_contatto || "").trim();
-  if (!nome || !contatto) return null;
-  return {
-    nome,
-    contatto,
-    ruolo: "",
-  };
-}
-
 function applySuggestedCronoOperativiDefaults(
   form: CronoOperativiFormState,
   suggestedAddress: string,
@@ -3208,6 +3192,7 @@ function buildFormData(c: Checklist): FormData {
       descrizione_attivita: form.descrizione_attivita,
       indirizzo: form.indirizzo,
       orario: form.orario,
+      referenti_cliente: form.referenti_cliente,
       referente_cliente_nome: form.referente_cliente_nome,
       referente_cliente_contatto: form.referente_cliente_contatto,
       commerciale_art_tech_nome: form.commerciale_art_tech_nome,
@@ -3230,6 +3215,7 @@ function buildFormData(c: Checklist): FormData {
       descrizione_attivita: form.descrizione_attivita,
       indirizzo: form.indirizzo,
       orario: form.orario,
+      referenti_cliente: form.referenti_cliente,
       referente_cliente_nome: form.referente_cliente_nome,
       referente_cliente_contatto: form.referente_cliente_contatto,
       commerciale_art_tech_nome: form.commerciale_art_tech_nome,
@@ -3575,9 +3561,8 @@ function buildFormData(c: Checklist): FormData {
           newInterventoOperativi
         );
         const targetClienteId = String((formData?.cliente_id || checklist?.cliente_id || "")).trim();
-        const manualReferente = buildOperationalReferenteFromInterventoForm(newProjectIntervento);
-        if (targetClienteId && manualReferente) {
-          await syncOperationalReferentiToCliente(targetClienteId, [manualReferente]);
+        if (targetClienteId) {
+          await syncOperationalReferentiToCliente(targetClienteId, newInterventoOperativi.referenti_cliente);
         }
       } catch (e: any) {
         setProjectInterventiError(
@@ -3715,9 +3700,11 @@ function buildFormData(c: Checklist): FormData {
         extractProjectInterventoOperativi(projectInterventoEditForm)
       );
       const targetClienteId = String((formData?.cliente_id || checklist?.cliente_id || "")).trim();
-      const manualReferente = buildOperationalReferenteFromInterventoForm(projectInterventoEditForm);
-      if (targetClienteId && manualReferente) {
-        await syncOperationalReferentiToCliente(targetClienteId, [manualReferente]);
+      if (targetClienteId) {
+        await syncOperationalReferentiToCliente(
+          targetClienteId,
+          extractProjectInterventoOperativi(projectInterventoEditForm).referenti_cliente
+        );
       }
     } catch (e: any) {
       setProjectInterventiError(
@@ -8410,6 +8397,7 @@ function buildFormData(c: Checklist): FormData {
         descrizioneAttivita: newProjectIntervento.descrizione_attivita,
         indirizzo: newProjectIntervento.indirizzo,
         orario: newProjectIntervento.orario,
+        referentiCliente: newProjectIntervento.referenti_cliente,
         referenteClienteNome: newProjectIntervento.referente_cliente_nome,
         referenteClienteContatto: newProjectIntervento.referente_cliente_contatto,
         commercialeArtTechNome: newProjectIntervento.commerciale_art_tech_nome,
@@ -8441,6 +8429,7 @@ function buildFormData(c: Checklist): FormData {
           descrizione_attivita: value.descrizioneAttivita,
           indirizzo: value.indirizzo,
           orario: value.orario,
+          referenti_cliente: value.referentiCliente,
           referente_cliente_nome: value.referenteClienteNome,
           referente_cliente_contatto: value.referenteClienteContatto,
           commerciale_art_tech_nome: value.commercialeArtTechNome,
@@ -8483,6 +8472,7 @@ function buildFormData(c: Checklist): FormData {
         descrizioneAttivita: projectInterventoEditForm?.descrizione_attivita || "",
         indirizzo: projectInterventoEditForm?.indirizzo || "",
         orario: projectInterventoEditForm?.orario || "",
+        referentiCliente: projectInterventoEditForm?.referenti_cliente || [],
         referenteClienteNome: projectInterventoEditForm?.referente_cliente_nome || "",
         referenteClienteContatto: projectInterventoEditForm?.referente_cliente_contatto || "",
         commercialeArtTechNome: projectInterventoEditForm?.commerciale_art_tech_nome || "",
@@ -8516,6 +8506,7 @@ function buildFormData(c: Checklist): FormData {
                 descrizione_attivita: value.descrizioneAttivita,
                 indirizzo: value.indirizzo,
                 orario: value.orario,
+                referenti_cliente: value.referentiCliente,
                 referente_cliente_nome: value.referenteClienteNome,
                 referente_cliente_contatto: value.referenteClienteContatto,
                 commerciale_art_tech_nome: value.commercialeArtTechNome,
