@@ -705,7 +705,8 @@ type ProjectInterventoForm = {
 
 function buildEmptyProjectInterventoForm(
   proforma = "",
-  codiceMagazzino = ""
+  codiceMagazzino = "",
+  commercialeArtTechNome = ""
 ): ProjectInterventoForm {
   return {
     data: "",
@@ -723,6 +724,7 @@ function buildEmptyProjectInterventoForm(
     fattura_url: "",
     note: "",
     ...EMPTY_INTERVENTO_OPERATIVI,
+    commerciale_art_tech_nome: commercialeArtTechNome,
   };
 }
 
@@ -1456,7 +1458,8 @@ function buildAvailableCronoReferentiFromClienteReferenti(
 function applySuggestedCronoOperativiDefaults(
   form: CronoOperativiFormState,
   suggestedAddress: string,
-  availableReferenti: CronoReferenteCliente[]
+  availableReferenti: CronoReferenteCliente[],
+  suggestedCommercialeArtTechName = ""
 ) {
   let next = syncCronoOperativiLegacyFields(form);
   let changed = false;
@@ -1480,7 +1483,31 @@ function applySuggestedCronoOperativiDefaults(
     changed = true;
   }
 
+  if (!String(next.commerciale_art_tech_nome || "").trim() && suggestedCommercialeArtTechName) {
+    next = {
+      ...next,
+      commerciale_art_tech_nome: suggestedCommercialeArtTechName,
+    };
+    changed = true;
+  }
+
   return changed ? next : form;
+}
+
+function applySuggestedInterventoCommercialeArtTechName(
+  form: ProjectInterventoForm,
+  suggestedCommercialeArtTechName = ""
+): ProjectInterventoForm {
+  if (
+    !suggestedCommercialeArtTechName ||
+    String(form.commerciale_art_tech_nome || "").trim()
+  ) {
+    return form;
+  }
+  return {
+    ...form,
+    commerciale_art_tech_nome: suggestedCommercialeArtTechName,
+  };
 }
 
 function extractCronoOperativi(meta?: CronoOperativiMeta | null) {
@@ -2306,6 +2333,23 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
     () => buildAvailableCronoReferentiFromClienteReferenti(clienteReferenti),
     [clienteReferenti]
   );
+  const suggestedCommercialeArtTechName = useMemo(
+    () =>
+      resolveOperatoreDisplayValue(
+        {
+          explicitName: checklist?.created_by_name,
+          operatoreId: checklist?.created_by_operatore,
+          fallbackRef: checklist?.created_by,
+        },
+        operatoriMap
+      ) ?? "",
+    [
+      checklist?.created_by,
+      checklist?.created_by_name,
+      checklist?.created_by_operatore,
+      operatoriMap,
+    ]
+  );
   const suggestedOperationalAddress = useMemo(() => {
     const directAddress = String(formData?.impianto_indirizzo || "").trim();
     if (directAddress) return directAddress;
@@ -2322,17 +2366,26 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
       applySuggestedCronoOperativiDefaults(
         prev,
         suggestedOperationalAddress,
-        availableOperationalReferenti
+        availableOperationalReferenti,
+        suggestedCommercialeArtTechName
       )
     );
     setCronoDisinstallazioneForm((prev) =>
       applySuggestedCronoOperativiDefaults(
         prev,
         suggestedOperationalAddress,
-        availableOperationalReferenti
+        availableOperationalReferenti,
+        suggestedCommercialeArtTechName
       )
     );
-  }, [availableOperationalReferenti, suggestedOperationalAddress]);
+  }, [availableOperationalReferenti, suggestedCommercialeArtTechName, suggestedOperationalAddress]);
+
+  useEffect(() => {
+    if (!suggestedCommercialeArtTechName) return;
+    setNewProjectIntervento((prev) =>
+      applySuggestedInterventoCommercialeArtTechName(prev, suggestedCommercialeArtTechName)
+    );
+  }, [suggestedCommercialeArtTechName]);
 
   function renderOperationalOverviewCard({
     title,
@@ -3581,7 +3634,11 @@ function buildFormData(c: Checklist): FormData {
     await loadInterventoRowAttachmentCounts(list);
     setProjectInterventiNotice("Intervento aggiunto.");
     setNewProjectIntervento(
-      buildEmptyProjectInterventoForm(checklist.proforma || "", magazzino.codice || "")
+      buildEmptyProjectInterventoForm(
+        checklist.proforma || "",
+        magazzino.codice || "",
+        suggestedCommercialeArtTechName
+      )
     );
     setProjectInterventoFiles([]);
     setProjectInterventoLinks([]);
@@ -3590,7 +3647,10 @@ function buildFormData(c: Checklist): FormData {
       if (created) {
         setProjectInterventoEditId(created.id);
         setProjectInterventoEditForm(
-          applyProjectInterventoOperativiForm(buildProjectInterventoForm(created), newInterventoOperativi)
+          applySuggestedInterventoCommercialeArtTechName(
+            applyProjectInterventoOperativiForm(buildProjectInterventoForm(created), newInterventoOperativi),
+            suggestedCommercialeArtTechName
+          )
         );
         setProjectInterventiExpandedId(created.id);
       }
@@ -3599,11 +3659,19 @@ function buildFormData(c: Checklist): FormData {
 
   async function startEditInterventoRow(it: InterventoRow) {
     setProjectInterventoEditId(it.id);
-    const baseForm = buildProjectInterventoForm(it);
+    const baseForm = applySuggestedInterventoCommercialeArtTechName(
+      buildProjectInterventoForm(it),
+      suggestedCommercialeArtTechName
+    );
     setProjectInterventoEditForm(baseForm);
     try {
       const { form } = await loadInterventoOperativi(it.id);
-      setProjectInterventoEditForm(applyProjectInterventoOperativiForm(baseForm, form));
+      setProjectInterventoEditForm(
+        applySuggestedInterventoCommercialeArtTechName(
+          applyProjectInterventoOperativiForm(baseForm, form),
+          suggestedCommercialeArtTechName
+        )
+      );
     } catch (e: any) {
       setProjectInterventiError(
         String(e?.message || "Errore caricamento dati operativi intervento")
@@ -5263,7 +5331,8 @@ function buildFormData(c: Checklist): FormData {
           splitMagazzinoFields(
             headChecklist.magazzino_importazione,
             headChecklist.magazzino_drive_url
-          ).codice
+          ).codice,
+          suggestedCommercialeArtTechName
         )
       );
       if (isPerfEnabled()) {
