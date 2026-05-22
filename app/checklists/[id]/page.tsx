@@ -165,6 +165,8 @@ type ChecklistImpiantoCabinet = {
 
 type ProjectInterventoRow = InterventoRow & {
   checklist_impianto_id?: string | null;
+  impianto_scope?: ImpiantoScope;
+  impianti_interessati_ids?: string[];
 };
 
 type ChecklistItem = {
@@ -1570,6 +1572,27 @@ function applyResolvedCommercialeToInterventoForm(
     commerciale_art_tech_nome: nome,
     commerciale_art_tech_contatto: contatto,
   };
+}
+
+function normalizeInterventoScope(
+  value?: string | null
+): ImpiantoScope {
+  if (
+    value === "SINGOLO_IMPIANTO" ||
+    value === "IMPIANTI_SELEZIONATI" ||
+    value === "TUTTI_GLI_IMPIANTI"
+  ) {
+    return value;
+  }
+  return "TUTTI_GLI_IMPIANTI";
+}
+
+function sanitizeInterventoImpiantiIds(values?: string[] | null) {
+  return Array.from(
+    new Set(
+      (values || []).map((value) => String(value || "").trim()).filter((value) => isRealUuid(value))
+    )
+  );
 }
 
 function extractCronoOperativi(meta?: CronoOperativiMeta | null) {
@@ -3362,6 +3385,20 @@ function buildFormData(c: Checklist): FormData {
   function buildProjectInterventoForm(it: InterventoRow): ProjectInterventoForm {
     const checklistImpiantoId =
       String(((it as ProjectInterventoRow).checklist_impianto_id || "")).trim() || null;
+    const rowWithScope = it as ProjectInterventoRow;
+    const impiantiInteressatiIds = sanitizeInterventoImpiantiIds(
+      rowWithScope.impianti_interessati_ids ||
+        (checklistImpiantoId ? [checklistImpiantoId] : [])
+    );
+    const impiantoScope =
+      impiantiInteressatiIds.length > 0
+        ? normalizeInterventoScope(
+            rowWithScope.impianto_scope ||
+              (impiantiInteressatiIds.length === 1
+                ? "SINGOLO_IMPIANTO"
+                : "IMPIANTI_SELEZIONATI")
+          )
+        : normalizeInterventoScope(rowWithScope.impianto_scope || "TUTTI_GLI_IMPIANTI");
     return {
       data: toDateInput(it.data),
       data_tassativa: toDateInput(it.data_tassativa),
@@ -3378,8 +3415,8 @@ function buildFormData(c: Checklist): FormData {
       fattura_url: String(it.fattura_url || ""),
       note: String(it.note || ""),
       ...EMPTY_INTERVENTO_OPERATIVI,
-      impianto_scope: checklistImpiantoId ? "SINGOLO_IMPIANTO" : "TUTTI_GLI_IMPIANTI",
-      impianti_interessati_ids: checklistImpiantoId ? [checklistImpiantoId] : [],
+      impianto_scope: impiantoScope,
+      impianti_interessati_ids: impiantiInteressatiIds,
     };
   }
 
@@ -3430,8 +3467,17 @@ function buildFormData(c: Checklist): FormData {
       referente_cliente_contatto: form.referente_cliente_contatto,
       commerciale_art_tech_nome: form.commerciale_art_tech_nome,
       commerciale_art_tech_contatto: form.commerciale_art_tech_contatto,
-      impianto_scope: form.impianto_scope,
-      impianti_interessati_ids: form.impianti_interessati_ids,
+      impianto_scope:
+        form.impianto_scope ||
+        base.impianto_scope ||
+        (base.checklist_impianto_id ? "SINGOLO_IMPIANTO" : "TUTTI_GLI_IMPIANTI"),
+      impianti_interessati_ids:
+        sanitizeInterventoImpiantiIds(form.impianti_interessati_ids).length > 0
+          ? sanitizeInterventoImpiantiIds(form.impianti_interessati_ids)
+          : sanitizeInterventoImpiantiIds(
+              base.impianti_interessati_ids ||
+                (base.checklist_impianto_id ? [base.checklist_impianto_id] : [])
+            ),
     };
   }
 
@@ -3490,9 +3536,117 @@ function buildFormData(c: Checklist): FormData {
       }
     }
     if (res.error) throw new Error(res.error.message || "Errore caricamento interventi progetto");
-    return ((res.data || []) as ProjectInterventoRow[]).filter(
+    const rows = ((res.data || []) as ProjectInterventoRow[]).filter(
       (row) => String(row?.checklist_id || "") === String(checklistId)
     );
+    if (rows.length === 0) return rows;
+
+    const interventoIds = rows.map((row) => String(row.id || "").trim()).filter(Boolean);
+    const relationMap = new Map<string, string[]>();
+    const projectImpiantoIds = new Set<string>();
+
+    const { data: projectImpiantiData, error: projectImpiantiError } = await dbFrom("checklist_impianti")
+      .select("id")
+      .eq("checklist_id", checklistId);
+    if (!projectImpiantiError) {
+      for (const row of ((projectImpiantiData as Array<{ id?: string | null }>) || [])) {
+        const impiantoId = String(row?.id || "").trim();
+        if (isRealUuid(impiantoId)) projectImpiantoIds.add(impiantoId);
+      }
+    }
+
+    const { data: relationData, error: relationError } = await dbFrom("saas_interventi_impianti")
+      .select("intervento_id, checklist_impianto_id")
+      .in("intervento_id", interventoIds);
+    if (relationError) {
+      throw new Error(relationError.message || "Errore caricamento impianti intervento");
+    }
+    for (const relation of
+      (((relationData as Array<{ intervento_id?: string | null; checklist_impianto_id?: string | null }>) ||
+        []) as Array<{ intervento_id?: string | null; checklist_impianto_id?: string | null }>)) {
+      const interventoId = String(relation.intervento_id || "").trim();
+      const checklistImpiantoId = String(relation.checklist_impianto_id || "").trim();
+      if (!interventoId || !isRealUuid(checklistImpiantoId)) continue;
+      const bucket = relationMap.get(interventoId) || [];
+      bucket.push(checklistImpiantoId);
+      relationMap.set(interventoId, bucket);
+    }
+
+    return rows.map((row) => {
+      const relationIds = sanitizeInterventoImpiantiIds(relationMap.get(String(row.id || "").trim()) || []);
+      const legacyId = String(row.checklist_impianto_id || "").trim();
+      const fallbackIds = relationIds.length > 0 ? relationIds : isRealUuid(legacyId) ? [legacyId] : [];
+      const isAllProjectImpiantiSelection =
+        projectImpiantoIds.size > 0 &&
+        fallbackIds.length === projectImpiantoIds.size &&
+        Array.from(projectImpiantoIds).every((impiantoId) => fallbackIds.includes(impiantoId));
+      const impiantoScope: ImpiantoScope =
+        relationIds.length > 0
+          ? isAllProjectImpiantiSelection
+            ? "TUTTI_GLI_IMPIANTI"
+            : relationIds.length === 1
+              ? "SINGOLO_IMPIANTO"
+              : "IMPIANTI_SELEZIONATI"
+          : isRealUuid(legacyId)
+            ? "SINGOLO_IMPIANTO"
+            : "TUTTI_GLI_IMPIANTI";
+      return {
+        ...row,
+        impianto_scope: impiantoScope,
+        impianti_interessati_ids: fallbackIds,
+        checklist_impianto_id:
+          impiantoScope === "SINGOLO_IMPIANTO" ? fallbackIds[0] || row.checklist_impianto_id || null : null,
+      };
+    });
+  }
+
+  async function replaceInterventoImpiantiRelations(
+    interventoId: string,
+    checklistId: string,
+    form: Pick<ProjectInterventoForm, "impianto_scope" | "impianti_interessati_ids" | "checklist_impianto_id">
+  ) {
+    const normalizedInterventoId = String(interventoId || "").trim();
+    const normalizedChecklistId = String(checklistId || "").trim();
+    if (!normalizedInterventoId || !normalizedChecklistId) return;
+
+    const scope = normalizeInterventoScope(form.impianto_scope);
+    let targetIds = sanitizeInterventoImpiantiIds(form.impianti_interessati_ids);
+    const legacyId = String(form.checklist_impianto_id || "").trim();
+
+    if (scope === "SINGOLO_IMPIANTO") {
+      targetIds = sanitizeInterventoImpiantiIds(targetIds.length > 0 ? [targetIds[0]] : legacyId ? [legacyId] : []);
+    } else if (scope === "TUTTI_GLI_IMPIANTI") {
+      const { data, error } = await dbFrom("checklist_impianti")
+        .select("id")
+        .eq("checklist_id", normalizedChecklistId);
+      if (error) {
+        throw new Error(error.message || "Errore caricamento impianti progetto");
+      }
+      targetIds = sanitizeInterventoImpiantiIds(
+        (((data as Array<{ id?: string | null }>) || []) as Array<{ id?: string | null }>).map((row) =>
+          String(row?.id || "").trim()
+        )
+      );
+    }
+
+    const { error: deleteError } = await dbFrom("saas_interventi_impianti")
+      .delete()
+      .eq("intervento_id", normalizedInterventoId);
+    if (deleteError) {
+      throw new Error(deleteError.message || "Errore reset impianti intervento");
+    }
+
+    if (targetIds.length === 0) return;
+
+    const { error: insertError } = await dbFrom("saas_interventi_impianti").insert(
+      targetIds.map((checklistImpiantoId) => ({
+        intervento_id: normalizedInterventoId,
+        checklist_impianto_id: checklistImpiantoId,
+      }))
+    );
+    if (insertError) {
+      throw new Error(insertError.message || "Errore salvataggio impianti intervento");
+    }
   }
 
   async function loadProjectSimsSection(checklistId: string) {
@@ -3768,6 +3922,7 @@ function buildFormData(c: Checklist): FormData {
     inserted = (insRes.data as { id: string } | null) ?? null;
     if (inserted?.id) {
       try {
+        await replaceInterventoImpiantiRelations(inserted.id, id, newProjectIntervento);
         await saveInterventoOperativi(
           inserted.id,
           newInterventoOperativi
@@ -3843,6 +3998,7 @@ function buildFormData(c: Checklist): FormData {
 
   async function saveInterventoRow() {
     if (!projectInterventoEditId || !projectInterventoEditForm) return;
+    if (!id) return;
     let selectedChecklistImpiantoId: string | null =
       String(projectInterventoEditForm.checklist_impianto_id || "").trim() || null;
     if (isTemporaryChecklistImpiantoSelection(selectedChecklistImpiantoId)) {
@@ -3925,6 +4081,11 @@ function buildFormData(c: Checklist): FormData {
       return;
     }
     try {
+      await replaceInterventoImpiantiRelations(
+        projectInterventoEditId,
+        id,
+        projectInterventoEditForm
+      );
       await saveInterventoOperativi(
         projectInterventoEditId,
         extractProjectInterventoOperativi(projectInterventoEditForm)

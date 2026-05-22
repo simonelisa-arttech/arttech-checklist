@@ -207,6 +207,12 @@ const TABLE_RULES: Record<
     orderCols: ["created_at", "updated_at", "data", "data_tassativa"],
     requiredEqAnyOf: ["id", "checklist_id", "cliente_id", "cliente"],
   },
+  saas_interventi_impianti: {
+    ops: ["select", "insert", "delete"],
+    filterCols: ["id", "intervento_id", "checklist_impianto_id"],
+    orderCols: ["created_at"],
+    requiredEqAnyOf: ["id", "intervento_id", "checklist_impianto_id"],
+  },
   checklist_task_documents: {
     ops: ["select", "insert", "delete"],
     filterCols: ["id", "checklist_id", "task_id", "uploaded_by_operatore"],
