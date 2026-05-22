@@ -653,10 +653,12 @@ export default function RenewalsBlock({
               {editForm.tipo === "SAAS" && (
                 <label>
                   Note<br />
-                  <input
+                  <textarea
                     value={editForm.note || ""}
                     onChange={(e) => setEditForm({ ...editForm, note: e.target.value })}
-                    style={{ width: "100%", padding: 8 }}
+                    placeholder="Note"
+                    rows={4}
+                    style={{ width: "100%", minHeight: 100, padding: 8, resize: "vertical" }}
                   />
                 </label>
               )}
