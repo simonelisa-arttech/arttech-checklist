@@ -31,6 +31,17 @@ export type OperationalBlockSlot = {
   orario: string;
 };
 
+export type OperationalBlockImpiantoScope =
+  | "TUTTI_GLI_IMPIANTI"
+  | "SINGOLO_IMPIANTO"
+  | "IMPIANTI_SELEZIONATI";
+
+export type OperationalBlockImpiantoOption = {
+  id: string;
+  label: string;
+  disabled?: boolean;
+};
+
 export type OperationalBlockFormState = {
   slots: OperationalBlockSlot[];
   data_inizio: string;
@@ -46,6 +57,8 @@ export type OperationalBlockFormState = {
   referente_cliente_contatto: string;
   commerciale_art_tech_nome: string;
   commerciale_art_tech_contatto: string;
+  impianto_scope?: OperationalBlockImpiantoScope;
+  impianti_interessati_ids?: string[];
 };
 
 export type OperationalBlockPlanningStatusOption = {
@@ -81,6 +94,7 @@ type OperationalBlockEditorProps = {
   planningStatusOptions?: OperationalBlockPlanningStatusOption[];
   onPlanningStatusChange?: (value: string) => void;
   availableReferentiCliente?: OperationalBlockAvailableReferente[];
+  availableImpianti?: OperationalBlockImpiantoOption[];
   suggestedAddress?: string | null;
   lockedCommercialeArtTech?: boolean;
   projectCommercialeArtTech?: {
@@ -205,6 +219,15 @@ function normalizeOperationalBlockForm(form: OperationalBlockFormState): Operati
     referente_cliente_contatto: String(form?.referente_cliente_contatto || ""),
     commerciale_art_tech_nome: String(form?.commerciale_art_tech_nome || ""),
     commerciale_art_tech_contatto: String(form?.commerciale_art_tech_contatto || ""),
+    impianto_scope:
+      form?.impianto_scope === "SINGOLO_IMPIANTO" ||
+      form?.impianto_scope === "IMPIANTI_SELEZIONATI" ||
+      form?.impianto_scope === "TUTTI_GLI_IMPIANTI"
+        ? form.impianto_scope
+        : "TUTTI_GLI_IMPIANTI",
+    impianti_interessati_ids: Array.isArray(form?.impianti_interessati_ids)
+      ? form.impianti_interessati_ids.map((value) => String(value || "").trim()).filter(Boolean)
+      : [],
   };
 }
 
@@ -229,6 +252,7 @@ export default function OperationalBlockEditor({
   planningStatusOptions,
   onPlanningStatusChange,
   availableReferentiCliente,
+  availableImpianti,
   suggestedAddress,
   lockedCommercialeArtTech = false,
   projectCommercialeArtTech = null,
@@ -244,6 +268,18 @@ export default function OperationalBlockEditor({
         .filter((value) => hasReferenteContent(value))
     : [];
   const normalizedSuggestedAddress = String(suggestedAddress || "").trim();
+  const normalizedAvailableImpianti = Array.isArray(availableImpianti)
+    ? availableImpianti
+        .map((value) => ({
+          id: String(value?.id || "").trim(),
+          label: String(value?.label || "").trim(),
+          disabled: Boolean(value?.disabled),
+        }))
+        .filter((value) => value.id)
+    : [];
+  const normalizedSelectedImpiantoIds = (normalizedForm.impianti_interessati_ids || []).filter((id) =>
+    normalizedAvailableImpianti.some((impianto) => impianto.id === id)
+  );
   const normalizedCommercialeDisplay = {
     nome: String(projectCommercialeArtTech?.nome || normalizedForm.commerciale_art_tech_nome || "").trim(),
     contatto: String(projectCommercialeArtTech?.contatto || normalizedForm.commerciale_art_tech_contatto || "").trim(),
@@ -462,6 +498,146 @@ export default function OperationalBlockEditor({
             </select>
           </div>
         ) : null}
+        <div style={{ gridColumn: "1 / -1" }}>
+          <div style={{ fontSize: 12, marginBottom: 6 }}>Impianti interessati</div>
+          <div
+            style={{
+              border: "1px solid #e5e7eb",
+              borderRadius: 10,
+              padding: 10,
+              display: "grid",
+              gap: 10,
+            }}
+          >
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
+              {(
+                [
+                  ["TUTTI_GLI_IMPIANTI", "Tutti gli impianti"],
+                  ["SINGOLO_IMPIANTO", "Singolo impianto"],
+                  ["IMPIANTI_SELEZIONATI", "Impianti selezionati"],
+                ] as const
+              ).map(([value, label]) => (
+                <label
+                  key={value}
+                  style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13 }}
+                >
+                  <input
+                    type="radio"
+                    checked={normalizedForm.impianto_scope === value}
+                    disabled={readOnly}
+                    onChange={() =>
+                      onChange((prev) => {
+                        const normalizedPrev = normalizeOperationalBlockForm(prev);
+                        const nextSelectedIds =
+                          value === "SINGOLO_IMPIANTO"
+                            ? (normalizedPrev.impianti_interessati_ids || []).slice(0, 1)
+                            : value === "TUTTI_GLI_IMPIANTI"
+                            ? normalizedAvailableImpianti
+                                .filter((impianto) => !impianto.disabled)
+                                .map((impianto) => impianto.id)
+                            : normalizedPrev.impianti_interessati_ids || [];
+                        return {
+                          ...prev,
+                          impianto_scope: value,
+                          impianti_interessati_ids: nextSelectedIds,
+                        };
+                      })
+                    }
+                  />
+                  {label}
+                </label>
+              ))}
+            </div>
+            {normalizedAvailableImpianti.length > 0 ? (
+              normalizedForm.impianto_scope === "SINGOLO_IMPIANTO" ? (
+                <div style={{ display: "grid", gap: 6 }}>
+                  <div style={{ fontSize: 11, color: "#6b7280" }}>Seleziona impianto</div>
+                  <select
+                    value={normalizedSelectedImpiantoIds[0] || ""}
+                    disabled={readOnly}
+                    onChange={(e) =>
+                      onChange((prev) => ({
+                        ...prev,
+                        impianti_interessati_ids: e.target.value ? [e.target.value] : [],
+                      }))
+                    }
+                    style={{ width: "100%", padding: 8 }}
+                  >
+                    <option value="">Seleziona impianto</option>
+                    {normalizedAvailableImpianti.map((impianto) => (
+                      <option key={impianto.id} value={impianto.id} disabled={impianto.disabled}>
+                        {impianto.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              ) : normalizedForm.impianto_scope === "IMPIANTI_SELEZIONATI" ? (
+                <div style={{ display: "grid", gap: 6 }}>
+                  <div style={{ fontSize: 11, color: "#6b7280" }}>Seleziona uno o più impianti</div>
+                  <div style={{ display: "grid", gap: 6 }}>
+                    {normalizedAvailableImpianti.map((impianto) => (
+                      <label
+                        key={impianto.id}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 8,
+                          fontSize: 13,
+                          opacity: impianto.disabled ? 0.6 : 1,
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          disabled={readOnly || impianto.disabled}
+                          checked={normalizedSelectedImpiantoIds.includes(impianto.id)}
+                          onChange={(e) =>
+                            onChange((prev) => {
+                              const normalizedPrev = normalizeOperationalBlockForm(prev);
+                              const nextIds = e.target.checked
+                                ? [...(normalizedPrev.impianti_interessati_ids || []), impianto.id]
+                                : (normalizedPrev.impianti_interessati_ids || []).filter((id) => id !== impianto.id);
+                              return {
+                                ...prev,
+                                impianti_interessati_ids: Array.from(new Set(nextIds)),
+                              };
+                            })
+                          }
+                        />
+                        {impianto.label}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <div style={{ display: "grid", gap: 6 }}>
+                  <div style={{ fontSize: 11, color: "#6b7280" }}>
+                    Il blocco si applica a tutti gli impianti del progetto
+                  </div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                    {normalizedAvailableImpianti.map((impianto) => (
+                      <span
+                        key={impianto.id}
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          padding: "4px 8px",
+                          borderRadius: 999,
+                          background: "#f3f4f6",
+                          fontSize: 12,
+                          color: "#374151",
+                        }}
+                      >
+                        {impianto.label}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )
+            ) : (
+              <div style={{ fontSize: 12, color: "#6b7280" }}>Nessun impianto disponibile nel progetto.</div>
+            )}
+          </div>
+        </div>
         <div>
           <div style={{ fontSize: 12, marginBottom: 4 }}>Personale previsto / incarico</div>
           <PersonaleMultiSelect

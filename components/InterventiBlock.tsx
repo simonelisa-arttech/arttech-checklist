@@ -74,6 +74,8 @@ export type InterventoFormState = {
   referenteClienteContatto: string;
   commercialeArtTechNome: string;
   commercialeArtTechContatto: string;
+  impiantoScope?: "TUTTI_GLI_IMPIANTI" | "SINGOLO_IMPIANTO" | "IMPIANTI_SELEZIONATI";
+  impiantiInteressatiIds?: string[];
 };
 
 export type PendingInterventoLink = {
@@ -449,6 +451,8 @@ function applyImpiantoPrefill(
     return {
       ...form,
       checklistImpiantoId: "",
+      impiantoScope: "SINGOLO_IMPIANTO",
+      impiantiInteressatiIds: [],
     };
   }
 
@@ -457,6 +461,8 @@ function applyImpiantoPrefill(
     return {
       ...form,
       checklistImpiantoId: normalizedId,
+      impiantoScope: "SINGOLO_IMPIANTO",
+      impiantiInteressatiIds: [normalizedId],
     };
   }
 
@@ -466,9 +472,72 @@ function applyImpiantoPrefill(
   return {
     ...form,
     checklistImpiantoId: normalizedId,
+    impiantoScope: "SINGOLO_IMPIANTO",
+    impiantiInteressatiIds: [normalizedId],
     indirizzo: form.indirizzo || indirizzoImpianto || form.indirizzo,
     descrizioneAttivita:
       form.descrizioneAttivita || descrizioneImpianto || form.descrizioneAttivita,
+  };
+}
+
+function normalizeInterventoImpiantoScope(
+  value?: string | null
+): "TUTTI_GLI_IMPIANTI" | "SINGOLO_IMPIANTO" | "IMPIANTI_SELEZIONATI" {
+  if (value === "SINGOLO_IMPIANTO" || value === "IMPIANTI_SELEZIONATI" || value === "TUTTI_GLI_IMPIANTI") {
+    return value;
+  }
+  return "TUTTI_GLI_IMPIANTI";
+}
+
+function getNormalizedSelectedImpianti(
+  form: InterventoFormState,
+  impianti: InterventiImpiantoOption[]
+) {
+  const selectedIds = Array.isArray(form.impiantiInteressatiIds)
+    ? form.impiantiInteressatiIds.map((value) => String(value || "").trim()).filter(Boolean)
+    : [];
+  const availableIds = new Set(impianti.map((impianto) => String(impianto.id || "").trim()).filter(Boolean));
+  const filtered = selectedIds.filter((id) => availableIds.has(id));
+  const legacyId = String(form.checklistImpiantoId || "").trim();
+  if (filtered.length > 0) return Array.from(new Set(filtered));
+  if (legacyId && availableIds.has(legacyId)) return [legacyId];
+  return [];
+}
+
+function applyImpiantoScopeSelection(
+  form: InterventoFormState,
+  scope: "TUTTI_GLI_IMPIANTI" | "SINGOLO_IMPIANTO" | "IMPIANTI_SELEZIONATI",
+  selectedIds: string[],
+  impianti: InterventiImpiantoOption[]
+): InterventoFormState {
+  const availableIds = new Set(impianti.map((impianto) => String(impianto.id || "").trim()).filter(Boolean));
+  const normalizedIds = Array.from(
+    new Set(selectedIds.map((value) => String(value || "").trim()).filter((value) => availableIds.has(value)))
+  );
+  if (scope === "TUTTI_GLI_IMPIANTI") {
+    return {
+      ...form,
+      impiantoScope: scope,
+      impiantiInteressatiIds: impianti.filter((impianto) => !impianto.disabled).map((impianto) => impianto.id),
+      checklistImpiantoId: "",
+    };
+  }
+  if (scope === "SINGOLO_IMPIANTO") {
+    return applyImpiantoPrefill(
+      {
+        ...form,
+        impiantoScope: scope,
+        impiantiInteressatiIds: normalizedIds[0] ? [normalizedIds[0]] : [],
+      },
+      normalizedIds[0] || "",
+      impianti
+    );
+  }
+  return {
+    ...form,
+    impiantoScope: scope,
+    impiantiInteressatiIds: normalizedIds,
+    checklistImpiantoId: normalizedIds.length === 1 ? normalizedIds[0] : "",
   };
 }
 
@@ -478,6 +547,7 @@ function renderOperativiFields(
   options?: {
     showModalitaAttivita?: boolean;
     referentiContext?: ChecklistReferentiContext;
+    impianti?: InterventiImpiantoOption[];
     selectedReferenteId?: string;
     onSelectReferente?: (value: string) => void;
     lockedCommercialeArtTech?: boolean;
@@ -495,6 +565,9 @@ function renderOperativiFields(
   const normalizedReferentiCliente = buildInterventoReferentiList(form);
   const lockedCommercialeArtTech = Boolean(options?.lockedCommercialeArtTech);
   const projectCommercialeArtTech = options?.projectCommercialeArtTech ?? null;
+  const impianti = Array.isArray(options?.impianti) ? options.impianti : [];
+  const impiantoScope = normalizeInterventoImpiantoScope(form.impiantoScope);
+  const selectedImpianti = getNormalizedSelectedImpianti(form, impianti);
   return (
     <div style={{ marginTop: 10 }}>
       <div style={{ display: "grid", gap: 8, marginBottom: 8 }}>
@@ -511,6 +584,140 @@ function renderOperativiFields(
           gap: 10,
         }}
       >
+        <div style={{ gridColumn: "1 / -1" }}>
+          <div style={{ fontSize: 12, marginBottom: 4 }}>Impianti interessati</div>
+          <div
+            style={{
+              border: "1px solid #e5e7eb",
+              borderRadius: 10,
+              padding: 10,
+              display: "grid",
+              gap: 10,
+            }}
+          >
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
+              {(
+                [
+                  ["TUTTI_GLI_IMPIANTI", "Tutti gli impianti"],
+                  ["SINGOLO_IMPIANTO", "Singolo impianto"],
+                  ["IMPIANTI_SELEZIONATI", "Impianti selezionati"],
+                ] as const
+              ).map(([value, label]) => (
+                <label
+                  key={value}
+                  style={{ display: "inline-flex", alignItems: "center", gap: 6, fontSize: 13 }}
+                >
+                  <input
+                    type="radio"
+                    checked={impiantoScope === value}
+                    onChange={() =>
+                      setForm(applyImpiantoScopeSelection(form, value, selectedImpianti, impianti))
+                    }
+                  />
+                  {label}
+                </label>
+              ))}
+            </div>
+            {impianti.length > 0 ? (
+              impiantoScope === "SINGOLO_IMPIANTO" ? (
+                <div style={{ display: "grid", gap: 6 }}>
+                  <div style={{ fontSize: 11, color: "#6b7280" }}>Seleziona impianto</div>
+                  <select
+                    value={selectedImpianti[0] || ""}
+                    onChange={(e) =>
+                      setForm(
+                        applyImpiantoScopeSelection(
+                          form,
+                          "SINGOLO_IMPIANTO",
+                          [e.target.value],
+                          impianti
+                        )
+                      )
+                    }
+                    style={{ width: "100%", padding: 8 }}
+                  >
+                    <option value="">Seleziona impianto</option>
+                    {impianti.map((impianto) => (
+                      <option key={impianto.id} value={impianto.id} disabled={Boolean(impianto.disabled)}>
+                        {impianto.label}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              ) : impiantoScope === "IMPIANTI_SELEZIONATI" ? (
+                <div style={{ display: "grid", gap: 6 }}>
+                  <div style={{ fontSize: 11, color: "#6b7280" }}>Seleziona uno o più impianti</div>
+                  <div style={{ display: "grid", gap: 6 }}>
+                    {impianti.map((impianto) => (
+                      <label
+                        key={impianto.id}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 8,
+                          fontSize: 13,
+                          opacity: impianto.disabled ? 0.6 : 1,
+                        }}
+                      >
+                        <input
+                          type="checkbox"
+                          disabled={Boolean(impianto.disabled)}
+                          checked={selectedImpianti.includes(impianto.id)}
+                          onChange={(e) => {
+                            const nextIds = e.target.checked
+                              ? [...selectedImpianti, impianto.id]
+                              : selectedImpianti.filter((id) => id !== impianto.id);
+                            setForm(
+                              applyImpiantoScopeSelection(
+                                form,
+                                "IMPIANTI_SELEZIONATI",
+                                nextIds,
+                                impianti
+                              )
+                            );
+                          }}
+                        />
+                        {impianto.label}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <div style={{ display: "grid", gap: 6 }}>
+                  <div style={{ fontSize: 11, color: "#6b7280" }}>
+                    L&apos;intervento è impostato come generale progetto.
+                  </div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                    {impianti.map((impianto) => (
+                      <span
+                        key={impianto.id}
+                        style={{
+                          display: "inline-flex",
+                          alignItems: "center",
+                          padding: "4px 8px",
+                          borderRadius: 999,
+                          background: "#f3f4f6",
+                          fontSize: 12,
+                          color: "#374151",
+                          opacity: impianto.disabled ? 0.6 : 1,
+                        }}
+                      >
+                        {impianto.label}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              )
+            ) : (
+              <div style={{ fontSize: 12, color: "#6b7280" }}>Nessun impianto disponibile nel progetto.</div>
+            )}
+            {isTemporaryImpiantoSelection(form.checklistImpiantoId) ? (
+              <div style={{ fontSize: 12, color: "#b45309" }}>
+                Salva prima il progetto/impianto prima di collegare l&apos;intervento all&apos;impianto.
+              </div>
+            ) : null}
+          </div>
+        </div>
         <div>
           <div style={{ fontSize: 12, marginBottom: 4 }}>Data inizio</div>
           <input
@@ -1326,32 +1533,6 @@ export default function InterventiBlock({
                 ))}
               </select>
             </label>
-            <label>
-              Impianto interessato<br />
-              <select
-                value={newIntervento.checklistImpiantoId || ""}
-                onChange={(e) =>
-                  setNewIntervento(applyImpiantoPrefill(newIntervento, e.target.value, impianti))
-                }
-                style={{ width: "100%", padding: 8 }}
-              >
-                <option value="">Intervento generale progetto</option>
-                {impianti.map((impianto) => (
-                  <option
-                    key={impianto.id}
-                    value={impianto.id}
-                    disabled={Boolean(impianto.disabled)}
-                  >
-                    {impianto.label}
-                  </option>
-                ))}
-              </select>
-              {isTemporaryImpiantoSelection(newIntervento.checklistImpiantoId) && (
-                <div style={{ marginTop: 6, fontSize: 12, color: "#b45309" }}>
-                  Salva prima il progetto/impianto prima di collegare l&apos;intervento all&apos;impianto.
-                </div>
-              )}
-            </label>
             {newIntervento.statoIntervento === "CHIUSO" && newIntervento.fatturazioneStato === "FATTURATO" && (
               <>
                 <label>
@@ -1405,6 +1586,7 @@ export default function InterventiBlock({
                 referenti: [],
                 loading: false,
               },
+            impianti,
             lockedCommercialeArtTech,
             projectCommercialeArtTech,
             selectedReferenteId: newReferenteId,
@@ -2013,34 +2195,6 @@ export default function InterventiBlock({
                               style={{ width: "100%", padding: 8 }}
                             />
                           </label>
-                          <label>
-                            Impianto interessato<br />
-                            <select
-                              value={editIntervento.checklistImpiantoId || ""}
-                              onChange={(e) =>
-                                setEditIntervento(
-                                  applyImpiantoPrefill(editIntervento, e.target.value, impianti)
-                                )
-                              }
-                              style={{ width: "100%", padding: 8 }}
-                            >
-                              <option value="">Intervento generale progetto</option>
-                              {impianti.map((impianto) => (
-                                <option
-                                  key={impianto.id}
-                                  value={impianto.id}
-                                  disabled={Boolean(impianto.disabled)}
-                                >
-                                  {impianto.label}
-                                </option>
-                              ))}
-                            </select>
-                            {isTemporaryImpiantoSelection(editIntervento.checklistImpiantoId) && (
-                              <div style={{ marginTop: 6, fontSize: 12, color: "#b45309" }}>
-                                Salva prima il progetto/impianto prima di collegare l&apos;intervento all&apos;impianto.
-                              </div>
-                            )}
-                          </label>
                         </div>
                         <div
                           style={{
@@ -2131,6 +2285,7 @@ export default function InterventiBlock({
                               referenti: [],
                               loading: false,
                             },
+                          impianti,
                           lockedCommercialeArtTech,
                           projectCommercialeArtTech,
                           selectedReferenteId: editReferenteId,

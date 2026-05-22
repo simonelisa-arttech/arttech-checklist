@@ -42,6 +42,11 @@ export type InterventoOperativiReferente = {
   ruolo: string;
 };
 
+export type InterventoImpiantoScope =
+  | "TUTTI_GLI_IMPIANTI"
+  | "SINGOLO_IMPIANTO"
+  | "IMPIANTI_SELEZIONATI";
+
 export type InterventoOperativiFormState = {
   data_inizio: string;
   durata_giorni: string;
@@ -57,6 +62,8 @@ export type InterventoOperativiFormState = {
   referente_cliente_contatto: string;
   commerciale_art_tech_nome: string;
   commerciale_art_tech_contatto: string;
+  impianto_scope?: InterventoImpiantoScope;
+  impianti_interessati_ids?: string[];
 };
 
 export const EMPTY_INTERVENTO_OPERATIVI: InterventoOperativiFormState = {
@@ -74,6 +81,8 @@ export const EMPTY_INTERVENTO_OPERATIVI: InterventoOperativiFormState = {
   referente_cliente_contatto: "",
   commerciale_art_tech_nome: "",
   commerciale_art_tech_contatto: "",
+  impianto_scope: "TUTTI_GLI_IMPIANTI",
+  impianti_interessati_ids: [],
 };
 
 function trimTrailingZeros(value: number) {
@@ -144,6 +153,8 @@ export function extractInterventoOperativi(
     referente_cliente_contatto: referentiCliente[0]?.contatto || "",
     commerciale_art_tech_nome: String(meta?.commerciale_art_tech_nome || ""),
     commerciale_art_tech_contatto: String(meta?.commerciale_art_tech_contatto || ""),
+    impianto_scope: "TUTTI_GLI_IMPIANTI",
+    impianti_interessati_ids: [],
   };
 }
 

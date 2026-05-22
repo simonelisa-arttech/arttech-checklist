@@ -893,6 +893,8 @@ type CronoOperativiSlot = {
   orario: string;
 };
 
+type ImpiantoScope = "TUTTI_GLI_IMPIANTI" | "SINGOLO_IMPIANTO" | "IMPIANTI_SELEZIONATI";
+
 type CronoOperativiFormState = {
   slots: CronoOperativiSlot[];
   data_inizio: string;
@@ -908,6 +910,8 @@ type CronoOperativiFormState = {
   referente_cliente_contatto: string;
   commerciale_art_tech_nome: string;
   commerciale_art_tech_contatto: string;
+  impianto_scope?: ImpiantoScope;
+  impianti_interessati_ids?: string[];
 };
 
 type CronoOperativiRowKind = "INSTALLAZIONE" | "DISINSTALLAZIONE";
@@ -1254,6 +1258,8 @@ const EMPTY_CRONO_OPERATIVI: CronoOperativiFormState = {
   referente_cliente_contatto: "",
   commerciale_art_tech_nome: "",
   commerciale_art_tech_contatto: "",
+  impianto_scope: "TUTTI_GLI_IMPIANTI",
+  impianti_interessati_ids: [],
 };
 
 function createEmptyCronoOperativiSlot(): CronoOperativiSlot {
@@ -1309,6 +1315,27 @@ function syncCronoOperativiLegacyFields(form: CronoOperativiFormState): CronoOpe
         ? minutesToHoursInput(firstSlot.durata_prevista_minuti)
         : "",
     orario: firstSlot.orario || "",
+    impianto_scope:
+      form.impianto_scope === "SINGOLO_IMPIANTO" ||
+      form.impianto_scope === "IMPIANTI_SELEZIONATI" ||
+      form.impianto_scope === "TUTTI_GLI_IMPIANTI"
+        ? form.impianto_scope
+        : "TUTTI_GLI_IMPIANTI",
+    impianti_interessati_ids: Array.isArray(form.impianti_interessati_ids)
+      ? form.impianti_interessati_ids.map((value) => String(value || "").trim()).filter(Boolean)
+      : [],
+  };
+}
+
+function mergeCronoOperativiLocalScopeState(
+  nextForm: CronoOperativiFormState,
+  previousForm: CronoOperativiFormState
+): CronoOperativiFormState {
+  const normalizedPrevious = syncCronoOperativiLegacyFields(previousForm);
+  return {
+    ...nextForm,
+    impianto_scope: normalizedPrevious.impianto_scope,
+    impianti_interessati_ids: normalizedPrevious.impianti_interessati_ids,
   };
 }
 
@@ -1565,6 +1592,8 @@ function extractCronoOperativi(meta?: CronoOperativiMeta | null) {
     referente_cliente_contatto: referentiCliente[0]?.contatto || "",
     commerciale_art_tech_nome: String(meta?.commerciale_art_tech_nome || ""),
     commerciale_art_tech_contatto: String(meta?.commerciale_art_tech_contatto || ""),
+    impianto_scope: "TUTTI_GLI_IMPIANTI",
+    impianti_interessati_ids: [],
   });
 }
 
@@ -2516,6 +2545,7 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
     attachmentTitle,
     attachmentEntityType,
     availableReferentiCliente,
+    availableImpianti,
     suggestedAddress,
   }: {
     title: string;
@@ -2534,6 +2564,7 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
     attachmentTitle: string;
     attachmentEntityType: string;
     availableReferentiCliente: CronoReferenteCliente[];
+    availableImpianti: Array<{ id: string; label: string; disabled?: boolean }>;
     suggestedAddress: string;
   }) {
     const visualStatus = getCronoOperativiVisualStatus(meta);
@@ -2777,6 +2808,7 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
               attachmentEntityType={attachmentEntityType}
               attachmentEntityId={id}
               availableReferentiCliente={availableReferentiCliente}
+              availableImpianti={availableImpianti}
               suggestedAddress={suggestedAddress}
               form={form}
               onChange={onChange}
@@ -3346,6 +3378,8 @@ function buildFormData(c: Checklist): FormData {
       fattura_url: String(it.fattura_url || ""),
       note: String(it.note || ""),
       ...EMPTY_INTERVENTO_OPERATIVI,
+      impianto_scope: checklistImpiantoId ? "SINGOLO_IMPIANTO" : "TUTTI_GLI_IMPIANTI",
+      impianti_interessati_ids: checklistImpiantoId ? [checklistImpiantoId] : [],
     };
   }
 
@@ -3371,6 +3405,8 @@ function buildFormData(c: Checklist): FormData {
       referente_cliente_contatto: normalizedForm.referente_cliente_contatto,
       commerciale_art_tech_nome: normalizedForm.commerciale_art_tech_nome,
       commerciale_art_tech_contatto: normalizedForm.commerciale_art_tech_contatto,
+      impianto_scope: normalizedForm.impianto_scope,
+      impianti_interessati_ids: normalizedForm.impianti_interessati_ids,
     };
   }
 
@@ -3394,6 +3430,8 @@ function buildFormData(c: Checklist): FormData {
       referente_cliente_contatto: form.referente_cliente_contatto,
       commerciale_art_tech_nome: form.commerciale_art_tech_nome,
       commerciale_art_tech_contatto: form.commerciale_art_tech_contatto,
+      impianto_scope: form.impianto_scope,
+      impianti_interessati_ids: form.impianti_interessati_ids,
     };
   }
 
@@ -4965,9 +5003,13 @@ function buildFormData(c: Checklist): FormData {
       const installMeta = metaByKey[`INSTALLAZIONE:${checklistId}`] || null;
       const disinstallMeta = metaByKey[`DISINSTALLAZIONE:${checklistId}`] || null;
       setCronoOperativiMeta(installMeta);
-      setCronoOperativiForm(extractCronoOperativi(installMeta));
+      setCronoOperativiForm((prev) =>
+        mergeCronoOperativiLocalScopeState(extractCronoOperativi(installMeta), prev)
+      );
       setCronoDisinstallazioneMeta(disinstallMeta);
-      setCronoDisinstallazioneForm(extractCronoOperativi(disinstallMeta));
+      setCronoDisinstallazioneForm((prev) =>
+        mergeCronoOperativiLocalScopeState(extractCronoOperativi(disinstallMeta), prev)
+      );
     } catch (e: any) {
       setCronoOperativiError(String(e?.message || "Errore caricamento dati operativi"));
       setCronoOperativiMeta(null);
@@ -4987,6 +5029,11 @@ function buildFormData(c: Checklist): FormData {
       syncCronoOperativiLegacyFields(form),
       projectCommercialeArtTech
     );
+    const {
+      impianto_scope: _localImpiantoScope,
+      impianti_interessati_ids: _localImpiantiInteressatiIds,
+      ...persistedForm
+    } = normalizedForm;
     const firstSlot = normalizedForm.slots[0] || createEmptyCronoOperativiSlot();
     const durataPrevistaMinuti = firstSlot.durata_prevista_minuti;
     const referentiCliente = normalizedForm.referenti_cliente.map((referente) => ({
@@ -5004,7 +5051,7 @@ function buildFormData(c: Checklist): FormData {
         action: "set_operativi",
         row_kind: rowKind,
         row_ref_id: checklistId,
-        ...normalizedForm,
+        ...persistedForm,
         slots: normalizedForm.slots.map((slot) => ({
           ...(slot.id ? { id: slot.id } : {}),
           data_inizio: slot.data_inizio,
@@ -5053,7 +5100,7 @@ function buildFormData(c: Checklist): FormData {
         await syncOperationalReferentiToCliente(targetClienteId, submittedForm.referenti_cliente);
       }
       setMeta(nextMeta);
-      setForm(nextForm);
+      setForm(mergeCronoOperativiLocalScopeState(nextForm, submittedForm));
       if (rowKind === "DISINSTALLAZIONE") {
         const nextDate = getFirstCronoOperativiSlotDate(nextForm);
         if (nextDate) {
@@ -5107,7 +5154,7 @@ function buildFormData(c: Checklist): FormData {
       nextSourceForm
     );
     setCronoDisinstallazioneMeta(nextMeta);
-    setCronoDisinstallazioneForm(nextForm);
+    setCronoDisinstallazioneForm(mergeCronoOperativiLocalScopeState(nextForm, nextSourceForm));
     setChecklist((prev) =>
       prev ? { ...prev, data_disinstallazione: normalizedDate } : prev
     );
@@ -8621,6 +8668,8 @@ function buildFormData(c: Checklist): FormData {
         referenteClienteContatto: newProjectIntervento.referente_cliente_contatto,
         commercialeArtTechNome: newProjectIntervento.commerciale_art_tech_nome,
         commercialeArtTechContatto: newProjectIntervento.commerciale_art_tech_contatto,
+        impiantoScope: newProjectIntervento.impianto_scope,
+        impiantiInteressatiIds: newProjectIntervento.impianti_interessati_ids,
       }}
       setNewIntervento={(value) =>
         setNewProjectIntervento((prev) => ({
@@ -8653,6 +8702,8 @@ function buildFormData(c: Checklist): FormData {
           referente_cliente_contatto: value.referenteClienteContatto,
           commerciale_art_tech_nome: value.commercialeArtTechNome,
           commerciale_art_tech_contatto: value.commercialeArtTechContatto,
+          impianto_scope: value.impiantoScope,
+          impianti_interessati_ids: value.impiantiInteressatiIds,
         }))
       }
       newInterventoFiles={projectInterventoFiles}
@@ -8696,6 +8747,8 @@ function buildFormData(c: Checklist): FormData {
         referenteClienteContatto: projectInterventoEditForm?.referente_cliente_contatto || "",
         commercialeArtTechNome: projectInterventoEditForm?.commerciale_art_tech_nome || "",
         commercialeArtTechContatto: projectInterventoEditForm?.commerciale_art_tech_contatto || "",
+        impiantoScope: projectInterventoEditForm?.impianto_scope,
+        impiantiInteressatiIds: projectInterventoEditForm?.impianti_interessati_ids,
       }}
       setEditIntervento={(value) =>
         setProjectInterventoEditForm((prev) =>
@@ -8730,6 +8783,8 @@ function buildFormData(c: Checklist): FormData {
                 referente_cliente_contatto: value.referenteClienteContatto,
                 commerciale_art_tech_nome: value.commercialeArtTechNome,
                 commerciale_art_tech_contatto: value.commercialeArtTechContatto,
+                impianto_scope: value.impiantoScope,
+                impianti_interessati_ids: value.impiantiInteressatiIds,
               }
             : prev
         )
@@ -11221,6 +11276,7 @@ function buildFormData(c: Checklist): FormData {
             attachmentTitle: "Allegati blocco attività (link Drive)",
             attachmentEntityType: "CHECKLIST_OPERATIVI",
             availableReferentiCliente: availableOperationalReferenti,
+            availableImpianti: projectInterventoImpiantiOptions,
             suggestedAddress: suggestedOperationalAddress,
           })}
           {isNoleggioProject
@@ -11251,6 +11307,7 @@ function buildFormData(c: Checklist): FormData {
                   attachmentTitle: "Allegati blocco disinstallazione (link Drive)",
                   attachmentEntityType: "CHECKLIST_DISINSTALLAZIONE",
                   availableReferentiCliente: availableOperationalReferenti,
+                  availableImpianti: projectInterventoImpiantiOptions,
                   suggestedAddress: suggestedOperationalAddress,
                 })
               )
