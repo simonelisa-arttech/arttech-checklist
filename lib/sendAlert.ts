@@ -1,3 +1,5 @@
+import { isSupabaseConfigured, supabase } from "@/lib/supabaseClient";
+
 export type SendAlertPayload = {
   canale:
     | "manual_task"
@@ -42,9 +44,20 @@ export async function sendAlert(payload: SendAlertPayload) {
         ? payload.message
         : payload.text ?? "",
   };
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (isSupabaseConfigured) {
+    const {
+      data: { session },
+    } = await supabase.auth.getSession();
+    const accessToken = String(session?.access_token || "").trim();
+    if (accessToken) {
+      headers.authorization = `Bearer ${accessToken}`;
+    }
+  }
   const res = await fetch("/api/send-alert", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers,
+    credentials: "include",
     body: JSON.stringify(normalizedPayload),
   });
   let data: any = null;
