@@ -56,8 +56,64 @@ type ClienteReferente = {
   ruolo: string;
 };
 
+type ChecklistImpiantoDraft = {
+  id: string;
+  nome_impianto: string;
+  impianto_codice: string;
+  impianto_descrizione: string;
+  impianto_indirizzo: string;
+  dimensioni: string;
+  passo: string;
+  nit: string;
+  impianto_quantita: number;
+  numero_facce: number;
+  tipo_impianto: string;
+  tipo_struttura: string;
+  note: string;
+};
+
 function createEmptyClienteReferente(): ClienteReferente {
   return { nome: "", telefono: "", email: "", ruolo: "" };
+}
+
+function createEmptyChecklistImpiantoDraft(): ChecklistImpiantoDraft {
+  return {
+    id: crypto.randomUUID(),
+    nome_impianto: "",
+    impianto_codice: "",
+    impianto_descrizione: "",
+    impianto_indirizzo: "",
+    dimensioni: "",
+    passo: "",
+    nit: "",
+    impianto_quantita: 1,
+    numero_facce: 1,
+    tipo_impianto: "",
+    tipo_struttura: "",
+    note: "",
+  };
+}
+
+function hasChecklistImpiantoDraftData(value: ChecklistImpiantoDraft | null | undefined) {
+  if (!value) return false;
+  return [
+    value.nome_impianto,
+    value.impianto_codice,
+    value.impianto_descrizione,
+    value.impianto_indirizzo,
+    value.dimensioni,
+    value.passo,
+    value.nit,
+    value.tipo_impianto,
+    value.tipo_struttura,
+    value.note,
+    Number.isFinite(Number(value.impianto_quantita)) && Number(value.impianto_quantita) > 1
+      ? String(value.impianto_quantita)
+      : "",
+    Number.isFinite(Number(value.numeroFacce)) && Number(value.numeroFacce) > 1
+      ? String(value.numeroFacce)
+      : "",
+  ].some((entry) => String(entry || "").trim() !== "");
 }
 
 function normalizeClienteReferenteDraft(value: Partial<ClienteReferente> | null | undefined): ClienteReferente {
@@ -307,6 +363,9 @@ export default function NuovaChecklistPage() {
   const [dimensioni, setDimensioni] = useState("");
   const [impiantoQuantita, setImpiantoQuantita] = useState(1);
   const [numeroFacce, setNumeroFacce] = useState(1);
+  const [impianti, setImpianti] = useState<ChecklistImpiantoDraft[]>([
+    createEmptyChecklistImpiantoDraft(),
+  ]);
   const [garanziaScadenza, setGaranziaScadenza] = useState("");
   const [serialControlInput, setSerialControlInput] = useState("");
   const [serialControlDeviceCode, setSerialControlDeviceCode] = useState("");
@@ -369,17 +428,10 @@ export default function NuovaChecklistPage() {
       ? [selected.nome, selected.telefono].filter(Boolean).join(" · ")
       : "";
   }, [commercialeArtTechOperatoreId, commercialeArtTechOptions]);
-  const m2Calcolati = useMemo(
-    () => {
-      const base = calcM2FromDimensioni(dimensioni, numeroFacce);
-      const qty =
-        Number.isFinite(Number(impiantoQuantita)) && Number(impiantoQuantita) > 0
-          ? Number(impiantoQuantita)
-          : 1;
-      return base == null ? null : base * qty;
-    },
-    [dimensioni, numeroFacce, impiantoQuantita]
-  );
+  const firstImpianto =
+    impianti.find((impianto) => hasChecklistImpiantoDraftData(impianto)) ??
+    impianti[0] ??
+    createEmptyChecklistImpiantoDraft();
 
   const isUltraOrPremium =
     saasPiano.startsWith("SAAS-UL") || saasPiano.startsWith("SAAS-PR");
@@ -478,6 +530,49 @@ export default function NuovaChecklistPage() {
       active = false;
     };
   }, [clienteId]);
+
+  useEffect(() => {
+    setTipoStruttura(firstImpianto.tipo_struttura || "");
+    setPasso(firstImpianto.passo || "");
+    setTipoImpianto((firstImpianto.tipo_impianto as "INDOOR" | "OUTDOOR" | "") || "");
+    setImpiantoIndirizzo(firstImpianto.impianto_indirizzo || "");
+    setImpiantoCodice(firstImpianto.impianto_codice || "");
+    setImpiantoDescrizione(firstImpianto.impianto_descrizione || "");
+    setDimensioni(firstImpianto.dimensioni || "");
+    setImpiantoQuantita(
+      Number.isFinite(Number(firstImpianto.impianto_quantita)) && Number(firstImpianto.impianto_quantita) > 0
+        ? Math.floor(Number(firstImpianto.impianto_quantita))
+        : 1
+    );
+    setNumeroFacce(
+      Number.isFinite(Number(firstImpianto.numeroFacce)) && Number(firstImpianto.numeroFacce) > 0
+        ? Math.floor(Number(firstImpianto.numeroFacce))
+        : 1
+    );
+  }, [firstImpianto]);
+
+  function addImpianto() {
+    setImpianti((prev) => [...prev, createEmptyChecklistImpiantoDraft()]);
+  }
+
+  function removeImpianto(index: number) {
+    setImpianti((prev) => {
+      const next = prev.filter((_, currentIndex) => currentIndex !== index);
+      return next.length > 0 ? next : [createEmptyChecklistImpiantoDraft()];
+    });
+  }
+
+  function updateImpianto(
+    index: number,
+    field: keyof ChecklistImpiantoDraft,
+    value: string | number
+  ) {
+    setImpianti((prev) =>
+      prev.map((impianto, currentIndex) =>
+        currentIndex === index ? { ...impianto, [field]: value } : impianto
+      )
+    );
+  }
 
   async function syncClienteReferentiDrafts(targetClienteId: string) {
     const normalizedClienteId = sanitizeUuidForPayload(targetClienteId);
@@ -847,20 +942,52 @@ export default function NuovaChecklistPage() {
           ? dataInstallazioneReale.trim()
           : null,
         noleggio_vendita: noleggioVendita.trim() ? noleggioVendita.trim() : null,
-        tipo_struttura: tipoStruttura.trim() ? tipoStruttura.trim() : null,
-        passo: passo.trim() ? passo.trim() : null,
-        tipo_impianto: tipoImpianto || null,
-        impianto_indirizzo: impiantoIndirizzo.trim() ? impiantoIndirizzo.trim() : null,
-        impianto_codice: impiantoCodice.trim() ? impiantoCodice.trim() : null,
-        impianto_descrizione: impiantoDescrizione.trim() ? impiantoDescrizione.trim() : null,
-        dimensioni: dimensioni.trim() ? dimensioni.trim() : null,
+        tipo_struttura: String(firstImpianto.tipo_struttura || "").trim() || null,
+        passo: String(firstImpianto.passo || "").trim() || null,
+        tipo_impianto: String(firstImpianto.tipo_impianto || "").trim() || null,
+        impianto_indirizzo: String(firstImpianto.impianto_indirizzo || "").trim() || null,
+        impianto_codice: String(firstImpianto.impianto_codice || "").trim() || null,
+        impianto_descrizione: String(firstImpianto.impianto_descrizione || "").trim() || null,
+        dimensioni: String(firstImpianto.dimensioni || "").trim() || null,
         impianto_quantita:
-          Number.isFinite(Number(impiantoQuantita)) && Number(impiantoQuantita) > 0
-            ? Number(impiantoQuantita)
+          Number.isFinite(Number(firstImpianto.impianto_quantita)) &&
+          Number(firstImpianto.impianto_quantita) > 0
+            ? Number(firstImpianto.impianto_quantita)
             : 1,
-        numero_facce: numeroFacce,
-        m2_calcolati: m2Calcolati != null ? m2Calcolati : null,
-        m2_inclusi: m2Calcolati != null ? m2Calcolati : null,
+        numero_facce:
+          Number.isFinite(Number(firstImpianto.numeroFacce)) && Number(firstImpianto.numeroFacce) > 0
+            ? Number(firstImpianto.numeroFacce)
+            : 1,
+        m2_calcolati:
+          (() => {
+            const base = calcM2FromDimensioni(
+              String(firstImpianto.dimensioni || ""),
+              Number.isFinite(Number(firstImpianto.numeroFacce)) && Number(firstImpianto.numeroFacce) > 0
+                ? Number(firstImpianto.numeroFacce)
+                : 1
+            );
+            const qty =
+              Number.isFinite(Number(firstImpianto.impianto_quantita)) &&
+              Number(firstImpianto.impianto_quantita) > 0
+                ? Number(firstImpianto.impianto_quantita)
+                : 1;
+            return base == null ? null : base * qty;
+          })(),
+        m2_inclusi:
+          (() => {
+            const base = calcM2FromDimensioni(
+              String(firstImpianto.dimensioni || ""),
+              Number.isFinite(Number(firstImpianto.numeroFacce)) && Number(firstImpianto.numeroFacce) > 0
+                ? Number(firstImpianto.numeroFacce)
+                : 1
+            );
+            const qty =
+              Number.isFinite(Number(firstImpianto.impianto_quantita)) &&
+              Number(firstImpianto.impianto_quantita) > 0
+                ? Number(firstImpianto.impianto_quantita)
+                : 1;
+            return base == null ? null : base * qty;
+          })(),
         m2_allocati: null,
         garanzia_scadenza: garanziaScadenza.trim() ? garanziaScadenza.trim() : null,
       };
@@ -990,6 +1117,73 @@ export default function NuovaChecklistPage() {
       } catch (err: any) {
         alert(
           `Checklist creata, ma i referenti cliente non sono stati salvati: ${String(
+            err?.message || "errore sconosciuto"
+          )}`
+        );
+      }
+
+      try {
+        const normalizedImpiantiToPersist = impianti
+          .map((impianto) => {
+            const normalized = {
+              nome_impianto: String(impianto.nome_impianto || "").trim() || null,
+              impianto_codice: String(impianto.impianto_codice || "").trim() || null,
+              impianto_descrizione: String(impianto.impianto_descrizione || "").trim() || null,
+              tipo_impianto: String(impianto.tipo_impianto || "").trim() || null,
+              tipo_struttura: String(impianto.tipo_struttura || "").trim() || null,
+              impianto_indirizzo: String(impianto.impianto_indirizzo || "").trim() || null,
+              passo: String(impianto.passo || "").trim() || null,
+              dimensioni: String(impianto.dimensioni || "").trim() || null,
+              nit:
+                String(impianto.nit || "").trim() && Number.isFinite(Number(impianto.nit))
+                  ? Math.max(0, Math.floor(Number(impianto.nit)))
+                  : null,
+              impianto_quantita:
+                Number.isFinite(Number(impianto.impianto_quantita)) &&
+                Number(impianto.impianto_quantita) > 0
+                  ? Math.floor(Number(impianto.impianto_quantita))
+                  : 1,
+              numero_facce:
+                Number.isFinite(Number(impianto.numeroFacce)) && Number(impianto.numeroFacce) > 0
+                  ? Math.floor(Number(impianto.numeroFacce))
+                  : 1,
+              note: String(impianto.note || "").trim() || null,
+            };
+          })
+          .filter((impianto) =>
+            hasChecklistImpiantoDraftData({
+              id: "",
+              nome_impianto: String(impianto.nome_impianto || ""),
+              impianto_codice: String(impianto.impianto_codice || ""),
+              impianto_descrizione: String(impianto.impianto_descrizione || ""),
+              impianto_indirizzo: String(impianto.impianto_indirizzo || ""),
+              dimensioni: String(impianto.dimensioni || ""),
+              passo: String(impianto.passo || ""),
+              nit: impianto.nit == null ? "" : String(impianto.nit),
+              impianto_quantita: Number(impianto.impianto_quantita || 1),
+              numeroFacce: Number(impianto.numero_facce || 1),
+              tipo_impianto: String(impianto.tipo_impianto || ""),
+              tipo_struttura: String(impianto.tipo_struttura || ""),
+              note: String(impianto.note || ""),
+            })
+          );
+
+        const impiantiPayload = normalizedImpiantiToPersist.map((impianto, index) => ({
+          checklist_id: sanitizeUuidForPayload(checklistId),
+          position: index,
+          ...impianto,
+        }));
+
+        if (impiantiPayload.length > 0) {
+          warnPendingPayload("checklist_impianti.insert", impiantiPayload);
+          const { error: impiantiErr } = await dbFrom("checklist_impianti").insert(impiantiPayload);
+          if (impiantiErr) {
+            throw impiantiErr;
+          }
+        }
+      } catch (err: any) {
+        alert(
+          `Checklist creata, ma gli impianti non sono stati salvati: ${String(
             err?.message || "errore sconosciuto"
           )}`
         );
@@ -1658,107 +1852,265 @@ export default function NuovaChecklistPage() {
             </div>
           </div>
 
-          <label>
-            Descrizione impianto (TEC)<br />
-            <select
-              value={getImpiantoSelectValue(impiantoOptions, impiantoCodice, impiantoDescrizione)}
-              onChange={(e) => {
-                const selected = impiantoOptions.find((i) => i.id === e.target.value);
-                setImpiantoCodice(selected?.codice ?? "");
-                setImpiantoDescrizione(selected?.descrizione ?? "");
-              }}
-              style={{ width: "100%", padding: 10 }}
-            >
-              <option value="">— seleziona impianto TEC —</option>
-              {impiantoOptions.map((item) => (
-                <option key={item.id} value={item.id}>
-                  {item.codice ?? "—"} — {item.descrizione ?? "—"}
-                </option>
-              ))}
-            </select>
-          </label>
-
-          <label>
-            Dimensioni<br />
-            <input
-              value={dimensioni}
-              onChange={(e) => setDimensioni(e.target.value)}
-              placeholder="Es. 4x2 o 4,5 x 2,2"
-              style={{ width: "100%", padding: 10 }}
-            />
-          </label>
-          <label>
-            Quantita impianti<br />
-            <input
-              type="number"
-              min={1}
-              step={1}
-              value={impiantoQuantita}
-              onChange={(e) => {
-                const next = Number(e.target.value);
-                setImpiantoQuantita(Number.isFinite(next) && next > 0 ? Math.floor(next) : 1);
-              }}
-              style={{ width: "100%", padding: 10 }}
-            />
-          </label>
-          <label
+          <div
             style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 8,
-              fontSize: 14,
-              marginTop: 26,
+              gridColumn: "1 / -1",
+              border: "1px solid #eee",
+              borderRadius: 12,
+              padding: 12,
+              background: "white",
+              display: "grid",
+              gap: 10,
             }}
           >
-            <input
-              type="checkbox"
-              checked={numeroFacce === 2}
-              onChange={(e) => setNumeroFacce(e.target.checked ? 2 : 1)}
-            />
-            Bifacciale ({numeroFacce} facce)
-          </label>
-
-          <label>
-            Passo<br />
-            <input
-              value={passo}
-              onChange={(e) => setPasso(e.target.value)}
-              style={{ width: "100%", padding: 10 }}
-            />
-          </label>
-
-          <label>
-            m² calcolati<br />
-            <input
-              value={m2Calcolati != null ? m2Calcolati.toFixed(2) : ""}
-              readOnly
-              style={{ width: "100%", padding: 10, background: "#f7f7f7" }}
-            />
-          </label>
-
-          <label>
-            Tipo impianto<br />
-            <select
-              value={tipoImpianto}
-              onChange={(e) => setTipoImpianto(e.target.value as any)}
-              style={{ width: "100%", padding: 10 }}
+            <div
+              style={{
+                display: "flex",
+                flexWrap: "wrap",
+                alignItems: "center",
+                justifyContent: "space-between",
+                gap: 10,
+              }}
             >
-              <option value="">—</option>
-              <option value="INDOOR">INDOOR</option>
-              <option value="OUTDOOR">OUTDOOR</option>
-              <option value="SEMIOUTDOOR">SEMIOUTDOOR</option>
-              <option value="DA DEFINIRE">DA DEFINIRE</option>
-            </select>
-          </label>
-          <label>
-            Indirizzo impianto<br />
-            <input
-              value={impiantoIndirizzo}
-              onChange={(e) => setImpiantoIndirizzo(e.target.value)}
-              placeholder="Es. Via Roma 10, Milano"
-              style={{ width: "100%", padding: 10 }}
-            />
-          </label>
+              <div style={{ fontWeight: 800 }}>IMPIANTI</div>
+              <button
+                type="button"
+                onClick={addImpianto}
+                style={{
+                  padding: "8px 12px",
+                  borderRadius: 10,
+                  border: "1px solid #d1d5db",
+                  background: "white",
+                  cursor: "pointer",
+                  fontSize: 13,
+                  fontWeight: 700,
+                }}
+              >
+                + Aggiungi impianto
+              </button>
+            </div>
+
+            {impianti.map((impianto, index) => {
+              const m2Impianto = (() => {
+                const base = calcM2FromDimensioni(impianto.dimensioni, impianto.numeroFacce);
+                const qty =
+                  Number.isFinite(Number(impianto.impianto_quantita)) &&
+                  Number(impianto.impianto_quantita) > 0
+                    ? Number(impianto.impianto_quantita)
+                    : 1;
+                return base == null ? null : base * qty;
+              })();
+
+              return (
+                <div
+                  key={impianto.id || index}
+                  style={{
+                    border: "1px solid #eee",
+                    borderRadius: 10,
+                    padding: 12,
+                    background: "#fafafa",
+                    display: "grid",
+                    gap: 10,
+                  }}
+                >
+                  <div
+                    style={{
+                      display: "flex",
+                      flexWrap: "wrap",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      gap: 10,
+                    }}
+                  >
+                    <div style={{ fontWeight: 700 }}>
+                      {String(impianto.nome_impianto || "").trim() || `Impianto #${index + 1}`}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => removeImpianto(index)}
+                      style={{
+                        padding: "6px 10px",
+                        borderRadius: 8,
+                        border: "1px solid #fecaca",
+                        background: "#fff1f2",
+                        color: "#b91c1c",
+                        cursor: "pointer",
+                        fontSize: 12,
+                        fontWeight: 700,
+                      }}
+                    >
+                      Rimuovi
+                    </button>
+                  </div>
+
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+                      gap: 10,
+                    }}
+                  >
+                    <label style={{ display: "grid", gap: 6, fontSize: 13, gridColumn: "1 / -1" }}>
+                      <span>Nome impianto</span>
+                      <input
+                        value={String(impianto.nome_impianto || "")}
+                        placeholder={`Impianto #${index + 1}`}
+                        onChange={(e) => updateImpianto(index, "nome_impianto", e.target.value)}
+                        style={{ width: "100%", padding: 10 }}
+                      />
+                    </label>
+
+                    <label style={{ display: "grid", gap: 6, fontSize: 13, gridColumn: "1 / -1" }}>
+                      <span>Descrizione impianto (TEC)</span>
+                      <select
+                        value={getImpiantoSelectValue(impiantoOptions, impianto.impianto_codice, impianto.impianto_descrizione)}
+                        onChange={(e) => {
+                          const selected = impiantoOptions.find((item) => item.id === e.target.value);
+                          updateImpianto(index, "impianto_codice", selected?.codice ?? "");
+                          updateImpianto(index, "impianto_descrizione", selected?.descrizione ?? "");
+                        }}
+                        style={{ width: "100%", padding: 10 }}
+                      >
+                        <option value="">— seleziona impianto TEC —</option>
+                        {impiantoOptions.map((item) => (
+                          <option key={item.id} value={item.id}>
+                            {item.codice ?? "—"} — {item.descrizione ?? "—"}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+
+                    <label style={{ display: "grid", gap: 6, fontSize: 13, gridColumn: "1 / -1" }}>
+                      <span>Indirizzo impianto</span>
+                      <input
+                        value={String(impianto.impianto_indirizzo || "")}
+                        onChange={(e) => updateImpianto(index, "impianto_indirizzo", e.target.value)}
+                        placeholder="Es. Via Roma 10, Milano"
+                        style={{ width: "100%", padding: 10 }}
+                      />
+                    </label>
+
+                    <label style={{ display: "grid", gap: 6, fontSize: 13 }}>
+                      <span>Quantità</span>
+                      <input
+                        type="number"
+                        min={1}
+                        step={1}
+                        value={impianto.impianto_quantita}
+                        onChange={(e) => {
+                          const next = Number(e.target.value);
+                          updateImpianto(
+                            index,
+                            "impianto_quantita",
+                            Number.isFinite(next) && next > 0 ? Math.floor(next) : 1
+                          );
+                        }}
+                        style={{ width: "100%", padding: 10 }}
+                      />
+                    </label>
+
+                    <label style={{ display: "grid", gap: 6, fontSize: 13 }}>
+                      <span>Dimensioni</span>
+                      <input
+                        value={String(impianto.dimensioni || "")}
+                        onChange={(e) => updateImpianto(index, "dimensioni", e.target.value)}
+                        placeholder="Es. 4x2 o 4,5 x 2,2"
+                        style={{ width: "100%", padding: 10 }}
+                      />
+                    </label>
+
+                    <label style={{ display: "grid", gap: 6, fontSize: 13 }}>
+                      <span>Passo</span>
+                      <input
+                        value={String(impianto.passo || "")}
+                        onChange={(e) => updateImpianto(index, "passo", e.target.value)}
+                        style={{ width: "100%", padding: 10 }}
+                      />
+                    </label>
+
+                    <label style={{ display: "grid", gap: 6, fontSize: 13 }}>
+                      <span>NIT (luminosità)</span>
+                      <input
+                        type="number"
+                        min={0}
+                        step={1}
+                        value={String(impianto.nit || "")}
+                        onChange={(e) => updateImpianto(index, "nit", e.target.value)}
+                        placeholder="es. 6500"
+                        style={{ width: "100%", padding: 10 }}
+                      />
+                    </label>
+
+                    <label style={{ display: "grid", gap: 6, fontSize: 13 }}>
+                      <span>Tipo</span>
+                      <select
+                        value={String(impianto.tipo_impianto || "")}
+                        onChange={(e) => updateImpianto(index, "tipo_impianto", e.target.value)}
+                        style={{ width: "100%", padding: 10 }}
+                      >
+                        <option value="">—</option>
+                        <option value="INDOOR">INDOOR</option>
+                        <option value="OUTDOOR">OUTDOOR</option>
+                        <option value="SEMIOUTDOOR">SEMIOUTDOOR</option>
+                        <option value="DA DEFINIRE">DA DEFINIRE</option>
+                      </select>
+                    </label>
+
+                    <label style={{ display: "grid", gap: 6, fontSize: 13 }}>
+                      <span>Tipo struttura</span>
+                      <select
+                        value={String(impianto.tipo_struttura || "")}
+                        onChange={(e) => updateImpianto(index, "tipo_struttura", e.target.value)}
+                        style={{ width: "100%", padding: 10 }}
+                      >
+                        <option value="">—</option>
+                        {strutturaOptions.map((item) => (
+                          <option key={item.id} value={item.codice ?? ""}>
+                            {item.codice} — {item.descrizione}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+
+                    <label style={{ display: "grid", gap: 6, fontSize: 13 }}>
+                      <span>m² calcolati</span>
+                      <input
+                        value={m2Impianto != null ? m2Impianto.toFixed(2) : ""}
+                        readOnly
+                        style={{ width: "100%", padding: 10, background: "#f7f7f7" }}
+                      />
+                    </label>
+
+                    <label
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 8,
+                        fontSize: 14,
+                        marginTop: 26,
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={impianto.numeroFacce === 2}
+                        onChange={(e) => updateImpianto(index, "numeroFacce", e.target.checked ? 2 : 1)}
+                      />
+                      Bifacciale ({impianto.numeroFacce} facce)
+                    </label>
+
+                    <label style={{ display: "grid", gap: 6, fontSize: 13, gridColumn: "1 / -1" }}>
+                      <span>Note</span>
+                      <input
+                        value={String(impianto.note || "")}
+                        onChange={(e) => updateImpianto(index, "note", e.target.value)}
+                        style={{ width: "100%", padding: 10 }}
+                      />
+                    </label>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
 
           <label>
             Data installazione prevista<br />
