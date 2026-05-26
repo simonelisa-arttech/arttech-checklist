@@ -133,6 +133,7 @@ type ChecklistImpianto = {
   id?: string;
   checklist_id?: string | null;
   position?: number | null;
+  nome_impianto?: string | null;
   impianto_codice?: string | null;
   impianto_descrizione?: string | null;
   tipo_impianto?: string | null;
@@ -468,6 +469,7 @@ function getChecklistImpiantoTipoValue(value: unknown) {
 
 function formatChecklistImpiantoLabel(impianto: ChecklistImpianto, index: number) {
   const position = Number.isFinite(Number(impianto.position)) ? Number(impianto.position) + 1 : index + 1;
+  const title = String(impianto.nome_impianto || "").trim() || `Impianto #${position}`;
   const quantita =
     Number.isFinite(Number(impianto.impianto_quantita)) && Number(impianto.impianto_quantita) > 0
       ? `${Math.floor(Number(impianto.impianto_quantita))}x`
@@ -481,7 +483,7 @@ function formatChecklistImpiantoLabel(impianto: ChecklistImpianto, index: number
       ? `${Math.floor(Number(impianto.nit))} nit`
       : null;
   const parts = [quantita, dimensioni, passo, tipo, nit].filter(Boolean);
-  return parts.length > 0 ? `Impianto #${position} — ${parts.join(" • ")}` : `Impianto #${position}`;
+  return parts.length > 0 ? `${title} — ${parts.join(" • ")}` : title;
 }
 
 function formatImpiantoPasso(value?: string | null) {
@@ -502,6 +504,7 @@ function normalizeChecklistImpianto(value: unknown, checklistId?: string | null)
     ...(id ? { id } : { id: buildClientTempId("impianto") }),
     checklist_id: String(row.checklist_id || checklistId || "").trim() || null,
     position: Number.isFinite(Number(row.position)) ? Number(row.position) : null,
+    nome_impianto: String(row.nome_impianto || "").trim() || null,
     impianto_codice: String(row.impianto_codice || "").trim() || null,
     impianto_descrizione: String(row.impianto_descrizione || "").trim() || null,
     tipo_impianto: getChecklistImpiantoTipoValue(row),
@@ -538,6 +541,7 @@ function getFirstImpiantoTipoStruttura(impianti?: ChecklistImpianto[] | null) {
 function buildEmptyChecklistImpianto(): ChecklistImpianto {
   return {
     id: buildClientTempId("impianto"),
+    nome_impianto: "",
     impianto_quantita: 1,
     dimensioni: "",
     passo: "",
@@ -2321,6 +2325,8 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
   const [projectRenewalEditSaving, setProjectRenewalEditSaving] = useState(false);
   const [projectInterventiError, setProjectInterventiError] = useState<string | null>(null);
   const [projectInterventiNotice, setProjectInterventiNotice] = useState<string | null>(null);
+  const [impiantiSaving, setImpiantiSaving] = useState(false);
+  const [impiantiNotice, setImpiantiNotice] = useState<string | null>(null);
   const [projectAlertStatsMap, setProjectAlertStatsMap] = useState<Map<string, AlertStats>>(new Map());
   const [projectRinnoviAlertOpen, setProjectRinnoviAlertOpen] = useState(false);
   const [projectRinnoviAlertStage, setProjectRinnoviAlertStage] = useState<"stage1" | "stage2">("stage1");
@@ -2478,6 +2484,7 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
             {
               id: "legacy-overview",
               position: 0,
+              nome_impianto: "",
               impianto_quantita:
                 Number.isFinite(Number(checklist?.impianto_quantita)) &&
                 Number(checklist?.impianto_quantita) > 0
@@ -2503,6 +2510,7 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
       return {
         key: String(impianto.id || `impianto-overview-${index}`),
         position,
+        title: String(impianto.nome_impianto || "").trim() || `Impianto #${position}`,
         summary: [quantita, dimensioni, passo, tipo].filter(Boolean).join(" • ") || "Impianto da completare",
       };
     });
@@ -3142,6 +3150,7 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
       setCabinetPendingFiles({});
       setCabinetPanelsOpen({});
       setCabinetError(null);
+      setImpiantiNotice(null);
       return;
     }
     setPersistedInterventoImpianti([]);
@@ -3149,6 +3158,7 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
     setCabinetPendingFiles({});
     setCabinetPanelsOpen({});
     setCabinetError(null);
+    setImpiantiNotice(null);
   }, [checklist]);
 
   useEffect(() => {
@@ -3212,7 +3222,7 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
   async function loadPersistedInterventoImpianti(checklistId: string) {
     const { data, error } = await dbFrom("checklist_impianti")
       .select(
-        "id, checklist_id, position, impianto_codice, impianto_descrizione, tipo_impianto, tipo_struttura, impianto_indirizzo, passo, dimensioni, nit, impianto_quantita, numero_facce, m2_calcolati, data_disinstallazione, note"
+        "id, checklist_id, position, nome_impianto, impianto_codice, impianto_descrizione, tipo_impianto, tipo_struttura, impianto_indirizzo, passo, dimensioni, nit, impianto_quantita, numero_facce, m2_calcolati, data_disinstallazione, note"
       )
       .eq("checklist_id", checklistId)
       .order("position", { ascending: true });
@@ -5435,7 +5445,7 @@ function buildFormData(c: Checklist): FormData {
       table: "checklist_impianti",
       op: "select",
       select:
-        "id, checklist_id, position, impianto_codice, impianto_descrizione, tipo_impianto, tipo_struttura, impianto_indirizzo, passo, dimensioni, nit, impianto_quantita, numero_facce, m2_calcolati, data_disinstallazione, note",
+        "id, checklist_id, position, nome_impianto, impianto_codice, impianto_descrizione, tipo_impianto, tipo_struttura, impianto_indirizzo, passo, dimensioni, nit, impianto_quantita, numero_facce, m2_calcolati, data_disinstallazione, note",
       filter: { checklist_id: id },
       order: [{ col: "position", asc: true }],
     }));
@@ -5450,7 +5460,7 @@ function buildFormData(c: Checklist): FormData {
         table: "checklist_impianti",
         op: "select",
         select:
-          "id, checklist_id, position, impianto_codice, impianto_descrizione, tipo_impianto, tipo_struttura, impianto_indirizzo, passo, dimensioni, nit, impianto_quantita, numero_facce, m2_calcolati, note",
+          "id, checklist_id, position, nome_impianto, impianto_codice, impianto_descrizione, tipo_impianto, tipo_struttura, impianto_indirizzo, passo, dimensioni, nit, impianto_quantita, numero_facce, m2_calcolati, note",
         filter: { checklist_id: id },
         order: [{ col: "position", asc: true }],
       }));
@@ -6484,10 +6494,12 @@ function buildFormData(c: Checklist): FormData {
   }
 
   function addImpianto() {
+    setImpiantiNotice(null);
     setImpianti((prev) => [...prev, buildEmptyChecklistImpianto()]);
   }
 
   function removeImpianto(index: number) {
+    setImpiantiNotice(null);
     const impianto = impianti[index];
     if (impianto) {
       const impiantoKey = getImpiantoEditorKey(impianto, index);
@@ -6516,6 +6528,7 @@ function buildFormData(c: Checklist): FormData {
     field: keyof ChecklistImpianto,
     value: string | number | null
   ) {
+    setImpiantiNotice(null);
     setImpianti((prev) =>
       prev.map((impianto, idx) => (idx === index ? { ...impianto, [field]: value } : impianto))
     );
@@ -6649,6 +6662,7 @@ function buildFormData(c: Checklist): FormData {
 
         const normalizedImpianto = {
           source_id: !isClientTempId(imp.id) ? String(imp.id || "").trim() || null : null,
+          nome_impianto: String(imp.nome_impianto || "").trim() || null,
           impianto_descrizione: String(imp.impianto_descrizione || "").trim() || null,
           tipo_impianto: getChecklistImpiantoTipoValue(imp),
           tipo_struttura: String(imp.tipo_struttura || "").trim() || null,
@@ -6673,6 +6687,7 @@ function buildFormData(c: Checklist): FormData {
         };
 
         const hasBaseData = [
+          normalizedImpianto.nome_impianto,
           normalizedImpianto.impianto_descrizione,
           normalizedImpianto.tipo_impianto,
           normalizedImpianto.tipo_struttura,
@@ -6757,6 +6772,7 @@ function buildFormData(c: Checklist): FormData {
     const payload = normalizedImpianti.map((imp, index) => ({
       checklist_id: checklistId,
       position: index,
+      nome_impianto: imp?.nome_impianto ?? null,
       impianto_descrizione: imp?.impianto_descrizione ?? null,
       tipo_impianto: imp?.tipo_impianto ?? null,
       tipo_struttura: imp?.tipo_struttura ?? null,
@@ -6779,7 +6795,7 @@ function buildFormData(c: Checklist): FormData {
     } = await dbFrom("checklist_impianti")
       .insert(payload)
       .select(
-        "id, checklist_id, position, impianto_codice, impianto_descrizione, tipo_impianto, tipo_struttura, impianto_indirizzo, passo, dimensioni, nit, impianto_quantita, numero_facce, m2_calcolati, data_disinstallazione, note"
+        "id, checklist_id, position, nome_impianto, impianto_codice, impianto_descrizione, tipo_impianto, tipo_struttura, impianto_indirizzo, passo, dimensioni, nit, impianto_quantita, numero_facce, m2_calcolati, data_disinstallazione, note"
       ));
     if (
       insertErr &&
@@ -6792,7 +6808,7 @@ function buildFormData(c: Checklist): FormData {
       } = await dbFrom("checklist_impianti")
         .insert(legacyPayload)
         .select(
-          "id, checklist_id, position, impianto_codice, impianto_descrizione, tipo_impianto, tipo_struttura, impianto_indirizzo, passo, dimensioni, nit, impianto_quantita, numero_facce, m2_calcolati, note"
+          "id, checklist_id, position, nome_impianto, impianto_codice, impianto_descrizione, tipo_impianto, tipo_struttura, impianto_indirizzo, passo, dimensioni, nit, impianto_quantita, numero_facce, m2_calcolati, note"
         ));
     }
     if (insertErr) {
@@ -6901,6 +6917,50 @@ function buildFormData(c: Checklist): FormData {
       ...imp,
       cabinet_configurazioni: cabinetByImpiantoId.get(String(imp.id || "").trim()) || [],
     }));
+  }
+
+  function applySavedImpiantiState(savedImpianti: ChecklistImpianto[]) {
+    const nextImpianti = savedImpianti.length > 0 ? savedImpianti : [buildEmptyChecklistImpianto()];
+    const nextTipoStruttura = getFirstImpiantoTipoStruttura(nextImpianti);
+    setPersistedInterventoImpianti(
+      nextImpianti.filter((impianto) => isRealUuid(String(impianto.id || "").trim()))
+    );
+    setImpianti(nextImpianti);
+    setFormData((prev) =>
+      prev
+        ? {
+            ...prev,
+            tipo_struttura: nextTipoStruttura || "",
+          }
+        : prev
+    );
+    setChecklist((prev) =>
+      prev
+        ? {
+            ...prev,
+            impianti: nextImpianti,
+            tipo_impianto: getChecklistImpiantoTipoValue(nextImpianti[0]) ?? prev.tipo_impianto,
+            tipo_struttura: nextTipoStruttura ?? prev.tipo_struttura,
+          }
+        : prev
+    );
+  }
+
+  async function saveOnlyImpianti() {
+    if (!id) return;
+    setImpiantiSaving(true);
+    setCabinetError(null);
+    setImpiantiNotice(null);
+    try {
+      const savedImpianti = await salvaImpianti(id);
+      applySavedImpiantiState(savedImpianti);
+      setImpiantiNotice("Impianti salvati.");
+      showToast("Impianti salvati.");
+    } catch (err: any) {
+      setCabinetError(String(err?.message || err || "Errore salvataggio impianti checklist"));
+    } finally {
+      setImpiantiSaving(false);
+    }
   }
 
   const serialiControllo = assetSerials.filter((s) => s.tipo === "CONTROLLO");
@@ -8330,30 +8390,7 @@ function buildFormData(c: Checklist): FormData {
     }
 
     if (savedImpianti) {
-      const nextImpianti = savedImpianti.length > 0 ? savedImpianti : [buildEmptyChecklistImpianto()];
-      const nextTipoStruttura = getFirstImpiantoTipoStruttura(nextImpianti);
-      setPersistedInterventoImpianti(
-        nextImpianti.filter((impianto) => isRealUuid(String(impianto.id || "").trim()))
-      );
-      setImpianti(nextImpianti);
-      setFormData((prev) =>
-        prev
-          ? {
-              ...prev,
-              tipo_struttura: nextTipoStruttura || "",
-            }
-          : prev
-      );
-      setChecklist((prev) =>
-        prev
-          ? {
-              ...prev,
-              impianti: nextImpianti,
-              tipo_impianto: getChecklistImpiantoTipoValue(nextImpianti[0]) ?? prev.tipo_impianto,
-              tipo_struttura: nextTipoStruttura ?? prev.tipo_struttura,
-            }
-          : prev
-      );
+      applySavedImpiantiState(savedImpianti);
     }
 
     const disinstallazioneSyncDate = String(
@@ -10114,9 +10151,7 @@ function buildFormData(c: Checklist): FormData {
                         gap: 4,
                       }}
                     >
-                      <div style={{ fontSize: 13, fontWeight: 800, color: "#111827" }}>
-                        Impianto #{entry.position}
-                      </div>
+                      <div style={{ fontSize: 13, fontWeight: 800, color: "#111827" }}>{entry.title}</div>
                       <div style={{ fontSize: 13, color: "#374151", lineHeight: 1.45 }}>
                         {entry.summary}
                       </div>
@@ -10929,22 +10964,59 @@ function buildFormData(c: Checklist): FormData {
             }}
           >
             <div style={{ fontWeight: 800 }}>IMPIANTI</div>
-            <button
-              type="button"
-              onClick={addImpianto}
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+              {editMode && id ? (
+                <button
+                  type="button"
+                  onClick={() => void saveOnlyImpianti()}
+                  disabled={impiantiSaving}
+                  style={{
+                    padding: "8px 12px",
+                    borderRadius: 10,
+                    border: "1px solid #111827",
+                    background: "#111827",
+                    color: "white",
+                    cursor: impiantiSaving ? "wait" : "pointer",
+                    fontSize: 13,
+                    fontWeight: 700,
+                    opacity: impiantiSaving ? 0.7 : 1,
+                  }}
+                >
+                  {impiantiSaving ? "Salvataggio..." : "Salva impianti"}
+                </button>
+              ) : null}
+              <button
+                type="button"
+                onClick={addImpianto}
+                style={{
+                  padding: "8px 12px",
+                  borderRadius: 10,
+                  border: "1px solid #d1d5db",
+                  background: "white",
+                  cursor: "pointer",
+                  fontSize: 13,
+                  fontWeight: 700,
+                }}
+              >
+                + Aggiungi impianto
+              </button>
+            </div>
+          </div>
+
+          {impiantiNotice ? (
+            <div
               style={{
-                padding: "8px 12px",
-                borderRadius: 10,
-                border: "1px solid #d1d5db",
-                background: "white",
-                cursor: "pointer",
-                fontSize: 13,
-                fontWeight: 700,
+                color: "#166534",
+                fontSize: 12,
+                padding: "8px 10px",
+                borderRadius: 8,
+                background: "#f0fdf4",
+                border: "1px solid #bbf7d0",
               }}
             >
-              + Aggiungi impianto
-            </button>
-          </div>
+              {impiantiNotice}
+            </div>
+          ) : null}
 
           {cabinetError ? (
             <div
@@ -10986,7 +11058,9 @@ function buildFormData(c: Checklist): FormData {
                     gap: 10,
                   }}
                 >
-                  <div style={{ fontWeight: 700 }}>Impianto #{index + 1}</div>
+                  <div style={{ fontWeight: 700 }}>
+                    {String(imp.nome_impianto || "").trim() || `Impianto #${index + 1}`}
+                  </div>
                   <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
                     <button
                       type="button"
@@ -11030,6 +11104,16 @@ function buildFormData(c: Checklist): FormData {
                     gap: 10,
                   }}
                 >
+                  <label style={{ display: "grid", gap: 6, fontSize: 13, gridColumn: "1 / -1" }}>
+                    <span>Nome impianto</span>
+                    <input
+                      value={String(imp.nome_impianto || "")}
+                      placeholder={`Impianto #${index + 1}`}
+                      onChange={(e) => updateImpianto(index, "nome_impianto", e.target.value)}
+                      style={{ width: "100%", padding: 10 }}
+                    />
+                  </label>
+
                   <label style={{ display: "grid", gap: 6, fontSize: 13 }}>
                     <span>Quantità</span>
                     <input
