@@ -10965,7 +10965,7 @@ function buildFormData(c: Checklist): FormData {
           >
             <div style={{ fontWeight: 800 }}>IMPIANTI</div>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-              {editMode && id ? (
+              {id ? (
                 <button
                   type="button"
                   onClick={() => void saveOnlyImpianti()}
@@ -11110,6 +11110,16 @@ function buildFormData(c: Checklist): FormData {
                       value={String(imp.nome_impianto || "")}
                       placeholder={`Impianto #${index + 1}`}
                       onChange={(e) => updateImpianto(index, "nome_impianto", e.target.value)}
+                      style={{ width: "100%", padding: 10 }}
+                    />
+                  </label>
+
+                  <label style={{ display: "grid", gap: 6, fontSize: 13, gridColumn: "1 / -1" }}>
+                    <span>Indirizzo impianto</span>
+                    <input
+                      value={String(imp.impianto_indirizzo || "")}
+                      placeholder="Via, civico, localita"
+                      onChange={(e) => updateImpianto(index, "impianto_indirizzo", e.target.value)}
                       style={{ width: "100%", padding: 10 }}
                     />
                   </label>
