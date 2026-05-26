@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { type CSSProperties, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import ConfigMancante from "@/components/ConfigMancante";
@@ -110,8 +110,8 @@ function hasChecklistImpiantoDraftData(value: ChecklistImpiantoDraft | null | un
     Number.isFinite(Number(value.impianto_quantita)) && Number(value.impianto_quantita) > 1
       ? String(value.impianto_quantita)
       : "",
-    Number.isFinite(Number(value.numeroFacce)) && Number(value.numeroFacce) > 1
-      ? String(value.numeroFacce)
+    Number.isFinite(Number(value.numero_facce)) && Number(value.numero_facce) > 1
+      ? String(value.numero_facce)
       : "",
   ].some((entry) => String(entry || "").trim() !== "");
 }
@@ -266,6 +266,12 @@ function getImpiantoSelectValue(
   if (exact?.id) return exact.id;
   const byCode = options.find((i) => String(i.codice || "").trim() === code);
   return byCode?.id || "";
+}
+
+function formatNuovaChecklistImpiantoPasso(value?: string | null) {
+  const raw = String(value || "").trim();
+  if (!raw) return null;
+  return raw.toUpperCase().startsWith("P") ? raw : `P${raw}`;
 }
 
 function isRealUuid(value?: string | null) {
@@ -432,6 +438,31 @@ export default function NuovaChecklistPage() {
     impianti.find((impianto) => hasChecklistImpiantoDraftData(impianto)) ??
     impianti[0] ??
     createEmptyChecklistImpiantoDraft();
+  const impiantiOverviewList = useMemo(() => {
+    const sourceImpianti =
+      impianti.filter((impianto) => hasChecklistImpiantoDraftData(impianto)).length > 0
+        ? impianti.filter((impianto) => hasChecklistImpiantoDraftData(impianto))
+        : [firstImpianto];
+
+    return sourceImpianti.map((impianto, index) => {
+      const position = index + 1;
+      const quantita =
+        Number.isFinite(Number(impianto.impianto_quantita)) &&
+        Number(impianto.impianto_quantita) > 0
+          ? `${Math.floor(Number(impianto.impianto_quantita))}x`
+          : null;
+      const dimensioni = String(impianto.dimensioni || "").trim() || null;
+      const passo = formatNuovaChecklistImpiantoPasso(impianto.passo);
+      const tipo = String(impianto.tipo_impianto || "").trim() || null;
+      return {
+        key: String(impianto.id || `nuova-impianto-overview-${index}`),
+        title: String(impianto.nome_impianto || "").trim() || `Impianto #${position}`,
+        summary:
+          [quantita, dimensioni, passo, tipo].filter(Boolean).join(" • ") ||
+          "Impianto da completare",
+      };
+    });
+  }, [firstImpianto, impianti]);
 
   const isUltraOrPremium =
     saasPiano.startsWith("SAAS-UL") || saasPiano.startsWith("SAAS-PR");
@@ -545,8 +576,8 @@ export default function NuovaChecklistPage() {
         : 1
     );
     setNumeroFacce(
-      Number.isFinite(Number(firstImpianto.numeroFacce)) && Number(firstImpianto.numeroFacce) > 0
-        ? Math.floor(Number(firstImpianto.numeroFacce))
+      Number.isFinite(Number(firstImpianto.numero_facce)) && Number(firstImpianto.numero_facce) > 0
+        ? Math.floor(Number(firstImpianto.numero_facce))
         : 1
     );
   }, [firstImpianto]);
@@ -955,15 +986,15 @@ export default function NuovaChecklistPage() {
             ? Number(firstImpianto.impianto_quantita)
             : 1,
         numero_facce:
-          Number.isFinite(Number(firstImpianto.numeroFacce)) && Number(firstImpianto.numeroFacce) > 0
-            ? Number(firstImpianto.numeroFacce)
+          Number.isFinite(Number(firstImpianto.numero_facce)) && Number(firstImpianto.numero_facce) > 0
+            ? Number(firstImpianto.numero_facce)
             : 1,
         m2_calcolati:
           (() => {
             const base = calcM2FromDimensioni(
               String(firstImpianto.dimensioni || ""),
-              Number.isFinite(Number(firstImpianto.numeroFacce)) && Number(firstImpianto.numeroFacce) > 0
-                ? Number(firstImpianto.numeroFacce)
+              Number.isFinite(Number(firstImpianto.numero_facce)) && Number(firstImpianto.numero_facce) > 0
+                ? Number(firstImpianto.numero_facce)
                 : 1
             );
             const qty =
@@ -977,8 +1008,8 @@ export default function NuovaChecklistPage() {
           (() => {
             const base = calcM2FromDimensioni(
               String(firstImpianto.dimensioni || ""),
-              Number.isFinite(Number(firstImpianto.numeroFacce)) && Number(firstImpianto.numeroFacce) > 0
-                ? Number(firstImpianto.numeroFacce)
+              Number.isFinite(Number(firstImpianto.numero_facce)) && Number(firstImpianto.numero_facce) > 0
+                ? Number(firstImpianto.numero_facce)
                 : 1
             );
             const qty =
@@ -1144,11 +1175,12 @@ export default function NuovaChecklistPage() {
                   ? Math.floor(Number(impianto.impianto_quantita))
                   : 1,
               numero_facce:
-                Number.isFinite(Number(impianto.numeroFacce)) && Number(impianto.numeroFacce) > 0
-                  ? Math.floor(Number(impianto.numeroFacce))
+                Number.isFinite(Number(impianto.numero_facce)) && Number(impianto.numero_facce) > 0
+                  ? Math.floor(Number(impianto.numero_facce))
                   : 1,
               note: String(impianto.note || "").trim() || null,
             };
+            return normalized;
           })
           .filter((impianto) =>
             hasChecklistImpiantoDraftData({
@@ -1161,7 +1193,7 @@ export default function NuovaChecklistPage() {
               passo: String(impianto.passo || ""),
               nit: impianto.nit == null ? "" : String(impianto.nit),
               impianto_quantita: Number(impianto.impianto_quantita || 1),
-              numeroFacce: Number(impianto.numero_facce || 1),
+              numero_facce: Number(impianto.numero_facce || 1),
               tipo_impianto: String(impianto.tipo_impianto || ""),
               tipo_struttura: String(impianto.tipo_struttura || ""),
               note: String(impianto.note || ""),
@@ -1363,6 +1395,28 @@ export default function NuovaChecklistPage() {
     }
   }
 
+  const createSectionLinks = [
+    { id: "section-progetto", label: "Progetto" },
+    { id: "section-impianti", label: "Impianti" },
+    { id: "section-pianificazione-saas", label: "Pianificazione / SAAS" },
+    { id: "section-seriali", label: "Seriali" },
+    { id: "section-allegati", label: "Allegati" },
+    { id: "section-licenze", label: "Licenze" },
+    { id: "section-accessori", label: "Accessori / Ricambi" },
+  ] as const;
+
+  function openCreateSection(sectionId: (typeof createSectionLinks)[number]["id"]) {
+    const node = document.getElementById(sectionId);
+    if (node) node.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  const sectionCardStyle: CSSProperties = {
+    border: "1px solid #eee",
+    borderRadius: 12,
+    padding: 12,
+    background: "white",
+  };
+
   return (
     <div style={{ maxWidth: 1100, margin: "40px auto", padding: 16 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
@@ -1372,13 +1426,66 @@ export default function NuovaChecklistPage() {
         </div>
       </div>
 
+      <div style={{ display: "flex", gap: 10, marginTop: 12, marginBottom: 10 }}>
+        <button
+          type="button"
+          onClick={onCreate}
+          disabled={!canCreate || creating}
+          style={{
+            marginLeft: "auto",
+            padding: "8px 12px",
+            borderRadius: 10,
+            border: "1px solid #111",
+            cursor: canCreate && !creating ? "pointer" : "not-allowed",
+            background: "#111",
+            color: "white",
+            opacity: canCreate && !creating ? 1 : 0.5,
+            fontWeight: 700,
+          }}
+        >
+          {creating ? "Creazione..." : "Crea"}
+        </button>
+      </div>
+
+      <div
+        style={{
+          display: "flex",
+          gap: 8,
+          flexWrap: "nowrap",
+          overflowX: "auto",
+          paddingBottom: 4,
+          marginBottom: 14,
+          scrollbarWidth: "thin",
+        }}
+      >
+        {createSectionLinks.map((section) => (
+          <button
+            key={section.id}
+            type="button"
+            onClick={() => openCreateSection(section.id)}
+            style={{
+              padding: "7px 12px",
+              borderRadius: 999,
+              border: "1px solid #e5e7eb",
+              background: "white",
+              cursor: "pointer",
+              whiteSpace: "nowrap",
+              fontSize: 13,
+              fontWeight: 700,
+              color: "#374151",
+              flex: "0 0 auto",
+            }}
+          >
+            {section.label}
+          </button>
+        ))}
+      </div>
+
       <div
         style={{
           marginTop: 16,
-          padding: 16,
-          borderRadius: 14,
-          border: "1px solid #eee",
-          background: "#fff",
+          display: "grid",
+          gap: 12,
         }}
       >
         <div
@@ -1388,6 +1495,15 @@ export default function NuovaChecklistPage() {
             gap: 12,
           }}
         >
+          <div id="section-progetto" style={sectionCardStyle}>
+            <div style={{ fontWeight: 800, marginBottom: 6 }}>PROGETTO</div>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr",
+                gap: 12,
+              }}
+            >
           <label>
             Cliente*<br />
             <ClientiCombobox
@@ -1653,15 +1769,80 @@ export default function NuovaChecklistPage() {
             </label>
           </div>
 
+            </div>
+          </div>
+
+          <div style={sectionCardStyle}>
+            <div style={{ fontWeight: 800, marginBottom: 6 }}>IMPIANTO</div>
+            <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 10 }}>
+              Riepilogo compatto collegato al dettaglio IMPIANTI
+            </div>
+            <div style={{ display: "grid", gap: 8 }}>
+              {impiantiOverviewList.map((entry) => (
+                <button
+                  key={entry.key}
+                  type="button"
+                  onClick={() => openCreateSection("section-impianti")}
+                  style={{
+                    textAlign: "left",
+                    border: "1px solid #e5e7eb",
+                    borderRadius: 10,
+                    padding: "10px 12px",
+                    background: "#fafafa",
+                    cursor: "pointer",
+                    display: "grid",
+                    gap: 4,
+                  }}
+                >
+                  <div style={{ fontWeight: 700 }}>{entry.title}</div>
+                  <div style={{ fontSize: 13, color: "#4b5563" }}>{entry.summary}</div>
+                </button>
+              ))}
+            </div>
+            <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
+              <div style={{ display: "grid", gap: 4 }}>
+                <div style={{ fontSize: 12, opacity: 0.7, fontWeight: 700 }}>
+                  Data installazione prevista
+                </div>
+                <div>{dataPrevista || "—"}</div>
+              </div>
+              <div style={{ display: "grid", gap: 4 }}>
+                <div style={{ fontSize: 12, opacity: 0.7, fontWeight: 700 }}>Data tassativa</div>
+                <div>{dataTassativa || "—"}</div>
+              </div>
+              <div style={{ display: "grid", gap: 4 }}>
+                <div style={{ fontSize: 12, opacity: 0.7, fontWeight: 700 }}>
+                  Data installazione reale
+                </div>
+                <div>{dataInstallazioneReale || "—"}</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div
+          id="section-seriali"
+          style={{
+            display: "grid",
+            gridTemplateColumns: "1fr 1fr",
+            gap: 12,
+          }}
+        >
           <div
             style={{
-              gridColumn: "1 / -1",
+              ...sectionCardStyle,
               display: "grid",
-              gridTemplateColumns: "1fr 1fr",
-              gap: 12,
-              marginTop: 6,
+              gap: 10,
             }}
           >
+            <div style={{ fontWeight: 800 }}>SERIALI</div>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr",
+                gap: 12,
+              }}
+            >
             <div style={{ border: "1px solid #eee", borderRadius: 10, padding: 10 }}>
               <div style={{ fontWeight: 700, marginBottom: 6 }}>
                 Seriali elettroniche di controllo
@@ -1850,19 +2031,19 @@ export default function NuovaChecklistPage() {
                 )}
               </div>
             </div>
+            </div>
           </div>
 
-          <div
-            style={{
-              gridColumn: "1 / -1",
-              border: "1px solid #eee",
-              borderRadius: 12,
-              padding: 12,
-              background: "white",
-              display: "grid",
-              gap: 10,
-            }}
-          >
+        </div>
+
+        <div
+          id="section-impianti"
+          style={{
+            ...sectionCardStyle,
+            display: "grid",
+            gap: 10,
+          }}
+        >
             <div
               style={{
                 display: "flex",
@@ -1892,7 +2073,7 @@ export default function NuovaChecklistPage() {
 
             {impianti.map((impianto, index) => {
               const m2Impianto = (() => {
-                const base = calcM2FromDimensioni(impianto.dimensioni, impianto.numeroFacce);
+                const base = calcM2FromDimensioni(impianto.dimensioni, impianto.numero_facce);
                 const qty =
                   Number.isFinite(Number(impianto.impianto_quantita)) &&
                   Number(impianto.impianto_quantita) > 0
@@ -2092,10 +2273,10 @@ export default function NuovaChecklistPage() {
                     >
                       <input
                         type="checkbox"
-                        checked={impianto.numeroFacce === 2}
-                        onChange={(e) => updateImpianto(index, "numeroFacce", e.target.checked ? 2 : 1)}
+                        checked={impianto.numero_facce === 2}
+                        onChange={(e) => updateImpianto(index, "numero_facce", e.target.checked ? 2 : 1)}
                       />
-                      Bifacciale ({impianto.numeroFacce} facce)
+                      Bifacciale ({impianto.numero_facce} facce)
                     </label>
 
                     <label style={{ display: "grid", gap: 6, fontSize: 13, gridColumn: "1 / -1" }}>
@@ -2112,6 +2293,17 @@ export default function NuovaChecklistPage() {
             })}
           </div>
 
+        </div>
+
+        <div id="section-pianificazione-saas" style={sectionCardStyle}>
+          <div style={{ fontWeight: 800, marginBottom: 10 }}>PIANIFICAZIONE / SAAS</div>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "1fr 1fr",
+              gap: 12,
+            }}
+          >
           <label>
             Data installazione prevista<br />
             <input
@@ -2293,9 +2485,10 @@ export default function NuovaChecklistPage() {
               style={{ width: "100%", padding: 10 }}
             />
           </label>
+          </div>
         </div>
 
-        <div style={{ marginTop: 18 }}>
+        <div id="section-allegati" style={sectionCardStyle}>
           <AttachmentsPanel
             title="Allegati progetto (disponibili dopo creazione)"
             entityType="CHECKLIST"
@@ -2306,7 +2499,7 @@ export default function NuovaChecklistPage() {
           />
         </div>
 
-        <div style={{ marginTop: 22 }}>
+        <div id="section-licenze" style={sectionCardStyle}>
           <h2 style={{ marginTop: 0 }}>Licenze</h2>
           <div style={{ marginBottom: 10, fontSize: 12, opacity: 0.7 }}>
             (Opzionale) – puoi aggiungerle anche dopo
@@ -2463,7 +2656,8 @@ export default function NuovaChecklistPage() {
           </div>
         </div>
 
-        <h2 style={{ marginTop: 22 }}>Accessori / Ricambi</h2>
+        <div id="section-accessori" style={sectionCardStyle}>
+        <h2 style={{ marginTop: 0 }}>Accessori / Ricambi</h2>
         <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 10 }}>
           Accessori/Extra (no TEC, no SAAS)
         </div>
@@ -2672,7 +2866,7 @@ export default function NuovaChecklistPage() {
             {creating ? "Creazione..." : "Crea"}
           </button>
         </div>
-      </div>
+        </div>
 
       <ClienteModal
         open={clienteModalOpen}
