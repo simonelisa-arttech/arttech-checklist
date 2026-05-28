@@ -2207,6 +2207,7 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
   const [serialControlNote, setSerialControlNote] = useState("");
   const [serialModuleNote, setSerialModuleNote] = useState("");
   const [serialControlChecklistImpiantoId, setSerialControlChecklistImpiantoId] = useState("");
+  const serialControlChecklistImpiantoIdRef = useRef("");
   const [serialControlError, setSerialControlError] = useState<string | null>(null);
   const [serialModuleError, setSerialModuleError] = useState<string | null>(null);
   const [serialUsageOpen, setSerialUsageOpen] = useState<{
@@ -3040,8 +3041,12 @@ async function db<T = any>(payload: {
     const deviceDescrizione = String(deviceDescrizioneRaw ?? "").trim();
     const checklistImpiantoId = (() => {
       if (tipo !== "CONTROLLO") return null;
-      const normalizedId = String(checklistImpiantoIdRaw || "").trim();
-      return isRealUuid(normalizedId) ? normalizedId : null;
+      const selectedId = String(
+        checklistImpiantoIdRaw ?? serialControlChecklistImpiantoIdRef.current ?? ""
+      ).trim();
+      if (!selectedId) return null;
+      const resolvedId = resolvePersistedChecklistImpiantoId(selectedId, impianti, impianti);
+      return resolvedId || selectedId;
     })();
     const { data, error: err } = await dbFrom("asset_serials")
       .insert({
@@ -3095,6 +3100,7 @@ async function db<T = any>(payload: {
     if (tipo === "CONTROLLO") setSerialControlDeviceDescrizione("");
     if (tipo === "CONTROLLO") setSerialControlNote("");
     if (tipo === "CONTROLLO") setSerialControlChecklistImpiantoId("");
+    if (tipo === "CONTROLLO") serialControlChecklistImpiantoIdRef.current = "";
     if (tipo === "MODULO_LED") setSerialModuleInput("");
     if (tipo === "MODULO_LED") setSerialModuleDeviceCode("");
     if (tipo === "MODULO_LED") setSerialModuleDeviceDescrizione("");
@@ -10693,7 +10699,10 @@ function buildFormData(c: Checklist): FormData {
                   </div>
                   <select
                     value={serialControlChecklistImpiantoId}
-                    onChange={(e) => setSerialControlChecklistImpiantoId(e.target.value)}
+                    onChange={(e) => {
+                      setSerialControlChecklistImpiantoId(e.target.value);
+                      serialControlChecklistImpiantoIdRef.current = e.target.value;
+                    }}
                     disabled={serialControlImpiantoOptions.length === 0}
                     style={{ width: "100%", padding: 8 }}
                   >
