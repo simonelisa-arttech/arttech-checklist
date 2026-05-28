@@ -4,6 +4,10 @@ Ultimo aggiornamento: 2026-05-13 12:00 CEST
 
 ## Stato attuale del progetto
 
+Aggiornamento operativo 2026-05-28:
+- fix applicato in `app/checklists/[id]/page.tsx` per preservare le associazioni `asset_serials.checklist_impianto_id` dei seriali elettroniche di controllo durante `Salva impianti`
+- il remap ora usa sia gli ID impianto persistiti sia gli ID correnti lato UI, cosi' non si perdono associazioni appena create o rimaste su ID client temporanei
+
 AT SYSTEM e' una web app Next.js/TypeScript con Supabase come source of truth dati. Il dominio piu' fragile resta quello di:
 - rinnovi / workflow
 - operator app `/operatori`

@@ -6791,6 +6791,7 @@ function buildFormData(c: Checklist): FormData {
           );
 
         const normalizedImpianto = {
+          current_id: String(imp.id || "").trim() || null,
           source_id: !isClientTempId(imp.id) ? String(imp.id || "").trim() || null : null,
           nome_impianto: String(imp.nome_impianto || "").trim() || null,
           impianto_descrizione: String(imp.impianto_descrizione || "").trim() || null,
@@ -6874,6 +6875,22 @@ function buildFormData(c: Checklist): FormData {
         checklist_impianto_id: String(row?.checklist_impianto_id || "").trim() || null,
       }))
       .filter((row) => row.id);
+    const localSerialRows = assetSerials
+      .map((row) => ({
+        id: String(row?.id || "").trim(),
+        checklist_impianto_id: String(row?.checklist_impianto_id || "").trim() || null,
+      }))
+      .filter((row) => row.id);
+    if (localSerialRows.length > 0) {
+      const mergedSerialRows = new Map<string, { id: string; checklist_impianto_id: string | null }>();
+      existingSerialRows.forEach((row) => {
+        mergedSerialRows.set(row.id, row);
+      });
+      localSerialRows.forEach((row) => {
+        mergedSerialRows.set(row.id, row);
+      });
+      existingSerialRows = Array.from(mergedSerialRows.values());
+    }
 
     if (!cabinetTableAvailable && hasCabinetRows) {
       throw new Error(
@@ -6972,17 +6989,24 @@ function buildFormData(c: Checklist): FormData {
 
     const impiantoIdRemap = new Map<string, string>();
     normalizedImpianti.forEach((impianto, index) => {
+      const currentId = String(impianto?.current_id || "").trim();
       const sourceId = String(impianto?.source_id || "").trim();
       const insertedId = String(insertedImpianti[index]?.id || "").trim();
-      if (!sourceId || !insertedId || sourceId === insertedId) return;
-      impiantoIdRemap.set(sourceId, insertedId);
+      if (!insertedId) return;
+      if (currentId && currentId !== insertedId) {
+        impiantoIdRemap.set(currentId, insertedId);
+      }
+      if (sourceId && sourceId !== insertedId) {
+        impiantoIdRemap.set(sourceId, insertedId);
+      }
     });
 
     const serialRowsToReassociate = existingSerialRows
       .map((row) => {
         const currentImpiantoId = String(row.checklist_impianto_id || "").trim();
         const nextImpiantoId = currentImpiantoId ? impiantoIdRemap.get(currentImpiantoId) || null : null;
-        return nextImpiantoId ? { id: row.id, checklist_impianto_id: nextImpiantoId } : null;
+        if (!nextImpiantoId || nextImpiantoId === currentImpiantoId) return null;
+        return { id: row.id, checklist_impianto_id: nextImpiantoId };
       })
       .filter(Boolean) as Array<{ id: string; checklist_impianto_id: string }>;
 

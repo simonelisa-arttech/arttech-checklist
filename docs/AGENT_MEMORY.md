@@ -4,6 +4,9 @@ Ultimo aggiornamento: 2026-05-28
 
 ## Identita' progetto
 
+Snapshot 2026-05-28:
+- `app/checklists/[id]/page.tsx`: `Salva impianti` deve preservare `asset_serials.checklist_impianto_id` anche quando l'associazione seriale punta a ID impianto correnti lato UI o temporanei; non affidarsi solo agli ID storici letti dal DB
+
 AT SYSTEM e' una piattaforma gestionale/operativa costruita su:
 - Next.js
 - React
