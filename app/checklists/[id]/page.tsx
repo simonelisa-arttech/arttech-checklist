@@ -10641,43 +10641,78 @@ function buildFormData(c: Checklist): FormData {
               Seriali elettroniche di controllo
             </div>
             {editMode && (
-              <div style={{ display: "flex", gap: 8, marginBottom: 8, flexWrap: "wrap" }}>
-                <select
-                  value={serialControlChecklistImpiantoId}
-                  onChange={(e) => setSerialControlChecklistImpiantoId(e.target.value)}
-                  style={{ width: "100%", padding: 8 }}
-                >
-                  <option value="">Impianto di destinazione (opzionale)</option>
-                  {serialControlImpiantoOptions.map((impianto) => (
-                    <option key={impianto.id} value={impianto.id}>
-                      {impianto.label}
+              <div style={{ display: "grid", gap: 8, marginBottom: 8 }}>
+                <div>
+                  <div style={{ fontSize: 12, color: "#6b7280", marginBottom: 4 }}>
+                    Impianto di destinazione
+                  </div>
+                  <select
+                    value={serialControlChecklistImpiantoId}
+                    onChange={(e) => setSerialControlChecklistImpiantoId(e.target.value)}
+                    disabled={serialControlImpiantoOptions.length === 0}
+                    style={{ width: "100%", padding: 8 }}
+                  >
+                    <option value="">
+                      {serialControlImpiantoOptions.length > 0
+                        ? "Impianto di destinazione (opzionale)"
+                        : "Nessun impianto disponibile"}
                     </option>
-                  ))}
-                </select>
-                <select
-                  value={serialControlDeviceCode}
-                  onChange={(e) => {
-                    const code = e.target.value;
-                    const selected = deviceOptions.find((d) => (d.codice ?? "") === code);
-                    setSerialControlDeviceCode(code);
-                    setSerialControlDeviceDescrizione(selected?.descrizione ?? "");
-                  }}
-                  style={{ width: "100%", padding: 8 }}
-                >
-                  <option value="">Device/Modello (EL-%)</option>
-                  {deviceOptions.map((item) => (
-                    <option key={item.id} value={item.codice ?? ""}>
-                      {item.codice ?? "—"} — {item.descrizione ?? "—"}
-                    </option>
-                  ))}
-                </select>
-                <input
-                  value={serialControlInput}
-                  onChange={(e) => setSerialControlInput(e.target.value)}
-                  placeholder="Aggiungi seriale CONTROLLO"
-                  style={{ width: "100%", padding: 8 }}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter")
+                    {serialControlImpiantoOptions.map((impianto) => (
+                      <option key={impianto.id} value={impianto.id}>
+                        {impianto.label}
+                      </option>
+                    ))}
+                  </select>
+                  {serialControlImpiantoOptions.length === 0 ? (
+                    <div style={{ fontSize: 12, color: "#6b7280", marginTop: 4 }}>
+                      Nessun impianto disponibile
+                    </div>
+                  ) : null}
+                </div>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  <select
+                    value={serialControlDeviceCode}
+                    onChange={(e) => {
+                      const code = e.target.value;
+                      const selected = deviceOptions.find((d) => (d.codice ?? "") === code);
+                      setSerialControlDeviceCode(code);
+                      setSerialControlDeviceDescrizione(selected?.descrizione ?? "");
+                    }}
+                    style={{ width: "100%", padding: 8 }}
+                  >
+                    <option value="">Device/Modello (EL-%)</option>
+                    {deviceOptions.map((item) => (
+                      <option key={item.id} value={item.codice ?? ""}>
+                        {item.codice ?? "—"} — {item.descrizione ?? "—"}
+                      </option>
+                    ))}
+                  </select>
+                  <input
+                    value={serialControlInput}
+                    onChange={(e) => setSerialControlInput(e.target.value)}
+                    placeholder="Aggiungi seriale CONTROLLO"
+                    style={{ width: "100%", padding: 8 }}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter")
+                        addSerial(
+                          "CONTROLLO",
+                          serialControlInput,
+                          serialControlNote,
+                          serialControlDeviceCode,
+                          serialControlDeviceDescrizione,
+                          serialControlChecklistImpiantoId
+                        );
+                    }}
+                  />
+                  <input
+                    value={serialControlNote}
+                    onChange={(e) => setSerialControlNote(e.target.value)}
+                    placeholder="Note (modello/device)"
+                    style={{ width: "100%", padding: 8 }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() =>
                       addSerial(
                         "CONTROLLO",
                         serialControlInput,
@@ -10685,38 +10720,20 @@ function buildFormData(c: Checklist): FormData {
                         serialControlDeviceCode,
                         serialControlDeviceDescrizione,
                         serialControlChecklistImpiantoId
-                      );
-                  }}
-                />
-                <input
-                  value={serialControlNote}
-                  onChange={(e) => setSerialControlNote(e.target.value)}
-                  placeholder="Note (modello/device)"
-                  style={{ width: "100%", padding: 8 }}
-                />
-                <button
-                  type="button"
-                  onClick={() =>
-                    addSerial(
-                      "CONTROLLO",
-                      serialControlInput,
-                      serialControlNote,
-                      serialControlDeviceCode,
-                      serialControlDeviceDescrizione,
-                      serialControlChecklistImpiantoId
-                    )
-                  }
-                  style={{
-                    padding: "6px 10px",
-                    borderRadius: 8,
-                    border: "1px solid #111",
-                    background: "white",
-                    cursor: "pointer",
-                    whiteSpace: "nowrap",
-                  }}
-                >
-                  Aggiungi
-                </button>
+                      )
+                    }
+                    style={{
+                      padding: "6px 10px",
+                      borderRadius: 8,
+                      border: "1px solid #111",
+                      background: "white",
+                      cursor: "pointer",
+                      whiteSpace: "nowrap",
+                    }}
+                  >
+                    Aggiungi
+                  </button>
+                </div>
               </div>
             )}
             {serialControlError && (
