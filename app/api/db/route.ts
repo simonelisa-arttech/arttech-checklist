@@ -380,30 +380,9 @@ function stripSelectColumn(selectClause: string, columnName: string) {
   return next.join(", ");
 }
 
-function dbFailure(args: {
-  table: string;
-  op: string;
-  payload?: unknown;
-  filters?: Record<string, any>;
-  select?: string;
-  error: unknown;
-}) {
-  const errorObject =
-    args.error && typeof args.error === "object"
-      ? {
-          ...(args.error as Record<string, unknown>),
-          message: String((args.error as { message?: unknown })?.message || ""),
-        }
-      : { message: String(args.error || "") };
-  console.error("[api/db][500]", {
-    table: args.table,
-    op: args.op,
-    payload: args.payload ?? null,
-    filters: args.filters ?? {},
-    select: args.select ?? "*",
-    error: errorObject,
-  });
-  return NextResponse.json({ ok: false, error: errorObject.message }, { status: 500 });
+function dbFailure(table: string, op: string, filter: Record<string, any>, message: string) {
+  console.error("[api/db] failure", { table, op, filter, message });
+  return NextResponse.json({ ok: false, error: message }, { status: 500 });
 }
 
 function isPlainObject(v: unknown): v is Record<string, any> {
@@ -441,17 +420,12 @@ function normalizeChecklistStatusRows(table: string, data: any) {
 }
 
 export async function POST(request: Request) {
-  let body: DbRequest | null = null;
-  let table = "";
-  let op: DbOp | "" = "";
-  let selectForLog = "*";
-  let filterForLog: Record<string, any> = {};
-  let payloadForLog: unknown = null;
   try {
     const auth = await requireOperatore(request);
     if (!auth.ok) return auth.response;
     const supabaseAdmin = auth.adminClient;
 
+    let body: DbRequest;
     try {
       body = (await request.json()) as DbRequest;
     } catch {
@@ -465,8 +439,8 @@ export async function POST(request: Request) {
       if (!allowedBodyKeys.has(key)) return invalid(`Unsupported field: ${key}`);
     }
 
-    table = String(body.table || "").trim();
-    op = String(body.op || "").trim() as DbOp;
+    const table = String(body.table || "").trim();
+    const op = String(body.op || "").trim() as DbOp;
     const rule = TABLE_RULES[table];
     if (!rule) return invalid("Table not allowed", 403);
     if (!rule.ops.includes(op)) return invalid("Operation not allowed", 403);
@@ -557,12 +531,9 @@ export async function POST(request: Request) {
 
     const payload =
       isPlainObject(body.payload) || Array.isArray(body.payload) ? body.payload : null;
-    payloadForLog = payload;
-    filterForLog = { ...filter, ...filterIn };
 
     if (op === "select") {
     const select = String(body.select || "*").trim();
-    selectForLog = select;
     if (select !== "*" && !/^[a-zA-Z0-9_,\s:\(\)\.\*]+$/.test(select)) {
       return invalid("Invalid select clause");
     }
@@ -685,16 +656,7 @@ export async function POST(request: Request) {
         error = retry.error;
       }
     }
-    if (error) {
-      return dbFailure({
-        table,
-        op,
-        payload,
-        filters: filterForLog,
-        select,
-        error,
-      });
-    }
+    if (error) return dbFailure(table, op, { ...filter, ...filterIn }, error.message);
     return NextResponse.json({ ok: true, data: normalizeChecklistStatusRows(table, data || []) });
     }
 
@@ -724,16 +686,7 @@ export async function POST(request: Request) {
           .eq("cliente", cliente)
           .or("stato_progetto.is.null,stato_progetto.neq.CHIUSO")
           .limit(1);
-        if (duplicateErr) {
-          return dbFailure({
-            table,
-            op,
-            payload,
-            filters: filterForLog,
-            select: selectForLog,
-            error: duplicateErr,
-          });
-        }
+        if (duplicateErr) return dbFailure(table, op, filter, duplicateErr.message);
         if ((duplicateRows || []).length > 0) {
           return NextResponse.json(
             { ok: false, error: "Esiste già un progetto attivo con questo nome per questo cliente" },
@@ -743,36 +696,17 @@ export async function POST(request: Request) {
       }
     }
     const { data, error } = await supabaseAdmin.from(table).insert(payload).select(select);
-      if (error) {
-        return dbFailure({
-          table,
-          op,
-          payload,
-          filters: filterForLog,
-          select,
-          error,
-        });
-      }
+      if (error) return dbFailure(table, op, filter, error.message);
     return NextResponse.json({ ok: true, data });
     }
 
     if (op === "upsert") {
     if (!payload) return invalid("Missing payload");
     const select = String(body.select || "*").trim() || "*";
-    selectForLog = select;
     const onConflict = String((body as any).onConflict || "").trim();
     const options = onConflict ? { onConflict } : undefined;
     const { data, error } = await supabaseAdmin.from(table).upsert(payload as any, options as any).select(select);
-      if (error) {
-        return dbFailure({
-          table,
-          op,
-          payload,
-          filters: filterForLog,
-          select,
-          error,
-        });
-      }
+      if (error) return dbFailure(table, op, filter, error.message);
     return NextResponse.json({ ok: true, data });
     }
 
@@ -780,59 +714,26 @@ export async function POST(request: Request) {
     if (!payload) return invalid("Missing payload");
     if (Object.keys(filter).length === 0) return invalid("Update requires at least one eq filter");
     const select = String(body.select || "*").trim() || "*";
-    selectForLog = select;
     let q: any = supabaseAdmin.from(table).update(payload);
     for (const [k, v] of Object.entries(filter)) q = applyEqOrIsNull(q, k, v);
     const { data, error } = await q.select(select);
-      if (error) {
-        return dbFailure({
-          table,
-          op,
-          payload,
-          filters: filterForLog,
-          select,
-          error,
-        });
-      }
+      if (error) return dbFailure(table, op, filter, error.message);
     return NextResponse.json({ ok: true, data });
     }
 
     if (op === "delete") {
     if (Object.keys(filter).length === 0) return invalid("Delete requires at least one eq filter");
     const select = String(body.select || "*").trim() || "*";
-    selectForLog = select;
     let q: any = supabaseAdmin.from(table).delete();
     for (const [k, v] of Object.entries(filter)) q = applyEqOrIsNull(q, k, v);
     const { data, error } = await q.select(select);
-      if (error) {
-        return dbFailure({
-          table,
-          op,
-          payload,
-          filters: filterForLog,
-          select,
-          error,
-        });
-      }
+      if (error) return dbFailure(table, op, filter, error.message);
     return NextResponse.json({ ok: true, data });
     }
 
     return invalid("Unsupported operation");
   } catch (e: any) {
-    console.error("[api/db][500][unexpected]", {
-      table,
-      op,
-      payload: payloadForLog,
-      filters: filterForLog,
-      select: selectForLog,
-      error:
-        e && typeof e === "object"
-          ? {
-              ...(e as Record<string, unknown>),
-              message: String(e?.message || e),
-            }
-          : { message: String(e?.message || e) },
-    });
+    console.error("[api/db] unexpected", { message: String(e?.message || e) });
     return NextResponse.json(
       { ok: false, error: String(e?.message || "Unexpected server error") },
       { status: 500 }

@@ -6946,8 +6946,6 @@ function buildFormData(c: Checklist): FormData {
       nit: imp?.nit ?? null,
       impianto_quantita: imp?.impianto_quantita ?? 1,
       numero_facce: imp?.numero_facce ?? 1,
-      data_disinstallazione:
-        String(imp?.data_disinstallazione || formData?.data_disinstallazione || "").trim() || null,
       note: imp?.note ?? null,
     }));
 
@@ -6959,22 +6957,8 @@ function buildFormData(c: Checklist): FormData {
     } = await dbFrom("checklist_impianti")
       .insert(payload)
       .select(
-        "id, checklist_id, position, nome_impianto, impianto_codice, impianto_descrizione, tipo_impianto, tipo_struttura, impianto_indirizzo, passo, dimensioni, nit, impianto_quantita, numero_facce, m2_calcolati, data_disinstallazione, note"
+        "id, checklist_id, position, nome_impianto, impianto_codice, impianto_descrizione, tipo_impianto, tipo_struttura, impianto_indirizzo, passo, dimensioni, nit, impianto_quantita, numero_facce, m2_calcolati, note"
       ));
-    if (
-      insertErr &&
-      String(insertErr.message || "").toLowerCase().includes("data_disinstallazione")
-    ) {
-      const legacyPayload = payload.map(({ data_disinstallazione: _skip, ...row }) => row);
-      ({
-        data: insertData,
-        error: insertErr,
-      } = await dbFrom("checklist_impianti")
-        .insert(legacyPayload)
-        .select(
-          "id, checklist_id, position, nome_impianto, impianto_codice, impianto_descrizione, tipo_impianto, tipo_struttura, impianto_indirizzo, passo, dimensioni, nit, impianto_quantita, numero_facce, m2_calcolati, note"
-        ));
-    }
     if (insertErr) {
       throw new Error(
         logSupabaseError("insert checklist_impianti", insertErr) ||
