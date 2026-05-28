@@ -3041,23 +3041,24 @@ async function db<T = any>(payload: {
     const deviceDescrizione = String(deviceDescrizioneRaw ?? "").trim();
     const checklistImpiantoId = (() => {
       if (tipo !== "CONTROLLO") return null;
-      const selectedId = String(
-        checklistImpiantoIdRaw ?? serialControlChecklistImpiantoIdRef.current ?? ""
-      ).trim();
+      const selectedIdRaw = String(checklistImpiantoIdRaw || "").trim();
+      const fallbackSelectedId = String(serialControlChecklistImpiantoIdRef.current || "").trim();
+      const selectedId = selectedIdRaw || fallbackSelectedId;
       if (!selectedId) return null;
       const resolvedId = resolvePersistedChecklistImpiantoId(selectedId, impianti, impianti);
       return resolvedId || selectedId;
     })();
+    const payload = {
+      checklist_id: id,
+      tipo,
+      checklist_impianto_id: checklistImpiantoId,
+      device_code: deviceCode || null,
+      device_descrizione: deviceDescrizione || null,
+      seriale,
+      note: noteRaw?.trim() || null,
+    };
     const { data, error: err } = await dbFrom("asset_serials")
-      .insert({
-        checklist_id: id,
-        tipo,
-        checklist_impianto_id: checklistImpiantoId,
-        device_code: deviceCode || null,
-        device_descrizione: deviceDescrizione || null,
-        seriale,
-        note: noteRaw?.trim() || null,
-      })
+      .insert(payload)
       .select(ASSET_SERIAL_SELECT_COLUMNS)
       .single();
     if (err) {
