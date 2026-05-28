@@ -2964,14 +2964,29 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
     return input.replace(/\{(\w+)\}/g, (_, key) => ctx[key] ?? "");
   }
 
-  function normalizeSerial(input: string) {
-    return input.trim().toUpperCase().replace(/\s+/g, " ");
-  }
+function normalizeSerial(input: string) {
+  return input.trim().toUpperCase().replace(/\s+/g, " ");
+}
 
-  async function db<T = any>(payload: {
-    table: string;
-    op: "select" | "insert" | "update" | "delete";
-    select?: string;
+function normalizeAssetSerialRow(row: any): AssetSerial {
+  return {
+    id: String(row?.id || "").trim(),
+    checklist_id: String(row?.checklist_id || "").trim(),
+    tipo: String(row?.tipo || "").trim().toUpperCase() === "MODULO_LED" ? "MODULO_LED" : "CONTROLLO",
+    checklist_impianto_id: String(row?.checklist_impianto_id || "").trim() || null,
+    device_code: String(row?.device_code || "").trim() || null,
+    device_descrizione: String(row?.device_descrizione || "").trim() || null,
+    seriale: normalizeSerial(String(row?.seriale || "")),
+    note: String(row?.note || "").trim() || null,
+    created_at: String(row?.created_at || "").trim() || null,
+    updated_at: String(row?.updated_at || "").trim() || null,
+  };
+}
+
+async function db<T = any>(payload: {
+  table: string;
+  op: "select" | "insert" | "update" | "delete";
+  select?: string;
     filter?: Record<string, string | number | boolean | null>;
     order?: Array<{ col: string; asc: boolean }>;
     limit?: number;
@@ -3046,7 +3061,14 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
       setError(msg);
       return;
     }
-    setAssetSerials((prev) => [...prev, data as AssetSerial]);
+    const normalizedInsertedSerial = normalizeAssetSerialRow({
+      ...(data || {}),
+      checklist_impianto_id:
+        tipo === "CONTROLLO"
+          ? (data as any)?.checklist_impianto_id ?? checklistImpiantoId
+          : null,
+    });
+    setAssetSerials((prev) => [...prev, normalizedInsertedSerial]);
     if (tipo === "CONTROLLO") setSerialControlInput("");
     if (tipo === "CONTROLLO") setSerialControlDeviceCode("");
     if (tipo === "CONTROLLO") setSerialControlDeviceDescrizione("");
@@ -5416,7 +5438,8 @@ function buildFormData(c: Checklist): FormData {
       body: JSON.stringify({
         table: "asset_serials",
         op: "select",
-        select: "*",
+        select:
+          "id, checklist_id, tipo, checklist_impianto_id, device_code, device_descrizione, seriale, note, created_at, updated_at",
         filter: { checklist_id: id },
         order: [{ col: "created_at", asc: true }],
       }),
@@ -5643,7 +5666,9 @@ function buildFormData(c: Checklist): FormData {
       setClienteReferentiSnapshot([]);
       setClienteReferentiVersion(0);
       setClienteReferentiError(null);
-      setAssetSerials((serialsData || []) as AssetSerial[]);
+      setAssetSerials(
+        ((serialsData || []) as any[]).map((row) => normalizeAssetSerialRow(row))
+      );
       setTasks([]);
       setLicenze([]);
       setProjectTagliandi([]);
@@ -10769,12 +10794,14 @@ function buildFormData(c: Checklist): FormData {
                     {s.note ? (
                       <span style={{ opacity: 0.7, fontWeight: 500 }}>{s.note}</span>
                     ) : null}
-                    {s.checklist_impianto_id ? (
-                      <span style={{ opacity: 0.75, fontWeight: 500 }}>
-                        {serialControlImpiantoLabelById.get(s.checklist_impianto_id) ||
-                          "Impianto associato"}
-                      </span>
-                    ) : null}
+                    <span style={{ opacity: 0.75, fontWeight: 500 }}>
+                      {s.checklist_impianto_id
+                        ? `Impianto: ${
+                            serialControlImpiantoLabelById.get(s.checklist_impianto_id) ||
+                            "Impianto associato"
+                          }`
+                        : "Impianto non associato"}
+                    </span>
                     <button
                       type="button"
                       onClick={() => openSerialUsage("CONTROLLO", s.seriale)}
