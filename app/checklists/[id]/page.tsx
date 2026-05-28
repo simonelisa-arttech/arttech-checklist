@@ -6840,6 +6840,7 @@ function buildFormData(c: Checklist): FormData {
 
     let cabinetTableAvailable = true;
     let existingCabinetRows: any[] = [];
+    let existingSerialRows: Array<{ id: string; checklist_impianto_id: string | null }> = [];
     const { data: existingCabinetData, error: existingCabinetErr } = await dbFrom(
       "checklist_impianti_cabinet"
     )
@@ -6857,6 +6858,22 @@ function buildFormData(c: Checklist): FormData {
     } else {
       existingCabinetRows = (existingCabinetData as any[]) || [];
     }
+
+    const { data: existingSerialData, error: existingSerialErr } = await dbFrom("asset_serials")
+      .select("id, checklist_impianto_id")
+      .eq("checklist_id", checklistId);
+    if (existingSerialErr) {
+      throw new Error(
+        logSupabaseError("load asset_serials before impianti save", existingSerialErr) ||
+          "Errore caricamento seriali associati agli impianti"
+      );
+    }
+    existingSerialRows = ((existingSerialData || []) as any[])
+      .map((row) => ({
+        id: String(row?.id || "").trim(),
+        checklist_impianto_id: String(row?.checklist_impianto_id || "").trim() || null,
+      }))
+      .filter((row) => row.id);
 
     if (!cabinetTableAvailable && hasCabinetRows) {
       throw new Error(
@@ -6953,6 +6970,34 @@ function buildFormData(c: Checklist): FormData {
       .filter(Boolean) as ChecklistImpianto[];
     insertedImpianti.sort((a, b) => Number(a.position ?? 0) - Number(b.position ?? 0));
 
+    const impiantoIdRemap = new Map<string, string>();
+    normalizedImpianti.forEach((impianto, index) => {
+      const sourceId = String(impianto?.source_id || "").trim();
+      const insertedId = String(insertedImpianti[index]?.id || "").trim();
+      if (!sourceId || !insertedId || sourceId === insertedId) return;
+      impiantoIdRemap.set(sourceId, insertedId);
+    });
+
+    const serialRowsToReassociate = existingSerialRows
+      .map((row) => {
+        const currentImpiantoId = String(row.checklist_impianto_id || "").trim();
+        const nextImpiantoId = currentImpiantoId ? impiantoIdRemap.get(currentImpiantoId) || null : null;
+        return nextImpiantoId ? { id: row.id, checklist_impianto_id: nextImpiantoId } : null;
+      })
+      .filter(Boolean) as Array<{ id: string; checklist_impianto_id: string }>;
+
+    for (const serialRow of serialRowsToReassociate) {
+      const { error: serialUpdateErr } = await dbFrom("asset_serials")
+        .update({ checklist_impianto_id: serialRow.checklist_impianto_id })
+        .eq("id", serialRow.id);
+      if (serialUpdateErr) {
+        throw new Error(
+          logSupabaseError("restore asset_serials checklist_impianto_id", serialUpdateErr) ||
+            "Errore ripristino associazione seriali impianto"
+        );
+      }
+    }
+
     const retainedStoragePaths = new Set<string>();
     let insertedCabinetRows: ChecklistImpiantoCabinet[] = [];
 
@@ -7043,6 +7088,15 @@ function buildFormData(c: Checklist): FormData {
     });
 
     setCabinetPendingFiles({});
+    if (serialRowsToReassociate.length > 0) {
+      setAssetSerials((prev) =>
+        prev.map((serial) => {
+          const currentImpiantoId = String(serial.checklist_impianto_id || "").trim();
+          const nextImpiantoId = currentImpiantoId ? impiantoIdRemap.get(currentImpiantoId) || null : null;
+          return nextImpiantoId ? { ...serial, checklist_impianto_id: nextImpiantoId } : serial;
+        })
+      );
+    }
     return insertedImpianti.map((imp) => ({
       ...imp,
       cabinet_configurazioni: cabinetByImpiantoId.get(String(imp.id || "").trim()) || [],
