@@ -9767,7 +9767,14 @@ function buildFormData(c: Checklist): FormData {
       </div>
 
       <div style={{ marginTop: 12, marginBottom: 10 }}>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "minmax(0, 1.35fr) minmax(0, 1fr)",
+            gap: 12,
+            alignItems: "start",
+          }}
+        >
           <div
             style={{
               border: "1px solid #eee",
@@ -10923,71 +10930,112 @@ function buildFormData(c: Checklist): FormData {
                 {serialControlError}
               </div>
             )}
-            <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+            <div style={{ display: "grid", gap: 10 }}>
               {serialiControllo.length === 0 ? (
                 <span style={{ opacity: 0.6 }}>—</span>
               ) : (
                 serialiControllo.map((s) => (
-                  <span
+                  <div
                     key={s.id}
                     style={{
-                      display: "inline-flex",
-                      alignItems: "center",
-                      gap: 6,
-                      padding: "4px 8px",
-                      borderRadius: 999,
-                      background: "#f3f4f6",
-                      fontSize: 12,
-                      fontWeight: 600,
+                      display: "grid",
+                      gap: 8,
+                      padding: 12,
+                      borderRadius: 12,
+                      border: "1px solid #e5e7eb",
+                      background: "#f9fafb",
                     }}
                   >
-                    {s.seriale}
-                    {s.device_code ? (
-                      <span style={{ opacity: 0.85, fontWeight: 600 }}>
-                        [{s.device_code}
-                        {s.device_descrizione ? ` - ${s.device_descrizione}` : ""}]
-                      </span>
-                    ) : null}
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "flex-start",
+                        justifyContent: "space-between",
+                        gap: 10,
+                      }}
+                    >
+                      <div style={{ minWidth: 0, display: "grid", gap: 4 }}>
+                        <div
+                          style={{
+                            fontSize: 15,
+                            fontWeight: 800,
+                            color: "#111827",
+                            wordBreak: "break-word",
+                          }}
+                        >
+                          {s.seriale}
+                        </div>
+                        {s.device_code || s.device_descrizione ? (
+                          <div
+                            style={{
+                              fontSize: 12,
+                              fontWeight: 700,
+                              color: "#374151",
+                              wordBreak: "break-word",
+                            }}
+                          >
+                            {s.device_code || "Device"}
+                            {s.device_descrizione ? ` - ${s.device_descrizione}` : ""}
+                          </div>
+                        ) : null}
+                      </div>
+                      {editMode ? (
+                        <button
+                          type="button"
+                          onClick={() => removeSerial(s)}
+                          style={{
+                            border: "none",
+                            background: "transparent",
+                            cursor: "pointer",
+                            fontWeight: 700,
+                            fontSize: 16,
+                            lineHeight: 1,
+                            color: "#6b7280",
+                            padding: 0,
+                            flexShrink: 0,
+                          }}
+                          title="Rimuovi"
+                        >
+                          ×
+                        </button>
+                      ) : null}
+                    </div>
                     {s.note ? (
-                      <span style={{ opacity: 0.7, fontWeight: 500 }}>{s.note}</span>
+                      <div
+                        style={{
+                          fontSize: 12,
+                          color: "#4b5563",
+                          lineHeight: 1.5,
+                          padding: "8px 10px",
+                          borderRadius: 10,
+                          background: "white",
+                          border: "1px solid #e5e7eb",
+                          wordBreak: "break-word",
+                        }}
+                      >
+                        {s.note}
+                      </div>
                     ) : null}
-                    <span style={{ opacity: 0.75, fontWeight: 500 }}>
+                    <div
+                      style={{
+                        fontSize: 12,
+                        fontWeight: 600,
+                        color: "#1f2937",
+                        padding: "8px 10px",
+                        borderRadius: 10,
+                        background: "#eef2ff",
+                        border: "1px solid #c7d2fe",
+                        wordBreak: "break-word",
+                      }}
+                    >
                       {s.checklist_impianto_id
-                        ? `Impianto: ${
+                        ? `Impianto associato: ${
                             serialControlImpiantoLabelById.get(s.checklist_impianto_id) ||
                             "Impianto associato"
                           }`
                         : "Impianto non associato"}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => openSerialUsage("CONTROLLO", s.seriale)}
-                      style={{
-                        border: "none",
-                        background: "transparent",
-                        cursor: "pointer",
-                        fontWeight: 700,
-                      }}
-                      title="Usato anche in..."
-                    >
-                      ?
-                    </button>
-                    {editMode && (
-                      <button
-                        type="button"
-                        onClick={() => removeSerial(s)}
-                        style={{
-                          border: "none",
-                          background: "transparent",
-                          cursor: "pointer",
-                          fontWeight: 700,
-                        }}
-                        title="Rimuovi"
-                      >
-                        ×
-                      </button>
-                    )}
-                  </span>
+                    </div>
+                  </div>
                 ))
               )}
             </div>
