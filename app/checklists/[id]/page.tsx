@@ -674,6 +674,7 @@ type AssetSerial = {
   id: string;
   checklist_id: string;
   tipo: "CONTROLLO" | "MODULO_LED";
+  checklist_impianto_id: string | null;
   device_code: string | null;
   device_descrizione: string | null;
   seriale: string;
@@ -2205,7 +2206,9 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
   const [serialModuleDeviceDescrizione, setSerialModuleDeviceDescrizione] = useState("");
   const [serialControlNote, setSerialControlNote] = useState("");
   const [serialModuleNote, setSerialModuleNote] = useState("");
-  const [serialsError, setSerialsError] = useState<string | null>(null);
+  const [serialControlChecklistImpiantoId, setSerialControlChecklistImpiantoId] = useState("");
+  const [serialControlError, setSerialControlError] = useState<string | null>(null);
+  const [serialModuleError, setSerialModuleError] = useState<string | null>(null);
   const [serialUsageOpen, setSerialUsageOpen] = useState<{
     tipo: "CONTROLLO" | "MODULO_LED";
     seriale: string;
@@ -3000,25 +3003,33 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
     raw: string,
     noteRaw: string,
     deviceCodeRaw?: string,
-    deviceDescrizioneRaw?: string
+    deviceDescrizioneRaw?: string,
+    checklistImpiantoIdRaw?: string
   ) {
     if (!id) return;
     const seriale = normalizeSerial(raw);
+    const setError = tipo === "CONTROLLO" ? setSerialControlError : setSerialModuleError;
     if (!seriale) {
-      setSerialsError("Inserisci un seriale valido.");
+      setError("Inserisci un seriale valido.");
       return;
     }
     if (assetSerials.some((s) => s.tipo === tipo && s.seriale === seriale)) {
-      setSerialsError("Seriale già presente per questo tipo.");
+      setError("Seriale già presente per questo tipo.");
       return;
     }
-    setSerialsError(null);
+    setError(null);
     const deviceCode = String(deviceCodeRaw ?? "").trim();
     const deviceDescrizione = String(deviceDescrizioneRaw ?? "").trim();
+    const checklistImpiantoId = (() => {
+      if (tipo !== "CONTROLLO") return null;
+      const normalizedId = String(checklistImpiantoIdRaw || "").trim();
+      return isRealUuid(normalizedId) ? normalizedId : null;
+    })();
     const { data, error: err } = await dbFrom("asset_serials")
       .insert({
         checklist_id: id,
         tipo,
+        checklist_impianto_id: checklistImpiantoId,
         device_code: deviceCode || null,
         device_descrizione: deviceDescrizione || null,
         seriale,
@@ -3032,7 +3043,7 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
         tipo === "CONTROLLO" && code === "23505"
           ? "Seriale CONTROLLO già associato ad un altro impianto/progetto."
           : err.message;
-      setSerialsError(msg);
+      setError(msg);
       return;
     }
     setAssetSerials((prev) => [...prev, data as AssetSerial]);
@@ -3040,6 +3051,7 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
     if (tipo === "CONTROLLO") setSerialControlDeviceCode("");
     if (tipo === "CONTROLLO") setSerialControlDeviceDescrizione("");
     if (tipo === "CONTROLLO") setSerialControlNote("");
+    if (tipo === "CONTROLLO") setSerialControlChecklistImpiantoId("");
     if (tipo === "MODULO_LED") setSerialModuleInput("");
     if (tipo === "MODULO_LED") setSerialModuleDeviceCode("");
     if (tipo === "MODULO_LED") setSerialModuleDeviceDescrizione("");
@@ -3050,7 +3062,8 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
   async function removeSerial(serial: AssetSerial) {
     const { error: err } = await dbFrom("asset_serials").delete().eq("id", serial.id);
     if (err) {
-      setSerialsError(err.message);
+      if (serial.tipo === "CONTROLLO") setSerialControlError(err.message);
+      if (serial.tipo === "MODULO_LED") setSerialModuleError(err.message);
       return;
     }
     setAssetSerials((prev) => prev.filter((s) => s.id !== serial.id));
@@ -6965,6 +6978,24 @@ function buildFormData(c: Checklist): FormData {
 
   const serialiControllo = assetSerials.filter((s) => s.tipo === "CONTROLLO");
   const serialiModuli = assetSerials.filter((s) => s.tipo === "MODULO_LED");
+  const serialControlImpiantoOptions = useMemo(
+    () =>
+      impianti
+        .map((impianto, index) => {
+          const impiantoId = String(impianto.id || "").trim();
+          if (!isRealUuid(impiantoId)) return null;
+          return {
+            id: impiantoId,
+            label: formatChecklistImpiantoLabel(impianto, index),
+          };
+        })
+        .filter((value): value is { id: string; label: string } => value != null),
+    [impianti]
+  );
+  const serialControlImpiantoLabelById = useMemo(
+    () => new Map(serialControlImpiantoOptions.map((item) => [item.id, item.label])),
+    [serialControlImpiantoOptions]
+  );
   const m2Persisted = (() => {
     const base = calcM2FromDimensioni(checklist?.dimensioni ?? null, checklist?.numero_facce ?? 1);
     const qty =
@@ -10610,7 +10641,19 @@ function buildFormData(c: Checklist): FormData {
               Seriali elettroniche di controllo
             </div>
             {editMode && (
-              <div style={{ display: "flex", gap: 8, marginBottom: 8 }}>
+              <div style={{ display: "flex", gap: 8, marginBottom: 8, flexWrap: "wrap" }}>
+                <select
+                  value={serialControlChecklistImpiantoId}
+                  onChange={(e) => setSerialControlChecklistImpiantoId(e.target.value)}
+                  style={{ width: "100%", padding: 8 }}
+                >
+                  <option value="">Impianto di destinazione (opzionale)</option>
+                  {serialControlImpiantoOptions.map((impianto) => (
+                    <option key={impianto.id} value={impianto.id}>
+                      {impianto.label}
+                    </option>
+                  ))}
+                </select>
                 <select
                   value={serialControlDeviceCode}
                   onChange={(e) => {
@@ -10640,7 +10683,8 @@ function buildFormData(c: Checklist): FormData {
                         serialControlInput,
                         serialControlNote,
                         serialControlDeviceCode,
-                        serialControlDeviceDescrizione
+                        serialControlDeviceDescrizione,
+                        serialControlChecklistImpiantoId
                       );
                   }}
                 />
@@ -10658,7 +10702,8 @@ function buildFormData(c: Checklist): FormData {
                       serialControlInput,
                       serialControlNote,
                       serialControlDeviceCode,
-                      serialControlDeviceDescrizione
+                      serialControlDeviceDescrizione,
+                      serialControlChecklistImpiantoId
                     )
                   }
                   style={{
@@ -10674,9 +10719,9 @@ function buildFormData(c: Checklist): FormData {
                 </button>
               </div>
             )}
-            {serialsError && (
+            {serialControlError && (
               <div style={{ color: "crimson", fontSize: 12, marginBottom: 6 }}>
-                {serialsError}
+                {serialControlError}
               </div>
             )}
             <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
@@ -10706,6 +10751,12 @@ function buildFormData(c: Checklist): FormData {
                     ) : null}
                     {s.note ? (
                       <span style={{ opacity: 0.7, fontWeight: 500 }}>{s.note}</span>
+                    ) : null}
+                    {s.checklist_impianto_id ? (
+                      <span style={{ opacity: 0.75, fontWeight: 500 }}>
+                        {serialControlImpiantoLabelById.get(s.checklist_impianto_id) ||
+                          "Impianto associato"}
+                      </span>
                     ) : null}
                     <button
                       type="button"
@@ -10815,9 +10866,9 @@ function buildFormData(c: Checklist): FormData {
                 </button>
               </div>
             )}
-            {serialsError && (
+            {serialModuleError && (
               <div style={{ color: "crimson", fontSize: 12, marginBottom: 6 }}>
-                {serialsError}
+                {serialModuleError}
               </div>
             )}
             <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>

@@ -1,6 +1,6 @@
 # AGENT MEMORY — AT SYSTEM / arttech-checklist
 
-Ultimo aggiornamento: 2026-05-19
+Ultimo aggiornamento: 2026-05-28
 
 ## Identita' progetto
 
@@ -217,6 +217,11 @@ Domini principali:
 - la source dati e' `checklist_impianti_cabinet`
 - i file RCFG cabinet usano lo storage `checklist-documents` con riferimento persistito in `file_rcfg_url`
 - la migration da applicare e' `scripts/20260513_add_checklist_impianti_cabinet.sql`
+
+### Seriali hardware
+- in scheda progetto i form `CONTROLLO` e `MODULO_LED` devono restare indipendenti anche lato validazione UI
+- `asset_serials.checklist_impianto_id` puo' essere valorizzato solo per i seriali `CONTROLLO`
+- retrocompatibilita' obbligatoria: seriali storici con `checklist_impianto_id = null` restano validi e visibili
 
 ### Dashboard / Home
 - KPI cliccabili
