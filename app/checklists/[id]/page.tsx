@@ -2983,6 +2983,9 @@ function normalizeAssetSerialRow(row: any): AssetSerial {
   };
 }
 
+const ASSET_SERIAL_SELECT_COLUMNS =
+  "id, checklist_id, tipo, checklist_impianto_id, device_code, device_descrizione, seriale, note, created_at, updated_at";
+
 async function db<T = any>(payload: {
   table: string;
   op: "select" | "insert" | "update" | "delete";
@@ -3050,7 +3053,7 @@ async function db<T = any>(payload: {
         seriale,
         note: noteRaw?.trim() || null,
       })
-      .select("*")
+      .select(ASSET_SERIAL_SELECT_COLUMNS)
       .single();
     if (err) {
       const code = (err as any)?.code;
@@ -3061,11 +3064,29 @@ async function db<T = any>(payload: {
       setError(msg);
       return;
     }
+    let persistedSerialData = data;
+    if (
+      tipo === "CONTROLLO" &&
+      checklistImpiantoId &&
+      String((data as any)?.checklist_impianto_id || "").trim() !== checklistImpiantoId &&
+      String((data as any)?.id || "").trim()
+    ) {
+      const { data: repairedData, error: repairErr } = await dbFrom("asset_serials")
+        .update({ checklist_impianto_id: checklistImpiantoId })
+        .eq("id", String((data as any)?.id || "").trim())
+        .select(ASSET_SERIAL_SELECT_COLUMNS)
+        .single();
+      if (repairErr) {
+        setError(repairErr.message);
+        return;
+      }
+      persistedSerialData = repairedData;
+    }
     const normalizedInsertedSerial = normalizeAssetSerialRow({
-      ...(data || {}),
+      ...(persistedSerialData || {}),
       checklist_impianto_id:
         tipo === "CONTROLLO"
-          ? (data as any)?.checklist_impianto_id ?? checklistImpiantoId
+          ? (persistedSerialData as any)?.checklist_impianto_id ?? checklistImpiantoId
           : null,
     });
     setAssetSerials((prev) => [...prev, normalizedInsertedSerial]);
@@ -5438,8 +5459,7 @@ function buildFormData(c: Checklist): FormData {
       body: JSON.stringify({
         table: "asset_serials",
         op: "select",
-        select:
-          "id, checklist_id, tipo, checklist_impianto_id, device_code, device_descrizione, seriale, note, created_at, updated_at",
+        select: ASSET_SERIAL_SELECT_COLUMNS,
         filter: { checklist_id: id },
         order: [{ col: "created_at", asc: true }],
       }),
