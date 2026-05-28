@@ -663,6 +663,15 @@ export async function POST(request: Request) {
     if (op === "insert") {
     if (!payload) return invalid("Missing payload");
     const select = String(body.select || "*").trim() || "*";
+    if (table === "asset_serials") {
+      console.log("[DB API][asset_serials][INSERT][META]", {
+        table,
+        action: op,
+        select,
+      });
+      console.log("[DB API][asset_serials][INSERT][BODY]", body);
+      console.log("[DB API][asset_serials][PAYLOAD]", payload);
+    }
     if (table === "checklists") {
       const rows = Array.isArray(payload) ? payload : [payload];
       for (const row of rows) {
@@ -714,6 +723,15 @@ export async function POST(request: Request) {
     if (!payload) return invalid("Missing payload");
     if (Object.keys(filter).length === 0) return invalid("Update requires at least one eq filter");
     const select = String(body.select || "*").trim() || "*";
+    if (table === "asset_serials") {
+      console.log("[DB API][asset_serials][UPDATE][META]", {
+        table,
+        action: op,
+        select,
+      });
+      console.log("[DB API][asset_serials][UPDATE][BODY]", body);
+      console.log("[DB API][asset_serials][PAYLOAD]", payload);
+    }
     let q: any = supabaseAdmin.from(table).update(payload);
     for (const [k, v] of Object.entries(filter)) q = applyEqOrIsNull(q, k, v);
     const { data, error } = await q.select(select);
