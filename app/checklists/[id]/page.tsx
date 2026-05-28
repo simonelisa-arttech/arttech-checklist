@@ -2987,6 +2987,14 @@ function normalizeAssetSerialRow(row: any): AssetSerial {
 const ASSET_SERIAL_SELECT_COLUMNS =
   "id, checklist_id, tipo, checklist_impianto_id, device_code, device_descrizione, seriale, note, created_at, updated_at";
 
+function getCurrentControlChecklistImpiantoId(
+  stateValue?: string | null,
+  refValue?: string | null
+) {
+  const selectedId = String(stateValue || "").trim() || String(refValue || "").trim();
+  return selectedId || null;
+}
+
 async function db<T = any>(payload: {
   table: string;
   op: "select" | "insert" | "update" | "delete";
@@ -3041,9 +3049,11 @@ async function db<T = any>(payload: {
     const deviceDescrizione = String(deviceDescrizioneRaw ?? "").trim();
     const checklistImpiantoId = (() => {
       if (tipo !== "CONTROLLO") return null;
-      const selectedIdRaw = String(checklistImpiantoIdRaw || "").trim();
-      const fallbackSelectedId = String(serialControlChecklistImpiantoIdRef.current || "").trim();
-      const selectedId = selectedIdRaw || fallbackSelectedId;
+      const selectedId =
+        getCurrentControlChecklistImpiantoId(
+          serialControlChecklistImpiantoId,
+          serialControlChecklistImpiantoIdRef.current
+        ) || String(checklistImpiantoIdRaw || "").trim();
       if (!selectedId) return null;
       const resolvedId = resolvePersistedChecklistImpiantoId(selectedId, impianti, impianti);
       return resolvedId || selectedId;
