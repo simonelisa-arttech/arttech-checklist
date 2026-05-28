@@ -257,6 +257,7 @@ class DbFromBuilder {
       return callDb<any[]>({
         table: this.table,
         op: this.op,
+        select: this.selectClause,
         payload: this.payload,
         onConflict: this.onConflict,
       });
@@ -267,6 +268,7 @@ class DbFromBuilder {
       return callDb<any[]>({
         table: this.table,
         op: this.op,
+        select: this.selectClause,
         payload: this.payload,
         filter: this.eqFilters,
       });
@@ -277,6 +279,7 @@ class DbFromBuilder {
       const res = await callDb<any[]>({
         table: this.table,
         op: this.op,
+        select: this.selectClause,
         payload: this.payload,
         filter: { ...this.eqFilters, [inFilter.col]: value },
       });

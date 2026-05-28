@@ -101,7 +101,7 @@ const TABLE_RULES: Record<
   },
   asset_serials: {
     ops: ["select", "insert", "update", "delete"],
-    filterCols: ["id", "checklist_id", "tipo", "seriale"],
+    filterCols: ["id", "checklist_id", "tipo", "seriale", "checklist_impianto_id"],
     orderCols: ["created_at", "updated_at"],
     requiredEqAnyOf: ["id", "checklist_id"],
   },
@@ -590,6 +590,23 @@ export async function POST(request: Request) {
       }
 
       if (
+        table === "checklist_impianti" &&
+        select !== "*" &&
+        msg.includes("data_disinstallazione") &&
+        (msg.includes("does not exist") || msg.includes("schema cache") || msg.includes("column"))
+      ) {
+        const retrySelect = stripSelectColumn(select, "data_disinstallazione");
+        let retryQ: any = supabaseAdmin.from(table).select(retrySelect);
+        for (const [k, v] of Object.entries(filter)) retryQ = applyEqOrIsNull(retryQ, k, v);
+        for (const [k, v] of Object.entries(filterIn)) retryQ = retryQ.in(k, v as any[]);
+        for (const o of order) retryQ = retryQ.order(o.col, { ascending: o.asc !== false });
+        if (normalizedLimit > 0) retryQ = retryQ.limit(normalizedLimit);
+        const retry = await retryQ;
+        data = retry.data;
+        error = retry.error;
+      }
+
+      if (
         table === "clienti_anagrafica" &&
         select !== "*" &&
         (msg.includes("email_secondarie") ||
@@ -645,6 +662,7 @@ export async function POST(request: Request) {
 
     if (op === "insert") {
     if (!payload) return invalid("Missing payload");
+    const select = String(body.select || "*").trim() || "*";
     if (table === "checklists") {
       const rows = Array.isArray(payload) ? payload : [payload];
       for (const row of rows) {
@@ -677,16 +695,17 @@ export async function POST(request: Request) {
         }
       }
     }
-    const { data, error } = await supabaseAdmin.from(table).insert(payload).select("*");
+    const { data, error } = await supabaseAdmin.from(table).insert(payload).select(select);
       if (error) return dbFailure(table, op, filter, error.message);
     return NextResponse.json({ ok: true, data });
     }
 
     if (op === "upsert") {
     if (!payload) return invalid("Missing payload");
+    const select = String(body.select || "*").trim() || "*";
     const onConflict = String((body as any).onConflict || "").trim();
     const options = onConflict ? { onConflict } : undefined;
-    const { data, error } = await supabaseAdmin.from(table).upsert(payload as any, options as any).select("*");
+    const { data, error } = await supabaseAdmin.from(table).upsert(payload as any, options as any).select(select);
       if (error) return dbFailure(table, op, filter, error.message);
     return NextResponse.json({ ok: true, data });
     }
@@ -694,18 +713,20 @@ export async function POST(request: Request) {
     if (op === "update") {
     if (!payload) return invalid("Missing payload");
     if (Object.keys(filter).length === 0) return invalid("Update requires at least one eq filter");
+    const select = String(body.select || "*").trim() || "*";
     let q: any = supabaseAdmin.from(table).update(payload);
     for (const [k, v] of Object.entries(filter)) q = applyEqOrIsNull(q, k, v);
-    const { data, error } = await q.select("*");
+    const { data, error } = await q.select(select);
       if (error) return dbFailure(table, op, filter, error.message);
     return NextResponse.json({ ok: true, data });
     }
 
     if (op === "delete") {
     if (Object.keys(filter).length === 0) return invalid("Delete requires at least one eq filter");
+    const select = String(body.select || "*").trim() || "*";
     let q: any = supabaseAdmin.from(table).delete();
     for (const [k, v] of Object.entries(filter)) q = applyEqOrIsNull(q, k, v);
-    const { data, error } = await q.select("*");
+    const { data, error } = await q.select(select);
       if (error) return dbFailure(table, op, filter, error.message);
     return NextResponse.json({ ok: true, data });
     }
