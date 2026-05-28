@@ -2995,6 +2995,16 @@ function getCurrentControlChecklistImpiantoId(
   return selectedId || null;
 }
 
+function upsertAssetSerialInList(list: AssetSerial[], serial: AssetSerial) {
+  const next = list.slice();
+  const index = next.findIndex((item) => item.id === serial.id);
+  if (index >= 0) {
+    next[index] = serial;
+    return next;
+  }
+  return [...next, serial];
+}
+
 async function db<T = any>(payload: {
   table: string;
   op: "select" | "insert" | "update" | "delete";
@@ -3072,12 +3082,57 @@ async function db<T = any>(payload: {
       .select(ASSET_SERIAL_SELECT_COLUMNS)
       .single();
     if (err) {
-      const code = (err as any)?.code;
-      const msg =
-        tipo === "CONTROLLO" && code === "23505"
-          ? "Seriale CONTROLLO già associato ad un altro impianto/progetto."
-          : err.message;
-      setError(msg);
+      const errMessage = String(err.message || "");
+      const isControlDuplicate =
+        tipo === "CONTROLLO" &&
+        (errMessage.includes("asset_serials_controllo_global_unique") ||
+          errMessage.toLowerCase().includes("duplicate key value"));
+      if (isControlDuplicate) {
+        const { data: existingData, error: existingErr } = await dbFrom("asset_serials")
+          .select(ASSET_SERIAL_SELECT_COLUMNS)
+          .eq("tipo", "CONTROLLO")
+          .eq("seriale", seriale)
+          .maybeSingle();
+        if (existingErr) {
+          setError("Seriale già associato");
+          return;
+        }
+        const existingSerial = existingData ? normalizeAssetSerialRow(existingData) : null;
+        const canAssociateSelectedImpianto =
+          !!existingSerial &&
+          existingSerial.tipo === "CONTROLLO" &&
+          existingSerial.checklist_id === String(id).trim() &&
+          !existingSerial.checklist_impianto_id &&
+          !!checklistImpiantoId;
+        if (canAssociateSelectedImpianto) {
+          const { data: updatedData, error: updateErr } = await dbFrom("asset_serials")
+            .update({ checklist_impianto_id: checklistImpiantoId })
+            .eq("id", existingSerial.id)
+            .select(ASSET_SERIAL_SELECT_COLUMNS)
+            .single();
+          if (updateErr) {
+            setError(updateErr.message);
+            return;
+          }
+          const normalizedUpdatedSerial = normalizeAssetSerialRow(updatedData);
+          setAssetSerials((prev) => upsertAssetSerialInList(prev, normalizedUpdatedSerial));
+          setError(null);
+          setSerialControlInput("");
+          setSerialControlDeviceCode("");
+          setSerialControlDeviceDescrizione("");
+          setSerialControlNote("");
+          setSerialControlChecklistImpiantoId("");
+          serialControlChecklistImpiantoIdRef.current = "";
+          showToast("Seriale già presente: impianto associato aggiornato");
+          return;
+        }
+        if (existingSerial?.checklist_id === String(id).trim()) {
+          setAssetSerials((prev) => upsertAssetSerialInList(prev, existingSerial));
+        }
+        setError("Seriale già associato");
+        return;
+      }
+      setError(errMessage);
       return;
     }
     let persistedSerialData = data;
@@ -3105,7 +3160,7 @@ async function db<T = any>(payload: {
           ? (persistedSerialData as any)?.checklist_impianto_id ?? checklistImpiantoId
           : null,
     });
-    setAssetSerials((prev) => [...prev, normalizedInsertedSerial]);
+    setAssetSerials((prev) => upsertAssetSerialInList(prev, normalizedInsertedSerial));
     if (tipo === "CONTROLLO") setSerialControlInput("");
     if (tipo === "CONTROLLO") setSerialControlDeviceCode("");
     if (tipo === "CONTROLLO") setSerialControlDeviceDescrizione("");
