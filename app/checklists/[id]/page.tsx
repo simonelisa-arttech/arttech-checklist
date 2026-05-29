@@ -886,6 +886,22 @@ type CronoOperativiMeta = {
   commerciale_art_tech_contatto?: string | null;
 };
 
+type CronoPlanningStatus =
+  | "BOZZA"
+  | "DA_CONFERMARE"
+  | "CONFERMATA"
+  | "RIMANDATA"
+  | "SVOLTA"
+  | "ANNULLATA";
+
+const CRONO_MANUAL_PLANNING_STATUSES: CronoPlanningStatus[] = [
+  "BOZZA",
+  "DA_CONFERMARE",
+  "CONFERMATA",
+  "RIMANDATA",
+  "ANNULLATA",
+];
+
 type CronoReferenteCliente = {
   id?: string;
   nome: string;
@@ -2604,6 +2620,14 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
   }) {
     const visualStatus = getCronoOperativiVisualStatus(meta);
     const statusColors = getCronoOperativiStatusColors(visualStatus);
+    const editablePlanningStatus =
+      meta?.status && meta.status !== "SVOLTA"
+        ? meta.status
+        : visualStatus === "NASCOSTA"
+          ? "DA_CONFERMARE"
+          : visualStatus === "SVOLTA"
+            ? null
+            : visualStatus;
     const slots = buildCronoOperativiSlots(meta);
     const nextSlots = slots
       .filter((slot) => slot.data_inizio)
@@ -2854,6 +2878,28 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
               notice={notice}
               fallbackStartDate={fallbackStartDate}
               warningMessage={warningMessage}
+              planningStatus={editablePlanningStatus}
+              planningStatusOptions={
+                visualStatus === "SVOLTA" ? undefined : cronoPlanningStatusOptions
+              }
+              onPlanningStatusChange={
+                visualStatus === "SVOLTA"
+                  ? undefined
+                  : (value) =>
+                      void setCronoOperativiStatus(
+                        rowKind,
+                        value as CronoPlanningStatus,
+                        rowKind === "INSTALLAZIONE" ? setCronoOperativiMeta : setCronoDisinstallazioneMeta,
+                        rowKind === "INSTALLAZIONE" ? setCronoOperativiError : setCronoDisinstallazioneError,
+                        rowKind === "INSTALLAZIONE" ? setCronoOperativiNotice : setCronoDisinstallazioneNotice
+                      ).catch((e: any) =>
+                        (rowKind === "INSTALLAZIONE"
+                          ? setCronoOperativiError
+                          : setCronoDisinstallazioneError)(
+                          String(e?.message || "Errore salvataggio stato operativo")
+                        )
+                      )
+              }
               lockedCommercialeArtTech
               projectCommercialeArtTech={projectCommercialeArtTech}
             />
@@ -2914,6 +2960,14 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
     projectInterventi,
     taskCommentsById,
   ]);
+  const cronoPlanningStatusOptions = useMemo(
+    () =>
+      CRONO_MANUAL_PLANNING_STATUSES.map((status) => ({
+        value: status,
+        label: status === "DA_CONFERMARE" ? "DA CONFERMARE" : status,
+      })),
+    []
+  );
   const [projectInterventoBulkPreviewOpen, setProjectInterventoBulkPreviewOpen] = useState(false);
   const [projectCloseInterventoId, setProjectCloseInterventoId] = useState<string | null>(null);
   const [projectCloseEsito, setProjectCloseEsito] = useState("");
@@ -5451,6 +5505,34 @@ function buildFormData(c: Checklist): FormData {
       setCronoDisinstallazioneMeta,
       setCronoDisinstallazioneForm
     );
+  }
+
+  async function setCronoOperativiStatus(
+    rowKind: CronoOperativiRowKind,
+    status: CronoPlanningStatus,
+    setMeta: Dispatch<SetStateAction<CronoOperativiMeta | null>>,
+    setError: Dispatch<SetStateAction<string | null>>,
+    setNotice: Dispatch<SetStateAction<string | null>>
+  ) {
+    if (!id) return;
+    setError(null);
+    setNotice(null);
+    const res = await fetch("/api/cronoprogramma", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({
+        action: "set_status",
+        row_kind: rowKind,
+        row_ref_id: id,
+        status,
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(String(data?.error || "Errore salvataggio stato operativo"));
+    }
+    setMeta((data?.meta || null) as CronoOperativiMeta | null);
   }
 
   async function syncDisinstallazioneCronoWithImpiantoDate(checklistId: string, dateValue: string) {

@@ -1132,7 +1132,9 @@ export async function POST(request: Request) {
     if (activeChecklistIds.length > 0) {
       const metaRes = await supabaseAdmin
         .from("cronoprogramma_meta")
-        .select("row_kind, row_ref_id, slot_id, status, fatto, hidden")
+        .select(
+          "row_kind, row_ref_id, slot_id, status, fatto, hidden, updated_at, updated_by_operatore, operatore:updated_by_operatore(nome), modalita_attivita, personale_previsto, personale_ids, mezzi, descrizione_attivita, indirizzo, referente_cliente_nome, referente_cliente_contatto, commerciale_art_tech_nome, commerciale_art_tech_contatto"
+        )
         .in("row_ref_id", activeChecklistIds as any)
         .in("row_kind", ["INSTALLAZIONE", "DISINSTALLAZIONE"] as any);
       if (
