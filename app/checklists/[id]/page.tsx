@@ -4993,9 +4993,19 @@ function buildFormData(c: Checklist): FormData {
     setTaskNoteSavingTaskId(taskId);
     setTaskNotesError(null);
     try {
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (isSupabaseConfigured) {
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
+        const accessToken = String(session?.access_token || "").trim();
+        if (accessToken) {
+          headers.authorization = `Bearer ${accessToken}`;
+        }
+      }
       const res = await fetch("/api/cronoprogramma", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers,
         credentials: "include",
         body: JSON.stringify({
           action: "add_comment",
