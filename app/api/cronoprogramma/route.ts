@@ -1492,6 +1492,11 @@ export async function POST(request: Request) {
     const rowIds = Array.from(new Set(normalizedRows.map((r) => r.row_ref_id)));
     const rowKinds = Array.from(new Set(normalizedRows.map((r) => r.row_kind)));
     const wanted = new Set(normalizedRows.map((r) => rowKey(r.row_kind, r.row_ref_id, r.slot_id)));
+    const inheritedBlockKeys = new Set(
+      normalizedRows
+        .filter((row) => Boolean(row.slot_id) && isSharedBlockKind(row.row_kind))
+        .map((row) => rowKey(row.row_kind, row.row_ref_id, null))
+    );
 
     let metaRows: any[] | null = null;
     let metaErr: any = null;
@@ -1606,7 +1611,7 @@ export async function POST(request: Request) {
         String((row as any).row_ref_id),
         cleanOptionalUuid((row as any).slot_id)
       );
-      if (!wanted.has(key)) continue;
+      if (!wanted.has(key) && !inheritedBlockKeys.has(key)) continue;
       metaByKey[key] = mapMetaRow(row as any);
     }
 
@@ -1634,7 +1639,7 @@ export async function POST(request: Request) {
     const referentiByKey: Record<string, any[]> = {};
     for (const row of referentiRows || []) {
       const key = rowKey(String((row as any).row_kind), String((row as any).row_ref_id), null);
-      if (!wanted.has(key)) continue;
+      if (!wanted.has(key) && !inheritedBlockKeys.has(key)) continue;
       if (!referentiByKey[key]) referentiByKey[key] = [];
       referentiByKey[key].push(mapReferenteRow(row as any));
     }
