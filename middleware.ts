@@ -10,6 +10,7 @@ const PUBLIC_PATHS = [
   "/reset-password",
   "/auth/login",
   "/api/auth/password-recovery",
+  "/api/public/",
 ];
 const API_PREFIX = "/api/";
 const ASSET_PREFIXES = ["/_next", "/images"];
