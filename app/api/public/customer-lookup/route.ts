@@ -177,14 +177,25 @@ export async function GET(request: Request) {
   let matchedVia = "";
 
   // 1. per proforma (numero d'ordine / conferma)
+  // Cerca in più varianti per coprire formati diversi nel DB:
+  //   "143/2026"  →  esatto, oppure "%143/2026%", oppure "%143-2026%" (trattino)
   if (!checklistRows) {
-    const { data } = await db
-      .from("checklists")
-      .select(CHECKLIST_SELECT)
-      .ilike("proforma", rawCode)
-      .order("created_at", { ascending: false })
-      .limit(10);
-    if (data?.length) { checklistRows = data; matchedVia = "proforma"; }
+    const proformaVariants = [
+      rawCode,                              // esatto: "143/2026"
+      `%${rawCode}%`,                       // contiene: "%143/2026%"
+      `%${rawCode.replace(/\//g, "-")}%`,  // slash→trattino: "%143-2026%"
+      `%${rawCode.replace(/-/g, "/")}%`,   // trattino→slash: "%143/2026%"
+    ].filter((v, i, a) => a.indexOf(v) === i); // dedup
+
+    for (const variant of proformaVariants) {
+      const { data } = await db
+        .from("checklists")
+        .select(CHECKLIST_SELECT)
+        .ilike("proforma", variant)
+        .order("created_at", { ascending: false })
+        .limit(10);
+      if (data?.length) { checklistRows = data; matchedVia = "proforma"; break; }
+    }
   }
 
   // 2. per impianto_codice direttamente sulla checklist
