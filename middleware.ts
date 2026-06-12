@@ -11,6 +11,7 @@ const PUBLIC_PATHS = [
   "/auth/login",
   "/api/auth/password-recovery",
   "/api/public/",
+  "/registrazione",
 ];
 const API_PREFIX = "/api/";
 const ASSET_PREFIXES = ["/_next", "/images"];
