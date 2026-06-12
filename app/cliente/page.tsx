@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import ConfigMancante from "@/components/ConfigMancante";
+import ClienteAssistenzaSection from "@/components/ClienteAssistenzaSection";
 import { isSupabaseConfigured } from "@/lib/supabaseClient";
 
 type ClienteMe = {
@@ -843,6 +844,12 @@ export default function ClientePortalPage() {
             )
           )
             : null}
+
+          {sectionShell(
+            "Assistenza",
+            "Apri un ticket: ti guidiamo in base alla copertura attiva sul tuo impianto.",
+            <ClienteAssistenzaSection apiSuffix={clienteApiSuffix} />
+          )}
           </div>
         )}
       </div>
