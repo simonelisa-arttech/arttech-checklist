@@ -51,6 +51,8 @@ function checkRateLimit(ip: string, limit = 30, windowMs = 60_000): boolean {
 const PORTAL_ORIGINS = [
   "https://www.maxischermo.biz",
   "https://maxischermo.biz",
+  "http://localhost:8000", // test locale portale
+  "http://127.0.0.1:8000", // test locale portale
 ];
 
 function getAllowedOrigins(): string[] {
