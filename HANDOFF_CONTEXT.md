@@ -1,6 +1,6 @@
 # Handoff Context — AT SYSTEM (arttech-checklist)
 
-Ultimo aggiornamento: 2026-05-13 12:00 CEST
+Ultimo aggiornamento: 2026-06-15 CEST
 
 ## Stato attuale del progetto
 
@@ -144,7 +144,27 @@ Lo stato corrente e' buono: i flussi critici principali sono stati stabilizzati 
   - redirect verso `/?focus=sim-association`
   - se la SIM e' persistita aggiunge anche `sim_id`
 
+### 12. Assistenza / screening clienti (2026-06-15)
+
+Obiettivo: fare screening automatico delle richieste di assistenza per servire meglio il cliente e alleggerire il carico del personale, mantenendo i canali tradizionali come rete di sicurezza finche' l'automatismo dei tier non e' collaudato.
+
+- **`lib/supportTier.ts`** — logica condivisa di determinazione del tier dai dati reali Supabase. Stessa convenzione di `/api/public/customer-lookup`. Gerarchia:
+  1. `saas_contratti` cliente-wide attivi (PLUS/PREMIUM/ULTRA/EVENTS)
+  2. `rinnovi_servizi` SAAS/RINNOVO attivi sui progetti (ULTRA sempre come `item_tipo=SAAS` + `subtipo=ULTRA`)
+  3. `saas_piano`/`saas_tipo` della checklist con `saas_scadenza` attiva
+  4. GARANZIA attiva -> `standard`
+  5. altrimenti -> `expired`
+- Tier: `expired | standard | plus | premium | ultra | events`. Solo `premium/ultra/events` espongono contatto diretto (WhatsApp/referente da env `SUPPORT_PREMIUM_WHATSAPP` / `SUPPORT_PREMIUM_REFERENTE`).
+- **`app/api/cliente/assistenza/route.ts`** — endpoint area cliente che usa `computeSupportTierForCliente`.
+- **`components/ClienteAssistenzaSection.tsx`** — sezione Assistenza in area cliente: copertura reale, verifiche rapide guidate, apertura ticket.
+- **Tabella Supabase `assistenza_tickets`** — ticket salvati su DB con notifica email INTERNA al team (nessuna email automatica al cliente, come da regole).
+- **`/registrazione`** (live su atsystem.arttechworld.com) — auto-registrazione con verifica email: match con anagrafica = accesso immediato, altrimenti richiesta in approvazione con notifica interna.
+- **Landing assistenza Art Tech** (logo coordinato, 4 livelli spiegati, canali tradizionali email/WhatsApp/ticket/telefono come rete di sicurezza, note legali di tutela): pubblicata su `maxischermo.biz/assistenza.html` e su `www.ledcareservice.com` (dominio gia' vostro, hosting era vuoto). Homepage di maxischermo.biz NON toccata (HubSpot e vecchi ticket intatti).
+- Punti ancora aperti: vedi `TODO.md` (redirect ledcare.it, menu maxischermiled.it, decisione homepage maxischermo.biz, collaudo tier con clienti reali).
+
 ## Commit recenti importanti
+
+- `45f7d66` feat(area-cliente): sezione Assistenza con tier, ticket guidati e storico
 
 - `PENDING` feat(sim): improve project association UX with direct navigation
 - `53cf0a1` feat(dashboard): extend quick activity and intervention creation with operational staffing, vehicles and notes
