@@ -81,34 +81,46 @@ function corsHeaders(request: Request): Record<string, string> {
 }
 
 // ── Tier ─────────────────────────────────────────────────────────────────────
-export type SupportTier = "expired" | "standard" | "plus" | "premium";
+// `premium` resta solo per compatibilità UI legacy / clienti storici:
+// non deve mai degradare un ULTRA a PLUS.
+export type SupportTier = "expired" | "standard" | "plus" | "premium" | "ultra" | "events";
+
+const TIER_LABEL: Record<Exclude<SupportTier, "expired" | "standard">, string> = {
+  plus: "Contratto Plus",
+  premium: "Contratto Premium",
+  ultra: "Contratto Ultra",
+  events: "Pacchetto Events",
+};
 
 /**
  * Legge saas_piano + saas_tipo dalla checklist (campo libero impostato in AT System)
- * e mappa al tier. Convenzione usata nel dashboard:
- *   "SAAS-PR" → premium
- *   "SAAS-UL" → plus (Ultra)
- *   "SAAS-PL" → plus
+ * e mappa al tier.
  */
 function tierFromChecklistSaas(saas_piano?: string | null, saas_tipo?: string | null): SupportTier | null {
   const combined = `${String(saas_piano || "")} ${String(saas_tipo || "")}`.toUpperCase();
-  if (combined.includes("SAAS-PR")) return "premium";
-  if (combined.includes("SAAS-UL") || combined.includes("SAAS-PL")) return "plus";
-  if (combined.trim().length > 0) return "plus"; // SAAS generico
+  if (combined.includes("EVENT")) return "events";
+  if (combined.includes("SAAS-UL") || combined.includes("ULTRA")) return "ultra";
+  if (combined.includes("SAAS-PR") || combined.includes("PREMI")) return "premium";
+  if (combined.includes("SAAS-PL") || combined.includes("PLUS")) return "plus";
+  if (combined.trim().length > 0) return "plus";
   return null;
 }
 
 /**
  * Legge piano_codice da saas_contratti (contratto cliente-wide).
- * Convenzione: "ULTRA" → plus, "PREMIUM" o "PREMIUM" → premium.
  */
 function tierFromContratto(piano_codice?: string | null): SupportTier | null {
   const p = String(piano_codice || "").toUpperCase();
-  if (p.includes("PREMI")) return "premium";
-  if (p.includes("ULTRA") || p.includes("UL")) return "plus";
+  if (p.includes("EVENT")) return "events";
+  if (p.includes("ULTRA") || p.includes("UL")) return "ultra";
+  if (p.includes("PREMI") || p.includes("PR")) return "premium";
   if (p.includes("PLUS") || p.includes("PL")) return "plus";
   if (p.length > 0) return "plus";
   return null;
+}
+
+function hasDirectContact(tier: SupportTier): boolean {
+  return tier === "premium" || tier === "ultra" || tier === "events";
 }
 
 function isDateActive(dateStr?: string | null): boolean {
@@ -253,10 +265,11 @@ export async function GET(request: Request) {
     return NextResponse.json({ found: false }, { status: 200, headers: cors });
   }
 
-  const primary = checklistRows[0] as any;
+  const checklists = (checklistRows || []) as any[];
+  const primary = checklists[0] as any;
   const customerName = String(primary.cliente || "").trim();
   const clienteId = String(primary.cliente_id || "").trim();
-  const checklistIds = checklistRows.map((r: any) => String(r.id || "")).filter(Boolean);
+  const checklistIds = checklists.map((r: any) => String(r.id || "")).filter(Boolean);
 
   // ── rinnovi_servizi ──────────────────────────────────────────────────────
   const { data: rinnovi } = await db
@@ -294,10 +307,10 @@ export async function GET(request: Request) {
   const activeContratto = (contrattiRows).find((c: any) => isDateActive(c.scadenza));
   if (activeContratto) {
     const t = tierFromContratto(activeContratto.piano_codice);
-    if (t) {
+    if (t && t !== "expired" && t !== "standard") {
       tier = t;
       saasExpiry = activeContratto.scadenza ?? null;
-      saasLabel = tier === "premium" ? "Contratto Premium" : "Contratto Ultra";
+      saasLabel = TIER_LABEL[t];
       if (typeof activeContratto.interventi_annui === "number" && !activeContratto.illimitati) {
         oreResidueContratto = activeContratto.interventi_annui;
       }
@@ -311,17 +324,20 @@ export async function GET(request: Request) {
       return (tipo === "SAAS" || tipo === "RINNOVO") && isDateActive(r.scadenza);
     });
     if (activeSaas.length) {
-      const hasUltra = activeSaas.some(
-        (r: any) => String(r.subtipo || "").toUpperCase() === "ULTRA"
-      );
-      // Controlla anche saas_piano/saas_tipo della checklist
+      const hasUltra = activeSaas.some((r: any) => String(r.subtipo || "").toUpperCase() === "ULTRA");
       const tierFromFields = tierFromChecklistSaas(primary.saas_piano, primary.saas_tipo);
-      if (tierFromFields === "premium") {
+      if (hasUltra || tierFromFields === "ultra") {
+        tier = "ultra";
+        saasLabel = TIER_LABEL.ultra;
+      } else if (tierFromFields === "events") {
+        tier = "events";
+        saasLabel = TIER_LABEL.events;
+      } else if (tierFromFields === "premium") {
         tier = "premium";
-        saasLabel = "Contratto Premium";
-      } else if (hasUltra || tierFromFields === "plus") {
+        saasLabel = TIER_LABEL.premium;
+      } else if (tierFromFields === "plus") {
         tier = "plus";
-        saasLabel = "Contratto Plus/Ultra";
+        saasLabel = TIER_LABEL.plus;
       } else {
         tier = "plus";
         saasLabel = "SaaS Attivo";
@@ -331,14 +347,12 @@ export async function GET(request: Request) {
   }
 
   // Priorità 3: saas_piano/saas_tipo direttamente sulla checklist
-  if (tier === "expired" && !isDateActive(primary.saas_scadenza) === false) {
+  if (tier === "expired") {
     const t = tierFromChecklistSaas(primary.saas_piano, primary.saas_tipo);
-    if (t && isDateActive(primary.saas_scadenza)) {
+    if (t && t !== "expired" && t !== "standard" && isDateActive(primary.saas_scadenza)) {
       tier = t;
       saasExpiry = primary.saas_scadenza ?? null;
-      saasLabel =
-        t === "premium" ? "Contratto Premium" :
-        t === "plus" ? "Contratto Plus/Ultra" : "SaaS";
+      saasLabel = TIER_LABEL[t];
     }
   }
 
@@ -347,20 +361,23 @@ export async function GET(request: Request) {
     const activeGaranzia = ((rinnovi || []) as any[]).find((r) => {
       return String(r.item_tipo || "").toUpperCase() === "GARANZIA" && isDateActive(r.scadenza);
     });
-    if (activeGaranzia || isDateActive(primary.garanzia_scadenza)) {
+    const anyChecklistGaranzia = checklists.find((c) => isDateActive(c.garanzia_scadenza));
+    if (activeGaranzia || anyChecklistGaranzia) {
       tier = "standard";
       saasLabel = "Garanzia Standard";
-      saasExpiry = activeGaranzia?.scadenza ?? primary.garanzia_scadenza ?? null;
+      saasExpiry = activeGaranzia?.scadenza ?? anyChecklistGaranzia?.garanzia_scadenza ?? null;
     }
   }
 
   // ── Lista impianti ────────────────────────────────────────────────────────
-  const gScad = primary.garanzia_scadenza ?? null;
+  const checklistById = new Map(checklists.map((c) => [String(c.id), c]));
   type ImpiantoOut = { nome: string; seriale: string | null; garanzia: string | null; stato: "ok" | "warn" | "exp" };
   const impianti: ImpiantoOut[] = [];
 
   if ((impiantiRows as any[])?.length) {
     for (const imp of impiantiRows as any[]) {
+      const parent = checklistById.get(String(imp.checklist_id || "")) || {};
+      const gScad = parent.garanzia_scadenza ?? null;
       const nome = [imp.impianto_descrizione, imp.tipo_impianto, imp.dimensioni]
         .filter(Boolean).join(" — ") || "Impianto LED";
       impianti.push({
@@ -371,6 +388,7 @@ export async function GET(request: Request) {
       });
     }
   } else {
+    const gScad = primary.garanzia_scadenza ?? null;
     const nome = [primary.impianto_descrizione, primary.nome_checklist]
       .filter(Boolean).join(" — ") || "Impianto LED";
     impianti.push({
@@ -382,10 +400,10 @@ export async function GET(request: Request) {
   }
 
   // ── Contatti premium da env ───────────────────────────────────────────────
-  const whatsapp = tier === "premium"
+  const whatsapp = hasDirectContact(tier)
     ? (process.env.SUPPORT_PREMIUM_WHATSAPP || null)
     : null;
-  const referenteTecnico = tier === "premium"
+  const referenteTecnico = hasDirectContact(tier)
     ? (process.env.SUPPORT_PREMIUM_REFERENTE || null)
     : null;
 
