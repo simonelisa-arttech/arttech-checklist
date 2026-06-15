@@ -156,6 +156,9 @@ async function notifyStaffPendingRequest(input: {
   try {
     await sendEmail({
       to,
+      // Reply-To = email del richiedente: il ticket HubSpot aperto via
+      // email-to-ticket resta collegato al contatto e si puo' rispondere subito.
+      replyTo: input.email,
       subject: `[Area Cliente] Nuova richiesta registrazione da verificare: ${input.email}`,
       text: ["Nuova richiesta di registrazione area cliente in attesa di approvazione.", "", ...righe].join("\n"),
       html: [

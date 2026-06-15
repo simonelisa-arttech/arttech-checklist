@@ -129,7 +129,10 @@ export async function POST(request: Request) {
     try {
       await sendEmail({
         to: staffTo,
-        subject: `[Ticket #${inserted.numero}] ${CATEGORIA_LABEL[categoria]} — tier ${info.tier.toUpperCase()}`,
+        // Reply-To = email del cliente: HubSpot (email-to-ticket) associa cosi'
+        // la conversazione al contatto giusto e lo staff risponde direttamente.
+        replyTo: auth.cliente.email,
+        subject: `[Ticket #${inserted.numero}] ${CATEGORIA_LABEL[categoria]} — tier ${info.tier.toUpperCase()} — ${auth.cliente.email}`,
         text: [
           `Nuovo ticket assistenza dall'area cliente.`,
           ``,

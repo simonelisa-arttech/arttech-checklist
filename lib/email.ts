@@ -3,13 +3,20 @@ type SendEmailInput = {
   subject: string;
   text: string;
   html: string;
+  /**
+   * Indirizzo del mittente "logico" (es. email del cliente che apre il ticket).
+   * Usato come Reply-To: quando la mail arriva a sistemi email-to-ticket
+   * (es. HubSpot via ticket@maxischermiled.it) consente di rispondere
+   * direttamente al cliente e di associare la conversazione al contatto.
+   */
+  replyTo?: string;
 };
 
 type SendEmailResult = {
   id?: string;
 };
 
-export async function sendEmail({ to, subject, text, html }: SendEmailInput) {
+export async function sendEmail({ to, subject, text, html, replyTo }: SendEmailInput) {
   if (process.env.E2E === "1") {
     console.log("[E2E] sendEmail mocked:", { to, subject });
     return { id: "e2e-mocked-email" } as SendEmailResult;
@@ -36,6 +43,7 @@ export async function sendEmail({ to, subject, text, html }: SendEmailInput) {
       subject,
       text,
       html,
+      ...(replyTo ? { reply_to: replyTo } : {}),
     }),
   });
 
