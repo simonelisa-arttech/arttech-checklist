@@ -3,13 +3,17 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 /**
  * Logica condivisa di determinazione del tier assistenza.
  * Stessa convenzione dell'endpoint pubblico /api/public/customer-lookup:
- *   1. saas_contratti cliente-wide attivi (PREMIUM/ULTRA/PLUS)
+ *   1. saas_contratti cliente-wide attivi (PLUS/PREMIUM/ULTRA/EVENTS)
  *   2. rinnovi_servizi SAAS/RINNOVO attivi sui progetti
  *   3. saas_piano/saas_tipo della checklist con saas_scadenza attiva
  *   4. GARANZIA attiva → standard
  *   5. altrimenti → expired
+ *
+ * Gerarchia pacchetti (da "Pacchetti SAAS Art Tech", Drive ufficiale):
+ *   PLUS (base) < PREMIUM (SLA 4/8/12/24/36h) < ULTRA (top level, priorità assoluta)
+ *   EVENTS = pacchetto dedicato eventi/noleggi ≤ 7gg, intervento on site entro 1h.
  */
-export type SupportTier = "expired" | "standard" | "plus" | "premium";
+export type SupportTier = "expired" | "standard" | "plus" | "premium" | "ultra" | "events";
 
 export type SupportTierInfo = {
   tier: SupportTier;
@@ -31,19 +35,34 @@ export type SupportTierInfo = {
 
 function tierFromChecklistSaas(saas_piano?: string | null, saas_tipo?: string | null): SupportTier | null {
   const combined = `${String(saas_piano || "")} ${String(saas_tipo || "")}`.toUpperCase();
-  if (combined.includes("SAAS-PR")) return "premium";
-  if (combined.includes("SAAS-UL") || combined.includes("SAAS-PL")) return "plus";
+  if (combined.includes("EVENT")) return "events";
+  if (combined.includes("SAAS-UL") || combined.includes("ULTRA")) return "ultra";
+  if (combined.includes("SAAS-PR") || combined.includes("PREMI")) return "premium";
+  if (combined.includes("SAAS-PL") || combined.includes("PLUS")) return "plus";
   if (combined.trim().length > 0) return "plus";
   return null;
 }
 
 function tierFromContratto(piano_codice?: string | null): SupportTier | null {
   const p = String(piano_codice || "").toUpperCase();
-  if (p.includes("PREMI")) return "premium";
-  if (p.includes("ULTRA") || p.includes("UL")) return "plus";
+  if (p.includes("EVENT")) return "events";
+  if (p.includes("ULTRA") || p.includes("UL")) return "ultra";
+  if (p.includes("PREMI") || p.includes("PR")) return "premium";
   if (p.includes("PLUS") || p.includes("PL")) return "plus";
   if (p.length > 0) return "plus";
   return null;
+}
+
+const TIER_LABEL: Record<Exclude<SupportTier, "expired" | "standard">, string> = {
+  plus: "Contratto Plus",
+  premium: "Contratto Premium",
+  ultra: "Contratto Ultra",
+  events: "Pacchetto Events",
+};
+
+/** Tier con canale di contatto diretto (WhatsApp/telefono dedicato). */
+function hasDirectContact(tier: SupportTier): boolean {
+  return tier === "premium" || tier === "ultra" || tier === "events";
 }
 
 export function isDateActive(dateStr?: string | null): boolean {
@@ -128,10 +147,10 @@ export async function computeSupportTierForCliente(
   const activeContratto = ((contratti || []) as any[]).find((c) => isDateActive(c.scadenza));
   if (activeContratto) {
     const t = tierFromContratto(activeContratto.piano_codice);
-    if (t) {
+    if (t && t !== "expired" && t !== "standard") {
       tier = t;
       saasExpiry = activeContratto.scadenza ?? null;
-      saasLabel = tier === "premium" ? "Contratto Premium" : "Contratto Ultra";
+      saasLabel = TIER_LABEL[t];
       if (typeof activeContratto.interventi_annui === "number" && !activeContratto.illimitati) {
         oreResidue = activeContratto.interventi_annui;
       }
@@ -149,12 +168,18 @@ export async function computeSupportTierForCliente(
     if (activeSaas.length) {
       const hasUltra = activeSaas.some((r: any) => String(r.subtipo || "").toUpperCase() === "ULTRA");
       const tf = tierFromChecklistSaas(primary.saas_piano, primary.saas_tipo);
-      if (tf === "premium") {
+      if (hasUltra || tf === "ultra") {
+        tier = "ultra";
+        saasLabel = TIER_LABEL.ultra;
+      } else if (tf === "events") {
+        tier = "events";
+        saasLabel = TIER_LABEL.events;
+      } else if (tf === "premium") {
         tier = "premium";
-        saasLabel = "Contratto Premium";
-      } else if (hasUltra || tf === "plus") {
+        saasLabel = TIER_LABEL.premium;
+      } else if (tf === "plus") {
         tier = "plus";
-        saasLabel = "Contratto Plus/Ultra";
+        saasLabel = TIER_LABEL.plus;
       } else {
         tier = "plus";
         saasLabel = "SaaS Attivo";
@@ -166,10 +191,10 @@ export async function computeSupportTierForCliente(
   // 3. saas su checklist
   if (tier === "expired") {
     const t = tierFromChecklistSaas(primary.saas_piano, primary.saas_tipo);
-    if (t && isDateActive(primary.saas_scadenza)) {
+    if (t && t !== "expired" && t !== "standard" && isDateActive(primary.saas_scadenza)) {
       tier = t;
       saasExpiry = primary.saas_scadenza ?? null;
-      saasLabel = t === "premium" ? "Contratto Premium" : "Contratto Plus/Ultra";
+      saasLabel = TIER_LABEL[t];
     }
   }
 
@@ -227,8 +252,8 @@ export async function computeSupportTierForCliente(
     saas_expiry: saasExpiry,
     saas_type: saasLabel,
     ore_residue: oreResidue,
-    whatsapp: tier === "premium" ? process.env.SUPPORT_PREMIUM_WHATSAPP || null : null,
-    referente_tecnico: tier === "premium" ? process.env.SUPPORT_PREMIUM_REFERENTE || null : null,
+    whatsapp: hasDirectContact(tier) ? process.env.SUPPORT_PREMIUM_WHATSAPP || null : null,
+    referente_tecnico: hasDirectContact(tier) ? process.env.SUPPORT_PREMIUM_REFERENTE || null : null,
     impianti,
   };
 }

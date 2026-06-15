@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 
 type TierInfo = {
-  tier: "expired" | "standard" | "plus" | "premium";
+  tier: "expired" | "standard" | "plus" | "premium" | "ultra" | "events";
   saas_active: boolean;
   saas_expiry: string | null;
   saas_type: string | null;
@@ -56,8 +56,10 @@ const VERIFICHE_RAPIDE: Record<string, string> = {
 const TIER_STYLE: Record<TierInfo["tier"], { label: string; bg: string; border: string; color: string }> = {
   expired: { label: "Garanzia / contratto scaduto", bg: "#fef2f2", border: "#fecaca", color: "#b91c1c" },
   standard: { label: "Garanzia Standard attiva", bg: "#eff6ff", border: "#bfdbfe", color: "#1d4ed8" },
-  plus: { label: "Contratto Plus/Ultra attivo", bg: "#f0fdf4", border: "#bbf7d0", color: "#15803d" },
-  premium: { label: "Contratto Premium attivo", bg: "#fefce8", border: "#fde68a", color: "#a16207" },
+  plus: { label: "Art Tech PLUS attivo", bg: "#f0fdf4", border: "#bbf7d0", color: "#15803d" },
+  premium: { label: "Art Tech PREMIUM attivo", bg: "#fefce8", border: "#fde68a", color: "#a16207" },
+  ultra: { label: "Art Tech ULTRA attivo — priorità assoluta", bg: "#faf5ff", border: "#e9d5ff", color: "#7e22ce" },
+  events: { label: "Art Tech EVENTS attivo — supporto evento", bg: "#fff7ed", border: "#fed7aa", color: "#c2410c" },
 };
 
 function formatDate(d?: string | null) {
@@ -180,8 +182,8 @@ export default function ClienteAssistenzaSection({ apiSuffix }: { apiSuffix: str
         </span>
       </div>
 
-      {/* Premium: contatto diretto */}
-      {info.tier === "premium" && info.whatsapp ? (
+      {/* Premium / Ultra / Events: contatto diretto */}
+      {info.whatsapp ? (
         <a
           href={`https://wa.me/${info.whatsapp.replace(/\D/g, "")}`}
           target="_blank"
