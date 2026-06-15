@@ -147,11 +147,35 @@ export default function AppShellHeader() {
               >
                 App operatori
               </Link>
+              <Link
+                href="/guida"
+                style={dropdownLinkStyle}
+                title="Guida all'uso di AT SYSTEM"
+                onClick={closeDropdownOnNavigation}
+              >
+                Help / Guida
+              </Link>
             </div>
           </details>
         </nav>
       </div>
       <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>
+        <Link
+          href="/guida"
+          title="Guida all'uso di AT SYSTEM"
+          style={{
+            padding: "8px 12px",
+            borderRadius: 10,
+            border: "1px solid #ddd",
+            background: "white",
+            color: "#111827",
+            textDecoration: "none",
+            fontSize: 14,
+            fontWeight: 700,
+          }}
+        >
+          Help
+        </Link>
         <LogoutButton />
       </div>
     </header>
