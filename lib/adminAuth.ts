@@ -96,6 +96,16 @@ async function resolveOperatoreAuth(request: Request): Promise<RequireOperatoreO
     return unauthorized();
   }
 
+  // Hardening isolamento area cliente: un utente del portale clienti
+  // (ruolo_portale = CLIENTE) non deve MAI essere autorizzato come operatore,
+  // nemmeno se la sua email coincide per errore con un record in `operatori`.
+  const ruoloPortale = String((user.user_metadata as Record<string, unknown> | null)?.ruolo_portale || "")
+    .trim()
+    .toUpperCase();
+  if (ruoloPortale === "CLIENTE") {
+    return unauthorized("Accesso riservato agli operatori", 403);
+  }
+
   const adminClient = createClient(supabaseUrl, serviceRoleKey, {
     auth: { persistSession: false, autoRefreshToken: false },
   });

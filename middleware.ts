@@ -64,12 +64,13 @@ export async function middleware(req: NextRequest) {
   const accessToken = getAccessTokenFromRequest(req);
   const refreshToken = req.cookies.get("sb-refresh-token")?.value;
 
-  if (!accessToken) {
+  // Access token assente MA refresh token presente: non fare logout.
+  // Si prosegue e si tenta il refresh silenzioso piu' sotto, cosi' la
+  // permanenza effettiva sul sito dura quanto il refresh token (90 giorni)
+  // e non quanto la scadenza JWT dell'access token.
+  if (!accessToken && !refreshToken) {
     if (isApiRequest) {
-      return unauthorizedApiResponse(
-        pathname,
-        refreshToken ? "access-token-missing" : "refresh-token-missing"
-      );
+      return unauthorizedApiResponse(pathname, "refresh-token-missing");
     }
     const url = req.nextUrl.clone();
     url.pathname = "/login";
@@ -91,10 +92,13 @@ export async function middleware(req: NextRequest) {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
   let currentUserId: string | null = null;
-  const {
-    data: { user },
-    error: userError,
-  } = await supabase.auth.getUser(accessToken);
+  let user: Awaited<ReturnType<typeof supabase.auth.getUser>>["data"]["user"] = null;
+  let userError: Error | null = null;
+  if (accessToken) {
+    const userResult = await supabase.auth.getUser(accessToken);
+    user = userResult.data.user;
+    userError = userResult.error;
+  }
   currentUserId = user?.id ?? null;
 
   if (user) {
@@ -119,14 +123,19 @@ export async function middleware(req: NextRequest) {
     if (!error && data.session) {
       currentUserId = data.user?.id ?? null;
       const secure = process.env.NODE_ENV === "production";
-      res.cookies.set("sb-access-token", data.session.access_token, {
+      // Inoltra il nuovo access token alla route a valle: la richiesta corrente
+      // (pagina o API) prosegue subito senza 401 dopo il refresh silenzioso.
+      const forwardedHeaders = new Headers(req.headers);
+      forwardedHeaders.set("authorization", `Bearer ${data.session.access_token}`);
+      const refreshedRes = NextResponse.next({ request: { headers: forwardedHeaders } });
+      refreshedRes.cookies.set("sb-access-token", data.session.access_token, {
         httpOnly: true,
         secure,
         sameSite: "lax",
         path: "/",
         maxAge: data.session.expires_in ?? 3600,
       });
-      res.cookies.set("sb-refresh-token", data.session.refresh_token, {
+      refreshedRes.cookies.set("sb-refresh-token", data.session.refresh_token, {
         httpOnly: true,
         secure,
         sameSite: "lax",
@@ -159,7 +168,7 @@ export async function middleware(req: NextRequest) {
           return portalRedirect;
         }
       }
-      return res;
+      return refreshedRes;
     }
 
     if (isApiRequest && pathname === SIM_SYNC_PATH) {
