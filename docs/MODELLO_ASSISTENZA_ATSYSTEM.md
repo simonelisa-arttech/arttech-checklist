@@ -6,7 +6,7 @@
 > questo documento. SLA e interventi inclusi sono **configurabili** (non hardcoded). Il deck
 > commerciale ne è una versione semplificata. Niente codice/commit finché non validato.
 
-Versione: 2026-06-15 (modello PREMIUM CLIENT)
+Versione: 2026-06-15 (modello PREMIUM CLIENT — chiusura SLA/interventi/alert)
 
 ---
 
@@ -40,25 +40,32 @@ Nomenclatura ufficiale (vedi catalogo). Un solo piano attivo per progetto alla v
 | **Garanzia** | `item_tipo=GARANZIA` | `garanzia` | Garanzia hardware attiva, nessun SAAS. Copre i difetti in garanzia. |
 | **CARE PLUS** | `SAAS-PL` | `plus` | SAAS base: iPlayer, cloud, diagnostica, monitoraggio, ticketing, aggiornamenti. |
 | **CARE ULTRA** | `SAAS-UL*`, `SAAS-UL-ILL` | `ultra` | Copertura avanzata, priorità assoluta, interventi inclusi, SLA orario H{N}/illimitato. |
-| **ART TECH EVENT** | `SAAS-EVTR/EVTO/EVTF` | `event` | Eventi/noleggi temporanei (≤ 7 gg): presidio, on-site rapido, priorità assoluta. |
+| **ART TECH EVENT** | `SAAS-EVTR/EVTO/EVTF` | `event` | Eventi/noleggi temporanei (≤ 7 gg): presa in carico immediata, priorità massima durante l'evento, presidio/on-site secondo contratto. |
 
-> ~~CARE PREMIUM~~ (`SAAS-PR*`) è **legacy in dismissione**: non è più un piano. I contratti
-> esistenti vengono riallineati manualmente a **CARE PLUS + Premium Client** o **CARE ULTRA**.
+> ~~CARE PREMIUM~~ (`SAAS-PR*`) è **dismesso**: non è più un piano commerciale ed è **sostituito dal
+> programma PREMIUM CLIENT**. Resta solo come **nota legacy**: i contratti esistenti vengono
+> riallineati manualmente a **CARE PLUS + Premium Client** o **CARE ULTRA** (`MIGRAZIONE_CARE_PREMIUM.md`).
 
-### A.2 Add-on trasversale: PREMIUM CLIENT
+### A.2 Programma trasversale: PREMIUM CLIENT
 
-Programma relazionale/commerciale **trasversale ai piani**, non un piano. A livello dati: flag
-**`premium_client`** (boolean), predisposto per futuri programmi (`client_program`:
-PREMIUM_CLIENT / STRATEGIC_CLIENT / PARTNER_CLIENT / DOOH_PARTNER).
+PREMIUM CLIENT è un **programma relazionale/commerciale trasversale ai piani**, **non un piano**. A
+livello dati: flag **`premium_client`** (boolean), predisposto per futuri programmi
+(`client_program`: PREMIUM_CLIENT / STRATEGIC_CLIENT / PARTNER_CLIENT / DOOH_PARTNER).
 
-- **Incluso** in: CARE ULTRA, ART TECH EVENT, noleggi, garanzia per società sportive.
-- **Opzionale** (acquistabile) su: CARE PLUS.
+**Cosa include:** referente dedicato Art Tech, canale WhatsApp prioritario, presa in carico
+accelerata, comunicazione preferenziale, gestione proattiva, accesso facilitato ai servizi.
 
-**Comprende:** referente dedicato Art Tech, canale WhatsApp prioritario, presa in carico accelerata,
-comunicazione preferenziale, gestione proattiva, accesso facilitato ai servizi.
+**Cosa NON include:** interventi gratuiti, SLA Ultra, interventi illimitati, ricambi inclusi —
+questi dipendono **sempre dal piano**.
 
-**NON implica:** interventi gratuiti, SLA Ultra, interventi illimitati, ricambi inclusi — questi
-dipendono **sempre dal piano**.
+**Incluso automaticamente in:**
+- **CARE ULTRA**
+- **ART TECH EVENT**
+- **Noleggi attivi**
+- **Garanzie con flag `premium_client_incluso_garanzia`** (flag generale: oggi società sportive,
+  domani federazioni/enti/sponsor/clienti strategici)
+
+**Opzionale (acquistabile)** su **CARE PLUS** (flag esplicito).
 
 ### A.3 Add-on servizi componibili
 `SAAS-MON` (monitoraggio), `SAAS-TCK` (ticketing), `SAAS-SIM`, `SAAS-CMS`, `SAAS-BKP`, `SAAS-RPT`,
@@ -68,8 +75,9 @@ dipendono **sempre dal piano**.
 
 ## B) Matrice SLA e servizi
 
-SLA = attributi **configurabili** del contratto, non incorporati nel nome del piano. Oggi l'SLA
-orario è già codificato nel suffisso del codice (`SAAS-UL8` = H8); va esposto come attributo.
+SLA = attributi **configurabili** del contratto, non incorporati nel nome del piano. Gli SLA **non
+devono derivare dal parsing dei codici** (`SAAS-UL8` = H8): il codice può essere usato solo come
+**fallback legacy** finché i contratti non espongono l'SLA come attributo dedicato.
 
 Due tempi: `sla_presa_in_carico_ore` (presa in carico ticket) e `sla_intervento_onsite_ore`
 (intervento on-site, decorrente dalla presa in carico).
@@ -77,9 +85,9 @@ Due tempi: `sla_presa_in_carico_ore` (presa in carico ticket) e `sla_intervento_
 | | Nessuna | Garanzia | CARE PLUS | CARE ULTRA | ART TECH EVENT |
 |---|---|---|---|---|---|
 | **Canale ticket** | sì (a preventivo) | sì | sì + operatore | sì + priorità | sì + priorità assoluta |
-| **Premium Client** | no | incluso se sportiva | opzionale | incluso | incluso |
+| **Premium Client** | no | incluso se `premium_client_incluso_garanzia` | opzionale | incluso | incluso |
 | **Presa in carico** | best effort | standard (~24h) | H{N} configurabile | prioritaria | immediata (evento) |
-| **Intervento on-site** | entro 72h post-verifica | best effort (garanzia) | a consumo salvo inclusi | H4–H36 / illimitato | entro 1h |
+| **Intervento on-site** | entro 72h post-verifica | best effort (garanzia) | a consumo salvo inclusi | H4–H36 / illimitato | secondo contratto evento |
 | **Interventi inclusi/anno** | 0 | difetti in garanzia | `interventi_annui` (default 0) | `interventi_annui`/illimitati | presidio evento |
 | **Monitoraggio** | no | no | sì | sì | durante evento |
 | **Sconti su extra** | no | no | base | prioritario | da contratto evento |
@@ -94,7 +102,8 @@ Il sistema **non si blocca** se SLA/interventi non configurati: usa default di l
 Già supportati dallo schema: `saas_contratti.interventi_annui` (int) e `illimitati` (bool).
 
 - `interventi_inclusi_anno` = `interventi_annui` (o ∞ se `illimitati`).
-- `interventi_usati` (derivato dagli interventi chiusi imputabili al contratto).
+- `interventi_usati` = **solo gli interventi on-site chiusi** imputabili al contratto. Ticket,
+  assistenza remota e diagnostica **non consumano** interventi inclusi.
 - `interventi_residui` = inclusi − usati.
 - Prima ora on-site e tariffe extra: parametriche (storico: 1ª ora inclusa, oraria €55 con sconti).
 - Gli interventi **non estendono la garanzia** (nota di tutela).
@@ -118,7 +127,7 @@ interventi_inclusi_default int null, descrizione_cliente text
 - Campo **`premium_client` boolean** su `saas_contratti` (e/o sul progetto/contratto assistenza).
 - Predisposizione futura: `client_program text null`.
 - In lettura, `premium_client` effettivo = `flag esplicito` OR `config_livelli.premium_client_incluso`
-  per il livello OR (noleggio) OR (garanzia + flag società sportiva).
+  per il livello OR (noleggio attivo) OR (garanzia + flag `premium_client_incluso_garanzia`).
 
 ### D.3 Attributi piano/SLA/interventi
 - `saas_contratti`: `piano_codice`, `scadenza`, `interventi_annui`, `illimitati` (esistenti) +
@@ -168,8 +177,8 @@ Ordine di determinazione (per progetto):
 3. Altrimenti → `tier = NESSUNA`.
 
 Derivazioni:
-- `premiumClient` = flag contratto OR incluso-per-livello (ultra/event) OR noleggio OR (garanzia +
-  società sportiva).
+- `premiumClient` = flag contratto OR incluso-per-livello (ultra/event) OR noleggio attivo OR
+  (garanzia + flag `premium_client_incluso_garanzia`).
 - `sla`/`interventi`: da contratto se valorizzati, altrimenti default `config_livelli`; se mancanti → `null` (non blocca).
 - Vista aggregata cliente = map su tutti i progetti → coperture per impianto + "premium client attivo su almeno un progetto".
 
@@ -204,10 +213,11 @@ canale diretto a prescindere dal piano.
 
 Via sistema esistente (`/api/send-alert`, Resend, template configurabili).
 
-- Trasversali: scadenza contratto/garanzia 60/30/15 gg; avviso interno alla ricezione ticket (priorità per tier).
-- CARE ULTRA / ART TECH EVENT: pre-avviso scadenza anticipato (90/60/30 gg); ticket alta priorità; (Event) inizio/fine evento e presidio.
+- **Soglie scadenza (decisione approvata):** alert **interni** a **90/60/30/15 gg**; alert **al cliente** a **30/15 gg**.
+- Avviso interno alla ricezione ticket (priorità per tier secondo la matrice di priorità ticket).
+- CARE ULTRA / ART TECH EVENT: ticket alta priorità; (Event) promemoria inizio/fine evento e presidio.
 - CARE PLUS: reminder rinnovo + upsell (Ultra / Premium Client).
-- Garanzia: "fine garanzia" 90/60/30 gg con proposta CARE PLUS/ULTRA.
+- Garanzia: "fine garanzia" (interni 90/60/30, cliente 30/15) con proposta CARE PLUS/ULTRA.
 - Nessuna: nessun alert ricorrente; ticket → flusso preventivo.
 - Interventi inclusi: alert a `residui = 1` e `= 0`.
 - **Premium Client**: alert interni reperibilità/turni; SLA di comunicazione accelerata.
@@ -226,7 +236,21 @@ Via sistema esistente (`/api/send-alert`, Resend, template configurabili).
   SAAS-PR/PR36→CARE PLUS + Premium Client; validazione progetto per progetto prima di toccare i dati).
 
 ## Punti ancora da validare
-1. Default SLA e interventi inclusi per livello (matrice §B/§C).
-2. `premium_client` su `saas_contratti` vs tabella programmi dedicata.
-3. Soglie alert anticipati (90/60/30) per Ultra/Event e fine garanzia.
-4. Quali interventi "consumano" gli inclusi (solo on-site? anche remoto?).
+1. **Valori di default** di SLA e interventi inclusi per livello (la struttura è decisa, i numeri no).
+2. `premium_client` su `saas_contratti` vs tabella programmi dedicata; struttura del flag
+   `premium_client_incluso_garanzia` (boolean singolo vs lista programmi).
+3. Significato/correzione del valore legacy `SAAS_SCHERMO`.
+4. Se la classificazione impianto (Critico/Strategico/Standard) entra nel calcolo SLA.
+
+> Risolti in questa revisione: soglie alert (interni 90/60/30/15, cliente 30/15); consumo interventi
+> (solo on-site chiusi); SLA come attributo configurabile (codice solo fallback legacy); Premium
+> Client — inclusione automatica e flag generale `premium_client_incluso_garanzia`.
+
+---
+
+## Riferimento architetturale
+
+La logica definitiva di determinazione della copertura (source of truth e ordine di precedenza,
+algoritmo `computeSupportTierForProgetto()`, Premium Client, matrice di priorità ticket, gestione dei
+dati legacy) è specificata in **`docs/architecture/SUPPORT_TIER_PER_PROGETTO.md`**, che costituisce la
+**source of truth architetturale** a cui questo modello si allinea.

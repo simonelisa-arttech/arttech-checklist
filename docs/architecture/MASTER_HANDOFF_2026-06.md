@@ -226,7 +226,36 @@ File/cartelle attualmente **non tracciati** che **non** devono essere committati
 Alcune **migration SQL in `scripts/`** restano fuori dal versionamento corrente: **non committarle
 né applicarle senza verifica esplicita**. In caso di conflitto, vince lo **schema Supabase verificato**.
 
-## 13. Prossimi passi (ordine concordato)
+## 13. Support Tier per Progetto — approvato
+
+**Data approvazione:** 2026-06-15.
+**Riferimento:** `docs/architecture/SUPPORT_TIER_PER_PROGETTO.md` (architettura di riferimento definitiva).
+
+Principali decisioni architetturali approvate:
+- Copertura determinata **per progetto** (`checklist_id`), mai a livello cliente; l'impianto eredita
+  la copertura del progetto.
+- Source of truth e precedenza: **contratto (`saas_contratti`) > rinnovo (`rinnovi_servizi`) >
+  checklist (`checklists.saas_piano`) > garanzia > nessuna**. Fonte primaria reale oggi:
+  `checklists.saas_piano`.
+- `computeSupportTierForProgetto()` restituisce solo **GARANZIA / CARE PLUS / CARE ULTRA / ART TECH
+  EVENT / NESSUNA**, più `premiumClient` (boolean). Output normalizzato; vista aggregata cliente.
+- **PREMIUM CLIENT** = programma trasversale (`premium_client`): incluso automaticamente in CARE
+  ULTRA, ART TECH EVENT, noleggi attivi e garanzie con flag generale
+  **`premium_client_incluso_garanzia`** (non più legato solo alle "società sportive", che ne restano
+  un caso); opzionale su CARE PLUS.
+- **ART TECH EVENT**: presa in carico immediata + priorità massima durante l'evento; presidio/on-site
+  **secondo contratto** (on-site entro 1h solo se previsto esplicitamente).
+- **Matrice ufficiale di priorità ticket** (9 livelli, da EVENT+PREMIUM CLIENT a Nessuna copertura),
+  condivisa da Area Cliente, Dashboard assistenza, HubSpot e future code ticket.
+- SLA e interventi inclusi **configurabili** (no hardcoded); i residui sono consumati solo dagli
+  interventi on-site.
+
+**CARE PREMIUM è dismesso e sostituito dal programma PREMIUM CLIENT.** `SAAS-PR*` non è mai un piano
+valido: non mostrato al cliente, mai convertito automaticamente in PLUS/ULTRA; genera warning interno
+"CARE PREMIUM da riallineare" (`legacyNonValido`). Da solo → NESSUNA; con garanzia valida → GARANZIA.
+Riallineamento manuale (`MIGRAZIONE_CARE_PREMIUM.md`).
+
+## 14. Prossimi passi (ordine concordato)
 
 1. ✅ Catalogo ufficiale · Modello · Customer Journey · Documento commerciale · Lista CARE PREMIUM.
 2. ✅ Indice deck (opzione B, 13 slide).
