@@ -42,3 +42,24 @@ next-env.d.ts
 
 *.zip
 *BACKUP*
+
+# --- File agente / Cowork (config e dati personali, non parte del prodotto) ---
+/CLAUDE.md
+/MEMORY.md
+/SOUL.md
+/IDENTITY.md
+/USER.md
+/HEARTBEAT.md
+/TOOLS.md
+
+# --- Dati di import con PII clienti (mai versionare) ---
+/import_progetti_fixed.csv
+
+# --- Artefatti di test generati ---
+/test-results/
+
+# --- Cartelle di lavoro locali (mantieni la cartella vuota tramite .gitkeep) ---
+/data/*
+!/data/.gitkeep
+/archivio/*
+!/archivio/.gitkeep
