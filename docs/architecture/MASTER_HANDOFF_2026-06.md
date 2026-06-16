@@ -123,6 +123,11 @@ corretti, individuazione rapida impianto, consultazione documenti/coperture, ric
 Journey principale "Ho un problema": Cliente → Impianto → Categoria → Verifica guidata → Foto/Video →
 Ticket → Presa in carico, con riconoscimento automatico di copertura, SLA, Premium Client, garanzia.
 
+**Customer Journey approvato.** Elementi chiave: **ticket guidati** con allegato foto/video,
+**fascicolo tecnico** dell'impianto (installazione, interventi, sostituzioni, aggiornamenti,
+documenti, seriali) e **classificazione impianto Critico / Strategico / Standard** (base per SLA e
+pianificazione).
+
 Priorità di sviluppo:
 1. `computeSupportTierForProgetto()`
 2. Vista impianti per progetto (L1/L2)
@@ -181,7 +186,47 @@ Prima di qualsiasi modifica, leggere: `AGENTS.md`, `docs/architecture/source-of-
 
 ---
 
-## 9. Prossimi passi (ordine concordato)
+## 9. Integrazione HubSpot & ticketing
+
+- I ticket assistenza e le **richieste di registrazione portale** impostano **Reply-To = email del
+  cliente**: HubSpot (email-to-ticket) associa la conversazione al contatto giusto e lo staff
+  risponde direttamente al cliente.
+- `assistenza_tickets` salva i ticket; notifica interna allo staff (nessuna email automatica al cliente).
+- Workflow assistenza: apertura ticket dall'Area Cliente → notifica staff con contesto
+  (cliente / tier / categoria / impianto) → gestione lato HubSpot/CRM.
+- Riferimento: commit `99df49b`.
+
+## 10. Support Tier — source of truth
+
+- Source of truth della determinazione tier: **`lib/supportTier.ts`**.
+- Il **customer lookup pubblico** (`/api/public/customer-lookup`) è stato **riallineato** a
+  `lib/supportTier.ts`, eliminando la divergenza tra lookup pubblico e Area Cliente (`89866f5`).
+- I tier supportano **CARE ULTRA** e **ART TECH EVENT** (`578db04`), con contatto diretto
+  (WhatsApp/referente) per ultra/events.
+- Nota evolutiva: il futuro `computeSupportTierForProgetto()` opererà **per progetto** (leggendo
+  `checklists.saas_piano`) e **non** produrrà CARE PREMIUM; l'attuale `supportTier.ts` resta a
+  livello cliente finché non rifattorizzato.
+
+## 11. Commit recenti pubblicati su `main` (scopo e impatto)
+
+| Commit | Tipo | Scopo | Impatto |
+|--------|------|-------|---------|
+| `89866f5` | fix(support) | Riallinea i tier del customer lookup pubblico a `lib/supportTier.ts` | Lookup pubblico e Area Cliente coerenti; supporto ultra/events; eliminata divergenza |
+| `99df49b` | feat(support) | Reply-To cliente su ticket e su richieste registrazione portale | Integrazione HubSpot email-to-ticket; conversazioni agganciate al contatto corretto |
+| `578db04` | feat(area-cliente) | Estende i support tier per ULTRA ed EVENT | UI Area Cliente aggiornata; copertura CARE ULTRA e ART TECH EVENT |
+| `5da7869` | fix(auth) | Hardening auth portale e refresh sessione | Isolamento utenti portale/backoffice; refresh silenzioso; meno logout indesiderati |
+| `fef5b33` | feat(ui) | Nuova pagina `/guida` + navigazione header | Documentazione operativa interna accessibile dall'header |
+
+## 12. Stato repository — file da non committare e migration da verificare
+
+File/cartelle attualmente **non tracciati** che **non** devono essere committati automaticamente:
+`CLAUDE.md`, `MEMORY.md`, `SOUL.md`, `IDENTITY.md`, `USER.md`, `HEARTBEAT.md`, `TOOLS.md`,
+`archivio/`, `data/`, `knowledge/`, `references/`, `test-results/`, `import_progetti_fixed.csv`.
+
+Alcune **migration SQL in `scripts/`** restano fuori dal versionamento corrente: **non committarle
+né applicarle senza verifica esplicita**. In caso di conflitto, vince lo **schema Supabase verificato**.
+
+## 13. Prossimi passi (ordine concordato)
 
 1. ✅ Catalogo ufficiale · Modello · Customer Journey · Documento commerciale · Lista CARE PREMIUM.
 2. ✅ Indice deck (opzione B, 13 slide).
