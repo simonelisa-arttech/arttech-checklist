@@ -1,8 +1,112 @@
 # Handoff Context — AT SYSTEM (arttech-checklist)
 
-Ultimo aggiornamento: 2026-06-15 CEST
+Ultimo aggiornamento: 2026-06-17 CEST
 
 ## Stato attuale del progetto
+
+Aggiornamento 2026-06-22 — Support Tier per Progetto: STEP 2 / P2.3.2 + P2.3.3 (Area Cliente: UI per-progetto + POST con progettoId/impiantoId):
+- **Motivo:** rendere visibile la copertura PER PROGETTO nell'area cliente e inviare il ticket sul progetto/impianto selezionato, mantenendo intatto il ramo legacy per i clienti senza progetti esposti.
+- **File modificati:** SOLO `components/ClienteAssistenzaSection.tsx`.
+  - Nuovi stati `selectedProjectId`/`selectedImpiantoId`; rimosso `eslint-disable` su `progetti` (ora usato); `aggregato` resta marcato non-usato.
+  - Nuova mappa `TIER_STYLE_PROGETTO` con etichette UFFICIALI: GARANZIA→"Garanzia", PLUS→"CARE PLUS", ULTRA→"CARE ULTRA", EVENT→"ART TECH EVENT", NESSUNA→"Nessuna copertura".
+  - `useEffect` di auto-selezione: con **un solo** progetto seleziona automaticamente; con **più** progetti l'utente deve scegliere (gating: form bloccato finché non seleziona).
+  - Derivati: `usaPerProgetto = progetti.length > 0`, `selectedProject`, `tsProg`.
+  - Render copertura ramificato: se `usaPerProgetto` → dropdown progetto (o label sola lettura se 1), badge copertura per-progetto, badge **PREMIUM CLIENT** (senza origine), WhatsApp diretto (`selectedProject.premiumClient.whatsapp`), avviso "a pagamento previo preventivo" se tier NESSUNA; scadenza/interventi residui mostrati solo se presenti. Altrimenti → blocco **legacy invariato** (`ts`/`info`).
+  - Select impianto ramificato: per-progetto usa `selectedProject.impianti` (value = `id`, setta `selectedImpiantoId` + stringa legacy `impianto`); legacy usa `info.impianti` come prima. Impianto **facoltativo**.
+  - `submitTicket` payload condizionale: se per-progetto e progetto selezionato → `{ categoria, descrizione, telefono, progettoId, impiantoId? }`; altrimenti payload legacy `{ categoria, descrizione, impianto, telefono }`.
+  - Label bottone: "Richiedi preventivo →" se (per-progetto: tier NESSUNA / legacy: tier expired), altrimenti "Apri ticket →".
+- **Tre percorsi confermati:** (a) **cliente senza progetti** → `usaPerProgetto=false`, UI e POST 100% legacy; (b) **un progetto** → auto-selezione, badge per-progetto, POST con `progettoId`; (c) **più progetti** → selezione obbligatoria (gating), POST con `progettoId` (+`impiantoId` se scelto).
+- **NON toccati:** `app/api/cliente/assistenza/route.ts`, `lib/supportTier.ts`, customer-lookup, `app/cliente/page.tsx`, categorie problema, verifiche rapide, storico ticket, HubSpot/Reply-To, `package.json`. **Nessuna migration/SQL.**
+- **Impatto gestionale:** nessuno. **Area Cliente:** ora mostra copertura per progetto + invia progettoId/impiantoId (la POST P2.2.x li gestisce già). **Assistenza:** ticket con tier per-progetto corretto. **Customer Portal/Customer Lookup/Scadenziario/Fascicolo/Catalogo:** invariati.
+- **Test/verifiche:** `tsc`/build locali inaffidabili (cartella sotto sync) → validazione su **Vercel/preview**. Review statica OK: nessun riferimento orfano; `info` garantito non-null dalla guard esistente; ramo legacy invariato.
+- **Rischi residui:** allegati foto/video ancora fuori scope; `aggregato` ancora non renderizzato (eslint-disable); vocabolario `tier` misto nei ticket resta da unificare (Step 3 + audit consumatori HubSpot).
+- **Attività future:** allegati P2.3; Step 3 (unificare tier con customer-lookup, rimuovere "premium" legacy); audit consumatori tier HubSpot; consolidare duplicato `SYSTEM_SOURCE_OF_TRUTH.md`.
+- **Regola applicata:** `docs/SYSTEM_SOURCE_OF_TRUTH.md`, `docs/architecture/GESTIONALE_AREA_CLIENTE_ALIGNMENT.md`, `docs/architecture/SUPPORT_TIER_PER_PROGETTO.md`. Nessun commit (lo esegue l'utente dal Mac).
+
+Aggiornamento 2026-06-17 — Support Tier per Progetto: STEP 2 / P2.3.1 (Area Cliente: lettura dati per-progetto, senza resa visiva):
+- **Motivo:** predisporre `ClienteAssistenzaSection` a consumare i dati per-progetto della GET, senza ancora cambiare la UI (staging per P2.3.2).
+- **File modificati:** `components/ClienteAssistenzaSection.tsx` — aggiunti tipi `ProgettoTierVoce`/`ProgettoCopertura`/`AggregatoCliente`; nuovi stati `progetti`/`aggregato`; in `load()` lettura di `data.progetti`/`data.aggregato`. Il campo `assistenza` legacy resta la **fonte visiva attuale** (fallback). Stati nuovi marcati `eslint-disable @typescript-eslint/no-unused-vars` (verranno usati in P2.3.2; il disable si rimuove lì).
+- **NESSUN cambio visivo, NESSUN cambio submit:** il rendering e il POST sono identici a prima.
+- **NON toccati:** API/route, GET/POST, customer-lookup, `app/cliente/page.tsx`. Nessuna migration.
+- **SQL/migration:** nessuna.
+- **Impatto gestionale/Area Cliente/Assistenza/Customer Portal/Customer Lookup/Scadenziario/Fascicolo/Catalogo:** nessuno (solo lettura in stato, non renderizzata).
+- **Test/verifiche:** `tsc`/build locali inaffidabili (sync) → validazione su Vercel. Review manuale OK.
+- **Rischi residui:** stati `progetti`/`aggregato` inutilizzati finché P2.3.2 (gestiti con eslint-disable per non far fallire il lint in build).
+- **Attività future:** P2.3.2 (selettore progetto/impianto + badge copertura + PREMIUM CLIENT + WhatsApp + avviso NESSUNA), P2.3.3 (POST con progettoId/impiantoId + fallback). Decisioni P2.3 già approvate (selezione progetto obbligatoria con più progetti; etichette ufficiali; impianto facoltativo; allegati fuori scope).
+- **Regola applicata:** `docs/SYSTEM_SOURCE_OF_TRUTH.md`, `docs/architecture/GESTIONALE_AREA_CLIENTE_ALIGNMENT.md`, `docs/architecture/SUPPORT_TIER_PER_PROGETTO.md`.
+
+Aggiornamento 2026-06-17 — Support Tier per Progetto: STEP 2 / P2.2.2 (POST assistenza: snapshot tier per-progetto + email):
+- **Motivo:** salvare nel ticket il tier reale del progetto e arricchire la notifica interna, mantenendo il fallback legacy.
+- **File modificati:** `app/api/cliente/assistenza/route.ts` — solo la **POST**: import `computeSupportTierForProgetto`; se `checklistId` valido → `tierToSave = computeSupportTierForProgetto().tier` (+ premiumClient/source/origine), altrimenti **fallback legacy** `computeSupportTierForCliente()` (invariato); `ticket.tier = tierToSave`; subject email usa `tierToSave`; body email aggiunge Progetto / Tier Source / Premium Client (SÌ/NO) / Origine / nota "Progetto senza copertura attiva" se NESSUNA; se `impiantoId` valido la stringa `impianto` viene valorizzata col nome/seriale risolto (stessa colonna).
+- **Decisioni applicate:** vocabolario `tier` **misto accettato** (per-progetto nei ticket con progetto, legacy negli altri); `premiumClient`/`source` **NON persistiti** (solo email); Reply-To **invariato**; nessuna nuova colonna, nessuna migration; GET/UI/customer-lookup non toccati.
+- **SQL/migration:** nessuna.
+- **Impatto gestionale:** subject/body ticket più precisi (tier per-progetto). **Area Cliente:** UI attuale invariata (non invia progettoId → ramo legacy identico). **Assistenza:** ticket con copertura corretta per progetto. **Customer Portal/Customer Lookup:** invariati. **Scadenziario/Fascicolo/Catalogo:** nessuno.
+- **HubSpot/email-to-ticket:** associazione invariata (Reply-To/From). **AUDIT RIMANDATO:** eventuali automazioni HubSpot che leggono il *tier nel subject* vanno aggiornate al nuovo vocabolario (GARANZIA vs STANDARD, EVENT vs EVENTS, NESSUNA vs EXPIRED, PREMIUM rimosso).
+- **Test/verifiche:** `tsc`/build locali inaffidabili (I/O cartella sotto sync → hang/137 anche con Node 22). Review manuale OK; nessun `info.tier` orfano (verificato). Validazione definitiva su **Vercel/preview**.
+- **Rischi residui:** vocabolario `tier` misto in `assistenza_tickets`; ramo legacy Premium Client in email è proxy (`info.whatsapp`); query extra in POST solo con progettoId.
+- **Attività future:** P2.3 (UI selettore impianto/copertura → invio progettoId/impiantoId), Step 3 (unificare tier con customer-lookup), audit consumatori tier.
+- **Regola applicata:** `docs/SYSTEM_SOURCE_OF_TRUTH.md`, `docs/architecture/GESTIONALE_AREA_CLIENTE_ALIGNMENT.md`, `docs/architecture/SUPPORT_TIER_PER_PROGETTO.md`.
+
+Aggiornamento 2026-06-17 — Support Tier per Progetto: STEP 2 / P2.2.1 (POST assistenza: sicurezza appartenenza, additiva):
+- **Motivo:** validare che il ticket sia aperto su un progetto/impianto del cliente loggato, e accettare `progettoId` (alias di `checklist_id`), senza rompere l'Area Cliente attuale.
+- **File modificati:** `app/api/cliente/assistenza/route.ts` — solo la **POST**: body esteso (`progettoId`, `impiantoId`); `checklistId = progettoId || checklist_id`; validazione appartenenza progetto→cliente (403 se non suo) e impianto→progetto se `impiantoId` presente (400 se non valido); `impiantoId` senza progetto → 400.
+- **Decisioni applicate (P2.2.1):** snapshot `tier` **INVARIATO** (cliente-level, nessun cambio vocabolario); logica **email invariata**; `progettoId` **opzionale con fallback legacy** (se assente, comportamento attuale identico, nessun blocco); `premiumClient`/`source`/`impianto_id` **non persistiti**; `impiantoId` solo validato (tolleranza alla stringa `impianto` legacy mantenuta).
+- **NON toccati:** GET, UI, customer-lookup, snapshot tier, email. **Nessuna migration.**
+- **SQL/migration:** nessuna.
+- **Impatto gestionale:** nessuno. **Impatto Area Cliente:** nessuno per la UI attuale (non invia progettoId → ramo legacy); con progettoId i ticket su progetti altrui vengono **rifiutati** (sicurezza). **Assistenza/Customer Portal/Customer Lookup:** invariati. **Scadenziario/Fascicolo/Catalogo:** nessuno.
+- **Test/verifiche:** `tsc` non eseguibile in sandbox (FS errno -35). Da validare sul Mac: `./node_modules/.bin/tsc --noEmit` (Codex CLI). Review manuale OK.
+- **Rischi residui:** due query in più (checklists, checklist_impianti) solo quando `progettoId` è presente; nessun impatto sul ramo legacy. Build completa sempre da validare su Vercel.
+- **Attività future:** P2.2.2 (snapshot tier per-progetto + email, con decisione vocabolario), P2.3 (UI selettore impianto/copertura), Step 3 (unificare tier con customer-lookup).
+- **Regola applicata:** `docs/SYSTEM_SOURCE_OF_TRUTH.md`, `docs/architecture/GESTIONALE_AREA_CLIENTE_ALIGNMENT.md`, `docs/architecture/SUPPORT_TIER_PER_PROGETTO.md`.
+
+Aggiornamento 2026-06-17 — Support Tier per Progetto: STEP 2 / P2.1 (GET assistenza arricchita, additiva):
+- **Motivo:** esporre la copertura PER PROGETTO nell'area cliente senza rompere il contratto attuale.
+- **File modificati:** `app/api/cliente/assistenza/route.ts` — solo la **GET**: aggiunti `aggregato` ({ bestTier, premiumClientAttivo }) e `progetti[]` (tier per progetto/impianto, premiumClient, scadenze, impianti) via `computeSupportForCliente()`; aggiunta query nomi progetto (sola lettura). Campo legacy `assistenza` **invariato**; `tickets` invariato.
+- **NON toccati:** POST, UI, customer-lookup, vocabolario/valori salvati nei ticket. Nessuna migration.
+- **Decisioni applicate:** `assistenza` legacy mantenuto; `premiumClient`/`source` NON persistiti (solo in risposta GET, derivati); `haLegacyDaRiallineare` NON esposto al client (privacy).
+- **SQL/migration:** nessuna.
+- **Impatto gestionale:** nessuno. **Impatto Area Cliente:** additivo — la UI attuale ignora i nuovi campi (consumati nello Step P2.3). **Impatto Assistenza/Customer Portal:** nessuna rottura. **Customer Lookup:** invariato (doppia logica ancora da unificare, Step 3). **Scadenziario/Fascicolo/Catalogo:** nessuno (sola lettura).
+- **Test/verifiche:** **TSC_EXIT=0 sul Mac** (`./node_modules/.bin/tsc --noEmit` via Codex CLI) → Step 1 (tier per-progetto) e P2.1 (GET) validati lato TypeScript. Fix font Google Fonts applicato col pacchetto `geist`: l'errore Google Fonts non si ripresenta. **Build locale completa NON conclusiva:** `next build` (Turbopack) e `next build --webpack` arrivano entrambi a "Creating an optimized production build …" e poi vengono killati (137) → problema locale/ambiente/risorse, non blocco TypeScript né errore font. Build completa da validare su Vercel/preview deploy o ambiente CI stabile.
+- **Rischi residui:** la GET ora chiama sia `computeSupportTierForCliente` (legacy) sia `computeSupportForCliente` (nuovo) → query duplicate (dataset piccolo, accettabile; ottimizzabile derivando il legacy dall'aggregato in futuro). Da verificare typecheck sul Mac prima del commit.
+- **Attività future:** P2.2 (POST per-progetto + snapshot), P2.3 (UI selettore impianto/copertura), Step 3 (unificare tier con customer-lookup).
+- **Regola applicata:** `docs/SYSTEM_SOURCE_OF_TRUTH.md`, `docs/architecture/GESTIONALE_AREA_CLIENTE_ALIGNMENT.md`, `docs/architecture/SUPPORT_TIER_PER_PROGETTO.md`.
+
+Aggiornamento 2026-06-17 — Support Tier per Progetto: STEP 1 additivo (non ancora adottato dai consumatori):
+- **Motivo:** introdurre la determinazione della copertura PER PROGETTO (modello Cliente→Progetto→Piano→Impianto), base per Area Cliente/ticket/Premium Client, senza rompere nulla.
+- **File modificati:** `lib/supportTier.ts` — aggiunte (additivo) `computeSupportTierForProgetto()` e `computeSupportForCliente()` + tipi (`SupportTierProgetto`, `SupportTierAggregatoCliente`, `PremiumClientInfo`, `SupportTierSource`, `LegacyWarning`, `SlaInfo`, `InterventiInfo`, `ImpiantoTier`, `ProgettoPreload`) e helper `mappaCodiceProgetto`. `computeSupportTierForCliente()` **invariata**.
+- **Decisioni applicate:** precedenza progetto-specifico (rinnovi_servizi/checklists) > saas_contratti cliente-wide (fallback) > garanzia > nessuna; bestTier EVENT>ULTRA>PLUS>GARANZIA>NESSUNA; **CARE PREMIUM mai prodotto** (SAAS-PR* → solo warning legacy interno `CARE_PREMIUM_DA_RIALLINEARE`); PREMIUM CLIENT derivato (ULTRA/EVENT/noleggio/flag futuro), non un piano.
+- **SQL/migration:** nessuna (campi `premium_client`/classificazione letti in modo difensivo se presenti).
+- **Impatto gestionale / Area Cliente / Assistenza / Customer Portal / Customer Lookup:** nessuno — le funzioni nuove non sono ancora richiamate; `/api/cliente/assistenza` e `customer-lookup` invariati.
+- **Impatto Scadenziario / Fascicolo / Catalogo:** nessuno (sola lettura).
+- **Test/verifiche:** `tsc`/`build` non eseguibili in sandbox (mount sincronizzato instabile: FS errno -35 / resource deadlock). **Typecheck OK sul Mac (`./node_modules/.bin/tsc --noEmit` via Codex CLI, 2026-06-17) → STEP 1 VALIDATO.** `npm run build` completo ancora consigliato prima del deploy (su Mac `npx`/`next build` tendono ad appendersi per la cartella sotto sync cloud).
+- **Rischi residui:** SLA e `interventi.usati` restano `null` (mancano default `config_livelli` e definizione consumo on-site); `premium_client`/`premium_client_incluso_garanzia` non a schema → derivazione solo da tier/noleggio; `saas_contratti` resta cliente-wide (fallback) finché non project-scoped.
+- **Attività future:** Step 2 (adozione in `/api/cliente/assistenza` + UI per-impianto), Step 3 (unificare la doppia logica tier con `customer-lookup`, rimuovere il tier legacy "premium").
+- **Regola applicata:** `docs/SYSTEM_SOURCE_OF_TRUTH.md`, `docs/architecture/GESTIONALE_AREA_CLIENTE_ALIGNMENT.md`, `docs/architecture/SUPPORT_TIER_PER_PROGETTO.md`.
+
+Aggiornamento 2026-06-17 — Fix "Could not find the table public.checklist_task_documents" (schema mancante in produzione):
+- **Motivo:** all'apertura di alcune checklist in produzione compariva l'errore PostgREST "Could not find the table 'public.checklist_task_documents' in the schema cache".
+- **Causa (verificata su DB prod `aaiuyaiwdrecyqjgnjxp` via connettore Supabase):** la tabella `public.checklist_task_documents` NON esisteva (`to_regclass` = NULL). La migration `scripts/20260223_add_checklist_task_documents.sql` esisteva nel repo (untracked) ma non era mai stata applicata in produzione. Le tabelle referenziate (`checklists`, `checklist_tasks`, `operatori`) e `attachments` esistevano già.
+- **Azione eseguita:** applicata la migration in PRODUZIONE via Supabase MCP (`apply_migration` name `add_checklist_task_documents`): creata la tabella + indici `checklist_task_documents_checklist_idx` e `_task_idx`, esattamente come da file `20260223`. Inviato `notify pgrst, 'reload schema'` per ricaricare la schema cache. Verificato: 7 colonne corrette.
+- **SQL:** `create table if not exists public.checklist_task_documents (...)` + 2 indici (vedi `scripts/20260223_add_checklist_task_documents.sql`). Additiva e idempotente, nessun dato toccato.
+- **Impatto gestionale:** positivo — sparisce l'errore; torna disponibile la funzione "documenti allegati alla singola task".
+- **Impatto Area Cliente / fascicolo:** nessuno — `app/api/cliente/documenti/route.ts` usa `attachments` + `checklist_tasks`, non `checklist_task_documents`.
+- **Impatto Area Assistenza / support tier / customer-lookup / customer portal:** nessuno.
+- **RLS:** non abilitata (la migration originale non la prevede). L'accesso avviene in service role via `/api/db`, quindi RLS non necessaria al funzionamento. Da valutare in seguito per coerenza/sicurezza (la tabella è ora esposta via PostgREST senza policy).
+- **Rischi residui:** nessuno sui dati. Nota: il file migration resta untracked nel repo — andrebbe versionato per riflettere lo stato di produzione. Lo staging `art-tech-channel-staging` (`fvjltdlpwnmxwjcpmwcs`) NON è uno staging del gestionale (DB app canali/player), quindi le migration del gestionale si applicano solo su prod `aaiuyaiwdrecyqjgnjxp`.
+- **Attività future:** versionare le migration in `scripts/` (oggi untracked) e definire un processo di applicazione tracciato; valutare RLS su `checklist_task_documents`.
+
+Aggiornamento 2026-06-17 — Fix "Check list operativa vuota" (self-heal materializzazione task):
+- **Motivo:** su alcuni progetti la sezione "Check list operativa" mostrava solo "Accessori / Ricambi" + "Nessuna task operativa collegata", impedendo caricamento documenti e spunta voci.
+- **Causa (verificata su DB prod `aaiuyaiwdrecyqjgnjxp`):** `checklist_tasks` vuota per quei progetti. La materializzazione girava solo alla creazione del progetto (`/api/checklists/materialize-tasks`, non bloccante) e su 3 progetti su 594 era stata saltata/fallita. Niente RLS (la route legge in service role), niente bug di UI globale. Progetti rotti al 2026-06-17: `2cf71f51-4c6c-4d63-962a-f252db1f0386`, `6dcb38a5-dd11-4f7a-8065-d084a6929a54`, `3be61ec8-be38-4b13-a56e-04b036f374f2`.
+- **File modificati:** `app/api/checklists/[id]/tasks/route.ts` — aggiunto self-heal: se la select su `checklist_tasks` torna 0 task, chiama `materializeChecklistTasks` (idempotente) e rilegge. Estratta la select in helper `selectChecklistTasks`. Import da `lib/checklist/syncChecklistTemplate`.
+- **SQL/migration:** nessuna. Nessun cambio schema. La materializzazione è idempotente sui dati esistenti.
+- **Impatto gestionale:** positivo — i progetti rotti si auto-riparano alla prima apertura (recovery automatico), tornano DOCUMENTI/SEZIONI, allegati e spunte.
+- **Impatto Area Cliente / Customer Portal:** nessuno (route solo-operatore `requireOperatore`, non chiamata dal portale).
+- **Impatto Area Assistenza / Support Tier / Customer Lookup:** nessuno (usano `checklists`/`rinnovi_servizi`/`saas_contratti`).
+- **Impatto documenti/fascicolo cliente:** positivo indiretto — `app/api/cliente/documenti/route.ts` risale dagli allegati `CHECKLIST_TASK` via `checklist_tasks`; con le task ripristinate il fascicolo torna coerente.
+- **Rischi residui:** la route GET ora può scrivere (insert task) alla prima apertura di un progetto vuoto → piccola latenza solo in quel caso. Source of truth invariata (`checklist_tasks`; nessun uso di `checklist_checks` in UI).
+- **Attività future:** valutare materializzazione bloccante/garantita alla creazione progetto; opzionale endpoint admin di recovery batch (`syncChecklistTemplatesBatch`) per sanare proattivamente senza attendere l'apertura.
+- **Regola applicata:** vedi `docs/SYSTEM_SOURCE_OF_TRUTH.md` e `docs/architecture/GESTIONALE_AREA_CLIENTE_ALIGNMENT.md`.
 
 Aggiornamento operativo 2026-05-28:
 - fix applicato in `app/checklists/[id]/page.tsx` per preservare le associazioni `asset_serials.checklist_impianto_id` dei seriali elettroniche di controllo durante `Salva impianti`
@@ -216,6 +320,7 @@ Ordine reale da rispettare:
 - `components/AttachmentsPanel.tsx` ha `allowUploads`; usato in modalita' link-only per allegati progetto nuovo, cronoprogramma, foto/video e allegati task
 - il clone progetto in `app/dashboard-estesa/page.tsx` copia anche `proforma_link_url` su checklist, licenze e accessori/ricambi
 - build e typecheck del repo possono restare appesi senza errori espliciti; fare sempre anche una verifica sintattica mirata dei file toccati
+- 2026-06-19: fix build font offline-safe sostituendo `next/font/google` con `geist/font/*` in `app/layout.tsx`; file coinvolti `app/layout.tsx`, `package.json`, lockfile; impatto solo styling globale, nessun impatto su Area Cliente/assistenza/API; rischio principale lockfile; test attesi `npx tsc --noEmit` = 0 e `npm run build` = OK
 
 ### Interventi / fatture
 - `saas_interventi.fattura_url` e' gestito nel progetto checklist
