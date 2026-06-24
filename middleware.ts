@@ -213,6 +213,7 @@ async function getClientPortalRedirectIfNeeded({
   serviceRoleKey: string;
 }) {
   if (
+    pathname.startsWith(API_PREFIX) ||
     pathname.startsWith(CLIENT_PORTAL_PATH) ||
     pathname.startsWith("/login") ||
     pathname.startsWith("/auth/")
