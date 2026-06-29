@@ -20,6 +20,45 @@ type TierInfo = {
   }>;
 };
 
+// P2.3.1: shape dei dati PER-PROGETTO già esposti dalla GET (consumati visivamente in P2.3.2).
+type ProgettoTierVoce = "GARANZIA" | "PLUS" | "ULTRA" | "EVENT" | "NESSUNA";
+
+type ProgettoCopertura = {
+  progettoId: string;
+  progettoNome: string | null;
+  tier: ProgettoTierVoce;
+  source: string;
+  premiumClient: {
+    attivo: boolean;
+    origine: string | null;
+    referente: string | null;
+    whatsapp: string | null;
+  };
+  garanziaAttiva: boolean;
+  supportoAttivo: boolean;
+  supportoScaduto: boolean;
+  scadenzaPiano: string | null;
+  scadenzaGaranzia: string | null;
+  interventi: {
+    inclusiAnno: number | null;
+    illimitati: boolean;
+    usati: number | null;
+    residui: number | null;
+  } | null;
+  impianti: Array<{
+    id: string | null;
+    nome: string;
+    seriale: string | null;
+    stato: "ok" | "warn" | "exp";
+    garanzia: string | null;
+  }>;
+};
+
+type AggregatoCliente = {
+  bestTier: ProgettoTierVoce;
+  premiumClientAttivo: boolean;
+};
+
 type Ticket = {
   id: string;
   numero: number;
@@ -62,6 +101,15 @@ const TIER_STYLE: Record<TierInfo["tier"], { label: string; bg: string; border: 
   events: { label: "Art Tech EVENTS attivo — supporto evento", bg: "#fff7ed", border: "#fed7aa", color: "#c2410c" },
 };
 
+// P2.3.2: stile/label UFFICIALI per i tier per-progetto.
+const TIER_STYLE_PROGETTO: Record<ProgettoTierVoce, { label: string; bg: string; border: string; color: string }> = {
+  GARANZIA: { label: "Garanzia", bg: "#eff6ff", border: "#bfdbfe", color: "#1d4ed8" },
+  PLUS: { label: "CARE PLUS", bg: "#f0fdf4", border: "#bbf7d0", color: "#15803d" },
+  ULTRA: { label: "CARE ULTRA", bg: "#faf5ff", border: "#e9d5ff", color: "#7e22ce" },
+  EVENT: { label: "ART TECH EVENT", bg: "#fff7ed", border: "#fed7aa", color: "#c2410c" },
+  NESSUNA: { label: "Nessuna copertura", bg: "#fef2f2", border: "#fecaca", color: "#b91c1c" },
+};
+
 function formatDate(d?: string | null) {
   if (!d) return "-";
   const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(d);
@@ -73,6 +121,13 @@ export default function ClienteAssistenzaSection({ apiSuffix }: { apiSuffix: str
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // Dati per-progetto letti dalla GET.
+  const [progetti, setProgetti] = useState<ProgettoCopertura[]>([]);
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const [aggregato, setAggregato] = useState<AggregatoCliente | null>(null);
+  // P2.3.2: selezione progetto/impianto (UI per-progetto).
+  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
+  const [selectedImpiantoId, setSelectedImpiantoId] = useState<string | null>(null);
 
   const [categoria, setCategoria] = useState<string | null>(null);
   const [descrizione, setDescrizione] = useState("");
@@ -89,6 +144,9 @@ export default function ClienteAssistenzaSection({ apiSuffix }: { apiSuffix: str
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(String(data?.error || "Errore caricamento assistenza"));
       setInfo(data?.assistenza || null);
+      // P2.3.1: legge i nuovi campi per-progetto; `assistenza` resta il fallback visivo attuale.
+      setProgetti(Array.isArray(data?.progetti) ? (data.progetti as ProgettoCopertura[]) : []);
+      setAggregato((data?.aggregato as AggregatoCliente) || null);
       setTickets(Array.isArray(data?.tickets) ? data.tickets : []);
     } catch (err: any) {
       setError(String(err?.message || err));
@@ -102,6 +160,11 @@ export default function ClienteAssistenzaSection({ apiSuffix }: { apiSuffix: str
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [apiSuffix]);
 
+  // P2.3.2: con un solo progetto, selezione automatica.
+  useEffect(() => {
+    if (progetti.length === 1) setSelectedProjectId(progetti[0].progettoId);
+  }, [progetti]);
+
   async function submitTicket() {
     setSendError(null);
     if (descrizione.trim().length < 10) {
@@ -110,16 +173,21 @@ export default function ClienteAssistenzaSection({ apiSuffix }: { apiSuffix: str
     }
     setSending(true);
     try {
+      const perProgetto = progetti.length > 0 && !!selectedProjectId;
+      const payload = perProgetto
+        ? {
+            categoria: categoria || "other",
+            descrizione,
+            telefono,
+            progettoId: selectedProjectId,
+            ...(selectedImpiantoId ? { impiantoId: selectedImpiantoId } : {}),
+          }
+        : { categoria: categoria || "other", descrizione, impianto, telefono };
       const res = await fetch(`/api/cliente/assistenza${apiSuffix}`, {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          categoria: categoria || "other",
-          descrizione,
-          impianto,
-          telefono,
-        }),
+        body: JSON.stringify(payload),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(String(data?.error || "Errore apertura ticket"));
@@ -155,77 +223,201 @@ export default function ClienteAssistenzaSection({ apiSuffix }: { apiSuffix: str
     boxSizing: "border-box",
   };
 
+  // P2.3.2: derivati per-progetto.
+  const usaPerProgetto = progetti.length > 0;
+  const selectedProject = progetti.find((p) => p.progettoId === selectedProjectId) || null;
+  const tsProg = selectedProject ? TIER_STYLE_PROGETTO[selectedProject.tier] : null;
+
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-      {/* Stato copertura */}
-      <div
-        style={{
-          border: `1px solid ${ts.border}`,
-          background: ts.bg,
-          color: ts.color,
-          borderRadius: 12,
-          padding: "10px 14px",
-          fontSize: 13,
-          fontWeight: 700,
-          display: "flex",
-          flexWrap: "wrap",
-          gap: 8,
-          alignItems: "center",
-          justifyContent: "space-between",
-        }}
-      >
-        <span>{ts.label}</span>
-        <span style={{ fontWeight: 500 }}>
-          {info.saas_type ? `${info.saas_type}` : ""}
-          {info.saas_expiry ? ` · scadenza ${formatDate(info.saas_expiry)}` : ""}
-          {info.ore_residue != null ? ` · ${info.ore_residue} interventi residui` : ""}
-        </span>
-      </div>
+      {usaPerProgetto ? (
+        <>
+          {/* Selettore progetto (per-progetto) */}
+          {progetti.length > 1 ? (
+            <select
+              value={selectedProjectId || ""}
+              onChange={(e) => {
+                setSelectedProjectId(e.target.value || null);
+                setSelectedImpiantoId(null);
+                setImpianto("");
+              }}
+              style={inputStyle}
+            >
+              <option value="">Seleziona il progetto…</option>
+              {progetti.map((p) => (
+                <option key={p.progettoId} value={p.progettoId}>
+                  {p.progettoNome || p.progettoId}
+                </option>
+              ))}
+            </select>
+          ) : selectedProject ? (
+            <div style={{ fontSize: 13, color: "#475569" }}>
+              Progetto: <strong>{selectedProject.progettoNome || selectedProject.progettoId}</strong>
+            </div>
+          ) : null}
 
-      {/* Premium / Ultra / Events: contatto diretto */}
-      {info.whatsapp ? (
-        <a
-          href={`https://wa.me/${info.whatsapp.replace(/\D/g, "")}`}
-          target="_blank"
-          rel="noopener noreferrer"
-          style={{
-            display: "inline-flex",
-            alignItems: "center",
-            gap: 8,
-            alignSelf: "flex-start",
-            background: "#16a34a",
-            color: "white",
-            borderRadius: 10,
-            padding: "10px 18px",
-            fontSize: 14,
-            fontWeight: 700,
-            textDecoration: "none",
-          }}
-        >
-          💬 WhatsApp diretto {info.referente_tecnico ? `— ${info.referente_tecnico}` : ""} (H24)
-        </a>
-      ) : null}
+          {selectedProject && tsProg ? (
+            <>
+              {/* Badge copertura per-progetto + PREMIUM CLIENT */}
+              <div
+                style={{
+                  border: `1px solid ${tsProg.border}`,
+                  background: tsProg.bg,
+                  color: tsProg.color,
+                  borderRadius: 12,
+                  padding: "10px 14px",
+                  fontSize: 13,
+                  fontWeight: 700,
+                  display: "flex",
+                  flexWrap: "wrap",
+                  gap: 8,
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                }}
+              >
+                <span style={{ display: "inline-flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                  {tsProg.label}
+                  {selectedProject.premiumClient.attivo ? (
+                    <span
+                      style={{
+                        background: "#0f172a",
+                        color: "white",
+                        borderRadius: 999,
+                        padding: "2px 8px",
+                        fontSize: 11,
+                        fontWeight: 700,
+                      }}
+                    >
+                      PREMIUM CLIENT
+                    </span>
+                  ) : null}
+                </span>
+                <span style={{ fontWeight: 500 }}>
+                  {selectedProject.scadenzaPiano ? `scadenza ${formatDate(selectedProject.scadenzaPiano)}` : ""}
+                  {selectedProject.interventi && selectedProject.interventi.residui != null
+                    ? ` · ${selectedProject.interventi.residui} interventi residui`
+                    : ""}
+                </span>
+              </div>
 
-      {/* Expired: avviso preventivo */}
-      {info.tier === "expired" ? (
-        <div
-          style={{
-            border: "1px solid #fde68a",
-            background: "#fffbeb",
-            borderRadius: 12,
-            padding: "10px 14px",
-            fontSize: 13,
-            color: "#92400e",
-            lineHeight: 1.6,
-          }}
-        >
-          Il tuo impianto non risulta coperto da garanzia o contratto attivo: l&apos;assistenza è
-          erogabile <strong>a pagamento previo preventivo</strong>. Apri comunque la segnalazione
-          qui sotto: riceverai un&apos;offerta entro 1 giorno lavorativo. L&apos;uscita del tecnico
-          è addebitata anche in caso di mancata riparazione per cause non dipendenti dalla nostra
-          volontà.
-        </div>
-      ) : null}
+              {/* WhatsApp / referente per-progetto */}
+              {selectedProject.premiumClient.whatsapp ? (
+                <a
+                  href={`https://wa.me/${selectedProject.premiumClient.whatsapp.replace(/\D/g, "")}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 8,
+                    alignSelf: "flex-start",
+                    background: "#16a34a",
+                    color: "white",
+                    borderRadius: 10,
+                    padding: "10px 18px",
+                    fontSize: 14,
+                    fontWeight: 700,
+                    textDecoration: "none",
+                  }}
+                >
+                  💬 WhatsApp diretto{" "}
+                  {selectedProject.premiumClient.referente ? `— ${selectedProject.premiumClient.referente}` : ""} (H24)
+                </a>
+              ) : null}
+
+              {/* Nessuna copertura */}
+              {selectedProject.tier === "NESSUNA" ? (
+                <div
+                  style={{
+                    border: "1px solid #fde68a",
+                    background: "#fffbeb",
+                    borderRadius: 12,
+                    padding: "10px 14px",
+                    fontSize: 13,
+                    color: "#92400e",
+                    lineHeight: 1.6,
+                  }}
+                >
+                  Questo impianto non risulta coperto da garanzia o contratto attivo: l&apos;assistenza è
+                  erogabile <strong>a pagamento previo preventivo</strong>. Apri comunque la segnalazione:
+                  riceverai un&apos;offerta entro 1 giorno lavorativo. L&apos;uscita del tecnico è addebitata
+                  anche in caso di mancata riparazione per cause non dipendenti dalla nostra volontà.
+                </div>
+              ) : null}
+            </>
+          ) : null}
+        </>
+      ) : (
+        <>
+          {/* Stato copertura (legacy) */}
+          <div
+            style={{
+              border: `1px solid ${ts.border}`,
+              background: ts.bg,
+              color: ts.color,
+              borderRadius: 12,
+              padding: "10px 14px",
+              fontSize: 13,
+              fontWeight: 700,
+              display: "flex",
+              flexWrap: "wrap",
+              gap: 8,
+              alignItems: "center",
+              justifyContent: "space-between",
+            }}
+          >
+            <span>{ts.label}</span>
+            <span style={{ fontWeight: 500 }}>
+              {info.saas_type ? `${info.saas_type}` : ""}
+              {info.saas_expiry ? ` · scadenza ${formatDate(info.saas_expiry)}` : ""}
+              {info.ore_residue != null ? ` · ${info.ore_residue} interventi residui` : ""}
+            </span>
+          </div>
+
+          {info.whatsapp ? (
+            <a
+              href={`https://wa.me/${info.whatsapp.replace(/\D/g, "")}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 8,
+                alignSelf: "flex-start",
+                background: "#16a34a",
+                color: "white",
+                borderRadius: 10,
+                padding: "10px 18px",
+                fontSize: 14,
+                fontWeight: 700,
+                textDecoration: "none",
+              }}
+            >
+              💬 WhatsApp diretto {info.referente_tecnico ? `— ${info.referente_tecnico}` : ""} (H24)
+            </a>
+          ) : null}
+
+          {info.tier === "expired" ? (
+            <div
+              style={{
+                border: "1px solid #fde68a",
+                background: "#fffbeb",
+                borderRadius: 12,
+                padding: "10px 14px",
+                fontSize: 13,
+                color: "#92400e",
+                lineHeight: 1.6,
+              }}
+            >
+              Il tuo impianto non risulta coperto da garanzia o contratto attivo: l&apos;assistenza è
+              erogabile <strong>a pagamento previo preventivo</strong>. Apri comunque la segnalazione
+              qui sotto: riceverai un&apos;offerta entro 1 giorno lavorativo. L&apos;uscita del tecnico
+              è addebitata anche in caso di mancata riparazione per cause non dipendenti dalla nostra
+              volontà.
+            </div>
+          ) : null}
+        </>
+      )}
 
       {confirmed ? (
         <div
@@ -253,6 +445,19 @@ export default function ClienteAssistenzaSection({ apiSuffix }: { apiSuffix: str
           >
             Apri un altro ticket
           </button>
+        </div>
+      ) : usaPerProgetto && !selectedProjectId ? (
+        <div
+          style={{
+            border: "1px solid #e2e8f0",
+            background: "#f8fafc",
+            borderRadius: 12,
+            padding: "12px 14px",
+            fontSize: 13,
+            color: "#475569",
+          }}
+        >
+          Seleziona un progetto qui sopra per aprire una segnalazione di assistenza.
         </div>
       ) : (
         <>
@@ -312,7 +517,29 @@ export default function ClienteAssistenzaSection({ apiSuffix }: { apiSuffix: str
           {/* Form ticket */}
           {categoria ? (
             <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              {info.impianti.length > 1 ? (
+              {usaPerProgetto ? (
+                selectedProject && selectedProject.impianti.length > 1 ? (
+                  <select
+                    value={selectedImpiantoId || ""}
+                    onChange={(e) => {
+                      const id = e.target.value || null;
+                      setSelectedImpiantoId(id);
+                      const imp = selectedProject.impianti.find((x) => x.id === id) || null;
+                      setImpianto(
+                        imp ? `${imp.nome}${imp.seriale ? ` [${imp.seriale}]` : ""}` : ""
+                      );
+                    }}
+                    style={inputStyle}
+                  >
+                    <option value="">Seleziona impianto interessato (facoltativo)</option>
+                    {selectedProject.impianti.map((i, idx) => (
+                      <option key={i.id || idx} value={i.id || ""}>
+                        {i.nome} {i.seriale ? `— ${i.seriale}` : ""}
+                      </option>
+                    ))}
+                  </select>
+                ) : null
+              ) : info.impianti.length > 1 ? (
                 <select value={impianto} onChange={(e) => setImpianto(e.target.value)} style={inputStyle}>
                   <option value="">Seleziona impianto interessato (facoltativo)</option>
                   {info.impianti.map((i, idx) => (
@@ -355,7 +582,7 @@ export default function ClienteAssistenzaSection({ apiSuffix }: { apiSuffix: str
               >
                 {sending
                   ? "Invio…"
-                  : info.tier === "expired"
+                  : (usaPerProgetto ? selectedProject?.tier === "NESSUNA" : info.tier === "expired")
                   ? "Richiedi preventivo →"
                   : "Apri ticket →"}
               </button>

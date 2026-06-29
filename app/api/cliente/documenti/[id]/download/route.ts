@@ -63,7 +63,7 @@ export async function GET(
     checklistTasksRes,
     attachmentRes,
   ] = await Promise.all([
-    auth.adminClient.from("interventi").select("id, checklist_id").in("checklist_id", checklistIds),
+    auth.adminClient.from("saas_interventi").select("id, checklist_id").in("checklist_id", checklistIds),
     auth.adminClient.from("checklist_tasks").select("id, checklist_id").in("checklist_id", checklistIds),
     auth.adminClient
       .from("attachments")

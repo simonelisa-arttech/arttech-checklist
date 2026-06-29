@@ -76,7 +76,7 @@ export async function GET(request: Request) {
       .eq("visibile_al_cliente", true)
       .order("created_at", { ascending: false }),
     auth.adminClient
-      .from("interventi")
+      .from("saas_interventi")
       .select("id, checklist_id")
       .in("checklist_id", checklistIds),
     auth.adminClient

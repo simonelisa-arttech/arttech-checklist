@@ -12,7 +12,11 @@ export const dynamic = "force-dynamic";
 
 import { NextResponse } from "next/server";
 import { resolveClientePortalAuth } from "@/lib/clientePortalAuth";
-import { computeSupportTierForCliente } from "@/lib/supportTier";
+import {
+  computeSupportTierForCliente,
+  computeSupportForCliente,
+  computeSupportTierForProgetto,
+} from "@/lib/supportTier";
 import { sendEmail } from "@/lib/email";
 
 const CATEGORIE_VALIDE = new Set([
@@ -41,7 +45,41 @@ export async function GET(request: Request) {
   }
 
   try {
+    // Legacy invariato: tier aggregato cliente-level (campo `assistenza`).
     const info = await computeSupportTierForCliente(auth.adminClient, auth.cliente.cliente_id);
+
+    // P2.1 (additivo): copertura PER PROGETTO + aggregato, senza toccare `assistenza`.
+    const aggregato = await computeSupportForCliente(auth.adminClient, auth.cliente.cliente_id);
+
+    // Nomi progetto per le label (sola lettura).
+    const { data: ckNames } = await auth.adminClient
+      .from("checklists")
+      .select("id, nome_checklist")
+      .eq("cliente_id", auth.cliente.cliente_id);
+    const nomeById = new Map(
+      ((ckNames || []) as any[]).map((c) => [String(c.id || ""), String(c.nome_checklist || "")])
+    );
+
+    const progetti = aggregato.progetti.map((p) => ({
+      progettoId: p.progettoId,
+      progettoNome: nomeById.get(p.progettoId) || null,
+      tier: p.tier,
+      source: p.source,
+      premiumClient: p.premiumClient,
+      garanziaAttiva: p.garanziaAttiva,
+      supportoAttivo: p.supportoAttivo,
+      supportoScaduto: p.supportoScaduto,
+      scadenzaPiano: p.scadenzaPiano,
+      scadenzaGaranzia: p.scadenzaGaranzia,
+      interventi: p.interventi,
+      impianti: p.impianti.map((i) => ({
+        id: i.id,
+        nome: i.nome,
+        seriale: i.seriale,
+        stato: i.stato,
+        garanzia: i.garanzia,
+      })),
+    }));
 
     // ultimi ticket del cliente (storico)
     const { data: tickets } = await auth.adminClient
@@ -51,7 +89,16 @@ export async function GET(request: Request) {
       .order("created_at", { ascending: false })
       .limit(20);
 
-    return NextResponse.json({ ok: true, assistenza: info, tickets: tickets || [] });
+    return NextResponse.json({
+      ok: true,
+      assistenza: info, // legacy invariato (contratto attuale preservato)
+      aggregato: {
+        bestTier: aggregato.bestTier,
+        premiumClientAttivo: aggregato.premiumClientAttivo,
+      },
+      progetti,
+      tickets: tickets || [],
+    });
   } catch (err: any) {
     return NextResponse.json(
       { error: err?.message || "Errore caricamento assistenza" },
@@ -70,7 +117,9 @@ export async function POST(request: Request) {
   let body: {
     categoria?: string;
     descrizione?: string;
+    progettoId?: string;
     checklist_id?: string;
+    impiantoId?: string;
     impianto?: string;
     telefono?: string;
   };
@@ -91,12 +140,78 @@ export async function POST(request: Request) {
       { status: 400 }
     );
   }
-  const checklistId = String(body?.checklist_id || "").trim() || null;
-  const impianto = String(body?.impianto || "").trim().slice(0, 300) || null;
+  // P2.2.1: `progettoId` è alias di `checklist_id` (tolleranza retro-compatibile).
+  const checklistId =
+    String(body?.progettoId || body?.checklist_id || "").trim() || null;
+  const impiantoId = String(body?.impiantoId || "").trim() || null;
+  let impianto = String(body?.impianto || "").trim().slice(0, 300) || null;
   const telefono = String(body?.telefono || "").trim().slice(0, 50) || null;
+  let progettoNome: string | null = null;
+
+  // P2.2.1 — Validazione di appartenenza (sicurezza). Se progettoId/checklist_id è assente
+  // → fallback legacy (comportamento attuale invariato, nessun blocco apertura ticket).
+  if (checklistId) {
+    const { data: ownCk } = await auth.adminClient
+      .from("checklists")
+      .select("id, nome_checklist")
+      .eq("id", checklistId)
+      .eq("cliente_id", auth.cliente.cliente_id)
+      .maybeSingle();
+    if (!ownCk) {
+      return NextResponse.json(
+        { error: "Progetto non valido per questo cliente" },
+        { status: 403 }
+      );
+    }
+    progettoNome = String((ownCk as any).nome_checklist || "").trim() || null;
+    if (impiantoId) {
+      const { data: ownImp } = await auth.adminClient
+        .from("checklist_impianti")
+        .select("id, impianto_codice, impianto_descrizione, tipo_impianto, dimensioni")
+        .eq("id", impiantoId)
+        .eq("checklist_id", checklistId)
+        .maybeSingle();
+      if (!ownImp) {
+        return NextResponse.json(
+          { error: "Impianto non valido per il progetto" },
+          { status: 400 }
+        );
+      }
+      // Decisione f: valorizza la stringa `impianto` col nome/seriale risolto (stessa colonna).
+      const imp = ownImp as any;
+      const nomeImp =
+        [imp.impianto_descrizione, imp.tipo_impianto, imp.dimensioni].filter(Boolean).join(" — ") ||
+        "Impianto LED";
+      const serImp = String(imp.impianto_codice || "").trim();
+      impianto = (serImp ? `${nomeImp} [${serImp}]` : nomeImp).slice(0, 300);
+    }
+  } else if (impiantoId) {
+    // impiantoId senza progetto non è validabile → richiedi il progetto.
+    return NextResponse.json(
+      { error: "Specificare il progetto dell'impianto" },
+      { status: 400 }
+    );
+  }
 
   try {
-    const info = await computeSupportTierForCliente(auth.adminClient, auth.cliente.cliente_id);
+    // P2.2.2: tier PER-PROGETTO se checklistId valido; altrimenti fallback legacy invariato.
+    let tierToSave: string;
+    let premiumAttivo = false;
+    let premiumOrigine: string | null = null;
+    let tierSource: string;
+    if (checklistId) {
+      const prog = await computeSupportTierForProgetto(auth.adminClient, checklistId);
+      tierToSave = prog.tier;
+      premiumAttivo = prog.premiumClient.attivo;
+      premiumOrigine = prog.premiumClient.origine;
+      tierSource = prog.source;
+    } else {
+      const info = await computeSupportTierForCliente(auth.adminClient, auth.cliente.cliente_id);
+      tierToSave = info.tier;
+      premiumAttivo = !!info.whatsapp;
+      premiumOrigine = premiumAttivo ? "cliente-level" : null;
+      tierSource = "cliente-level";
+    }
 
     const { data: inserted, error: insertErr } = await auth.adminClient
       .from("assistenza_tickets")
@@ -104,7 +219,7 @@ export async function POST(request: Request) {
         cliente_id: auth.cliente.cliente_id,
         checklist_id: checklistId,
         email: auth.cliente.email,
-        tier: info.tier,
+        tier: tierToSave,
         categoria,
         impianto,
         telefono,
@@ -132,17 +247,22 @@ export async function POST(request: Request) {
         // Reply-To = email del cliente: HubSpot (email-to-ticket) associa cosi'
         // la conversazione al contatto giusto e lo staff risponde direttamente.
         replyTo: auth.cliente.email,
-        subject: `[Ticket #${inserted.numero}] ${CATEGORIA_LABEL[categoria]} — tier ${info.tier.toUpperCase()} — ${auth.cliente.email}`,
+        subject: `[Ticket #${inserted.numero}] ${CATEGORIA_LABEL[categoria]} — tier ${tierToSave.toUpperCase()} — ${auth.cliente.email}`,
         text: [
           `Nuovo ticket assistenza dall'area cliente.`,
           ``,
           `Numero: #${inserted.numero}`,
           `Cliente ID: ${auth.cliente.cliente_id}`,
           `Email cliente: ${auth.cliente.email}`,
-          `Tier: ${info.tier}`,
+          `Progetto: ${progettoNome || checklistId || "-"}`,
+          `Tier: ${tierToSave}`,
+          `Tier Source: ${tierSource}`,
+          `Premium Client: ${premiumAttivo ? "SÌ" : "NO"}`,
+          `Origine Premium Client: ${premiumOrigine || "-"}`,
           `Categoria: ${CATEGORIA_LABEL[categoria]}`,
           `Impianto: ${impianto || "-"}`,
           `Telefono: ${telefono || "-"}`,
+          ...(checklistId && tierToSave === "NESSUNA" ? ["Progetto senza copertura attiva"] : []),
           ``,
           `Descrizione:`,
           descrizione,
@@ -152,11 +272,18 @@ export async function POST(request: Request) {
           `<ul>`,
           `<li><strong>Numero:</strong> #${inserted.numero}</li>`,
           `<li><strong>Email cliente:</strong> ${auth.cliente.email}</li>`,
-          `<li><strong>Tier:</strong> ${info.tier}</li>`,
+          `<li><strong>Progetto:</strong> ${progettoNome || checklistId || "-"}</li>`,
+          `<li><strong>Tier:</strong> ${tierToSave}</li>`,
+          `<li><strong>Tier Source:</strong> ${tierSource}</li>`,
+          `<li><strong>Premium Client:</strong> ${premiumAttivo ? "SÌ" : "NO"}</li>`,
+          `<li><strong>Origine Premium Client:</strong> ${premiumOrigine || "-"}</li>`,
           `<li><strong>Categoria:</strong> ${CATEGORIA_LABEL[categoria]}</li>`,
           `<li><strong>Impianto:</strong> ${impianto || "-"}</li>`,
           `<li><strong>Telefono:</strong> ${telefono || "-"}</li>`,
           `</ul>`,
+          ...(checklistId && tierToSave === "NESSUNA"
+            ? ["<p><strong>Progetto senza copertura attiva</strong></p>"]
+            : []),
           `<p><strong>Descrizione:</strong></p>`,
           `<p>${descrizione.replace(/\n/g, "<br />")}</p>`,
         ].join(""),
@@ -171,7 +298,7 @@ export async function POST(request: Request) {
         id: inserted.id,
         numero: inserted.numero,
         created_at: inserted.created_at,
-        tier: info.tier,
+        tier: tierToSave,
       },
     });
   } catch (err: any) {
