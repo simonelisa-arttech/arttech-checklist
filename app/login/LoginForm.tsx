@@ -131,6 +131,12 @@ export default function LoginForm({ redirectTo }: LoginFormProps) {
           Password dimenticata
         </button>
       </form>
+      <div style={{ marginTop: 16, fontSize: 13, textAlign: "center", color: "#475569" }}>
+        Primo accesso?{" "}
+        <a href="/registrazione" style={{ color: "#1d4ed8", fontWeight: 700, textDecoration: "underline" }}>
+          Registrati all&apos;area cliente
+        </a>
+      </div>
     </div>
   );
 }
