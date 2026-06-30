@@ -24,22 +24,6 @@ type Props = {
   onCountChange?: (count: number) => void;
 };
 
-function sanitizeExtension(file: File) {
-  const name = String(file.name || "").trim();
-  const fromName = name.includes(".") ? name.split(".").pop() || "" : "";
-  const normalizedFromName = fromName.replace(/[^a-zA-Z0-9]/g, "").toLowerCase();
-  if (normalizedFromName) return normalizedFromName;
-
-  const mime = String(file.type || "").trim().toLowerCase();
-  if (mime === "image/jpeg") return "jpg";
-  if (mime === "image/png") return "png";
-  if (mime === "image/webp") return "webp";
-  if (mime === "image/gif") return "gif";
-  if (mime === "image/svg+xml") return "svg";
-  if (mime === "image/avif") return "avif";
-  return "bin";
-}
-
 export default function CoverPhotosPanel({
   impiantoId,
   createdById = null,
@@ -109,12 +93,13 @@ export default function CoverPhotosPanel({
         if (!String(file.type || "").toLowerCase().startsWith("image/")) {
           throw new Error(`File non valido: ${file.name}. Sono ammesse solo immagini.`);
         }
-        const ext = sanitizeExtension(file);
-        const path = `${impiantoId}/${Date.now()}.${ext}`;
-        const { error: uploadError } = await uploadImpiantoCover(path, file);
-        if (uploadError) {
-          throw new Error("Errore upload cover: " + uploadError.message);
+        const { data: uploadData, error: uploadError } = await uploadImpiantoCover(impiantoId, file);
+        if (uploadError || !uploadData?.path) {
+          throw new Error(
+            "Errore upload cover: " + (uploadError?.message || "path cover non restituito")
+          );
         }
+        const path = String(uploadData.path || "").trim();
 
         const payload = {
           source: "UPLOAD",
