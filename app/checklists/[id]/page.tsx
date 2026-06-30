@@ -6407,10 +6407,40 @@ function buildFormData(c: Checklist): FormData {
   }, [params]);
 
   useEffect(() => {
-    const stored =
-      typeof window !== "undefined" ? window.localStorage.getItem("current_operatore_id") : null;
-    if (stored) setCurrentOperatoreId(stored);
-  }, []);
+    let cancelled = false;
+
+    (async () => {
+      const stored =
+        typeof window !== "undefined" ? window.localStorage.getItem("current_operatore_id") : null;
+      if (stored) {
+        if (!cancelled) setCurrentOperatoreId(stored);
+        return;
+      }
+      if (currentOperatoreId) return;
+
+      try {
+        const res = await fetch("/api/resolve-operatore", {
+          method: "GET",
+          credentials: "include",
+          cache: "no-store",
+        });
+        const payload = await res.json().catch(() => null);
+        if (!res.ok) return;
+        const operatoreId = String(payload?.operatore_id || "").trim();
+        if (!operatoreId || cancelled) return;
+        setCurrentOperatoreId(operatoreId);
+        if (typeof window !== "undefined") {
+          window.localStorage.setItem("current_operatore_id", operatoreId);
+        }
+      } catch {
+        // Non bloccare la pagina: il fallback esistente sul save resta attivo.
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [currentOperatoreId]);
 
   useEffect(() => {
     if (!isPerfEnabled() || loading) return;
