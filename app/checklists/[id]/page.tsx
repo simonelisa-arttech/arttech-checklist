@@ -15,6 +15,7 @@ import Link from "next/link";
 import ConfigMancante from "@/components/ConfigMancante";
 import ClientiCombobox from "@/components/ClientiCombobox";
 import AttachmentsPanel from "@/components/AttachmentsPanel";
+import CoverPhotosPanel from "@/components/CoverPhotosPanel";
 import OperationalBlockEditor from "@/components/cronoprogramma/OperationalBlockEditor";
 import InterventiBlock, {
   type InterventiImpiantoOption,
@@ -45,6 +46,7 @@ import {
 import { isSupabaseConfigured, supabase } from "@/lib/supabaseClient";
 import { dbFrom } from "@/lib/clientDbBroker";
 import { storageRemove, storageSignedUrl, storageUpload } from "@/lib/clientStorageApi";
+import { removeImpiantoCover } from "@/lib/coverStorage";
 import { sendAlert } from "@/lib/sendAlert";
 import { calcM2FromDimensioni } from "@/lib/parseDimensioni";
 import {
@@ -145,6 +147,13 @@ type ChecklistImpianto = {
   impianto_quantita?: number | null;
   numero_facce?: number | null;
   m2_calcolati?: number | null;
+  screen_code?: string | null;
+  inventory_enabled?: boolean | null;
+  inventory_status?: "draft" | "coming_soon" | "live" | string | null;
+  audience?: string | null;
+  lat?: number | null;
+  lng?: number | null;
+  inventory_synced_at?: string | null;
   data_disinstallazione?: string | null;
   note?: string | null;
   cabinet_configurazioni?: ChecklistImpiantoCabinet[];
@@ -492,6 +501,16 @@ function formatImpiantoPasso(value?: string | null) {
   return raw.toUpperCase().startsWith("P") ? raw : `P${raw}`;
 }
 
+function normalizeInventoryStatus(value: unknown) {
+  const normalized = String(value || "")
+    .trim()
+    .toLowerCase();
+  if (normalized === "draft" || normalized === "live" || normalized === "coming_soon") {
+    return normalized;
+  }
+  return "coming_soon";
+}
+
 function normalizeChecklistImpianto(value: unknown, checklistId?: string | null): ChecklistImpianto | null {
   const row = value && typeof value === "object" ? (value as Record<string, unknown>) : null;
   if (!row) return null;
@@ -500,6 +519,8 @@ function normalizeChecklistImpianto(value: unknown, checklistId?: string | null)
   const numeroFacce = Number(row.numero_facce);
   const m2Calcolati = Number(row.m2_calcolati);
   const nit = Number(row.nit);
+  const lat = Number(row.lat);
+  const lng = Number(row.lng);
   return {
     ...(id ? { id } : { id: buildClientTempId("impianto") }),
     checklist_id: String(row.checklist_id || checklistId || "").trim() || null,
@@ -517,6 +538,13 @@ function normalizeChecklistImpianto(value: unknown, checklistId?: string | null)
       Number.isFinite(impiantoQuantita) && impiantoQuantita > 0 ? Math.floor(impiantoQuantita) : 1,
     numero_facce: Number.isFinite(numeroFacce) && numeroFacce > 0 ? Math.floor(numeroFacce) : 1,
     m2_calcolati: Number.isFinite(m2Calcolati) ? m2Calcolati : null,
+    screen_code: String(row.screen_code || "").trim() || null,
+    inventory_enabled: row.inventory_enabled === true,
+    inventory_status: normalizeInventoryStatus(row.inventory_status),
+    audience: String(row.audience || "").trim() || null,
+    lat: Number.isFinite(lat) ? lat : null,
+    lng: Number.isFinite(lng) ? lng : null,
+    inventory_synced_at: String(row.inventory_synced_at || "").trim() || null,
     data_disinstallazione:
       normalizeOperativiDate(
         typeof row.data_disinstallazione === "string"
@@ -548,6 +576,13 @@ function buildEmptyChecklistImpianto(): ChecklistImpianto {
     nit: null,
     tipo_impianto: "",
     tipo_struttura: "",
+    screen_code: "",
+    inventory_enabled: false,
+    inventory_status: "coming_soon",
+    audience: "",
+    lat: null,
+    lng: null,
+    inventory_synced_at: null,
     data_disinstallazione: null,
     note: "",
     cabinet_configurazioni: [],
@@ -1748,6 +1783,12 @@ function hasChecklistImpiantiData(list: ChecklistImpianto[]) {
       imp.note,
       imp.impianto_quantita,
       imp.numero_facce,
+      imp.screen_code,
+      imp.audience,
+      imp.lat,
+      imp.lng,
+      imp.inventory_enabled === true ? "true" : "",
+      imp.inventory_status && imp.inventory_status !== "coming_soon" ? imp.inventory_status : "",
     ].some((value) => value != null && String(value).trim() !== "") ||
     (imp.cabinet_configurazioni || []).some((cabinet) => hasChecklistImpiantoCabinetData(cabinet))
   );
@@ -5665,7 +5706,7 @@ function buildFormData(c: Checklist): FormData {
       table: "checklist_impianti",
       op: "select",
       select:
-        "id, checklist_id, position, nome_impianto, impianto_codice, impianto_descrizione, tipo_impianto, tipo_struttura, impianto_indirizzo, passo, dimensioni, nit, impianto_quantita, numero_facce, m2_calcolati, data_disinstallazione, note",
+        "id, checklist_id, position, nome_impianto, impianto_codice, impianto_descrizione, tipo_impianto, tipo_struttura, impianto_indirizzo, passo, dimensioni, nit, impianto_quantita, numero_facce, m2_calcolati, screen_code, inventory_enabled, inventory_status, audience, lat, lng, inventory_synced_at, data_disinstallazione, note",
       filter: { checklist_id: id },
       order: [{ col: "position", asc: true }],
     }));
@@ -5680,7 +5721,7 @@ function buildFormData(c: Checklist): FormData {
         table: "checklist_impianti",
         op: "select",
         select:
-          "id, checklist_id, position, nome_impianto, impianto_codice, impianto_descrizione, tipo_impianto, tipo_struttura, impianto_indirizzo, passo, dimensioni, nit, impianto_quantita, numero_facce, m2_calcolati, note",
+          "id, checklist_id, position, nome_impianto, impianto_codice, impianto_descrizione, tipo_impianto, tipo_struttura, impianto_indirizzo, passo, dimensioni, nit, impianto_quantita, numero_facce, m2_calcolati, screen_code, inventory_enabled, inventory_status, audience, lat, lng, inventory_synced_at, note",
         filter: { checklist_id: id },
         order: [{ col: "position", asc: true }],
       }));
@@ -6748,7 +6789,7 @@ function buildFormData(c: Checklist): FormData {
   function updateImpianto(
     index: number,
     field: keyof ChecklistImpianto,
-    value: string | number | null
+    value: string | number | boolean | null
   ) {
     setImpiantiNotice(null);
     setImpianti((prev) =>
@@ -6896,6 +6937,23 @@ function buildFormData(c: Checklist): FormData {
             Number.isFinite(Number(imp.nit)) && Number(imp.nit) > 0
               ? Math.floor(Number(imp.nit))
               : null,
+          screen_code: String(imp.screen_code || "").trim() || null,
+          inventory_enabled: imp.inventory_enabled === true,
+          inventory_status: normalizeInventoryStatus(imp.inventory_status),
+          audience: String(imp.audience || "").trim() || null,
+          lat:
+            imp.lat == null || String(imp.lat).trim() === ""
+              ? null
+              : Number.isFinite(Number(imp.lat))
+                ? Number(imp.lat)
+                : null,
+          lng:
+            imp.lng == null || String(imp.lng).trim() === ""
+              ? null
+              : Number.isFinite(Number(imp.lng))
+                ? Number(imp.lng)
+                : null,
+          inventory_synced_at: String(imp.inventory_synced_at || "").trim() || null,
           data_disinstallazione: String(imp.data_disinstallazione || "").trim() || null,
           impianto_quantita:
             Number.isFinite(Number(imp.impianto_quantita)) && Number(imp.impianto_quantita) > 0
@@ -6918,6 +6976,14 @@ function buildFormData(c: Checklist): FormData {
           normalizedImpianto.passo,
           normalizedImpianto.dimensioni,
           normalizedImpianto.nit,
+          normalizedImpianto.screen_code,
+          normalizedImpianto.audience,
+          normalizedImpianto.lat,
+          normalizedImpianto.lng,
+          normalizedImpianto.inventory_enabled ? "true" : "",
+          normalizedImpianto.inventory_status !== "coming_soon"
+            ? normalizedImpianto.inventory_status
+            : "",
           normalizedImpianto.note,
           normalizedImpianto.impianto_quantita,
           normalizedImpianto.numero_facce,
@@ -6967,6 +7033,33 @@ function buildFormData(c: Checklist): FormData {
         checklist_impianto_id: String(row?.checklist_impianto_id || "").trim() || null,
       }))
       .filter((row) => row.id);
+    const persistedImpiantoIds = Array.from(
+      new Set(
+        persistedInterventoImpianti
+          .map((row) => String(row.id || "").trim())
+          .filter((row) => isRealUuid(row))
+      )
+    );
+    let existingCoverRows: Array<{ id: string; entity_id: string | null; storage_path: string | null }> = [];
+    if (persistedImpiantoIds.length > 0) {
+      const { data: existingCoverData, error: existingCoverErr } = await dbFrom("attachments")
+        .select("id, entity_id, storage_path")
+        .eq("entity_type", "IMPIANTO_COVER")
+        .in("entity_id", persistedImpiantoIds);
+      if (existingCoverErr) {
+        throw new Error(
+          logSupabaseError("load attachments impianto cover before impianti save", existingCoverErr) ||
+            "Errore caricamento cover impianti"
+        );
+      }
+      existingCoverRows = ((existingCoverData || []) as any[])
+        .map((row) => ({
+          id: String(row?.id || "").trim(),
+          entity_id: String(row?.entity_id || "").trim() || null,
+          storage_path: String(row?.storage_path || "").trim() || null,
+        }))
+        .filter((row) => row.id);
+    }
     const localSerialRows = assetSerials
       .map((row) => ({
         id: String(row?.id || "").trim(),
@@ -7021,6 +7114,19 @@ function buildFormData(c: Checklist): FormData {
           console.warn("Errore pulizia file cabinet", storageErr.message, storagePath);
         }
       }
+      for (const coverRow of existingCoverRows) {
+        const storagePath = String(coverRow.storage_path || "").trim();
+        if (storagePath) {
+          const { error: coverStorageErr } = await removeImpiantoCover(storagePath);
+          if (coverStorageErr) {
+            console.warn("Errore pulizia cover impianto", coverStorageErr.message, storagePath);
+          }
+        }
+        const { error: deleteCoverErr } = await dbFrom("attachments").delete().eq("id", coverRow.id);
+        if (deleteCoverErr) {
+          console.warn("Errore eliminazione record cover impianto", deleteCoverErr.message, coverRow.id);
+        }
+      }
       setCabinetPendingFiles({});
       return [];
     }
@@ -7038,6 +7144,13 @@ function buildFormData(c: Checklist): FormData {
       nit: imp?.nit ?? null,
       impianto_quantita: imp?.impianto_quantita ?? 1,
       numero_facce: imp?.numero_facce ?? 1,
+      screen_code: imp?.screen_code ?? null,
+      inventory_enabled: imp?.inventory_enabled === true,
+      inventory_status: normalizeInventoryStatus(imp?.inventory_status),
+      audience: imp?.audience ?? null,
+      lat: imp?.lat ?? null,
+      lng: imp?.lng ?? null,
+      inventory_synced_at: imp?.inventory_synced_at ?? null,
       note: imp?.note ?? null,
     }));
 
@@ -7049,7 +7162,7 @@ function buildFormData(c: Checklist): FormData {
     } = await dbFrom("checklist_impianti")
       .insert(payload)
       .select(
-        "id, checklist_id, position, nome_impianto, impianto_codice, impianto_descrizione, tipo_impianto, tipo_struttura, impianto_indirizzo, passo, dimensioni, nit, impianto_quantita, numero_facce, m2_calcolati, note"
+        "id, checklist_id, position, nome_impianto, impianto_codice, impianto_descrizione, tipo_impianto, tipo_struttura, impianto_indirizzo, passo, dimensioni, nit, impianto_quantita, numero_facce, m2_calcolati, screen_code, inventory_enabled, inventory_status, audience, lat, lng, inventory_synced_at, note"
       ));
     if (insertErr) {
       throw new Error(
@@ -7094,6 +7207,40 @@ function buildFormData(c: Checklist): FormData {
         throw new Error(
           logSupabaseError("restore asset_serials checklist_impianto_id", serialUpdateErr) ||
             "Errore ripristino associazione seriali impianto"
+        );
+      }
+    }
+
+    const coverRowsToDelete = existingCoverRows.filter((row) => {
+      const currentImpiantoId = String(row.entity_id || "").trim();
+      return Boolean(currentImpiantoId) && !impiantoIdRemap.has(currentImpiantoId);
+    });
+    for (const row of coverRowsToDelete) {
+      const storagePath = String(row.storage_path || "").trim();
+      if (storagePath) {
+        const { error: storageErr } = await removeImpiantoCover(storagePath);
+        if (storageErr) {
+          console.warn("Errore eliminazione file cover impianto", storageErr.message, storagePath);
+        }
+      }
+      const { error: deleteCoverErr } = await dbFrom("attachments").delete().eq("id", row.id);
+      if (deleteCoverErr) {
+        throw new Error(
+          logSupabaseError("delete attachments impianto cover", deleteCoverErr) ||
+            "Errore eliminazione cover impianto rimossa"
+        );
+      }
+    }
+
+    for (const [oldImpiantoId, newImpiantoId] of impiantoIdRemap.entries()) {
+      const { error: updateCoverErr } = await dbFrom("attachments")
+        .update({ entity_id: newImpiantoId })
+        .eq("entity_type", "IMPIANTO_COVER")
+        .eq("entity_id", oldImpiantoId);
+      if (updateCoverErr) {
+        throw new Error(
+          logSupabaseError("remap attachments impianto cover", updateCoverErr) ||
+            "Errore riallineamento cover impianto"
         );
       }
     }
@@ -11623,6 +11770,134 @@ function buildFormData(c: Checklist): FormData {
                     />
                   </label>
                 </div>
+
+                <div
+                  style={{
+                    border: "1px solid #dbeafe",
+                    borderRadius: 10,
+                    padding: 12,
+                    background: "#f8fbff",
+                    display: "grid",
+                    gap: 10,
+                  }}
+                >
+                  <div style={{ fontWeight: 800, color: "#1d4ed8" }}>Inventory / Pubblicazione</div>
+                  <div
+                    style={{
+                      display: "grid",
+                      gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))",
+                      gap: 10,
+                    }}
+                  >
+                    <label
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 8,
+                        fontSize: 13,
+                        fontWeight: 600,
+                        gridColumn: "1 / -1",
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={imp.inventory_enabled === true}
+                        onChange={(e) => updateImpianto(index, "inventory_enabled", e.target.checked)}
+                      />
+                      Publish su inventory
+                    </label>
+
+                    <label style={{ display: "grid", gap: 6, fontSize: 13 }}>
+                      <span>Codice screen / Inventory</span>
+                      <input
+                        value={String(imp.screen_code || "")}
+                        onChange={(e) => updateImpianto(index, "screen_code", e.target.value)}
+                        placeholder="es. milano-duomo-001"
+                        style={{ width: "100%", padding: 10 }}
+                      />
+                    </label>
+
+                    <label style={{ display: "grid", gap: 6, fontSize: 13 }}>
+                      <span>Stato inventory</span>
+                      <select
+                        value={normalizeInventoryStatus(imp.inventory_status)}
+                        onChange={(e) => updateImpianto(index, "inventory_status", e.target.value)}
+                        style={{ width: "100%", padding: 10 }}
+                      >
+                        <option value="coming_soon">In attivazione</option>
+                        <option value="live">Live</option>
+                        <option value="draft">Bozza / non pubblicato</option>
+                      </select>
+                    </label>
+
+                    <label style={{ display: "grid", gap: 6, fontSize: 13, gridColumn: "1 / -1" }}>
+                      <span>Audience / note pubblico</span>
+                      <textarea
+                        value={String(imp.audience || "")}
+                        onChange={(e) => updateImpianto(index, "audience", e.target.value)}
+                        rows={3}
+                        style={{ width: "100%", padding: 10, resize: "vertical" }}
+                      />
+                    </label>
+
+                    <label style={{ display: "grid", gap: 6, fontSize: 13 }}>
+                      <span>Latitudine</span>
+                      <input
+                        type="number"
+                        step="any"
+                        value={imp.lat == null ? "" : String(imp.lat)}
+                        onChange={(e) => {
+                          const raw = e.target.value.trim();
+                          updateImpianto(
+                            index,
+                            "lat",
+                            raw === "" ? null : Number.isFinite(Number(raw)) ? Number(raw) : null
+                          );
+                        }}
+                        style={{ width: "100%", padding: 10 }}
+                      />
+                    </label>
+
+                    <label style={{ display: "grid", gap: 6, fontSize: 13 }}>
+                      <span>Longitudine</span>
+                      <input
+                        type="number"
+                        step="any"
+                        value={imp.lng == null ? "" : String(imp.lng)}
+                        onChange={(e) => {
+                          const raw = e.target.value.trim();
+                          updateImpianto(
+                            index,
+                            "lng",
+                            raw === "" ? null : Number.isFinite(Number(raw)) ? Number(raw) : null
+                          );
+                        }}
+                        style={{ width: "100%", padding: 10 }}
+                      />
+                    </label>
+
+                    {imp.inventory_synced_at ? (
+                      <label style={{ display: "grid", gap: 6, fontSize: 13, gridColumn: "1 / -1" }}>
+                        <span>Ultimo sync inventory</span>
+                        <input
+                          value={new Date(imp.inventory_synced_at).toLocaleString()}
+                          readOnly
+                          style={{
+                            width: "100%",
+                            padding: 10,
+                            background: "#f8fafc",
+                            border: "1px solid #cbd5e1",
+                          }}
+                        />
+                      </label>
+                    ) : null}
+                  </div>
+                </div>
+
+                <CoverPhotosPanel
+                  impiantoId={isRealUuid(String(imp.id || "").trim()) ? String(imp.id || "").trim() : null}
+                  createdById={currentOperatoreId || null}
+                />
 
                 {cabinetPanelOpen ? (
                   <div
