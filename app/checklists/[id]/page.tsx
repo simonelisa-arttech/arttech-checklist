@@ -7263,6 +7263,7 @@ function buildFormData(c: Checklist): FormData {
     }
 
     for (const [oldImpiantoId, newImpiantoId] of impiantoIdRemap.entries()) {
+      if (!isRealUuid(oldImpiantoId)) continue;
       const { error: updateCoverErr } = await dbFrom("attachments")
         .update({ entity_id: newImpiantoId })
         .eq("entity_type", "IMPIANTO_COVER")
