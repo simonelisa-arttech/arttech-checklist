@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 
 type RegisterStatus = "activated" | "pending" | "exists";
 
@@ -34,7 +35,8 @@ const inputStyle: React.CSSProperties = {
 
 const fieldWrap: React.CSSProperties = { marginBottom: 14 };
 
-export default function RegistrazionePage() {
+function RegistrazioneContent() {
+  const searchParams = useSearchParams();
   const [email, setEmail] = useState("");
   const [denominazione, setDenominazione] = useState("");
   const [piva, setPiva] = useState("");
@@ -45,6 +47,12 @@ export default function RegistrazionePage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<{ status: RegisterStatus; message: string } | null>(null);
+
+  // P3.3: prefill email dal deep-link ?email= (CTA landing LedCare / onboarding).
+  useEffect(() => {
+    const e = String(searchParams.get("email") || "").trim();
+    if (e) setEmail(e);
+  }, [searchParams]);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -295,5 +303,13 @@ export default function RegistrazionePage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function RegistrazionePage() {
+  return (
+    <Suspense fallback={null}>
+      <RegistrazioneContent />
+    </Suspense>
   );
 }

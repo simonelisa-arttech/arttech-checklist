@@ -56,7 +56,17 @@ export default function ResetPasswordPage() {
       return;
     }
     setSuccess(true);
-    setTimeout(() => router.replace("/login"), 1000);
+    // P3.3: dopo il set-password, i CLIENTI vanno direttamente all'area cliente
+    // (sessione già attiva dal recovery); gli altri utenti restano sul login.
+    let dest = "/login";
+    try {
+      const { data } = await supabase.auth.getUser();
+      const ruolo = (data?.user?.user_metadata as { ruolo_portale?: string } | null)?.ruolo_portale;
+      if (ruolo === "CLIENTE") dest = "/cliente";
+    } catch {
+      // fallback: login
+    }
+    setTimeout(() => router.replace(dest), 1000);
   }
 
   return (
