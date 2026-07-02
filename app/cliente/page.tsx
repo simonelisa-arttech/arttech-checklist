@@ -191,15 +191,38 @@ export default function ClientePortalPage() {
   const [tagliandi, setTagliandi] = useState<ClienteTagliando[]>([]);
   const [openingDocumentId, setOpeningDocumentId] = useState<string | null>(null);
   const [impersonationToken, setImpersonationToken] = useState("");
+  // P3.2: deep-link letti dalla query string (CTA landing LedCare). Fallback: tutti null.
+  const [deepLink, setDeepLink] = useState<{
+    azione: string | null;
+    ticket: string | null;
+    progetto: string | null;
+    impianto: string | null;
+  }>({ azione: null, ticket: null, progetto: null, impianto: null });
   const clienteApiSuffix = impersonationToken
     ? `?impersonation_token=${encodeURIComponent(impersonationToken)}`
     : "";
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    const token = new URLSearchParams(window.location.search).get("impersonation_token");
-    setImpersonationToken(String(token || "").trim());
+    const sp = new URLSearchParams(window.location.search);
+    setImpersonationToken(String(sp.get("impersonation_token") || "").trim());
+    setDeepLink({
+      azione: sp.get("azione"),
+      ticket: sp.get("ticket"),
+      progetto: sp.get("progetto"),
+      impianto: sp.get("impianto"),
+    });
   }, []);
+
+  // P3.2: intento derivato dai deep-link (assistenza/preventivo/ticket nuovo → apri sezione assistenza).
+  const assistenzaMode: "assistenza" | "preventivo" | null =
+    deepLink.azione === "preventivo"
+      ? "preventivo"
+      : deepLink.azione === "assistenza"
+      ? "assistenza"
+      : null;
+  const autoFocusTicket =
+    assistenzaMode !== null || deepLink.ticket === "nuovo";
 
   async function openDocumento(documentId: string) {
     try {
@@ -848,7 +871,13 @@ export default function ClientePortalPage() {
           {sectionShell(
             "Assistenza",
             "Apri un ticket: ti guidiamo in base alla copertura attiva sul tuo impianto.",
-            <ClienteAssistenzaSection apiSuffix={clienteApiSuffix} />
+            <ClienteAssistenzaSection
+              apiSuffix={clienteApiSuffix}
+              initialProjectId={deepLink.progetto}
+              initialImpiantoId={deepLink.impianto}
+              autoFocusTicket={autoFocusTicket}
+              mode={assistenzaMode}
+            />
           )}
           </div>
         )}

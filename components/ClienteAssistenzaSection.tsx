@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 type TierInfo = {
   tier: "expired" | "standard" | "plus" | "premium" | "ultra" | "events";
@@ -116,7 +116,22 @@ function formatDate(d?: string | null) {
   return m ? `${m[3]}/${m[2]}/${m[1]}` : d;
 }
 
-export default function ClienteAssistenzaSection({ apiSuffix }: { apiSuffix: string }) {
+export default function ClienteAssistenzaSection({
+  apiSuffix,
+  initialProjectId = null,
+  initialImpiantoId = null,
+  autoFocusTicket = false,
+  mode = null,
+}: {
+  apiSuffix: string;
+  // P3.2: deep-link dalla landing LedCare (tutti opzionali, fallback = comportamento attuale).
+  initialProjectId?: string | null;
+  initialImpiantoId?: string | null;
+  autoFocusTicket?: boolean;
+  mode?: "assistenza" | "preventivo" | null;
+}) {
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  const [deepLinkApplied, setDeepLinkApplied] = useState(false);
   const [info, setInfo] = useState<TierInfo | null>(null);
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [loading, setLoading] = useState(true);
@@ -164,6 +179,30 @@ export default function ClienteAssistenzaSection({ apiSuffix }: { apiSuffix: str
   useEffect(() => {
     if (progetti.length === 1) setSelectedProjectId(progetti[0].progettoId);
   }, [progetti]);
+
+  // P3.2: applica una sola volta il deep-link (?progetto/?impianto) se combacia coi dati caricati.
+  useEffect(() => {
+    if (deepLinkApplied) return;
+    if (progetti.length === 0) return;
+    if (initialProjectId) {
+      const match = progetti.find((p) => p.progettoId === initialProjectId);
+      if (match) {
+        setSelectedProjectId(match.progettoId);
+        if (initialImpiantoId && match.impianti.some((i) => i.id === initialImpiantoId)) {
+          setSelectedImpiantoId(initialImpiantoId);
+        }
+      }
+    }
+    setDeepLinkApplied(true);
+  }, [progetti, initialProjectId, initialImpiantoId, deepLinkApplied]);
+
+  // P3.2: se la landing chiede assistenza/preventivo/ticket, porta la sezione in vista.
+  useEffect(() => {
+    if (loading) return;
+    if (!autoFocusTicket) return;
+    if (typeof window === "undefined") return;
+    rootRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [loading, autoFocusTicket]);
 
   async function submitTicket() {
     setSendError(null);
@@ -229,7 +268,23 @@ export default function ClienteAssistenzaSection({ apiSuffix }: { apiSuffix: str
   const tsProg = selectedProject ? TIER_STYLE_PROGETTO[selectedProject.tier] : null;
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+    <div ref={rootRef} style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      {mode ? (
+        <div
+          style={{
+            border: "1px solid #bfdbfe",
+            background: "#eff6ff",
+            color: "#1e40af",
+            borderRadius: 12,
+            padding: "10px 14px",
+            fontSize: 13,
+          }}
+        >
+          {mode === "preventivo"
+            ? "Hai richiesto un preventivo: seleziona il progetto e descrivi l'intervento. Se non hai una copertura attiva, l'assistenza sarà a pagamento previo preventivo."
+            : "Apri una richiesta di assistenza: seleziona il progetto interessato e descrivi il problema."}
+        </div>
+      ) : null}
       {usaPerProgetto ? (
         <>
           {/* Selettore progetto (per-progetto) */}
