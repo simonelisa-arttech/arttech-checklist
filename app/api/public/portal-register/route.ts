@@ -15,7 +15,6 @@ export const runtime = "nodejs";
  * CORS: maxischermo.biz + atsystem stesso + ALLOWED_ORIGINS.
  */
 
-import { randomBytes } from "crypto";
 import { NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 import { sendEmail } from "@/lib/email";
@@ -83,14 +82,24 @@ function isValidEmail(value?: string | null) {
   return !!email && /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(email);
 }
 
-function generateTemporaryPassword(length = 16) {
-  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$%";
-  const bytes = randomBytes(length);
-  let password = "";
-  for (let i = 0; i < length; i += 1) {
-    password += alphabet[bytes[i] % alphabet.length];
+// Genera un link "set-password" (recovery) via Supabase Admin, da inviare per email.
+// Stesso primitivo usato per il reset password operatori (/api/auth/password-recovery).
+async function generatePortalSetupLink(
+  admin: ReturnType<typeof getSupabaseAdmin>,
+  email: string
+): Promise<string | null> {
+  try {
+    const redirectTo = `${getSiteUrl()}/auth/callback`;
+    const { data, error } = await admin.auth.admin.generateLink({
+      type: "recovery",
+      email,
+      options: { redirectTo },
+    } as any);
+    if (error) return null;
+    return (data as any)?.properties?.action_link || null;
+  } catch {
+    return null;
   }
-  return password;
 }
 
 function getSiteUrl() {
@@ -101,32 +110,30 @@ function getSiteUrl() {
   ).replace(/\/+$/, "");
 }
 
-async function sendCredentialsEmail(input: {
+async function sendSetupPasswordEmail(input: {
   email: string;
   clienteDenominazione?: string | null;
-  temporaryPassword: string;
+  setupUrl: string;
 }) {
   const nomeCliente = String(input.clienteDenominazione || "cliente").trim();
-  const loginUrl = `${getSiteUrl()}/login`;
   await sendEmail({
     to: input.email,
-    subject: "Benvenuto nell'area cliente - AT SYSTEM",
+    subject: "Attiva la tua area cliente - AT SYSTEM",
     text: [
       `Gentile ${nomeCliente},`,
       "",
-      "la tua registrazione all'area cliente AT SYSTEM è stata completata.",
-      `Email: ${input.email}`,
-      `Password temporanea: ${input.temporaryPassword}`,
-      `Accedi da: ${loginUrl}`,
+      "la tua area cliente AT SYSTEM è pronta.",
+      "Per completare l'accesso imposta la tua password dal link qui sotto (personale e a scadenza):",
+      input.setupUrl,
       "",
-      "Ti consigliamo di cambiare la password al primo accesso.",
+      "Dopo aver impostato la password verrai portato direttamente alla tua area cliente.",
     ].join("\n"),
     html: [
       `<p>Gentile ${nomeCliente},</p>`,
-      "<p>la tua registrazione all'area cliente AT SYSTEM è stata completata.</p>",
-      `<p><strong>Email:</strong> ${input.email}<br /><strong>Password temporanea:</strong> ${input.temporaryPassword}</p>`,
-      `<p><a href="${loginUrl}">Accedi all'area cliente</a></p>`,
-      "<p>Ti consigliamo di cambiare la password al primo accesso.</p>",
+      "<p>la tua area cliente AT SYSTEM è pronta.</p>",
+      "<p>Per completare l'accesso imposta la tua password (il link è personale e a scadenza):</p>",
+      `<p><a href="${input.setupUrl}">Imposta la password e accedi</a></p>`,
+      "<p>Dopo aver impostato la password verrai portato direttamente alla tua area cliente.</p>",
     ].join(""),
   });
 }
@@ -318,11 +325,10 @@ export async function POST(request: Request) {
     );
   }
 
-  // 4. Match univoco senza accesso → crea credenziali e inviale all'email IN ANAGRAFICA
-  const temporaryPassword = generateTemporaryPassword();
+  // 4. Match univoco senza accesso → crea l'utente Auth (SENZA password) e invia
+  //    un link per impostare la password (più sicuro dell'invio password in chiaro).
   const { data: createdUser, error: createUserErr } = await admin.auth.admin.createUser({
     email,
-    password: temporaryPassword,
     email_confirm: true,
     user_metadata: {
       ruolo_portale: "CLIENTE",
@@ -359,14 +365,28 @@ export async function POST(request: Request) {
 
   await insertRequest("auto_approved", cliente.id, "Match univoco email in anagrafica");
 
-  try {
-    await sendCredentialsEmail({
-      email,
-      clienteDenominazione: cliente.denominazione || null,
-      temporaryPassword,
-    });
-  } catch {
-    // credenziali create ma email fallita: lo staff può fare reset password
+  // Link set-password → /auth/callback (verifyOtp recovery) → /reset-password → /cliente.
+  const setupUrl = await generatePortalSetupLink(admin, email);
+  if (setupUrl) {
+    try {
+      await sendSetupPasswordEmail({
+        email,
+        clienteDenominazione: cliente.denominazione || null,
+        setupUrl,
+      });
+    } catch {
+      // accesso creato ma email fallita: lo staff può inviare il reset dal gestionale
+      await notifyStaffPendingRequest({
+        email,
+        denominazione,
+        piva,
+        telefono,
+        codice_ordine: codiceOrdine,
+        messaggio,
+        motivo: "Accesso creato ma invio email link set-password fallito: usare reset password dal gestionale",
+      });
+    }
+  } else {
     await notifyStaffPendingRequest({
       email,
       denominazione,
@@ -374,7 +394,7 @@ export async function POST(request: Request) {
       telefono,
       codice_ordine: codiceOrdine,
       messaggio,
-      motivo: "Credenziali create ma invio email fallito: fare reset password dal gestionale",
+      motivo: "Accesso creato ma link set-password non generato: usare reset password dal gestionale",
     });
   }
 
@@ -383,7 +403,7 @@ export async function POST(request: Request) {
       ok: true,
       status: "activated",
       message:
-        "Registrazione completata! Le credenziali di accesso sono state inviate all'indirizzo email registrato in anagrafica. Controlla la posta (anche lo spam).",
+        "Registrazione completata! Ti abbiamo inviato un'email con il link per impostare la password e accedere alla tua area cliente. Controlla la posta (anche lo spam).",
     },
     { status: 200, headers: cors }
   );
