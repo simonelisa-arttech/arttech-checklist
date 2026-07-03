@@ -148,6 +148,12 @@ export default function ClienteAssistenzaSection({
   const [descrizione, setDescrizione] = useState("");
   const [impianto, setImpianto] = useState("");
   const [telefono, setTelefono] = useState("");
+  // P4.1 — screening avanzato ticket.
+  const [urgenza, setUrgenza] = useState<"bassa" | "media" | "alta">("media");
+  const [accessoQuota, setAccessoQuota] = useState(false);
+  const [referentePresente, setReferentePresente] = useState(false);
+  const [dvrDpi, setDvrDpi] = useState(false);
+  const [ricambio, setRicambio] = useState("");
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
   const [confirmed, setConfirmed] = useState<{ numero: number } | null>(null);
@@ -213,6 +219,14 @@ export default function ClienteAssistenzaSection({
     setSending(true);
     try {
       const perProgetto = progetti.length > 0 && !!selectedProjectId;
+      // P4.1 — campi screening comuni a entrambi i percorsi.
+      const screening = {
+        urgenza,
+        accesso_quota: accessoQuota,
+        referente_presente: referentePresente,
+        dvr_dpi: dvrDpi,
+        ricambio: ricambio.trim() || null,
+      };
       const payload = perProgetto
         ? {
             categoria: categoria || "other",
@@ -220,8 +234,9 @@ export default function ClienteAssistenzaSection({
             telefono,
             progettoId: selectedProjectId,
             ...(selectedImpiantoId ? { impiantoId: selectedImpiantoId } : {}),
+            ...screening,
           }
-        : { categoria: categoria || "other", descrizione, impianto, telefono };
+        : { categoria: categoria || "other", descrizione, impianto, telefono, ...screening };
       const res = await fetch(`/api/cliente/assistenza${apiSuffix}`, {
         method: "POST",
         credentials: "include",
@@ -233,6 +248,11 @@ export default function ClienteAssistenzaSection({
       setConfirmed({ numero: Number(data?.ticket?.numero || 0) });
       setDescrizione("");
       setCategoria(null);
+      setRicambio("");
+      setUrgenza("media");
+      setAccessoQuota(false);
+      setReferentePresente(false);
+      setDvrDpi(false);
       void load();
     } catch (err: any) {
       setSendError(String(err?.message || err));
@@ -610,6 +630,70 @@ export default function ClienteAssistenzaSection({
                 placeholder="Descrivi il problema: da quando si verifica, zona dello schermo, eventuali messaggi di errore…"
                 style={{ ...inputStyle, minHeight: 90, resize: "vertical" }}
               />
+
+              {/* P4.1 — Urgenza */}
+              <label style={{ fontSize: 12.5, fontWeight: 600, color: "#334155" }}>
+                Urgenza
+                <select
+                  value={urgenza}
+                  onChange={(e) => setUrgenza(e.target.value as "bassa" | "media" | "alta")}
+                  style={{ ...inputStyle, marginTop: 6 }}
+                >
+                  <option value="bassa">Bassa — nessun disservizio operativo</option>
+                  <option value="media">Media — disservizio parziale</option>
+                  <option value="alta">Alta — impianto fermo / evento imminente</option>
+                </select>
+              </label>
+
+              {/* P4.1 — Ricambio / componente */}
+              <input
+                type="text"
+                value={ricambio}
+                onChange={(e) => setRicambio(e.target.value)}
+                placeholder="Ricambio o componente coinvolto, se noto (facoltativo)"
+                style={inputStyle}
+              />
+
+              {/* P4.1 — Accesso e sicurezza al sito */}
+              <div
+                style={{
+                  border: "1px solid #e2e8f0",
+                  borderRadius: 12,
+                  padding: "10px 14px",
+                  fontSize: 12.5,
+                  color: "#334155",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: 8,
+                }}
+              >
+                <div style={{ fontWeight: 700 }}>Accesso e sicurezza al sito</div>
+                <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                  <input
+                    type="checkbox"
+                    checked={accessoQuota}
+                    onChange={(e) => setAccessoQuota(e.target.checked)}
+                  />
+                  Impianto in quota / in altezza (richiede piattaforma o DPI anticaduta)
+                </label>
+                <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                  <input
+                    type="checkbox"
+                    checked={referentePresente}
+                    onChange={(e) => setReferentePresente(e.target.checked)}
+                  />
+                  Referente disponibile in loco durante l&apos;intervento
+                </label>
+                <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                  <input
+                    type="checkbox"
+                    checked={dvrDpi}
+                    onChange={(e) => setDvrDpi(e.target.checked)}
+                  />
+                  DVR / DPI disponibili sul sito
+                </label>
+              </div>
+
               <input
                 type="tel"
                 value={telefono}

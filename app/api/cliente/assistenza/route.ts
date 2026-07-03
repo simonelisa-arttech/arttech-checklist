@@ -122,6 +122,12 @@ export async function POST(request: Request) {
     impiantoId?: string;
     impianto?: string;
     telefono?: string;
+    // P4.1 — screening avanzato
+    urgenza?: string;
+    accesso_quota?: boolean;
+    referente_presente?: boolean;
+    dvr_dpi?: boolean;
+    ricambio?: string;
   };
   try {
     body = await request.json();
@@ -146,6 +152,14 @@ export async function POST(request: Request) {
   const impiantoId = String(body?.impiantoId || "").trim() || null;
   let impianto = String(body?.impianto || "").trim().slice(0, 300) || null;
   const telefono = String(body?.telefono || "").trim().slice(0, 50) || null;
+  // P4.1 — screening avanzato (normalizzazione lato server)
+  const URGENZE_VALIDE = new Set(["bassa", "media", "alta"]);
+  const urgenzaRaw = String(body?.urgenza || "").trim().toLowerCase();
+  const urgenza = URGENZE_VALIDE.has(urgenzaRaw) ? urgenzaRaw : "media";
+  const accessoQuota = body?.accesso_quota === true;
+  const referentePresente = body?.referente_presente === true;
+  const dvrDpi = body?.dvr_dpi === true;
+  const ricambio = String(body?.ricambio || "").trim().slice(0, 300) || null;
   let progettoNome: string | null = null;
 
   // P2.2.1 — Validazione di appartenenza (sicurezza). Se progettoId/checklist_id è assente
@@ -225,6 +239,12 @@ export async function POST(request: Request) {
         telefono,
         descrizione,
         stato: "aperto",
+        // P4.1 — screening avanzato
+        urgenza,
+        accesso_quota: accessoQuota,
+        referente_presente: referentePresente,
+        dvr_dpi: dvrDpi,
+        ricambio,
       })
       .select("id, numero, created_at")
       .maybeSingle();
@@ -247,7 +267,7 @@ export async function POST(request: Request) {
         // Reply-To = email del cliente: HubSpot (email-to-ticket) associa cosi'
         // la conversazione al contatto giusto e lo staff risponde direttamente.
         replyTo: auth.cliente.email,
-        subject: `[Ticket #${inserted.numero}] ${CATEGORIA_LABEL[categoria]} — tier ${tierToSave.toUpperCase()} — ${auth.cliente.email}`,
+        subject: `[Ticket #${inserted.numero}]${urgenza === "alta" ? " [URGENZA ALTA]" : ""} ${CATEGORIA_LABEL[categoria]} — tier ${tierToSave.toUpperCase()} — urgenza ${urgenza} — ${auth.cliente.email}`,
         text: [
           `Nuovo ticket assistenza dall'area cliente.`,
           ``,
@@ -260,6 +280,9 @@ export async function POST(request: Request) {
           `Premium Client: ${premiumAttivo ? "SÌ" : "NO"}`,
           `Origine Premium Client: ${premiumOrigine || "-"}`,
           `Categoria: ${CATEGORIA_LABEL[categoria]}`,
+          `Urgenza: ${urgenza.toUpperCase()}`,
+          `Ricambio/componente: ${ricambio || "-"}`,
+          `Accesso in quota: ${accessoQuota ? "SÌ" : "no"} · Referente in loco: ${referentePresente ? "SÌ" : "no"} · DVR/DPI: ${dvrDpi ? "SÌ" : "no"}`,
           `Impianto: ${impianto || "-"}`,
           `Telefono: ${telefono || "-"}`,
           ...(checklistId && tierToSave === "NESSUNA" ? ["Progetto senza copertura attiva"] : []),
@@ -278,6 +301,9 @@ export async function POST(request: Request) {
           `<li><strong>Premium Client:</strong> ${premiumAttivo ? "SÌ" : "NO"}</li>`,
           `<li><strong>Origine Premium Client:</strong> ${premiumOrigine || "-"}</li>`,
           `<li><strong>Categoria:</strong> ${CATEGORIA_LABEL[categoria]}</li>`,
+          `<li><strong>Urgenza:</strong> ${urgenza.toUpperCase()}</li>`,
+          `<li><strong>Ricambio/componente:</strong> ${ricambio || "-"}</li>`,
+          `<li><strong>Accesso in quota:</strong> ${accessoQuota ? "SÌ" : "no"} · <strong>Referente in loco:</strong> ${referentePresente ? "SÌ" : "no"} · <strong>DVR/DPI:</strong> ${dvrDpi ? "SÌ" : "no"}</li>`,
           `<li><strong>Impianto:</strong> ${impianto || "-"}</li>`,
           `<li><strong>Telefono:</strong> ${telefono || "-"}</li>`,
           `</ul>`,
