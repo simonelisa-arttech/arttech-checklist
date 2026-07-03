@@ -1,8 +1,19 @@
 # Handoff Context — AT SYSTEM (arttech-checklist)
 
-Ultimo aggiornamento: 2026-06-17 CEST
+> ⚠️ **REPO UFFICIALE = `/Users/MACBOOKSL/dev/arttech-clean`** (clone pulito). Il repo in `/Users/MACBOOKSL/Documents/arttech-checklist` è **DEPRECATO** (corrotto da sync cloud): non usarlo per codice/git. Ogni `cd`/commit/push va fatto dal clone pulito.
+
+Ultimo aggiornamento: 2026-07-01 CEST
 
 ## Stato attuale del progetto
+
+Aggiornamento 2026-07-01 — Fix "Invalid UUID filter for entity_id __tmp__impianto..." (remap cover in creazione progetto):
+- **Motivo:** in creazione progetto, al Salva impianto compariva l'alert "Invalid UUID filter for entity_id: __tmp__impianto_...". L'impianto veniva salvato ma l'errore interrompeva il flusso.
+- **Causa:** il loop di remap cover (STEP 2, `entity_type = IMPIANTO_COVER`) in `app/checklists/[id]/page.tsx` eseguiva `.update(...).eq("entity_id", oldImpiantoId)` anche quando `oldImpiantoId` era un id client temporaneo (`__tmp__impianto_...`), non un UUID → respinto da `app/api/db/route.ts`. Gli altri accessi a IMPIANTO_COVER erano già guardati con `isRealUuid`.
+- **File modificati:** SOLO `app/checklists/[id]/page.tsx` — aggiunto `if (!isRealUuid(oldImpiantoId)) continue;` come prima riga del loop di remap.
+- **SQL/migration:** nessuna.
+- **PR/commit:** PR #4 (branch `fix/impianto-cover-remap-tmp-uuid`), fix `c792986`, merge `ebba2af` su `main`. Deploy produzione OK (checks 2/2). Verificato in prod: la pagina di un progetto esistente carica pulita, nessun alert.
+- **Impatti:** Gestionale positivo (sparisce l'alert, il salvataggio completa). Area Cliente / Assistenza / Support Tier / Customer Lookup / inventory: nessuno.
+- **Nota ambiente:** fix eseguito dal clone pulito `~/dev/arttech-clean` (repo in `Documents` corrotto da sync cloud — da non usare più per il codice).
 
 Aggiornamento 2026-06-22 — Support Tier per Progetto: STEP 2 / P2.3.2 + P2.3.3 (Area Cliente: UI per-progetto + POST con progettoId/impiantoId):
 - **Motivo:** rendere visibile la copertura PER PROGETTO nell'area cliente e inviare il ticket sul progetto/impianto selezionato, mantenendo intatto il ramo legacy per i clienti senza progetti esposti.

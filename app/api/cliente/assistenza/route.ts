@@ -84,7 +84,9 @@ export async function GET(request: Request) {
     // ultimi ticket del cliente (storico)
     const { data: tickets } = await auth.adminClient
       .from("assistenza_tickets")
-      .select("id, numero, categoria, descrizione, stato, created_at")
+      .select(
+        "id, numero, categoria, tier, urgenza, impianto, descrizione, stato, created_at, updated_at"
+      )
       .eq("cliente_id", auth.cliente.cliente_id)
       .order("created_at", { ascending: false })
       .limit(20);
