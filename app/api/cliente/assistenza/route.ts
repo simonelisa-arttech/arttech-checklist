@@ -85,7 +85,7 @@ export async function GET(request: Request) {
     const { data: tickets } = await auth.adminClient
       .from("assistenza_tickets")
       .select(
-        "id, numero, categoria, tier, urgenza, impianto, descrizione, stato, created_at, updated_at"
+        "id, numero, categoria, tier, urgenza, impianto, descrizione, stato, created_at, updated_at, tipo_richiesta"
       )
       .eq("cliente_id", auth.cliente.cliente_id)
       .order("created_at", { ascending: false })
@@ -229,6 +229,10 @@ export async function POST(request: Request) {
       tierSource = "cliente-level";
     }
 
+    // P4.3 — nessuna copertura attiva → la richiesta è un preventivo (autoritativo lato server).
+    const noCoverage = tierToSave === "NESSUNA" || tierToSave === "expired";
+    const tipoRichiesta = noCoverage ? "preventivo" : "assistenza";
+
     const { data: inserted, error: insertErr } = await auth.adminClient
       .from("assistenza_tickets")
       .insert({
@@ -247,6 +251,8 @@ export async function POST(request: Request) {
         referente_presente: referentePresente,
         dvr_dpi: dvrDpi,
         ricambio,
+        // P4.3 — tipo richiesta
+        tipo_richiesta: tipoRichiesta,
       })
       .select("id, numero, created_at")
       .maybeSingle();
@@ -269,7 +275,7 @@ export async function POST(request: Request) {
         // Reply-To = email del cliente: HubSpot (email-to-ticket) associa cosi'
         // la conversazione al contatto giusto e lo staff risponde direttamente.
         replyTo: auth.cliente.email,
-        subject: `[Ticket #${inserted.numero}]${urgenza === "alta" ? " [URGENZA ALTA]" : ""} ${CATEGORIA_LABEL[categoria]} — tier ${tierToSave.toUpperCase()} — urgenza ${urgenza} — ${auth.cliente.email}`,
+        subject: `[Ticket #${inserted.numero}]${tipoRichiesta === "preventivo" ? " [PREVENTIVO]" : ""}${urgenza === "alta" ? " [URGENZA ALTA]" : ""} ${CATEGORIA_LABEL[categoria]} — tier ${tierToSave.toUpperCase()} — urgenza ${urgenza} — ${auth.cliente.email}`,
         text: [
           `Nuovo ticket assistenza dall'area cliente.`,
           ``,
@@ -282,12 +288,15 @@ export async function POST(request: Request) {
           `Premium Client: ${premiumAttivo ? "SÌ" : "NO"}`,
           `Origine Premium Client: ${premiumOrigine || "-"}`,
           `Categoria: ${CATEGORIA_LABEL[categoria]}`,
+          `Tipo richiesta: ${tipoRichiesta.toUpperCase()}`,
           `Urgenza: ${urgenza.toUpperCase()}`,
           `Ricambio/componente: ${ricambio || "-"}`,
           `Accesso in quota: ${accessoQuota ? "SÌ" : "no"} · Referente in loco: ${referentePresente ? "SÌ" : "no"} · DVR/DPI: ${dvrDpi ? "SÌ" : "no"}`,
           `Impianto: ${impianto || "-"}`,
           `Telefono: ${telefono || "-"}`,
-          ...(checklistId && tierToSave === "NESSUNA" ? ["Progetto senza copertura attiva"] : []),
+          ...(tipoRichiesta === "preventivo"
+            ? ["Richiesta PREVENTIVO — nessuna copertura attiva. Template consigliato: T7."]
+            : []),
           ``,
           `Descrizione:`,
           descrizione,
@@ -303,14 +312,15 @@ export async function POST(request: Request) {
           `<li><strong>Premium Client:</strong> ${premiumAttivo ? "SÌ" : "NO"}</li>`,
           `<li><strong>Origine Premium Client:</strong> ${premiumOrigine || "-"}</li>`,
           `<li><strong>Categoria:</strong> ${CATEGORIA_LABEL[categoria]}</li>`,
+          `<li><strong>Tipo richiesta:</strong> ${tipoRichiesta.toUpperCase()}</li>`,
           `<li><strong>Urgenza:</strong> ${urgenza.toUpperCase()}</li>`,
           `<li><strong>Ricambio/componente:</strong> ${ricambio || "-"}</li>`,
           `<li><strong>Accesso in quota:</strong> ${accessoQuota ? "SÌ" : "no"} · <strong>Referente in loco:</strong> ${referentePresente ? "SÌ" : "no"} · <strong>DVR/DPI:</strong> ${dvrDpi ? "SÌ" : "no"}</li>`,
           `<li><strong>Impianto:</strong> ${impianto || "-"}</li>`,
           `<li><strong>Telefono:</strong> ${telefono || "-"}</li>`,
           `</ul>`,
-          ...(checklistId && tierToSave === "NESSUNA"
-            ? ["<p><strong>Progetto senza copertura attiva</strong></p>"]
+          ...(tipoRichiesta === "preventivo"
+            ? ["<p><strong>Richiesta PREVENTIVO</strong> — nessuna copertura attiva. Template consigliato: <strong>T7</strong>.</p>"]
             : []),
           `<p><strong>Descrizione:</strong></p>`,
           `<p>${descrizione.replace(/\n/g, "<br />")}</p>`,

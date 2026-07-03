@@ -71,6 +71,8 @@ type Ticket = {
   urgenza?: string | null;
   impianto?: string | null;
   updated_at?: string | null;
+  // P4.3 — tipo richiesta (assistenza | preventivo)
+  tipo_richiesta?: string | null;
 };
 
 const PROBLEMI = [
@@ -177,7 +179,7 @@ export default function ClienteAssistenzaSection({
   const [ricambio, setRicambio] = useState("");
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
-  const [confirmed, setConfirmed] = useState<{ numero: number } | null>(null);
+  const [confirmed, setConfirmed] = useState<{ numero: number; preventivo?: boolean } | null>(null);
 
   async function load() {
     try {
@@ -266,7 +268,10 @@ export default function ClienteAssistenzaSection({
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(String(data?.error || "Errore apertura ticket"));
-      setConfirmed({ numero: Number(data?.ticket?.numero || 0) });
+      const isPreventivo = usaPerProgetto
+        ? selectedProject?.tier === "NESSUNA"
+        : info.tier === "expired";
+      setConfirmed({ numero: Number(data?.ticket?.numero || 0), preventivo: isPreventivo });
       setDescrizione("");
       setCategoria(null);
       setRicambio("");
@@ -526,8 +531,18 @@ export default function ClienteAssistenzaSection({
             color: "#15803d",
           }}
         >
-          ✅ Ticket <strong>#{confirmed.numero}</strong> aperto correttamente. Il team tecnico ti
-          contatterà entro 1 giorno lavorativo (salvo SLA contrattuale dedicato).{" "}
+          {confirmed.preventivo ? (
+            <>
+              ✅ Richiesta di preventivo <strong>#{confirmed.numero}</strong> inviata. Non essendoci una
+              copertura attiva, riceverai un&apos;offerta di assistenza a preventivo entro 1 giorno
+              lavorativo.{" "}
+            </>
+          ) : (
+            <>
+              ✅ Ticket <strong>#{confirmed.numero}</strong> aperto correttamente. Il team tecnico ti
+              contatterà entro 1 giorno lavorativo (salvo SLA contrattuale dedicato).{" "}
+            </>
+          )}
           <button
             onClick={() => setConfirmed(null)}
             style={{
@@ -795,7 +810,24 @@ export default function ClienteAssistenzaSection({
                       justifyContent: "space-between",
                     }}
                   >
-                    <span style={{ fontWeight: 800, color: "#0f172a" }}>#{t.numero}</span>
+                    <span style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>
+                      <span style={{ fontWeight: 800, color: "#0f172a" }}>#{t.numero}</span>
+                      {String(t.tipo_richiesta || "").toLowerCase() === "preventivo" ? (
+                        <span
+                          style={{
+                            background: "#fffbeb",
+                            color: "#b45309",
+                            border: "1px solid #fde68a",
+                            borderRadius: 999,
+                            padding: "1px 8px",
+                            fontSize: 10.5,
+                            fontWeight: 700,
+                          }}
+                        >
+                          PREVENTIVO
+                        </span>
+                      ) : null}
+                    </span>
                     <span
                       style={{
                         border: `1px solid ${st.border}`,
