@@ -48,6 +48,11 @@ Roadmap CEO: (1) **STEP 3 feed** ✅ fatto; (2) **ledcareservice.com** (TRACK B,
 - Sync dati: `SPAZI PUBBLICITARI AT/_SYNC_ArtTech_ATSystem_Inventory.md` (+ `_SYNC_ArtTech_Network_WebPlatform.md`)
 - Repo docs: `docs/SYSTEM_SOURCE_OF_TRUTH.md`, `docs/architecture/GESTIONALE_AREA_CLIENTE_ALIGNMENT.md`, `INVENTORY_PUBLISH_CONTRACT.md`, `AUDIT_IMPIANTO_IDENTITY_ECOSYSTEM.md`, `ROADMAP_WEB_APP_OPERATORI.md`, `CENSIMENTO_LOCATION_2026-06-30.md`, `docs/ASSISTENZA_FLUSSO_LEDCARE.md`, `docs/MODELLO_ASSISTENZA_ATSYSTEM.md`, `HANDOFF_CONTEXT.md`.
 
+## ULTIMO STATO — 02/07/2026 (18:30)
+**P4.2 LIVE** (PR #10 `bee2ef4`). **P4.3 CODICE PRONTO** (da pushare): flusso preventivo/fuori garanzia. Server deriva `tipo_richiesta` = 'preventivo' quando tier NESSUNA/expired, altrimenti 'assistenza'; persistito; subject `[PREVENTIVO]` + hint template T7 allo staff; conferma cliente dedicata; badge PREVENTIVO nel pannello "I miei ticket". File: `app/api/cliente/assistenza/route.ts` + `components/ClienteAssistenzaSection.tsx` + migration `scripts/20260703_p43_assistenza_tipo_richiesta.sql`. **Migration già APPLICATA e verificata** in prod (colonna `tipo_richiesta` default 'assistenza'). esbuild OK. Prossimo: P4.5 (allegati) → P4.4 (HubSpot API, attende token) → P4.6.
+CANALE MAIN: attivo canale diretto verso MAIN via `.../Marketing on air + AI/MAIN/INBOX.md` (memoria `main-inbox-channel`).
+Precedenti:
+
 ## ULTIMO STATO — 02/07/2026 (18:00)
 **P4.1 LIVE** (PR #9 mergiata `cdef7b7`; migration applicata+verificata in prod). **P4.2 CODICE PRONTO** (da pushare, PR dedicata): pannello "I miei ticket" con stato/tracking arricchito nella sezione Assistenza del Hub. File: `components/ClienteAssistenzaSection.tsx` (mappe stato/urgenza + card ricche: numero, stato badge, categoria, urgenza, copertura, impianto, descrizione, aperto/aggiornato) + `app/api/cliente/assistenza/route.ts` (GET tickets select esteso: tier/urgenza/impianto/updated_at). esbuild OK. **Nessuna migration** (colonne già esistenti). Nessuna dipendenza esterna. Prossimo dopo P4.2: P4.3 (preventivo/fuori garanzia) → P4.5 (allegati) → P4.4 (HubSpot API, attende token) → P4.6.
 Precedenti:
