@@ -179,6 +179,52 @@ const DEFAULT_PORTAL_SETTINGS = {
   show_cronoprogramma: false,
 } as const;
 
+// P3.4 — Art Tech Hub: le 5 sezioni del customer portal (card + top nav).
+type HubSection = "home" | "dashboard" | "assistenza" | "marketplace" | "news" | "analytics";
+
+const HUB_SECTIONS: Array<{
+  id: Exclude<HubSection, "home">;
+  label: string;
+  icon: string;
+  tagline: string;
+}> = [
+  { id: "dashboard", label: "Dashboard", icon: "▦", tagline: "Impianti, contratti, progetti e stato" },
+  { id: "assistenza", label: "Assistenza", icon: "◈", tagline: "Ticket, diagnostica e coperture LedCare" },
+  { id: "marketplace", label: "Marketplace", icon: "◎", tagline: "Rinnovi, upgrade e servizi Art Tech" },
+  { id: "news", label: "News", icon: "◧", tagline: "AT Channel: video, case history, eventi" },
+  { id: "analytics", label: "Analytics", icon: "◔", tagline: "Utilizzo, performance e storico" },
+];
+
+// P3.4 — Marketplace Art Tech: CTA contestuali (struttura; wiring commerciale in EPIC successiva).
+const MARKETPLACE_ITEMS: Array<{
+  id: string;
+  icon: string;
+  title: string;
+  desc: string;
+  cta: string;
+  accent: string;
+}> = [
+  { id: "rinnovi", icon: "↻", title: "Rinnovi & coperture", desc: "Rinnova licenze, SaaS e garanzie in scadenza.", cta: "Gestisci rinnovi", accent: "#1d4ed8" },
+  { id: "upgrade-esp", icon: "▲", title: "Upgrade EyeSmartPlayer", desc: "Potenzia il player e le funzioni di monitoraggio.", cta: "Scopri l'upgrade", accent: "#7e22ce" },
+  { id: "at-channel", icon: "◧", title: "AT Channel", desc: "Porta i tuoi impianti nel network pubblicitario.", cta: "Attiva AT Channel", accent: "#0f766e" },
+  { id: "mydooh", icon: "◑", title: "MyDOOH", desc: "Gestione self-service dei tuoi spazi DOOH.", cta: "Esplora MyDOOH", accent: "#c2410c" },
+  { id: "doohbook", icon: "▤", title: "DOOHBook", desc: "Prenotazione campagne sul circuito.", cta: "Vai a DOOHBook", accent: "#b45309" },
+  { id: "adledmarket", icon: "◆", title: "AdLedMarket", desc: "Marketplace degli spazi LED del network.", cta: "Apri AdLedMarket", accent: "#be123c" },
+  { id: "promozioni", icon: "★", title: "Promozioni", desc: "Offerte dedicate ai clienti Art Tech.", cta: "Vedi promozioni", accent: "#15803d" },
+  { id: "voucher", icon: "▣", title: "Voucher & crediti", desc: "Utilizza voucher e crediti servizi.", cta: "I miei voucher", accent: "#4338ca" },
+];
+
+function isHubSection(value: string | null | undefined): value is HubSection {
+  return (
+    value === "home" ||
+    value === "dashboard" ||
+    value === "assistenza" ||
+    value === "marketplace" ||
+    value === "news" ||
+    value === "analytics"
+  );
+}
+
 export default function ClientePortalPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -197,7 +243,10 @@ export default function ClientePortalPage() {
     ticket: string | null;
     progetto: string | null;
     impianto: string | null;
-  }>({ azione: null, ticket: null, progetto: null, impianto: null });
+    sezione: string | null;
+  }>({ azione: null, ticket: null, progetto: null, impianto: null, sezione: null });
+  // P3.4: sezione Hub attiva (home = griglia delle 5 card).
+  const [activeSection, setActiveSection] = useState<HubSection>("home");
   const clienteApiSuffix = impersonationToken
     ? `?impersonation_token=${encodeURIComponent(impersonationToken)}`
     : "";
@@ -211,6 +260,7 @@ export default function ClientePortalPage() {
       ticket: sp.get("ticket"),
       progetto: sp.get("progetto"),
       impianto: sp.get("impianto"),
+      sezione: sp.get("sezione"),
     });
   }, []);
 
@@ -223,6 +273,17 @@ export default function ClientePortalPage() {
       : null;
   const autoFocusTicket =
     assistenzaMode !== null || deepLink.ticket === "nuovo";
+
+  // P3.4: apri la sezione Hub giusta dal deep-link (assistenza/ticket → Assistenza; ?sezione=<id>).
+  useEffect(() => {
+    if (assistenzaMode !== null || deepLink.ticket === "nuovo") {
+      setActiveSection("assistenza");
+      return;
+    }
+    if (deepLink.sezione && isHubSection(deepLink.sezione)) {
+      setActiveSection(deepLink.sezione);
+    }
+  }, [assistenzaMode, deepLink.ticket, deepLink.sezione]);
 
   async function openDocumento(documentId: string) {
     try {
@@ -386,6 +447,193 @@ export default function ClientePortalPage() {
     return <ConfigMancante />;
   }
 
+  // P3.4 — Art Tech Hub: stato sintetico per le card della home.
+  const hubStatus: Record<Exclude<HubSection, "home">, string> = {
+    dashboard: `${progetti.length} progetti · ${scadenze.length} scadenze`,
+    assistenza: "Apri un ticket o consulta la copertura",
+    marketplace: "Rinnovi, upgrade e servizi",
+    news: "Novità dal network Art Tech",
+    analytics: "In arrivo",
+  };
+
+  const topNav = (
+    <nav
+      style={{
+        display: "flex",
+        flexWrap: "wrap",
+        gap: 8,
+        padding: 8,
+        border: "1px solid #e2e8f0",
+        borderRadius: 18,
+        background: "rgba(255,255,255,0.7)",
+        backdropFilter: "blur(6px)",
+      }}
+    >
+      <button
+        type="button"
+        onClick={() => setActiveSection("home")}
+        style={{
+          padding: "9px 14px",
+          borderRadius: 12,
+          border: "none",
+          background: activeSection === "home" ? "#0f172a" : "transparent",
+          color: activeSection === "home" ? "#fff" : "#334155",
+          fontSize: 13,
+          fontWeight: 700,
+          cursor: "pointer",
+        }}
+      >
+        Hub
+      </button>
+      {HUB_SECTIONS.map((s) => (
+        <button
+          key={s.id}
+          type="button"
+          onClick={() => setActiveSection(s.id)}
+          style={{
+            padding: "9px 14px",
+            borderRadius: 12,
+            border: "none",
+            background: activeSection === s.id ? "#0f172a" : "transparent",
+            color: activeSection === s.id ? "#fff" : "#334155",
+            fontSize: 13,
+            fontWeight: 700,
+            cursor: "pointer",
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 8,
+          }}
+        >
+          <span aria-hidden style={{ opacity: 0.85 }}>{s.icon}</span>
+          {s.label}
+        </button>
+      ))}
+    </nav>
+  );
+
+  const homeView = (
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
+        gap: 16,
+      }}
+    >
+      {HUB_SECTIONS.map((s) => (
+        <button
+          key={s.id}
+          type="button"
+          onClick={() => setActiveSection(s.id)}
+          style={{
+            textAlign: "left",
+            cursor: "pointer",
+            border: "1px solid #e2e8f0",
+            borderRadius: 22,
+            background: "linear-gradient(135deg, #ffffff 0%, #f8fafc 100%)",
+            padding: 20,
+            display: "grid",
+            gap: 10,
+            boxShadow: "0 12px 34px rgba(15,23,42,0.05)",
+          }}
+        >
+          <div
+            style={{
+              width: 46,
+              height: 46,
+              borderRadius: 14,
+              background: "#0f172a",
+              color: "#fff",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              fontSize: 22,
+            }}
+            aria-hidden
+          >
+            {s.icon}
+          </div>
+          <div style={{ fontSize: 18, fontWeight: 800, color: "#0f172a" }}>{s.label}</div>
+          <div style={{ fontSize: 13, color: "#64748b", lineHeight: 1.5 }}>{s.tagline}</div>
+          <div style={{ fontSize: 12, fontWeight: 700, color: "#475569" }}>{hubStatus[s.id]}</div>
+          <div style={{ fontSize: 13, fontWeight: 800, color: "#1d4ed8" }}>Apri →</div>
+        </button>
+      ))}
+    </div>
+  );
+
+  const marketplaceView = (
+    <div style={{ display: "grid", gap: 14 }}>
+      <div style={{ fontSize: 13, color: "#64748b" }}>
+        Servizi e opportunità dedicati al tuo account. Le attivazioni saranno progressivamente abilitate.
+      </div>
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
+          gap: 14,
+        }}
+      >
+        {MARKETPLACE_ITEMS.map((m) => (
+          <div
+            key={m.id}
+            style={{
+              border: "1px solid #e5e7eb",
+              borderRadius: 18,
+              background: "#fff",
+              padding: 16,
+              display: "grid",
+              gap: 8,
+              boxShadow: "0 10px 26px rgba(15,23,42,0.04)",
+            }}
+          >
+            <div
+              style={{
+                width: 40,
+                height: 40,
+                borderRadius: 12,
+                background: `${m.accent}14`,
+                color: m.accent,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontSize: 20,
+              }}
+              aria-hidden
+            >
+              {m.icon}
+            </div>
+            <div style={{ fontSize: 15, fontWeight: 800, color: "#0f172a" }}>{m.title}</div>
+            <div style={{ fontSize: 13, color: "#64748b", lineHeight: 1.5 }}>{m.desc}</div>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 4 }}>
+              <span style={{ fontSize: 13, fontWeight: 800, color: m.accent }}>{m.cta}</span>
+              {renderPill("PRESTO", { border: "#e2e8f0", background: "#f8fafc", color: "#64748b" })}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+
+  const placeholderView = (title: string, body: string) => (
+    <div
+      style={{
+        border: "1px dashed #cbd5e1",
+        borderRadius: 22,
+        background: "linear-gradient(135deg, #ffffff 0%, #f8fafc 100%)",
+        padding: 40,
+        textAlign: "center",
+        display: "grid",
+        gap: 10,
+        justifyItems: "center",
+      }}
+    >
+      <div style={{ fontSize: 30 }} aria-hidden>{title === "News" ? "◧" : "◔"}</div>
+      <div style={{ fontSize: 20, fontWeight: 800, color: "#0f172a" }}>{title}</div>
+      <div style={{ fontSize: 14, color: "#64748b", maxWidth: 460, lineHeight: 1.6 }}>{body}</div>
+      {renderPill("IN ARRIVO", { border: "#bfdbfe", background: "#eff6ff", color: "#1d4ed8" })}
+    </div>
+  );
+
   return (
     <div
       style={{
@@ -498,7 +746,25 @@ export default function ClientePortalPage() {
           </div>
         ) : null}
 
-        {visibleSectionsCount === 0 ? (
+        {topNav}
+
+        {activeSection === "home" ? homeView : null}
+        {activeSection === "marketplace" ? marketplaceView : null}
+        {activeSection === "news"
+          ? placeholderView(
+              "News",
+              "Video, case history, webinar ed eventi dal network Art Tech e AT Channel. Sezione in arrivo."
+            )
+          : null}
+        {activeSection === "analytics"
+          ? placeholderView(
+              "Analytics",
+              "Utilizzo, performance e storico dei tuoi impianti e servizi. Sezione in arrivo."
+            )
+          : null}
+
+        {activeSection === "dashboard" ? (
+          visibleSectionsCount === 0 ? (
           <div
             style={{
               border: "1px solid #e5e7eb",
@@ -868,19 +1134,23 @@ export default function ClientePortalPage() {
           )
             : null}
 
-          {sectionShell(
-            "Assistenza",
-            "Apri un ticket: ti guidiamo in base alla copertura attiva sul tuo impianto.",
-            <ClienteAssistenzaSection
-              apiSuffix={clienteApiSuffix}
-              initialProjectId={deepLink.progetto}
-              initialImpiantoId={deepLink.impianto}
-              autoFocusTicket={autoFocusTicket}
-              mode={assistenzaMode}
-            />
-          )}
           </div>
-        )}
+          )
+        ) : null}
+
+        {activeSection === "assistenza"
+          ? sectionShell(
+              "Assistenza",
+              "Apri un ticket: ti guidiamo in base alla copertura attiva sul tuo impianto.",
+              <ClienteAssistenzaSection
+                apiSuffix={clienteApiSuffix}
+                initialProjectId={deepLink.progetto}
+                initialImpiantoId={deepLink.impianto}
+                autoFocusTicket={autoFocusTicket}
+                mode={assistenzaMode}
+              />
+            )
+          : null}
       </div>
     </div>
   );
