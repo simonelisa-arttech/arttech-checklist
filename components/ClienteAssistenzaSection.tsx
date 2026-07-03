@@ -66,6 +66,11 @@ type Ticket = {
   descrizione: string;
   stato: string;
   created_at: string;
+  // P4.2 — tracking arricchito
+  tier?: string | null;
+  urgenza?: string | null;
+  impianto?: string | null;
+  updated_at?: string | null;
 };
 
 const PROBLEMI = [
@@ -76,6 +81,22 @@ const PROBLEMI = [
   { id: "power", icon: "⚡", label: "Alimentazione" },
   { id: "other", icon: "🔧", label: "Altro problema" },
 ] as const;
+
+// P4.2 — label categoria e stili stato/urgenza per il pannello "I miei ticket".
+const CATEGORIA_LABEL: Record<string, string> = Object.fromEntries(
+  PROBLEMI.map((p) => [p.id, p.label])
+);
+const STATO_STYLE: Record<string, { label: string; bg: string; color: string; border: string }> = {
+  aperto: { label: "Aperto", bg: "#eff6ff", color: "#1d4ed8", border: "#bfdbfe" },
+  in_lavorazione: { label: "In lavorazione", bg: "#fffbeb", color: "#b45309", border: "#fde68a" },
+  in_attesa: { label: "In attesa", bg: "#faf5ff", color: "#7e22ce", border: "#e9d5ff" },
+  chiuso: { label: "Chiuso", bg: "#f0fdf4", color: "#15803d", border: "#bbf7d0" },
+};
+const URGENZA_STYLE: Record<string, { label: string; bg: string; color: string }> = {
+  bassa: { label: "Urgenza bassa", bg: "#f1f5f9", color: "#475569" },
+  media: { label: "Urgenza media", bg: "#fff7ed", color: "#c2410c" },
+  alta: { label: "Urgenza alta", bg: "#fef2f2", color: "#b91c1c" },
+};
 
 const VERIFICHE_RAPIDE: Record<string, string> = {
   noimage:
@@ -730,43 +751,101 @@ export default function ClienteAssistenzaSection({
         </>
       )}
 
-      {/* Storico ticket */}
+      {/* P4.2 — Pannello "I miei ticket" con stato/tracking */}
       {tickets.length > 0 ? (
         <div>
           <div style={{ fontSize: 13, fontWeight: 700, color: "#334155", margin: "6px 0 8px" }}>
-            I tuoi ticket recenti
+            I miei ticket
           </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-            {tickets.map((t) => (
-              <div
-                key={t.id}
-                style={{
-                  border: "1px solid #e2e8f0",
-                  borderRadius: 10,
-                  padding: "8px 12px",
-                  fontSize: 12.5,
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {tickets.map((t) => {
+              const st =
+                STATO_STYLE[String(t.stato || "").toLowerCase()] || {
+                  label: String(t.stato || "—"),
+                  bg: "#f1f5f9",
                   color: "#475569",
-                  display: "flex",
-                  flexWrap: "wrap",
-                  gap: 8,
-                  justifyContent: "space-between",
-                }}
-              >
-                <span>
-                  <strong>#{t.numero}</strong> · {formatDate(t.created_at)} ·{" "}
-                  {String(t.descrizione || "").slice(0, 60)}
-                  {String(t.descrizione || "").length > 60 ? "…" : ""}
-                </span>
-                <span
+                  border: "#e2e8f0",
+                };
+              const urg = t.urgenza ? URGENZA_STYLE[String(t.urgenza).toLowerCase()] : null;
+              const catLabel = CATEGORIA_LABEL[String(t.categoria || "")] || t.categoria || "—";
+              const aggiornato =
+                t.updated_at && t.updated_at !== t.created_at
+                  ? formatDate(t.updated_at)
+                  : null;
+              return (
+                <div
+                  key={t.id}
                   style={{
-                    fontWeight: 700,
-                    color: t.stato === "aperto" ? "#1d4ed8" : t.stato === "chiuso" ? "#15803d" : "#64748b",
+                    border: "1px solid #e2e8f0",
+                    borderRadius: 12,
+                    padding: "10px 14px",
+                    fontSize: 12.5,
+                    color: "#475569",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 6,
                   }}
                 >
-                  {String(t.stato || "").toUpperCase()}
-                </span>
-              </div>
-            ))}
+                  <div
+                    style={{
+                      display: "flex",
+                      flexWrap: "wrap",
+                      gap: 8,
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                    }}
+                  >
+                    <span style={{ fontWeight: 800, color: "#0f172a" }}>#{t.numero}</span>
+                    <span
+                      style={{
+                        border: `1px solid ${st.border}`,
+                        background: st.bg,
+                        color: st.color,
+                        borderRadius: 999,
+                        padding: "2px 10px",
+                        fontSize: 11,
+                        fontWeight: 700,
+                      }}
+                    >
+                      {st.label}
+                    </span>
+                  </div>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6, alignItems: "center" }}>
+                    <span style={{ fontWeight: 600, color: "#334155" }}>{catLabel}</span>
+                    {urg ? (
+                      <span
+                        style={{
+                          background: urg.bg,
+                          color: urg.color,
+                          borderRadius: 999,
+                          padding: "1px 8px",
+                          fontSize: 11,
+                          fontWeight: 700,
+                        }}
+                      >
+                        {urg.label}
+                      </span>
+                    ) : null}
+                    {t.tier && String(t.tier).toUpperCase() !== "NESSUNA" ? (
+                      <span style={{ fontSize: 11, color: "#64748b" }}>
+                        · copertura {String(t.tier).toUpperCase()}
+                      </span>
+                    ) : null}
+                  </div>
+                  {t.impianto ? (
+                    <div style={{ fontSize: 12, color: "#64748b" }}>Impianto: {t.impianto}</div>
+                  ) : null}
+                  <div style={{ fontSize: 13, color: "#475569" }}>
+                    {String(t.descrizione || "").slice(0, 120)}
+                    {String(t.descrizione || "").length > 120 ? "…" : ""}
+                  </div>
+                  <div style={{ fontSize: 11, color: "#94a3b8" }}>
+                    Aperto il {formatDate(t.created_at)}
+                    {aggiornato ? ` · ultimo aggiornamento ${aggiornato}` : ""}
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </div>
       ) : null}
