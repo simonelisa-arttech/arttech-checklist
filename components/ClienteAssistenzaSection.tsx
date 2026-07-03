@@ -270,7 +270,7 @@ export default function ClienteAssistenzaSection({
       if (!res.ok) throw new Error(String(data?.error || "Errore apertura ticket"));
       const isPreventivo = usaPerProgetto
         ? selectedProject?.tier === "NESSUNA"
-        : info.tier === "expired";
+        : info?.tier === "expired";
       setConfirmed({ numero: Number(data?.ticket?.numero || 0), preventivo: isPreventivo });
       setDescrizione("");
       setCategoria(null);
