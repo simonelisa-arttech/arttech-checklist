@@ -177,6 +177,9 @@ export default function ClienteAssistenzaSection({
   const [referentePresente, setReferentePresente] = useState(false);
   const [dvrDpi, setDvrDpi] = useState(false);
   const [ricambio, setRicambio] = useState("");
+  // P4.5 — allegati foto/video
+  const [files, setFiles] = useState<File[]>([]);
+  const [uploadInfo, setUploadInfo] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
   const [confirmed, setConfirmed] = useState<{ numero: number; preventivo?: boolean } | null>(null);
@@ -279,6 +282,30 @@ export default function ClienteAssistenzaSection({
       setAccessoQuota(false);
       setReferentePresente(false);
       setDvrDpi(false);
+      // P4.5 — carica gli allegati selezionati, referenziati all'id del ticket appena creato.
+      const newTicketId = String(data?.ticket?.id || "");
+      const toUpload = files;
+      if (newTicketId && toUpload.length > 0) {
+        setUploadInfo(`Caricamento allegati (0/${toUpload.length})…`);
+        let ok = 0;
+        for (const f of toUpload) {
+          try {
+            const fd = new FormData();
+            fd.append("ticketId", newTicketId);
+            fd.append("file", f);
+            const up = await fetch(`/api/cliente/assistenza/allegati${apiSuffix}`, {
+              method: "POST",
+              credentials: "include",
+              body: fd,
+            });
+            if (up.ok) ok += 1;
+          } catch {
+            // continua con gli altri file
+          }
+        }
+        setUploadInfo(`${ok}/${toUpload.length} allegati caricati`);
+        setFiles([]);
+      }
       void load();
     } catch (err: any) {
       setSendError(String(err?.message || err));
@@ -543,19 +570,29 @@ export default function ClienteAssistenzaSection({
               contatterà entro 1 giorno lavorativo (salvo SLA contrattuale dedicato).{" "}
             </>
           )}
-          <button
-            onClick={() => setConfirmed(null)}
-            style={{
-              border: "none",
-              background: "transparent",
-              color: "#15803d",
-              textDecoration: "underline",
-              cursor: "pointer",
-              fontSize: 13,
-            }}
-          >
-            Apri un altro ticket
-          </button>
+          {uploadInfo ? (
+            <div style={{ marginTop: 6, fontSize: 12.5, color: "#166534", fontWeight: 600 }}>
+              📎 {uploadInfo}
+            </div>
+          ) : null}
+          <div style={{ marginTop: 6 }}>
+            <button
+              onClick={() => {
+                setConfirmed(null);
+                setUploadInfo(null);
+              }}
+              style={{
+                border: "none",
+                background: "transparent",
+                color: "#15803d",
+                textDecoration: "underline",
+                cursor: "pointer",
+                fontSize: 13,
+              }}
+            >
+              Apri un altro ticket
+            </button>
+          </div>
         </div>
       ) : usaPerProgetto && !selectedProjectId ? (
         <div
@@ -728,6 +765,25 @@ export default function ClienteAssistenzaSection({
                   />
                   DVR / DPI disponibili sul sito
                 </label>
+              </div>
+
+              {/* P4.5 — allegati foto/video */}
+              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                <label style={{ fontSize: 12.5, fontWeight: 600, color: "#334155" }}>
+                  Foto / video del problema (facoltativo, max 10MB ciascuno)
+                </label>
+                <input
+                  type="file"
+                  multiple
+                  accept="image/*,application/pdf,video/mp4,video/quicktime"
+                  onChange={(e) => setFiles(Array.from(e.target.files || []))}
+                  style={{ fontSize: 12.5 }}
+                />
+                {files.length > 0 ? (
+                  <div style={{ fontSize: 12, color: "#64748b" }}>
+                    {files.length} file selezionati
+                  </div>
+                ) : null}
               </div>
 
               <input
