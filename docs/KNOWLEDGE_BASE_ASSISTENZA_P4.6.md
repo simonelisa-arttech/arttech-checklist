@@ -86,7 +86,15 @@ Proposta di scenari lungo il ciclo del ticket (i **testi verbatim** e le **claus
 - **Validazione legale/commerciale obbligatoria** prima dell'uso, con attenzione B2B vs B2C (Codice del Consumo): limite reclamo 8 giorni, foro esclusivo ed esclusioni ampie possono risultare vessatori/nulli verso consumatori.
 - **Nessun invio automatico** di template legali senza revisione caso-per-caso. Solo il microcopy divulgativo (non legale) può entrare lato cliente.
 
-## 6. Cosa serve per completare P4.6
-1. Documento **"Testi Preformattati Assistenza (Rev. 1.0)"** (Simone) → per i testi verbatim T1–T13 e le clausole §1.
-2. **Validazione legale** dei testi customer-facing.
-3. Poi: implementazione come **dati** (`lib/assistenzaKnowledge.ts`) + snippet HubSpot (con P4.4).
+## 6. Stato implementazione
+**IMPLEMENTATO (07/07/2026)** — `lib/assistenzaKnowledge.ts`:
+- 6 verifiche rapide (customer-facing) come fonte canonica dei dati;
+- template T1–T13 (bozze operative staff-only, non validate);
+- clausole legali C-* come placeholder staff-only (`richiedeValidazione: true`);
+- helper `suggerisciTemplate()` / `formatSuggerimenti()` — agganciati alla notifica staff in `app/api/cliente/assistenza/route.ts` (i template consigliati compaiono nella mail interna, sostituendo l'hint T7 hardcoded).
+
+**Da completare (a valle, richiede input Simone):**
+1. Documento **"Testi Preformattati Assistenza (Rev. 1.0)"** → per rimpiazzare le bozze T1–T13 col verbatim e per il testo delle clausole C-*.
+2. **Validazione legale** dei testi customer-facing (B2B vs B2C, Codice del Consumo) prima di qualsiasi invio automatico.
+3. Snippet HubSpot per stage (workflow) collegati ai template — con P4.4 già live.
+4. Refactor UI: far importare a `ClienteAssistenzaSection.tsx` le `VERIFICHE_RAPIDE` da questo modulo (oggi duplicate) per single source of truth.
