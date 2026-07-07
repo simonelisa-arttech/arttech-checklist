@@ -216,7 +216,10 @@ async function getClientPortalRedirectIfNeeded({
     pathname.startsWith(API_PREFIX) ||
     pathname.startsWith(CLIENT_PORTAL_PATH) ||
     pathname.startsWith("/login") ||
-    pathname.startsWith("/auth/")
+    pathname.startsWith("/auth/") ||
+    // La sessione recovery È una sessione: senza questa esclusione il cliente
+    // veniva rimbalzato su /cliente prima di poter impostare la password.
+    pathname.startsWith("/reset-password")
   ) {
     return null;
   }
