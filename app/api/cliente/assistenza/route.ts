@@ -18,6 +18,7 @@ import {
   computeSupportTierForProgetto,
 } from "@/lib/supportTier";
 import { sendEmail } from "@/lib/email";
+import { hubspotEnabled, upsertTicket } from "@/lib/hubspot";
 
 const CATEGORIE_VALIDE = new Set([
   "noimage",
@@ -328,6 +329,29 @@ export async function POST(request: Request) {
       });
     } catch {
       // la notifica email non deve bloccare l'apertura del ticket
+    }
+
+    // P4.4 — sincronizzazione HubSpot (best-effort; no-op senza token, nessuna regressione)
+    if (hubspotEnabled()) {
+      try {
+        await upsertTicket({
+          atsystemId: String(inserted.id),
+          subject: `[#${inserted.numero}]${tipoRichiesta === "preventivo" ? " [PREVENTIVO]" : ""}${urgenza === "alta" ? " [URGENZA ALTA]" : ""} ${CATEGORIA_LABEL[categoria]}`,
+          content: descrizione,
+          urgenza,
+          categoria,
+          tier: tierToSave,
+          tipoRichiesta,
+          impianto,
+          ricambio,
+          accessoSicurezza: `in quota: ${accessoQuota ? "sì" : "no"} · referente: ${referentePresente ? "sì" : "no"} · DVR/DPI: ${dvrDpi ? "sì" : "no"}`,
+          stato: "aperto",
+          email: auth.cliente.email,
+          telefono,
+        });
+      } catch {
+        // sync HubSpot best-effort: non blocca l'apertura del ticket
+      }
     }
 
     return NextResponse.json({
