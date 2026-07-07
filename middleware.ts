@@ -6,6 +6,7 @@ const REFRESH_TOKEN_MAX_AGE = 60 * 60 * 24 * 90;
 
 const PUBLIC_PATHS = [
   "/login",
+  "/staff",
   "/auth/callback",
   "/reset-password",
   "/auth/login",

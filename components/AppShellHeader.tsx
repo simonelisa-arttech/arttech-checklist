@@ -56,7 +56,10 @@ function closeDropdownOnNavigation(event: MouseEvent<HTMLElement>) {
 export default function AppShellHeader() {
   const pathname = usePathname();
   const menuDetailsRef = useRef<HTMLDetailsElement | null>(null);
-  const hiddenShellPaths = new Set(["/login", "/reset-password", "/auth/callback", "/operatori"]);
+  const hiddenShellPaths = new Set(["/login", "/staff", "/reset-password", "/auth/callback", "/operatori"]);
+  // Nell'area cliente non deve comparire il menu operatori (Dashboard/Cronoprogramma/Clienti/SIM/App operatori):
+  // sono voci interne di ATSystem, non di pertinenza del cliente. Il portale cliente ha la propria nav (Hub).
+  const isClientArea = pathname?.startsWith("/cliente") ?? false;
 
   useEffect(() => {
     const handleCloseAll = () => {
@@ -109,6 +112,7 @@ export default function AppShellHeader() {
             style={{ height: 48, width: "auto", objectFit: "contain" }}
           />
         </Link>
+        {!isClientArea && (
         <nav
           aria-label="Navigazione principale"
           style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}
@@ -158,6 +162,7 @@ export default function AppShellHeader() {
             </div>
           </details>
         </nav>
+        )}
       </div>
       <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>
         <Link

@@ -1,8 +1,13 @@
 import { isSupabaseConfigured } from "@/lib/supabaseClient";
 import ConfigMancante from "@/components/ConfigMancante";
-import LoginForm from "./LoginForm";
+import LoginForm from "../login/LoginForm";
 
-export default async function LoginPage({
+/**
+ * Accesso OPERATORI (interno). Separato da /login (area cliente) per non
+ * confondere i clienti. L'autenticazione e l'instradamento per ruolo restano
+ * gestiti da /auth/login: un operatore che accede qui va alla dashboard interna.
+ */
+export default async function StaffLoginPage({
   searchParams,
 }: {
   searchParams?: Promise<{ redirect?: string; next?: string }>;
@@ -47,14 +52,14 @@ export default async function LoginPage({
             alt="Art Tech"
             style={{ width: "100%", maxWidth: 120, height: "auto", objectFit: "contain" }}
           />
-          <div style={{ fontSize: 28, fontWeight: 800, color: "#111827", lineHeight: 1.1 }}>
-            Area Cliente
+          <div style={{ fontSize: 30, fontWeight: 800, color: "#111827", lineHeight: 1.1 }}>
+            AT SYSTEM
           </div>
           <div style={{ fontSize: 14, color: "#6b7280" }}>
-            Accedi per gestire assistenza, coperture e richieste dei tuoi impianti.
+            Accesso operatori — dashboard interna.
           </div>
         </div>
-        <LoginForm redirectTo={redirectTo} />
+        <LoginForm redirectTo={redirectTo} showClienteLinks={false} />
       </div>
     </div>
   );
