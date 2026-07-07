@@ -6,9 +6,11 @@ import { supabase } from "@/lib/supabaseClient";
 
 type LoginFormProps = {
   redirectTo: string;
+  /** Mostra i link dedicati ai clienti (registrazione area cliente). Off per la pagina operatori. */
+  showClienteLinks?: boolean;
 };
 
-export default function LoginForm({ redirectTo }: LoginFormProps) {
+export default function LoginForm({ redirectTo, showClienteLinks = true }: LoginFormProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
   const [email, setEmail] = useState("");
@@ -131,12 +133,14 @@ export default function LoginForm({ redirectTo }: LoginFormProps) {
           Password dimenticata
         </button>
       </form>
-      <div style={{ marginTop: 16, fontSize: 13, textAlign: "center", color: "#475569" }}>
-        Primo accesso?{" "}
-        <a href="/registrazione" style={{ color: "#1d4ed8", fontWeight: 700, textDecoration: "underline" }}>
-          Registrati all&apos;area cliente
-        </a>
-      </div>
+      {showClienteLinks && (
+        <div style={{ marginTop: 16, fontSize: 13, textAlign: "center", color: "#475569" }}>
+          Primo accesso?{" "}
+          <a href="/registrazione" style={{ color: "#1d4ed8", fontWeight: 700, textDecoration: "underline" }}>
+            Registrati all&apos;area cliente
+          </a>
+        </div>
+      )}
     </div>
   );
 }
