@@ -20,6 +20,7 @@ import {
 import { sendEmail } from "@/lib/email";
 import { hubspotEnabled, upsertTicket } from "@/lib/hubspot";
 import { suggerisciTemplate, formatSuggerimenti } from "@/lib/assistenzaKnowledge";
+import { prioritaDaTier } from "@/lib/ticketPriorita";
 
 const CATEGORIE_VALIDE = new Set([
   "noimage",
@@ -87,7 +88,7 @@ export async function GET(request: Request) {
     const { data: tickets } = await auth.adminClient
       .from("assistenza_tickets")
       .select(
-        "id, numero, categoria, tier, urgenza, impianto, descrizione, stato, created_at, updated_at, tipo_richiesta"
+        "id, numero, categoria, tier, urgenza, impianto, descrizione, stato, created_at, updated_at, tipo_richiesta, priorita"
       )
       .eq("cliente_id", auth.cliente.cliente_id)
       .order("created_at", { ascending: false })
@@ -255,6 +256,8 @@ export async function POST(request: Request) {
         ricambio,
         // P4.3 — tipo richiesta
         tipo_richiesta: tipoRichiesta,
+        // P5.2 — priorità automatica dal piano attivo
+        priorita: prioritaDaTier(tierToSave, tipoRichiesta),
       })
       .select("id, numero, created_at")
       .maybeSingle();
