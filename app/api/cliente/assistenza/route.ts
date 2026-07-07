@@ -19,6 +19,7 @@ import {
 } from "@/lib/supportTier";
 import { sendEmail } from "@/lib/email";
 import { hubspotEnabled, upsertTicket } from "@/lib/hubspot";
+import { suggerisciTemplate, formatSuggerimenti } from "@/lib/assistenzaKnowledge";
 
 const CATEGORIE_VALIDE = new Set([
   "noimage",
@@ -270,6 +271,10 @@ export async function POST(request: Request) {
       process.env.SUPPORT_TICKET_NOTIFY_EMAIL ||
       process.env.EMAIL_FROM ||
       "ticket@maxischermiled.it";
+    // P4.6 — suggerimento template staff (knowledge base T1-T13). Solo interno.
+    const templatesConsigliati = formatSuggerimenti(
+      suggerisciTemplate({ tipoRichiesta, urgenza, categoria })
+    );
     try {
       await sendEmail({
         to: staffTo,
@@ -296,8 +301,9 @@ export async function POST(request: Request) {
           `Impianto: ${impianto || "-"}`,
           `Telefono: ${telefono || "-"}`,
           ...(tipoRichiesta === "preventivo"
-            ? ["Richiesta PREVENTIVO — nessuna copertura attiva. Template consigliato: T7."]
+            ? ["Richiesta PREVENTIVO — nessuna copertura attiva."]
             : []),
+          `Template consigliati (staff): ${templatesConsigliati}`,
           ``,
           `Descrizione:`,
           descrizione,
@@ -321,8 +327,9 @@ export async function POST(request: Request) {
           `<li><strong>Telefono:</strong> ${telefono || "-"}</li>`,
           `</ul>`,
           ...(tipoRichiesta === "preventivo"
-            ? ["<p><strong>Richiesta PREVENTIVO</strong> — nessuna copertura attiva. Template consigliato: <strong>T7</strong>.</p>"]
+            ? ["<p><strong>Richiesta PREVENTIVO</strong> — nessuna copertura attiva.</p>"]
             : []),
+          `<p><strong>Template consigliati (staff):</strong> ${templatesConsigliati}</p>`,
           `<p><strong>Descrizione:</strong></p>`,
           `<p>${descrizione.replace(/\n/g, "<br />")}</p>`,
         ].join(""),
