@@ -55,11 +55,28 @@ type ClienteScadenza = {
   id: string;
   tipo: string | null;
   progetto: string | null;
+  checklist_id: string | null;
   data_scadenza: string | null;
   stato: string | null;
   riferimento: string | null;
   source: string | null;
 };
+
+// P5.4 — CTA contestuali per tipo di scadenza (richieste tracciate).
+type ScadenzaCta = { label: string; tipo: "rinnovo" | "tagliando" | "upgrade" | "rinnovo_sim"; primary?: boolean };
+function ctaPerScadenza(tipo?: string | null): ScadenzaCta[] {
+  const t = String(tipo || "").toUpperCase();
+  if (t.includes("TAGLIANDO")) return [{ label: "Prenota tagliando", tipo: "tagliando", primary: true }];
+  if (t.includes("GARANZIA"))
+    return [
+      { label: "Rinnova", tipo: "rinnovo", primary: true },
+      { label: "Attiva CARE ULTRA", tipo: "upgrade" },
+    ];
+  if (t.includes("SIM")) return [{ label: "Rinnova SIM", tipo: "rinnovo_sim", primary: true }];
+  if (t.includes("LICENZA")) return [{ label: "Rinnova", tipo: "rinnovo", primary: true }];
+  if (t.includes("SAAS")) return [{ label: "Rinnova copertura", tipo: "rinnovo", primary: true }];
+  return [];
+}
 
 type ClienteDocumento = {
   id: string;
@@ -236,6 +253,8 @@ export default function ClientePortalPage() {
   const [rinnovi, setRinnovi] = useState<ClienteRinnovo[]>([]);
   const [tagliandi, setTagliandi] = useState<ClienteTagliando[]>([]);
   const [openingDocumentId, setOpeningDocumentId] = useState<string | null>(null);
+  // P5.4 — stato invio richieste dalle CTA scadenze. Chiave: `${scadenzaId}:${tipo}`.
+  const [richiestaStato, setRichiestaStato] = useState<Record<string, "invio" | "fatto" | "errore">>({});
   const [impersonationToken, setImpersonationToken] = useState("");
   // P3.2: deep-link letti dalla query string (CTA landing LedCare). Fallback: tutti null.
   const [deepLink, setDeepLink] = useState<{
@@ -250,6 +269,32 @@ export default function ClientePortalPage() {
   const clienteApiSuffix = impersonationToken
     ? `?impersonation_token=${encodeURIComponent(impersonationToken)}`
     : "";
+
+  // P5.4 — invio richiesta tracciata da una CTA di scadenza.
+  async function inviaRichiestaScadenza(scadenza: ClienteScadenza, tipo: ScadenzaCta["tipo"]) {
+    const key = `${scadenza.id}:${tipo}`;
+    if (!scadenza.checklist_id) {
+      setRichiestaStato((s) => ({ ...s, [key]: "errore" }));
+      return;
+    }
+    setRichiestaStato((s) => ({ ...s, [key]: "invio" }));
+    try {
+      const res = await fetch(`/api/cliente/richieste${clienteApiSuffix}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          tipo,
+          checklist_id: scadenza.checklist_id,
+          scadenza_tipo: scadenza.tipo,
+          scadenza_data: scadenza.data_scadenza,
+        }),
+      });
+      setRichiestaStato((s) => ({ ...s, [key]: res.ok ? "fatto" : "errore" }));
+    } catch {
+      setRichiestaStato((s) => ({ ...s, [key]: "errore" }));
+    }
+  }
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -1065,6 +1110,41 @@ export default function ClientePortalPage() {
                     <div style={{ fontSize: 13, color: "#475569" }}>
                       Scadenza: {formatDateLabel(scadenza.data_scadenza)}
                     </div>
+                    {scadenza.checklist_id && ctaPerScadenza(scadenza.tipo).length > 0 && (
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 2 }}>
+                        {ctaPerScadenza(scadenza.tipo).map((cta) => {
+                          const key = `${scadenza.id}:${cta.tipo}`;
+                          const st = richiestaStato[key];
+                          const done = st === "fatto";
+                          return (
+                            <button
+                              key={key}
+                              type="button"
+                              disabled={st === "invio" || done}
+                              onClick={() => inviaRichiestaScadenza(scadenza, cta.tipo)}
+                              style={{
+                                padding: "7px 14px",
+                                borderRadius: 9,
+                                fontSize: 12.5,
+                                fontWeight: 700,
+                                cursor: st === "invio" || done ? "default" : "pointer",
+                                border: cta.primary ? "1px solid #C9142B" : "1px solid #cbd5e1",
+                                background: done ? "#f0fdf4" : cta.primary ? "#C9142B" : "#fff",
+                                color: done ? "#15803d" : cta.primary ? "#fff" : "#334155",
+                              }}
+                            >
+                              {done
+                                ? "✓ Richiesta inviata"
+                                : st === "invio"
+                                ? "Invio..."
+                                : st === "errore"
+                                ? "Riprova"
+                                : cta.label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
