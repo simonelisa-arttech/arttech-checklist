@@ -140,6 +140,9 @@ export default function AppShellHeader() {
               <Link href="/clienti-cockpit" style={dropdownLinkStyle} onClick={closeDropdownOnNavigation}>
                 Clienti
               </Link>
+              <Link href="/assistenza" style={dropdownLinkStyle} onClick={closeDropdownOnNavigation}>
+                Assistenza (ticket)
+              </Link>
               <Link href="/sim" style={dropdownLinkStyle} onClick={closeDropdownOnNavigation}>
                 SIM
               </Link>
