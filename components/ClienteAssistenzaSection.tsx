@@ -183,6 +183,55 @@ export default function ClienteAssistenzaSection({
   const [sending, setSending] = useState(false);
   const [sendError, setSendError] = useState<string | null>(null);
   const [confirmed, setConfirmed] = useState<{ numero: number; preventivo?: boolean } | null>(null);
+  // P5.6 — thread bidirezionale per ticket nel Hub cliente.
+  type ClienteMessaggio = { id: string; autore_tipo: string; corpo: string; created_at: string };
+  const [openThreadId, setOpenThreadId] = useState<string | null>(null);
+  const [threadMsgs, setThreadMsgs] = useState<Record<string, ClienteMessaggio[]>>({});
+  const [threadReply, setThreadReply] = useState<Record<string, string>>({});
+  const [threadBusy, setThreadBusy] = useState(false);
+
+  async function toggleThread(ticketId: string) {
+    if (openThreadId === ticketId) {
+      setOpenThreadId(null);
+      return;
+    }
+    setOpenThreadId(ticketId);
+    try {
+      const res = await fetch(`/api/cliente/assistenza/${ticketId}/messaggi${apiSuffix}`, {
+        credentials: "include",
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        setThreadMsgs((m) => ({ ...m, [ticketId]: (data?.messaggi as ClienteMessaggio[]) || [] }));
+      }
+    } catch {
+      // ignore
+    }
+  }
+
+  async function inviaRispostaCliente(ticketId: string) {
+    const corpo = String(threadReply[ticketId] || "").trim();
+    if (!corpo) return;
+    setThreadBusy(true);
+    try {
+      const res = await fetch(`/api/cliente/assistenza/${ticketId}/messaggi${apiSuffix}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ corpo }),
+      });
+      if (res.ok) {
+        setThreadReply((r) => ({ ...r, [ticketId]: "" }));
+        const rr = await fetch(`/api/cliente/assistenza/${ticketId}/messaggi${apiSuffix}`, {
+          credentials: "include",
+        });
+        const dd = await rr.json().catch(() => ({}));
+        if (rr.ok) setThreadMsgs((m) => ({ ...m, [ticketId]: (dd?.messaggi as ClienteMessaggio[]) || [] }));
+      }
+    } finally {
+      setThreadBusy(false);
+    }
+  }
 
   async function load() {
     try {
@@ -931,6 +980,82 @@ export default function ClienteAssistenzaSection({
                     Aperto il {formatDate(t.created_at)}
                     {aggiornato ? ` · ultimo aggiornamento ${aggiornato}` : ""}
                   </div>
+
+                  {/* P5.6 — conversazione bidirezionale con l'assistenza */}
+                  <button
+                    type="button"
+                    onClick={() => toggleThread(t.id)}
+                    style={{
+                      alignSelf: "flex-start",
+                      marginTop: 2,
+                      padding: "5px 10px",
+                      borderRadius: 8,
+                      border: "1px solid #cbd5e1",
+                      background: "#fff",
+                      color: "#334155",
+                      fontSize: 12,
+                      fontWeight: 700,
+                      cursor: "pointer",
+                    }}
+                  >
+                    {openThreadId === t.id ? "Nascondi conversazione" : "Conversazione / rispondi"}
+                  </button>
+
+                  {openThreadId === t.id ? (
+                    <div style={{ display: "grid", gap: 8, marginTop: 4 }}>
+                      {(threadMsgs[t.id] || []).length === 0 ? (
+                        <div style={{ fontSize: 12, color: "#94a3b8" }}>
+                          Nessun messaggio. Scrivi qui sotto per aggiungere informazioni alla tua richiesta.
+                        </div>
+                      ) : (
+                        (threadMsgs[t.id] || []).map((m) => (
+                          <div
+                            key={m.id}
+                            style={{
+                              justifySelf: m.autore_tipo === "cliente" ? "end" : "start",
+                              maxWidth: "85%",
+                              background: m.autore_tipo === "cliente" ? "#eff6ff" : "#f1f5f9",
+                              borderRadius: 12,
+                              padding: "8px 12px",
+                              fontSize: 12.5,
+                              color: "#0f172a",
+                              whiteSpace: "pre-wrap",
+                            }}
+                          >
+                            <div style={{ fontSize: 10, color: "#64748b", marginBottom: 2 }}>
+                              {m.autore_tipo === "cliente" ? "Tu" : "Assistenza Art Tech"}
+                            </div>
+                            {m.corpo}
+                          </div>
+                        ))
+                      )}
+                      <textarea
+                        value={threadReply[t.id] || ""}
+                        onChange={(e) => setThreadReply((r) => ({ ...r, [t.id]: e.target.value }))}
+                        placeholder="Scrivi una risposta..."
+                        rows={2}
+                        style={{ width: "100%", padding: 8, borderRadius: 8, border: "1px solid #cbd5e1", resize: "vertical", fontSize: 12.5 }}
+                      />
+                      <button
+                        type="button"
+                        disabled={threadBusy || !String(threadReply[t.id] || "").trim()}
+                        onClick={() => inviaRispostaCliente(t.id)}
+                        style={{
+                          alignSelf: "flex-start",
+                          padding: "7px 14px",
+                          borderRadius: 8,
+                          border: "1px solid #111",
+                          background: "#111",
+                          color: "#fff",
+                          fontSize: 12.5,
+                          fontWeight: 700,
+                          cursor: "pointer",
+                        }}
+                      >
+                        {threadBusy ? "Invio..." : "Invia"}
+                      </button>
+                    </div>
+                  ) : null}
                 </div>
               );
             })}
