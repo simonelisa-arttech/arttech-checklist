@@ -54,7 +54,14 @@ export async function GET(request: Request) {
     }
   }
 
-  const enriched = tickets.map((t) => {
+  const enriched: Array<
+    Record<string, any> & {
+      progetto: string | null;
+      assegnatario_nome: string | null;
+      attesa_ore: number | null;
+      oltre_sla: boolean;
+    }
+  > = tickets.map((t) => {
     const oltreSla = isOltreSla(t);
     const attesaOre = oreTrascorse(t.created_at);
     return {
