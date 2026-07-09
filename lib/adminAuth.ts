@@ -96,19 +96,28 @@ async function resolveOperatoreAuth(request: Request): Promise<RequireOperatoreO
     return unauthorized();
   }
 
-  // Hardening isolamento area cliente: un utente del portale clienti
-  // (ruolo_portale = CLIENTE) non deve MAI essere autorizzato come operatore,
-  // nemmeno se la sua email coincide per errore con un record in `operatori`.
-  const ruoloPortale = String((user.user_metadata as Record<string, unknown> | null)?.ruolo_portale || "")
-    .trim()
-    .toUpperCase();
-  if (ruoloPortale === "CLIENTE") {
-    return unauthorized("Accesso riservato agli operatori", 403);
-  }
-
   const adminClient = createClient(supabaseUrl, serviceRoleKey, {
     auth: { persistSession: false, autoRefreshToken: false },
   });
+
+  // Hardening isolamento area cliente: blocca dagli endpoint operatore SOLO chi è
+  // effettivamente un utente del portale clienti, ossia ha un accesso
+  // `clienti_portale_auth` ATTIVO. Si basa sullo stato AUTORITATIVO nel DB, non sui
+  // metadata del JWT (che possono restare stale e bloccare per errore un operatore
+  // legittimo).
+  const { data: portalRow, error: portalErr } = await adminClient
+    .from("clienti_portale_auth")
+    .select("id")
+    .eq("user_id", user.id)
+    .eq("attivo", true)
+    .maybeSingle();
+  if (portalErr) {
+    return unauthorized(portalErr.message, 500);
+  }
+  if (portalRow?.id) {
+    return unauthorized("Accesso riservato agli operatori", 403);
+  }
+
   const { data: op, error: opErr } = await adminClient
     .from("operatori")
     .select("id, user_id, ruolo, attivo, email, nome, can_access_impostazioni, can_access_backoffice, can_access_operator_app")
