@@ -1116,7 +1116,9 @@ export async function POST(request: Request) {
         .select(
           "id, row_kind, row_ref_id, position, data_inizio, durata_prevista_minuti, personale_previsto, personale_ids, mezzi, descrizione_attivita, indirizzo, orario, referente_cliente_nome, referente_cliente_contatto, commerciale_art_tech_nome, commerciale_art_tech_contatto"
         )
-        .in("row_ref_id", activeChecklistIds as any)
+        // NB: niente .in("row_ref_id", activeChecklistIds): con centinaia di checklist
+        // l'URL supererebbe il limite del gateway (400 Bad Request). I meta-slot sono
+        // pochi e filtrati per row_kind; il match con le checklist avviene via mappa in codice.
         .in("row_kind", ["INSTALLAZIONE", "DISINSTALLAZIONE"] as any)
         .order("position", { ascending: true });
       if (
@@ -1135,7 +1137,7 @@ export async function POST(request: Request) {
         .select(
           "row_kind, row_ref_id, slot_id, status, fatto, hidden, updated_at, updated_by_operatore, operatore:updated_by_operatore(nome), modalita_attivita, personale_previsto, personale_ids, mezzi, descrizione_attivita, indirizzo, referente_cliente_nome, referente_cliente_contatto, commerciale_art_tech_nome, commerciale_art_tech_contatto"
         )
-        .in("row_ref_id", activeChecklistIds as any)
+        // niente .in("row_ref_id", activeChecklistIds): vedi nota sopra (URL troppo lungo).
         .in("row_kind", ["INSTALLAZIONE", "DISINSTALLAZIONE"] as any);
       if (
         metaRes.error &&
