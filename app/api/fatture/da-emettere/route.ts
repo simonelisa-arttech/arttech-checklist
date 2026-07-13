@@ -182,26 +182,28 @@ export async function GET(request: Request) {
     return NextResponse.json([]);
   }
 
-  const [{ data: tasks, error: tasksErr }, { data: sections, error: sectionsErr }] = await Promise.all([
-    auth.adminClient
-      .from("checklist_tasks")
-      .select("checklist_id, stato")
-      .in("checklist_id", checklistIds),
-    auth.adminClient
-      .from("checklist_sections_view")
-      .select("checklist_id, pct_complessivo")
-      .in("checklist_id", checklistIds),
-  ]);
-
-  if (tasksErr) {
-    return NextResponse.json({ error: tasksErr.message }, { status: 500 });
-  }
-  if (sectionsErr) {
-    return NextResponse.json({ error: sectionsErr.message }, { status: 500 });
+  // Query a batch di 100 id: con molte checklist attive un unico .in(checklistIds)
+  // genererebbe un URL oltre il limite del gateway (400 Bad Request).
+  const tasks: TaskRow[] = [];
+  const sections: SectionRow[] = [];
+  for (let i = 0; i < checklistIds.length; i += 100) {
+    const idsChunk = checklistIds.slice(i, i + 100);
+    const [{ data: t, error: tasksErr }, { data: s, error: sectionsErr }] = await Promise.all([
+      auth.adminClient.from("checklist_tasks").select("checklist_id, stato").in("checklist_id", idsChunk),
+      auth.adminClient.from("checklist_sections_view").select("checklist_id, pct_complessivo").in("checklist_id", idsChunk),
+    ]);
+    if (tasksErr) {
+      return NextResponse.json({ error: tasksErr.message }, { status: 500 });
+    }
+    if (sectionsErr) {
+      return NextResponse.json({ error: sectionsErr.message }, { status: 500 });
+    }
+    if (t) tasks.push(...(t as TaskRow[]));
+    if (s) sections.push(...(s as SectionRow[]));
   }
 
   const taskStats = new Map<string, { total: number; completed: number }>();
-  for (const row of (tasks || []) as TaskRow[]) {
+  for (const row of tasks) {
     const checklistId = String(row.checklist_id || "").trim();
     if (!checklistId) continue;
     const stats = taskStats.get(checklistId) || { total: 0, completed: 0 };
@@ -211,7 +213,7 @@ export async function GET(request: Request) {
   }
 
   const pctByChecklistId = new Map<string, number>();
-  for (const row of (sections || []) as SectionRow[]) {
+  for (const row of sections) {
     const checklistId = String(row.checklist_id || "").trim();
     if (!checklistId) continue;
     if (typeof row.pct_complessivo === "number" && Number.isFinite(row.pct_complessivo)) {
