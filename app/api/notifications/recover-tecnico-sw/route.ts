@@ -4,6 +4,7 @@ import { createHash } from "crypto";
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { sendEmail } from "@/lib/email";
+import { chunkArray } from "@/lib/dbChunks";
 import { buildNotificationAutoRecipients, normalizeNotificationTarget } from "@/lib/notifications/operatorTargets";
 import {
   getChecklistEligibilityDate,
@@ -283,21 +284,30 @@ export async function POST(request: Request) {
   }
 
   const eligibleChecklistIds = eligibleChecklists.map((checklist) => checklist.id);
-  const { data: tasksRaw, error: tasksErr } = await adminClient
-    .from("checklist_tasks")
-    .select("id, checklist_id, titolo, stato, target, task_template_id")
-    .in("checklist_id", eligibleChecklistIds);
-  if (tasksErr) {
-    return NextResponse.json({ error: tasksErr.message }, { status: 500 });
+  // Query a batch: con molte checklist un unico .in() supererebbe il limite URL del gateway.
+  const tasksRaw: any[] = [];
+  for (const idsChunk of chunkArray(eligibleChecklistIds, 100)) {
+    const { data, error: tasksErr } = await adminClient
+      .from("checklist_tasks")
+      .select("id, checklist_id, titolo, stato, target, task_template_id")
+      .in("checklist_id", idsChunk);
+    if (tasksErr) {
+      return NextResponse.json({ error: tasksErr.message }, { status: 500 });
+    }
+    if (data) tasksRaw.push(...data);
   }
 
-  const { data: logRows, error: logErr } = await adminClient
-    .from("notification_log")
-    .select("checklist_id, target, task_title")
-    .eq("target", "TECNICO_SW")
-    .in("checklist_id", eligibleChecklistIds);
-  if (logErr) {
-    return NextResponse.json({ error: logErr.message }, { status: 500 });
+  const logRows: any[] = [];
+  for (const idsChunk of chunkArray(eligibleChecklistIds, 100)) {
+    const { data, error: logErr } = await adminClient
+      .from("notification_log")
+      .select("checklist_id, target, task_title")
+      .eq("target", "TECNICO_SW")
+      .in("checklist_id", idsChunk);
+    if (logErr) {
+      return NextResponse.json({ error: logErr.message }, { status: 500 });
+    }
+    if (data) logRows.push(...data);
   }
 
   const alreadySentKeys = new Set(

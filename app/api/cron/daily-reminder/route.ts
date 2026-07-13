@@ -4,6 +4,7 @@ import { createHash } from "crypto";
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { sendEmail } from "@/lib/email";
+import { chunkArray } from "@/lib/dbChunks";
 import { buildNotificationAutoRecipients, normalizeNotificationTarget } from "@/lib/notifications/operatorTargets";
 
 type ChecklistRow = {
@@ -552,29 +553,38 @@ export async function GET(req: Request) {
       continue;
     }
 
-    let tasksQuery = supabase
-      .from("checklist_tasks")
-      .select("checklist_id, task_template_id, titolo, stato")
-      .in("checklist_id", allowedChecklistIds);
-
-    if (taskTemplateId) {
-      tasksQuery = tasksQuery.eq("task_template_id", taskTemplateId);
-    } else {
-      if (!taskTitle) {
-        if (debugMode) {
-          ruleDbg.skipped_reason = "missing_task_title_fallback";
-          rulesDebug.push(ruleDbg);
-        }
-        continue;
+    const useTemplate = Boolean(taskTemplateId);
+    if (!useTemplate && !taskTitle) {
+      if (debugMode) {
+        ruleDbg.skipped_reason = "missing_task_title_fallback";
+        rulesDebug.push(ruleDbg);
       }
-      tasksQuery = tasksQuery.eq("titolo", taskTitle).eq("target", target);
+      continue;
     }
-
-    const { data: taskRaw, error: taskErr } = await tasksQuery;
-    if (taskErr) {
-      return NextResponse.json({ error: taskErr.message }, { status: 500 });
+    // Query a batch: con molte checklist un unico .in() supererebbe il limite URL del gateway.
+    const taskRaw: TaskRow[] = [];
+    let taskErrMsg: string | null = null;
+    for (const idsChunk of chunkArray(allowedChecklistIds, 100)) {
+      let tasksQuery = supabase
+        .from("checklist_tasks")
+        .select("checklist_id, task_template_id, titolo, stato")
+        .in("checklist_id", idsChunk);
+      if (useTemplate) {
+        tasksQuery = tasksQuery.eq("task_template_id", taskTemplateId);
+      } else {
+        tasksQuery = tasksQuery.eq("titolo", taskTitle).eq("target", target);
+      }
+      const { data, error } = await tasksQuery;
+      if (error) {
+        taskErrMsg = error.message;
+        break;
+      }
+      if (data) taskRaw.push(...(data as TaskRow[]));
     }
-    ruleDbg.tasks_found = (taskRaw || []).length;
+    if (taskErrMsg) {
+      return NextResponse.json({ error: taskErrMsg }, { status: 500 });
+    }
+    ruleDbg.tasks_found = taskRaw.length;
 
     const openTasks = ((taskRaw || []) as TaskRow[]).filter((t) => {
       const stato = String(t.stato || "").trim().toUpperCase();
