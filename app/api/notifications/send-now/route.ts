@@ -4,6 +4,7 @@ import { createHash } from "crypto";
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { sendEmail } from "@/lib/email";
+import { chunkArray } from "@/lib/dbChunks";
 
 type ChecklistRow = {
   id: string;
@@ -232,17 +233,22 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: true, emails_sent: 0, checklists: 0 });
   }
 
-  let tasksQuery = auth.adminClient
-    .from("checklist_tasks")
-    .select("checklist_id, task_template_id, titolo, stato")
-    .in("checklist_id", allowedChecklistIds);
-  if (taskTemplateId) {
-    tasksQuery = tasksQuery.eq("task_template_id", taskTemplateId);
-  } else {
-    tasksQuery = tasksQuery.ilike("titolo", taskTitle);
+  // Query a batch: con molte checklist un unico .in() supererebbe il limite URL del gateway.
+  const tasksRaw: TaskRow[] = [];
+  for (const idsChunk of chunkArray(allowedChecklistIds, 100)) {
+    let tasksQuery = auth.adminClient
+      .from("checklist_tasks")
+      .select("checklist_id, task_template_id, titolo, stato")
+      .in("checklist_id", idsChunk);
+    if (taskTemplateId) {
+      tasksQuery = tasksQuery.eq("task_template_id", taskTemplateId);
+    } else {
+      tasksQuery = tasksQuery.ilike("titolo", taskTitle);
+    }
+    const { data, error: tasksErr } = await tasksQuery;
+    if (tasksErr) return NextResponse.json({ error: tasksErr.message }, { status: 500 });
+    if (data) tasksRaw.push(...(data as TaskRow[]));
   }
-  const { data: tasksRaw, error: tasksErr } = await tasksQuery;
-  if (tasksErr) return NextResponse.json({ error: tasksErr.message }, { status: 500 });
 
   const stopSet = normalizeStatusSet(rule.stop_statuses);
   const openTasks = ((tasksRaw || []) as TaskRow[]).filter((t) => {
