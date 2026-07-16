@@ -32,6 +32,7 @@ export async function GET(request: Request) {
   try {
     const rows = await buildScadenzeAgenda(auth.adminClient, {
       cliente_id: auth.cliente.cliente_id,
+      lifecycle: "ATTIVO",
     });
 
     return NextResponse.json({

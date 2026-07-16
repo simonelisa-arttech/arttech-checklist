@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { isLifecycleAttivo, isMissingLifecycleStatusColumnError } from "@/lib/lifecycleStatus";
 
 /**
  * Logica condivisa di determinazione del tier assistenza.
@@ -88,6 +89,31 @@ function impiantoGaranziaStato(garanzia_scadenza?: string | null): "ok" | "warn"
   return "ok";
 }
 
+async function loadRinnoviForChecklistIds(db: SupabaseClient, checklistIds: string[]) {
+  if (!checklistIds.length) return [] as Record<string, any>[];
+  const withLifecycle = await db
+    .from("rinnovi_servizi")
+    .select("id, checklist_id, item_tipo, subtipo, scadenza, lifecycle_status")
+    .in("checklist_id", checklistIds)
+    .order("scadenza", { ascending: false });
+  if (!withLifecycle.error) return ((withLifecycle.data || []) as Record<string, any>[]).filter((row) => isLifecycleAttivo(row.lifecycle_status));
+  if (!isMissingLifecycleStatusColumnError(withLifecycle.error)) {
+    throw withLifecycle.error;
+  }
+  const fallback = await db
+    .from("rinnovi_servizi")
+    .select("id, checklist_id, item_tipo, subtipo, scadenza")
+    .in("checklist_id", checklistIds)
+    .order("scadenza", { ascending: false });
+  if (fallback.error) throw fallback.error;
+  return (fallback.data || []) as Record<string, any>[];
+}
+
+async function loadRinnoviForChecklistId(db: SupabaseClient, checklistId: string) {
+  const rows = await loadRinnoviForChecklistIds(db, checklistId ? [checklistId] : []);
+  return rows.filter((row) => String(row.checklist_id || "") === checklistId);
+}
+
 export async function computeSupportTierForCliente(
   db: SupabaseClient,
   clienteId: string
@@ -116,14 +142,8 @@ export async function computeSupportTierForCliente(
   const checklists = (checklistRows || []) as any[];
   const checklistIds = checklists.map((r) => String(r.id || "")).filter(Boolean);
 
-  const [{ data: rinnovi }, { data: contratti }, { data: impiantiRows }] = await Promise.all([
-    checklistIds.length
-      ? db
-          .from("rinnovi_servizi")
-          .select("id, checklist_id, item_tipo, subtipo, scadenza")
-          .in("checklist_id", checklistIds)
-          .order("scadenza", { ascending: false })
-      : Promise.resolve({ data: [] as any[] } as any),
+  const [rinnoviRows, contrattiRes, impiantiRes] = await Promise.all([
+    loadRinnoviForChecklistIds(db, checklistIds),
     db
       .from("saas_contratti")
       .select("id, cliente, piano_codice, scadenza, interventi_annui, illimitati")
@@ -137,6 +157,9 @@ export async function computeSupportTierForCliente(
           .order("position", { ascending: true })
       : Promise.resolve({ data: [] as any[] } as any),
   ]);
+  const rinnovi = rinnoviRows;
+  const contratti = contrattiRes.data;
+  const impiantiRows = impiantiRes.data;
 
   let tier: SupportTier = "expired";
   let saasExpiry: string | null = null;
@@ -427,12 +450,8 @@ export async function computeSupportTierForProgetto(
     ck = (ckRow as SupportRow) || null;
     if (!ck) return base;
     const clienteIdLocal = String(ck.cliente_id || "");
-    const [{ data: rs }, { data: ctr }, { data: imp }] = await Promise.all([
-      db
-        .from("rinnovi_servizi")
-        .select("id, checklist_id, item_tipo, subtipo, scadenza")
-        .eq("checklist_id", progettoId)
-        .order("scadenza", { ascending: false }),
+    const [rs, ctr, imp] = await Promise.all([
+      loadRinnoviForChecklistId(db, progettoId),
       clienteIdLocal
         ? db
             .from("saas_contratti")
@@ -447,8 +466,8 @@ export async function computeSupportTierForProgetto(
         .order("position", { ascending: true }),
     ]);
     rinnovi = (rs as SupportRow[]) || [];
-    contratti = (ctr as SupportRow[]) || [];
-    impianti = (imp as SupportRow[]) || [];
+    contratti = (ctr.data as SupportRow[]) || [];
+    impianti = (imp.data as SupportRow[]) || [];
   }
 
   if (!ck) return base;
@@ -642,12 +661,8 @@ export async function computeSupportForCliente(
   if (!checklists.length) return empty;
   const ids = checklists.map((c) => String(c.id || "")).filter(Boolean);
 
-  const [{ data: rs }, { data: ctr }, { data: imp }] = await Promise.all([
-    db
-      .from("rinnovi_servizi")
-      .select("id, checklist_id, item_tipo, subtipo, scadenza")
-      .in("checklist_id", ids)
-      .order("scadenza", { ascending: false }),
+  const [rs, ctr, imp] = await Promise.all([
+    loadRinnoviForChecklistIds(db, ids),
     db
       .from("saas_contratti")
       .select("id, cliente, piano_codice, scadenza, interventi_annui, illimitati")
@@ -660,8 +675,8 @@ export async function computeSupportForCliente(
       .order("position", { ascending: true }),
   ]);
   const rinnoviAll = (rs as SupportRow[]) || [];
-  const contrattiAll = (ctr as SupportRow[]) || [];
-  const impiantiAll = (imp as SupportRow[]) || [];
+  const contrattiAll = (ctr.data as SupportRow[]) || [];
+  const impiantiAll = (imp.data as SupportRow[]) || [];
 
   const progetti: SupportTierProgetto[] = [];
   for (const ck of checklists) {

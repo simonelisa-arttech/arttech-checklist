@@ -47,6 +47,10 @@ export type ScadenzaAgendaRow = {
   fatturazione: string | null;
   note: string | null;
   raw_id: string | null;
+  lifecycle_status?: string | null;
+  lifecycle_source?: string | null;
+  confidence_score?: number | null;
+  origine_note?: string | null;
 };
 
 export type ScadenzeAgendaFilters = {
@@ -58,6 +62,7 @@ export type ScadenzeAgendaFilters = {
   tipo?: string | null;
   progetto?: string | null;
   stato?: string | null;
+  lifecycle?: string | null;
 };
 
 type ChecklistBaseRow = {
@@ -98,6 +103,10 @@ type TagliandoRow = {
   stato?: string | null;
   note?: string | null;
   modalita?: string | null;
+  lifecycle_status?: string | null;
+  source?: string | null;
+  confidence_score?: number | null;
+  origine_note?: string | null;
 };
 
 type RinnovoServizioRow = {
@@ -114,6 +123,10 @@ type RinnovoServizioRow = {
   proforma?: string | null;
   cod_magazzino?: string | null;
   note_tecniche?: string | null;
+  lifecycle_status?: string | null;
+  source?: string | null;
+  confidence_score?: number | null;
+  origine_note?: string | null;
 };
 
 type ContrattoRow = {
@@ -260,9 +273,12 @@ function buildRinnovoReference(r: RinnovoServizioRow) {
 }
 
 async function fetchRinnoviRows(supabase: any) {
-  return supabase
-    .from("rinnovi_servizi")
-    .select("id, cliente, item_tipo, subtipo, sim_id, descrizione, checklist_id, scadenza, stato");
+  return selectWithOptionalColumns(
+    supabase,
+    "rinnovi_servizi",
+    ["id", "cliente", "item_tipo", "subtipo", "sim_id", "descrizione", "checklist_id", "scadenza", "stato"],
+    ["lifecycle_status", "source", "confidence_score", "origine_note"]
+  );
 }
 
 function buildLicenseReference(l: LicenseRow) {
@@ -500,7 +516,7 @@ export async function buildScadenzeAgenda(
       supabase,
       "tagliandi",
       ["id", "cliente", "checklist_id", "scadenza", "stato", "note"],
-      ["modalita"]
+      ["modalita", "lifecycle_status", "source", "confidence_score", "origine_note"]
     ),
     selectWithOptionalColumns(
       supabase,
@@ -582,6 +598,10 @@ export async function buildScadenzeAgenda(
         fatturazione: r.proforma || null,
         note: r.note_tecniche || null,
         raw_id: r.id,
+        lifecycle_status: r.lifecycle_status || "ATTIVO",
+        lifecycle_source: r.source || null,
+        confidence_score: r.confidence_score ?? null,
+        origine_note: r.origine_note || null,
       };
     });
 
@@ -694,6 +714,10 @@ export async function buildScadenzeAgenda(
         fatturazione: t.modalita || null,
         note: t.note || null,
         raw_id: t.id,
+        lifecycle_status: t.lifecycle_status || "ATTIVO",
+        lifecycle_source: t.source || null,
+        confidence_score: t.confidence_score ?? null,
+        origine_note: t.origine_note || null,
       };
     });
 
@@ -837,6 +861,10 @@ export async function buildScadenzeAgenda(
       )
     : [];
   const statoFilter = normalizeUpper(filters.stato || "TUTTI");
+  const lifecycleFilters = normalizeUpper(filters.lifecycle)
+    .split(",")
+    .map((part) => part.trim())
+    .filter(Boolean);
   const clienteFilter = normalizeString(filters.cliente).toLowerCase();
   const progettoFilter = normalizeString(filters.progetto).toLowerCase();
   const clienteIdFilter = normalizeString(filters.cliente_id);
@@ -916,6 +944,11 @@ export async function buildScadenzeAgenda(
   if (tipoFilters.length > 0) {
     rows = rows.filter((row) => tipoFilters.includes(normalizeUpper(row.tipo)));
   }
+  if (lifecycleFilters.length > 0) {
+    rows = rows.filter((row) =>
+      lifecycleFilters.includes(normalizeUpper(row.lifecycle_status || "ATTIVO"))
+    );
+  }
   if (statoFilter === "DA_AVVISARE") {
     rows = rows.filter((row) => row.workflow_stato === "DA_AVVISARE");
   } else if (statoFilter === "SCADUTO") {
@@ -936,6 +969,7 @@ export async function buildScadenzeAgenda(
       progetto: progettoFilter || null,
       tipo: tipoFilters,
       stato: statoFilter,
+      lifecycle: lifecycleFilters,
     },
     totale: rows.length,
     by_source: countRowsBySource(rows),

@@ -20,6 +20,7 @@ export async function GET(request: Request) {
       progetto: url.searchParams.get("progetto"),
       tipo: url.searchParams.get("tipo"),
       stato: url.searchParams.get("stato"),
+      lifecycle: url.searchParams.get("lifecycle"),
     });
 
     return NextResponse.json({
@@ -34,6 +35,7 @@ export async function GET(request: Request) {
         progetto: url.searchParams.get("progetto") || null,
         tipo: url.searchParams.get("tipo") || null,
         stato: url.searchParams.get("stato") || "TUTTI",
+        lifecycle: url.searchParams.get("lifecycle") || "TUTTI",
       },
       data: rows,
     });

@@ -3,6 +3,7 @@ export const runtime = "nodejs";
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { Resend } from "resend";
+import { isLifecycleAttivo, isMissingLifecycleStatusColumnError } from "@/lib/lifecycleStatus";
 
 /**
  * Payload atteso (tollerante):
@@ -143,6 +144,30 @@ export async function POST(req: Request) {
       inviato_email: false,
       trigger: triggerValue,
     };
+
+    if (tipoUpper === "TAGLIANDO") {
+      const lifecycleCheck = await supabaseAdmin
+        .from("tagliandi")
+        .select("id, lifecycle_status")
+        .eq("id", tagliandoId)
+        .maybeSingle();
+      if (!lifecycleCheck.error) {
+        if (!lifecycleCheck.data) {
+          return NextResponse.json({ ok: false, error: "Tagliando not found for id" }, { status: 404 });
+        }
+        if (!isLifecycleAttivo((lifecycleCheck.data as any).lifecycle_status)) {
+          return NextResponse.json(
+            { ok: false, error: "Tagliando non approvato: lifecycle_status deve essere ATTIVO" },
+            { status: 409 }
+          );
+        }
+      } else if (!isMissingLifecycleStatusColumnError(lifecycleCheck.error)) {
+        return NextResponse.json(
+          { ok: false, error: `Tagliando lookup failed: ${lifecycleCheck.error.message}` },
+          { status: 500 }
+        );
+      }
+    }
 
     const { data: inserted, error: insErr } = await supabaseAdmin
       .from("checklist_alert_log")

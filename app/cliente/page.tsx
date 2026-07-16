@@ -119,6 +119,12 @@ type ClienteTagliando = {
   stato?: string | null;
 };
 
+type DashboardPortalFilters = {
+  projectId: string;
+  query: string;
+  scadenzaStato: "TUTTE" | "IMMINENTE" | "SCADUTA";
+};
+
 function renderPill(
   label: string,
   colors: { border: string; background: string; color: string }
@@ -196,6 +202,12 @@ const DEFAULT_PORTAL_SETTINGS = {
   show_cronoprogramma: false,
 } as const;
 
+const DEFAULT_DASHBOARD_FILTERS: DashboardPortalFilters = {
+  projectId: "ALL",
+  query: "",
+  scadenzaStato: "TUTTE",
+};
+
 // P3.4 — Art Tech Hub: le 5 sezioni del customer portal (card + top nav).
 type HubSection = "home" | "dashboard" | "assistenza" | "marketplace" | "news" | "analytics";
 
@@ -253,6 +265,9 @@ export default function ClientePortalPage() {
   const [rinnovi, setRinnovi] = useState<ClienteRinnovo[]>([]);
   const [tagliandi, setTagliandi] = useState<ClienteTagliando[]>([]);
   const [openingDocumentId, setOpeningDocumentId] = useState<string | null>(null);
+  const [dashboardFilters, setDashboardFilters] = useState<DashboardPortalFilters>(
+    DEFAULT_DASHBOARD_FILTERS
+  );
   // P5.4 — stato invio richieste dalle CTA scadenze. Chiave: `${scadenzaId}:${tipo}`.
   const [richiestaStato, setRichiestaStato] = useState<Record<string, "invio" | "fatto" | "errore">>({});
   const [impersonationToken, setImpersonationToken] = useState("");
@@ -482,6 +497,55 @@ export default function ClientePortalPage() {
   }, [progetti, scadenze]);
 
   const effectiveSettings = me?.settings || DEFAULT_PORTAL_SETTINGS;
+  const normalizedDashboardQuery = dashboardFilters.query.trim().toLowerCase();
+  const filteredProgetti = useMemo(() => {
+    return progetti.filter((progetto) => {
+      if (dashboardFilters.projectId !== "ALL" && progetto.id !== dashboardFilters.projectId) return false;
+      if (!normalizedDashboardQuery) return true;
+      const haystack = [
+        progetto.nome_checklist,
+        progetto.cliente,
+        progetto.stato_progetto,
+        ...(progetto.impianti || []).flatMap((impianto) => [
+          impianto.impianto_descrizione,
+          impianto.tipo_impianto,
+          impianto.dimensioni,
+          impianto.passo,
+        ]),
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+      return haystack.includes(normalizedDashboardQuery);
+    });
+  }, [dashboardFilters.projectId, normalizedDashboardQuery, progetti]);
+  const filteredScadenze = useMemo(() => {
+    return scadenze.filter((scadenza) => {
+      if (
+        dashboardFilters.projectId !== "ALL" &&
+        String(scadenza.checklist_id || "").trim() !== dashboardFilters.projectId
+      ) {
+        return false;
+      }
+      if (
+        dashboardFilters.scadenzaStato !== "TUTTE" &&
+        String(scadenza.stato || "").toUpperCase() !== dashboardFilters.scadenzaStato
+      ) {
+        return false;
+      }
+      if (!normalizedDashboardQuery) return true;
+      const haystack = [
+        scadenza.tipo,
+        scadenza.progetto,
+        scadenza.riferimento,
+        scadenza.source,
+      ]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+      return haystack.includes(normalizedDashboardQuery);
+    });
+  }, [dashboardFilters.projectId, dashboardFilters.scadenzaStato, normalizedDashboardQuery, scadenze]);
   const visibleSectionsCount = [
     effectiveSettings.show_progetti,
     effectiveSettings.show_scadenze,
@@ -831,17 +895,110 @@ export default function ClientePortalPage() {
               alignItems: "start",
             }}
           >
+          <div
+            style={{
+              gridColumn: "1 / -1",
+              border: "1px solid #e5e7eb",
+              borderRadius: 18,
+              background: "white",
+              padding: 16,
+              display: "grid",
+              gap: 12,
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+              <div>
+                <div style={{ fontSize: 16, fontWeight: 800, color: "#0f172a" }}>Filtri dashboard</div>
+                <div style={{ fontSize: 13, color: "#64748b" }}>
+                  Restringi progetti e scadenze del tuo perimetro senza ricaricare la pagina.
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setDashboardFilters(DEFAULT_DASHBOARD_FILTERS)}
+                style={{
+                  padding: "8px 12px",
+                  borderRadius: 10,
+                  border: "1px solid #cbd5e1",
+                  background: "white",
+                  color: "#0f172a",
+                  fontSize: 12,
+                  fontWeight: 700,
+                  cursor: "pointer",
+                }}
+              >
+                Reset filtri
+              </button>
+            </div>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
+                gap: 12,
+              }}
+            >
+              <label style={{ display: "grid", gap: 6, fontSize: 13, color: "#334155" }}>
+                <span style={{ fontWeight: 700 }}>Progetto</span>
+                <select
+                  value={dashboardFilters.projectId}
+                  onChange={(e) =>
+                    setDashboardFilters((prev) => ({ ...prev, projectId: e.target.value }))
+                  }
+                  style={{ width: "100%", padding: 10, borderRadius: 12, border: "1px solid #cbd5e1" }}
+                >
+                  <option value="ALL">Tutti i progetti</option>
+                  {progetti.map((progetto) => (
+                    <option key={progetto.id} value={progetto.id}>
+                      {progetto.nome_checklist || progetto.id}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label style={{ display: "grid", gap: 6, fontSize: 13, color: "#334155" }}>
+                <span style={{ fontWeight: 700 }}>Cerca</span>
+                <input
+                  value={dashboardFilters.query}
+                  onChange={(e) =>
+                    setDashboardFilters((prev) => ({ ...prev, query: e.target.value }))
+                  }
+                  placeholder="Progetto, impianto, riferimento..."
+                  style={{ width: "100%", padding: 10, borderRadius: 12, border: "1px solid #cbd5e1" }}
+                />
+              </label>
+              <label style={{ display: "grid", gap: 6, fontSize: 13, color: "#334155" }}>
+                <span style={{ fontWeight: 700 }}>Stato scadenze</span>
+                <select
+                  value={dashboardFilters.scadenzaStato}
+                  onChange={(e) =>
+                    setDashboardFilters((prev) => ({
+                      ...prev,
+                      scadenzaStato: e.target.value as DashboardPortalFilters["scadenzaStato"],
+                    }))
+                  }
+                  style={{ width: "100%", padding: 10, borderRadius: 12, border: "1px solid #cbd5e1" }}
+                >
+                  <option value="TUTTE">Tutte</option>
+                  <option value="IMMINENTE">Imminenti</option>
+                  <option value="SCADUTA">Scadute</option>
+                </select>
+              </label>
+            </div>
+            <div style={{ display: "flex", gap: 10, flexWrap: "wrap", fontSize: 12, color: "#64748b" }}>
+              <span>Progetti visibili: {filteredProgetti.length}</span>
+              <span>Scadenze visibili: {filteredScadenze.length}</span>
+            </div>
+          </div>
           {effectiveSettings.show_progetti
             ? sectionShell(
             "Progetti",
             "I progetti associati al tuo account cliente.",
             loading ? (
               <div style={{ fontSize: 14, color: "#64748b" }}>Caricamento progetti...</div>
-            ) : progetti.length === 0 ? (
+            ) : filteredProgetti.length === 0 ? (
               <div style={{ fontSize: 14, color: "#64748b" }}>Nessun progetto disponibile.</div>
             ) : (
               <div style={{ display: "grid", gap: 10 }}>
-                {progetti.map((progetto) => {
+                {filteredProgetti.map((progetto) => {
                   const projectInterventi = interventi.filter(
                     (item) => String(item.checklist_id || "").trim() === progetto.id
                   );
@@ -1076,11 +1233,11 @@ export default function ClientePortalPage() {
             "Licenze, rinnovi, garanzie e tagliandi del tuo perimetro.",
             loading ? (
               <div style={{ fontSize: 14, color: "#64748b" }}>Caricamento scadenze...</div>
-            ) : scadenze.length === 0 ? (
+            ) : filteredScadenze.length === 0 ? (
               <div style={{ fontSize: 14, color: "#64748b" }}>Nessuna scadenza disponibile.</div>
             ) : (
               <div style={{ display: "grid", gap: 10 }}>
-                {scadenze.map((scadenza) => (
+                {filteredScadenze.map((scadenza) => (
                   <div
                     key={scadenza.id}
                     style={{

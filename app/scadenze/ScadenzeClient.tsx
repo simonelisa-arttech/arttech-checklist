@@ -31,6 +31,10 @@ type ScadenzaAgendaRow = {
   fatturazione: string | null;
   note: string | null;
   raw_id: string | null;
+  lifecycle_status?: string | null;
+  lifecycle_source?: string | null;
+  confidence_score?: number | null;
+  origine_note?: string | null;
 };
 
 type FilterState = {
@@ -40,6 +44,7 @@ type FilterState = {
   progetto: string;
   tipo: string[];
   stato: string;
+  lifecycle: string;
 };
 
 type SortDirection = "asc" | "desc";
@@ -219,6 +224,41 @@ function renderWorkflowBadge(value?: string | null) {
   );
 }
 
+function renderLifecycleBadge(value?: string | null) {
+  const raw = String(value || "ATTIVO").toUpperCase();
+  let bg = "#dcfce7";
+  let color = "#166534";
+  if (raw === "PROPOSTO") {
+    bg = "#e0f2fe";
+    color = "#075985";
+  } else if (raw === "DA_VERIFICARE") {
+    bg = "#fef3c7";
+    color = "#92400e";
+  } else if (raw === "VERIFICATO" || raw === "APPROVATO") {
+    bg = "#ede9fe";
+    color = "#6d28d9";
+  } else if (raw === "SCADUTO" || raw === "STORICIZZATO") {
+    bg = "#f3f4f6";
+    color = "#374151";
+  }
+  return (
+    <span
+      style={{
+        display: "inline-block",
+        padding: "2px 8px",
+        borderRadius: 999,
+        fontSize: 12,
+        fontWeight: 700,
+        background: bg,
+        color,
+        whiteSpace: "nowrap",
+      }}
+    >
+      {raw}
+    </span>
+  );
+}
+
 const DEFAULT_FILTERS: FilterState = {
   from: "",
   to: "",
@@ -226,6 +266,7 @@ const DEFAULT_FILTERS: FilterState = {
   progetto: "",
   tipo: [],
   stato: "TUTTI",
+  lifecycle: "TUTTI",
 };
 
 const TIPO_OPTIONS = ["GARANZIA", "TAGLIANDO", "LICENZA", "SAAS", "RINNOVO"] as const;
@@ -261,9 +302,11 @@ export default function ScadenzeClient() {
   const [rows, setRows] = useState<ScadenzaAgendaRow[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
   const [scadenzaSort, setScadenzaSort] = useState<SortDirection>("asc");
   const [summaryFilter, setSummaryFilter] = useState<SummaryFilter>("all");
   const [hoveredRowId, setHoveredRowId] = useState<string | null>(null);
+  const [approvingRowId, setApprovingRowId] = useState<string | null>(null);
 
   useEffect(() => {
     const nextFilters = buildFiltersFromSearchParams(searchParams);
@@ -288,6 +331,11 @@ export default function ScadenzeClient() {
         if (appliedFilters.progetto.trim()) params.set("progetto", appliedFilters.progetto.trim());
         if (appliedFilters.tipo.length > 0) params.set("tipo", appliedFilters.tipo.join(","));
         if (appliedFilters.stato !== "TUTTI") params.set("stato", appliedFilters.stato);
+        if (appliedFilters.lifecycle === "NON_ATTIVO") {
+          params.set("lifecycle", "PROPOSTO,DA_VERIFICARE,VERIFICATO,APPROVATO,SCADUTO,STORICIZZATO");
+        } else if (appliedFilters.lifecycle !== "TUTTI") {
+          params.set("lifecycle", appliedFilters.lifecycle);
+        }
         const res = await fetch(`/api/scadenze${params.size ? `?${params.toString()}` : ""}`, {
           cache: "no-store",
           credentials: "include",
@@ -340,6 +388,21 @@ export default function ScadenzeClient() {
         return acc;
       },
       { total: 0, scadute: 0, entro7: 0, entro30: 0 }
+    );
+  }, [sortedRows]);
+
+  const lifecycleSummary = useMemo(() => {
+    return sortedRows.reduce(
+      (acc, row) => {
+        const lifecycle = String(row.lifecycle_status || "ATTIVO").toUpperCase();
+        acc.total += 1;
+        if (lifecycle === "ATTIVO") acc.attive += 1;
+        else acc.nonAttive += 1;
+        if (lifecycle === "PROPOSTO") acc.proposte += 1;
+        if (lifecycle === "DA_VERIFICARE") acc.daVerificare += 1;
+        return acc;
+      },
+      { total: 0, attive: 0, nonAttive: 0, proposte: 0, daVerificare: 0 }
     );
   }, [sortedRows]);
 
@@ -400,12 +463,45 @@ export default function ScadenzeClient() {
     setAppliedFilters(nextFilters);
   }
 
+  async function approveRow(row: ScadenzaAgendaRow) {
+    if (!row.raw_id) return;
+    setApprovingRowId(row.id);
+    setActionError(null);
+    try {
+      const res = await fetch("/api/scadenze/approva", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          origine: row.origine,
+          raw_id: row.raw_id,
+          lifecycle_status: "ATTIVO",
+        }),
+      });
+      const json = await res.json().catch(() => ({} as any));
+      if (!res.ok || !json?.ok) {
+        throw new Error(json?.error || "Errore approvazione scadenza");
+      }
+      setRows((prev) =>
+        appliedFilters.lifecycle === "NON_ATTIVO"
+          ? prev.filter((item) => item.id !== row.id)
+          : prev.map((item) =>
+              item.id === row.id ? { ...item, lifecycle_status: "ATTIVO" } : item
+            )
+      );
+    } catch (err: any) {
+      setActionError(err?.message || "Errore approvazione scadenza");
+    } finally {
+      setApprovingRowId(null);
+    }
+  }
+
   return (
     <div style={{ maxWidth: 1500, margin: "24px auto", padding: 16 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-        <div>
-          <h1 style={{ margin: 0, fontSize: 34 }}>AT SYSTEM</h1>
-          <div style={{ marginTop: 2, fontSize: 12, opacity: 0.7 }}>SCADENZE</div>
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <div>
+            <h1 style={{ margin: 0, fontSize: 34 }}>AT SYSTEM</h1>
+            <div style={{ marginTop: 2, fontSize: 12, opacity: 0.7 }}>SCADENZE / VERIFICA LIFECYCLE</div>
         </div>
       </div>
 
@@ -421,7 +517,7 @@ export default function ScadenzeClient() {
           borderRadius: 12,
           background: "white",
           display: "grid",
-          gridTemplateColumns: "repeat(5, minmax(0, 1fr)) auto auto",
+          gridTemplateColumns: "repeat(6, minmax(0, 1fr)) auto auto",
           gap: 12,
           alignItems: "end",
         }}
@@ -472,6 +568,20 @@ export default function ScadenzeClient() {
             <option value="TUTTI">TUTTI</option>
             <option value="DA_AVVISARE">DA_AVVISARE</option>
             <option value="SCADUTO">SCADUTO</option>
+          </select>
+        </label>
+        <label>
+          Lifecycle<br />
+          <select
+            value={filters.lifecycle}
+            onChange={(e) => setFilters((prev) => ({ ...prev, lifecycle: e.target.value }))}
+            style={{ width: "100%", padding: 10 }}
+          >
+            <option value="TUTTI">TUTTI</option>
+            <option value="NON_ATTIVO">DA VERIFICARE</option>
+            <option value="ATTIVO">ATTIVO</option>
+            <option value="DA_VERIFICARE">SOLO DA_VERIFICARE</option>
+            <option value="PROPOSTO">SOLO PROPOSTO</option>
           </select>
         </label>
         <button
@@ -597,6 +707,21 @@ export default function ScadenzeClient() {
         </div>
       )}
 
+      {actionError && (
+        <div
+          style={{
+            marginTop: 12,
+            padding: "10px 12px",
+            borderRadius: 10,
+            border: "1px solid #fecaca",
+            background: "#fef2f2",
+            color: "#991b1b",
+          }}
+        >
+          {actionError}
+        </div>
+      )}
+
       <div
         style={{
           marginTop: 14,
@@ -640,6 +765,52 @@ export default function ScadenzeClient() {
 
       <div
         style={{
+          marginTop: 10,
+          padding: "10px 12px",
+          borderRadius: 10,
+          border: "1px solid #e5e7eb",
+          background: "white",
+          display: "flex",
+          gap: 8,
+          flexWrap: "wrap",
+        }}
+      >
+        {[
+          { label: "Tutte", value: lifecycleSummary.total, filter: "TUTTI" },
+          { label: "Da verificare", value: lifecycleSummary.nonAttive, filter: "NON_ATTIVO" },
+          { label: "Attive", value: lifecycleSummary.attive, filter: "ATTIVO" },
+          { label: "Solo proposte", value: lifecycleSummary.proposte, filter: "PROPOSTO" },
+          { label: "Solo DA_VERIFICARE", value: lifecycleSummary.daVerificare, filter: "DA_VERIFICARE" },
+        ].map((item) => {
+          const active = filters.lifecycle === item.filter;
+          return (
+            <button
+              key={item.filter}
+              type="button"
+              onClick={() => {
+                const next = { ...filters, lifecycle: item.filter };
+                setFilters(next);
+                setAppliedFilters(next);
+              }}
+              style={{
+                padding: "6px 10px",
+                borderRadius: 999,
+                border: active ? "1px solid #111" : "1px solid #ddd",
+                background: active ? "#111" : "white",
+                color: active ? "white" : "inherit",
+                cursor: "pointer",
+                fontSize: 13,
+                fontWeight: 600,
+              }}
+            >
+              {item.label}: {item.value}
+            </button>
+          );
+        })}
+      </div>
+
+      <div
+        style={{
           marginTop: 14,
           border: "1px solid #eee",
           borderRadius: 12,
@@ -647,13 +818,13 @@ export default function ScadenzeClient() {
           background: "white",
         }}
       >
-        <table style={{ width: "100%", minWidth: 980, borderCollapse: "collapse", tableLayout: "fixed" }}>
+        <table style={{ width: "100%", minWidth: 1180, borderCollapse: "collapse", tableLayout: "fixed" }}>
           <colgroup>
-            <col style={{ width: "17%" }} />
-            <col style={{ width: "29%" }} />
-            <col style={{ width: "22%" }} />
-            <col style={{ width: "14%" }} />
-            <col style={{ width: "18%" }} />
+            <col style={{ width: "15%" }} />
+            <col style={{ width: "25%" }} />
+            <col style={{ width: "20%" }} />
+            <col style={{ width: "20%" }} />
+            <col style={{ width: "20%" }} />
           </colgroup>
           <thead>
             <tr style={{ textAlign: "left", fontSize: 12, opacity: 0.7 }}>
@@ -690,7 +861,7 @@ export default function ScadenzeClient() {
                 Cliente / progetto
               </th>
               <th style={{ padding: "12px 12px" }}>Tipo scadenza</th>
-              <th style={{ padding: "12px 12px" }}>Stato</th>
+              <th style={{ padding: "12px 12px" }}>Workflow / lifecycle</th>
               <th style={{ padding: "12px 12px" }}>Azioni</th>
             </tr>
           </thead>
@@ -784,7 +955,17 @@ export default function ScadenzeClient() {
                   </div>
                 </td>
                 <td style={{ padding: "12px 12px", verticalAlign: "top" }}>
-                  {renderWorkflowBadge(row.workflow_stato)}
+                  <div style={{ display: "grid", gap: 6 }}>
+                    <div>{renderWorkflowBadge(row.workflow_stato)}</div>
+                    <div>{renderLifecycleBadge(row.lifecycle_status)}</div>
+                    {row.lifecycle_source || row.confidence_score != null || row.origine_note ? (
+                      <div style={{ fontSize: 11, color: "#64748b", lineHeight: 1.4 }}>
+                        {row.lifecycle_source ? `Source: ${row.lifecycle_source}` : "Source: —"}
+                        {row.confidence_score != null ? ` • Confidence: ${row.confidence_score}` : ""}
+                        {row.origine_note ? ` • ${row.origine_note}` : ""}
+                      </div>
+                    ) : null}
+                  </div>
                 </td>
                 <td style={{ padding: "12px 12px", verticalAlign: "top" }}>
                   <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
@@ -822,6 +1003,28 @@ export default function ScadenzeClient() {
                     >
                       Apri progetto
                     </Link>
+                  ) : null}
+                  {(row.origine === "rinnovi_servizi" || row.origine === "tagliandi") &&
+                  row.raw_id &&
+                  String(row.lifecycle_status || "ATTIVO").toUpperCase() !== "ATTIVO" ? (
+                    <button
+                      type="button"
+                      disabled={approvingRowId === row.id}
+                      onClick={() => approveRow(row)}
+                      style={{
+                        display: "inline-block",
+                        padding: "6px 10px",
+                        borderRadius: 8,
+                        border: "1px solid #16a34a",
+                        background: approvingRowId === row.id ? "#dcfce7" : "#f0fdf4",
+                        color: "#166534",
+                        whiteSpace: "nowrap",
+                        cursor: approvingRowId === row.id ? "default" : "pointer",
+                        fontWeight: 700,
+                      }}
+                    >
+                      {approvingRowId === row.id ? "Approvo..." : "Approva"}
+                    </button>
                   ) : null}
                   </div>
                 </td>
