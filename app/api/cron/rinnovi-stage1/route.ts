@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { buildClienteEmailList } from "@/lib/clientiEmail";
 import { sendEmail } from "@/lib/email";
+import { isLifecycleAttivo, isMissingLifecycleStatusColumnError } from "@/lib/lifecycleStatus";
 import { RENEWAL_ALERT_PROGRESSIVE_DAYS } from "@/lib/renewalAlertRules";
 import {
   expandScadenzaAlertGlobalRuleRows,
@@ -21,6 +22,7 @@ type RinnovoRow = {
   checklist_id: string | null;
   scadenza: string | null;
   stato: string | null;
+  lifecycle_status?: string | null;
   proforma: string | null;
   cod_magazzino: string | null;
   notify_stage1_sent_at?: string | null;
@@ -213,25 +215,41 @@ export async function GET(request: Request) {
 
   const supabase = createClient(supabaseUrl, supabaseKey);
   const selectWithClienteId =
-    "id, cliente, cliente_id, item_tipo, riferimento, descrizione, checklist_id, scadenza, stato, proforma, cod_magazzino, notify_stage1_sent_at, checklists:checklist_id(id, cliente_id, nome_checklist, proforma, magazzino_importazione)";
+    "id, cliente, cliente_id, item_tipo, riferimento, descrizione, checklist_id, scadenza, stato, lifecycle_status, proforma, cod_magazzino, notify_stage1_sent_at, checklists:checklist_id(id, cliente_id, nome_checklist, proforma, magazzino_importazione)";
   const selectWithoutClienteId =
-    "id, cliente, item_tipo, riferimento, descrizione, checklist_id, scadenza, stato, proforma, cod_magazzino, notify_stage1_sent_at, checklists:checklist_id(id, cliente_id, nome_checklist, proforma, magazzino_importazione)";
+    "id, cliente, item_tipo, riferimento, descrizione, checklist_id, scadenza, stato, lifecycle_status, proforma, cod_magazzino, notify_stage1_sent_at, checklists:checklist_id(id, cliente_id, nome_checklist, proforma, magazzino_importazione)";
+  const selectWithClienteIdFallback = stripSelectColumn(selectWithClienteId, "lifecycle_status");
+  const selectWithoutClienteIdFallback = stripSelectColumn(selectWithoutClienteId, "lifecycle_status");
 
   let rinnovi: RinnovoRow[] | null = null;
   let rinnoviErr: { message: string } | null = null;
 
-  const withIdRes = await supabase
+  let withIdRes: any = await supabase
     .from("rinnovi_servizi")
     .select(selectWithClienteId)
     .in("stato", ["DA_AVVISARE", "AVVISATO"])
     .order("scadenza", { ascending: true });
+  if (withIdRes.error && isMissingLifecycleStatusColumnError(withIdRes.error)) {
+    withIdRes = await supabase
+      .from("rinnovi_servizi")
+      .select(selectWithClienteIdFallback)
+      .in("stato", ["DA_AVVISARE", "AVVISATO"])
+      .order("scadenza", { ascending: true });
+  }
 
   if (withIdRes.error && withIdRes.error.message.includes("cliente_id")) {
-    const withoutIdRes = await supabase
+    let withoutIdRes: any = await supabase
       .from("rinnovi_servizi")
       .select(selectWithoutClienteId)
       .in("stato", ["DA_AVVISARE", "AVVISATO"])
       .order("scadenza", { ascending: true });
+    if (withoutIdRes.error && isMissingLifecycleStatusColumnError(withoutIdRes.error)) {
+      withoutIdRes = await supabase
+        .from("rinnovi_servizi")
+        .select(selectWithoutClienteIdFallback)
+        .in("stato", ["DA_AVVISARE", "AVVISATO"])
+        .order("scadenza", { ascending: true });
+    }
     rinnovi = (withoutIdRes.data ?? []) as unknown as RinnovoRow[];
     rinnoviErr = withoutIdRes.error ? { message: withoutIdRes.error.message } : null;
   } else {
@@ -243,7 +261,7 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: rinnoviErr.message }, { status: 500 });
   }
 
-  const rows = (rinnovi || []).filter((r: RinnovoRow) => r.scadenza);
+  const rows = (rinnovi || []).filter((r: RinnovoRow) => r.scadenza && isLifecycleAttivo(r.lifecycle_status));
   if (rows.length === 0) {
     return NextResponse.json({ processedClients: 0, processedRows: 0 });
   }

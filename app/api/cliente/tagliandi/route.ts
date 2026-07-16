@@ -2,6 +2,7 @@ export const runtime = "nodejs";
 
 import { NextResponse } from "next/server";
 import { resolveClientePortalAuth } from "@/lib/clientePortalAuth";
+import { isLifecycleAttivo, isMissingLifecycleStatusColumnError } from "@/lib/lifecycleStatus";
 
 function parseLocalDay(value?: string | null) {
   if (!value) return null;
@@ -68,16 +69,33 @@ export async function GET(request: Request) {
     ])
   );
 
-  const { data: tagliandiRows, error: tagliandiErr } = await auth.adminClient
+  let tagliandiRows: any[] = [];
+  const withLifecycle = await auth.adminClient
     .from("tagliandi")
-    .select("id, checklist_id, modalita, note, scadenza, stato, created_at")
+    .select("id, checklist_id, modalita, note, scadenza, stato, created_at, lifecycle_status")
     .in("checklist_id", checklistIds)
     .order("scadenza", { ascending: true })
     .order("created_at", { ascending: true });
 
-  if (tagliandiErr) {
-    return NextResponse.json({ error: tagliandiErr.message }, { status: 500 });
+  if (withLifecycle.error && !isMissingLifecycleStatusColumnError(withLifecycle.error)) {
+    return NextResponse.json({ error: withLifecycle.error.message }, { status: 500 });
   }
+  if (withLifecycle.error && isMissingLifecycleStatusColumnError(withLifecycle.error)) {
+    const fallback = await auth.adminClient
+      .from("tagliandi")
+      .select("id, checklist_id, modalita, note, scadenza, stato, created_at")
+      .in("checklist_id", checklistIds)
+      .order("scadenza", { ascending: true })
+      .order("created_at", { ascending: true });
+    if (fallback.error) {
+      return NextResponse.json({ error: fallback.error.message }, { status: 500 });
+    }
+    tagliandiRows = (fallback.data || []) as any[];
+  } else {
+    tagliandiRows = (withLifecycle.data || []) as any[];
+  }
+
+  const visibleTagliandi = tagliandiRows.filter((row) => isLifecycleAttivo(row?.lifecycle_status));
 
   return NextResponse.json({
     ok: true,
@@ -86,7 +104,7 @@ export async function GET(request: Request) {
       email: auth.cliente.email,
       attivo: auth.cliente.attivo,
     },
-    tagliandi: (tagliandiRows || []).map((row: any) => {
+    tagliandi: visibleTagliandi.map((row: any) => {
       const checklistId = String(row?.checklist_id || "").trim() || null;
       return {
         id: String(row?.id || ""),

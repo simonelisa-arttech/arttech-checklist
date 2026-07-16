@@ -2,6 +2,7 @@ export const runtime = "nodejs";
 
 import { NextResponse } from "next/server";
 import { resolveClientePortalAuth } from "@/lib/clientePortalAuth";
+import { isLifecycleAttivo, isMissingLifecycleStatusColumnError } from "@/lib/lifecycleStatus";
 
 function parseLocalDay(value?: string | null) {
   if (!value) return null;
@@ -72,15 +73,31 @@ export async function GET(request: Request) {
     ])
   );
 
-  const { data: rinnoviRows, error: rinnoviErr } = await auth.adminClient
+  let rinnoviRows: any[] = [];
+  const withLifecycle = await auth.adminClient
     .from("rinnovi_servizi")
-    .select("id, checklist_id, item_tipo, subtipo, descrizione, scadenza, stato")
+    .select("id, checklist_id, item_tipo, subtipo, descrizione, scadenza, stato, lifecycle_status")
     .in("checklist_id", checklistIds)
     .order("scadenza", { ascending: true });
 
-  if (rinnoviErr) {
-    return NextResponse.json({ error: rinnoviErr.message }, { status: 500 });
+  if (withLifecycle.error && !isMissingLifecycleStatusColumnError(withLifecycle.error)) {
+    return NextResponse.json({ error: withLifecycle.error.message }, { status: 500 });
   }
+  if (withLifecycle.error && isMissingLifecycleStatusColumnError(withLifecycle.error)) {
+    const fallback = await auth.adminClient
+      .from("rinnovi_servizi")
+      .select("id, checklist_id, item_tipo, subtipo, descrizione, scadenza, stato")
+      .in("checklist_id", checklistIds)
+      .order("scadenza", { ascending: true });
+    if (fallback.error) {
+      return NextResponse.json({ error: fallback.error.message }, { status: 500 });
+    }
+    rinnoviRows = (fallback.data || []) as any[];
+  } else {
+    rinnoviRows = (withLifecycle.data || []) as any[];
+  }
+
+  const visibleRinnovi = rinnoviRows.filter((row) => isLifecycleAttivo(row?.lifecycle_status));
 
   return NextResponse.json({
     ok: true,
@@ -89,7 +106,7 @@ export async function GET(request: Request) {
       email: auth.cliente.email,
       attivo: auth.cliente.attivo,
     },
-    rinnovi: (rinnoviRows || []).map((row: any) => {
+    rinnovi: visibleRinnovi.map((row: any) => {
       const checklistId = String(row?.checklist_id || "").trim() || null;
       return {
         id: String(row?.id || ""),

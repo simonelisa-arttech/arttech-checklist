@@ -107,7 +107,11 @@ export async function GET(request: Request) {
 
   let scadenzeRows: ScadenzaAgendaRow[];
   try {
-    scadenzeRows = await buildScadenzeAgenda(supabase, { from: todayIso, to: toIso });
+    scadenzeRows = await buildScadenzeAgenda(supabase, {
+      from: todayIso,
+      to: toIso,
+      lifecycle: "ATTIVO",
+    });
   } catch (err: any) {
     return NextResponse.json(
       { error: err?.message || "Errore caricamento agenda scadenze" },

@@ -23,6 +23,7 @@ export const runtime = "nodejs";
  */
 
 import { NextResponse } from "next/server";
+import { isLifecycleAttivo, isMissingLifecycleStatusColumnError } from "@/lib/lifecycleStatus";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 
 // ── Rate limit ───────────────────────────────────────────────────────────────
@@ -272,11 +273,24 @@ export async function GET(request: Request) {
   const checklistIds = checklists.map((r: any) => String(r.id || "")).filter(Boolean);
 
   // ── rinnovi_servizi ──────────────────────────────────────────────────────
-  const { data: rinnovi } = await db
+  let rinnovi: any[] = [];
+  const rinnoviWithLifecycle = await db
     .from("rinnovi_servizi")
-    .select("id, checklist_id, item_tipo, subtipo, scadenza")
+    .select("id, checklist_id, item_tipo, subtipo, scadenza, lifecycle_status")
     .in("checklist_id", checklistIds)
     .order("scadenza", { ascending: false });
+  if (!rinnoviWithLifecycle.error) {
+    rinnovi = ((rinnoviWithLifecycle.data || []) as any[]).filter((row) =>
+      isLifecycleAttivo(row?.lifecycle_status)
+    );
+  } else if (isMissingLifecycleStatusColumnError(rinnoviWithLifecycle.error)) {
+    const fallback = await db
+      .from("rinnovi_servizi")
+      .select("id, checklist_id, item_tipo, subtipo, scadenza")
+      .in("checklist_id", checklistIds)
+      .order("scadenza", { ascending: false });
+    if (fallback.data?.length) rinnovi = fallback.data as any[];
+  }
 
   // ── saas_contratti cliente-wide ──────────────────────────────────────────
   // Nota: il campo FK su saas_contratti si chiama "cliente" (non "cliente_id")
