@@ -143,6 +143,9 @@ export default function AppShellHeader() {
               <Link href="/assistenza" style={dropdownLinkStyle} onClick={closeDropdownOnNavigation}>
                 Assistenza (ticket)
               </Link>
+              <Link href="/scadenze-servizi" style={dropdownLinkStyle} onClick={closeDropdownOnNavigation}>
+                Scadenze servizi
+              </Link>
               <Link href="/sim" style={dropdownLinkStyle} onClick={closeDropdownOnNavigation}>
                 SIM
               </Link>
