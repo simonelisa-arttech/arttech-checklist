@@ -17,6 +17,10 @@ import {
   normalizeEmailSecondarieInput,
 } from "@/lib/clientiEmail";
 import {
+  calcolaConsumoInterventiContratto,
+  formatConsumoInterventiContratto,
+} from "@/lib/contratti/consumoInterventi";
+import {
   getCanonicalInterventoEsitoFatturazione,
   getInterventoLifecycleStatus,
   normalizeInterventoEsitoFatturazioneValue,
@@ -923,6 +927,8 @@ type ContrattoRow = {
   id: string;
   cliente: string;
   piano_codice: string | null;
+  data_inizio: string | null;
+  data_fine: string | null;
   scadenza: string | null;
   interventi_annui: number | null;
   illimitati: boolean | null;
@@ -1099,6 +1105,7 @@ export default function ClientePage({
   const [ultraPiani, setUltraPiani] = useState<PianoUltraRow[]>([]);
   const [contrattoForm, setContrattoForm] = useState({
     piano_codice: "",
+    data_inizio: "",
     scadenza: "",
     interventi_annui: "",
     illimitati: false,
@@ -3726,21 +3733,29 @@ export default function ClientePage({
     return alertOperatori.find((o) => o.id === currentOperatoreId) ?? null;
   }, [alertOperatori, currentOperatoreId]);
 
-  const interventiInclusiUsati = useMemo(() => {
-    return interventi.filter((i) => i.incluso).length;
-  }, [interventi]);
-
-  const interventiTotali = useMemo(() => {
-    if (!contratto) return null;
-    if (contratto.illimitati) return null;
-    const val = contratto.interventi_annui;
-    return val == null ? null : Number(val);
-  }, [contratto]);
-
-  const interventiResidui = useMemo(() => {
-    if (interventiTotali == null) return null;
-    return Math.max(0, interventiTotali - interventiInclusiUsati);
-  }, [interventiTotali, interventiInclusiUsati]);
+  const consumoInterventiContratto = useMemo(
+    () =>
+      calcolaConsumoInterventiContratto({
+        contratto,
+        interventi,
+      }),
+    [contratto, interventi]
+  );
+  const interventiInclusiUsati = consumoInterventiContratto.usati ?? 0;
+  const interventiInclusiUsatiLabel =
+    consumoInterventiContratto.stato === "PERIODO_NON_IMPOSTATO"
+      ? "—"
+      : String(consumoInterventiContratto.usati ?? 0);
+  const interventiTotali = consumoInterventiContratto.illimitati
+    ? null
+    : consumoInterventiContratto.totale;
+  const interventiResidui = consumoInterventiContratto.residui;
+  const interventiInclusiSummaryOverride =
+    !contratto
+      ? " / Totale inclusi: —"
+      : consumoInterventiContratto.stato === "PERIODO_NON_IMPOSTATO"
+      ? " / Periodo non impostato"
+      : null;
 
   const ultraCoverageByChecklist = useMemo(() => {
     const byChecklist = new Map<string, { total: number; unlimited: boolean }>();
@@ -3854,7 +3869,7 @@ export default function ClientePage({
     return runSingleFlight(`saas_contratti.select:${key.toLowerCase()}`, async () => {
       perfCountDb("saas_contratti.select");
       const { data: contrattiData, error: contrattiErr } = await dbFrom("saas_contratti")
-        .select("id, cliente, piano_codice, scadenza, interventi_annui, illimitati, created_at")
+        .select("id, cliente, piano_codice, data_inizio, data_fine, scadenza, interventi_annui, illimitati, created_at")
         .eq("cliente", key)
         .order("created_at", { ascending: false });
 
@@ -3881,13 +3896,15 @@ export default function ClientePage({
       if (active) {
         setContrattoForm({
           piano_codice: active.piano_codice ?? "",
-          scadenza: active.scadenza ?? "",
+          data_inizio: active.data_inizio ?? "",
+          scadenza: active.scadenza ?? active.data_fine ?? "",
           interventi_annui: active.interventi_annui != null ? String(active.interventi_annui) : "",
           illimitati: Boolean(active.illimitati),
         });
       } else {
         setContrattoForm({
           piano_codice: "",
+          data_inizio: "",
           scadenza: "",
           interventi_annui: "",
           illimitati: false,
@@ -3919,6 +3936,10 @@ export default function ClientePage({
       setContrattoError("Seleziona un Piano ULTRA prima di salvare.");
       return;
     }
+    if (!contrattoForm.data_inizio.trim()) {
+      setContrattoError("Imposta la data inizio del periodo ULTRA prima di salvare.");
+      return;
+    }
 
     const interventiAnnui = contrattoForm.illimitati
       ? null
@@ -3938,6 +3959,8 @@ export default function ClientePage({
       piano_codice: contrattoForm.piano_codice.trim()
         ? contrattoForm.piano_codice.trim()
         : null,
+      data_inizio: contrattoForm.data_inizio.trim() ? contrattoForm.data_inizio.trim() : null,
+      data_fine: contrattoForm.scadenza.trim() ? contrattoForm.scadenza.trim() : null,
       scadenza: contrattoForm.scadenza.trim() ? contrattoForm.scadenza.trim() : null,
       interventi_annui: interventiAnnui,
       illimitati: contrattoForm.illimitati,
@@ -3948,7 +3971,7 @@ export default function ClientePage({
       const { data, error: updErr } = await dbFrom("saas_contratti")
         .update(payload)
         .eq("id", contratto.id)
-        .select("id, cliente, piano_codice, scadenza, interventi_annui, illimitati, created_at")
+        .select("id, cliente, piano_codice, data_inizio, data_fine, scadenza, interventi_annui, illimitati, created_at")
         .single();
 
       if (updErr) {
@@ -3960,7 +3983,7 @@ export default function ClientePage({
     } else {
       const { data, error: insErr } = await dbFrom("saas_contratti")
         .insert(payload)
-        .select("id, cliente, piano_codice, scadenza, interventi_annui, illimitati, created_at")
+        .select("id, cliente, piano_codice, data_inizio, data_fine, scadenza, interventi_annui, illimitati, created_at")
         .single();
 
       if (insErr) {
@@ -4087,11 +4110,14 @@ export default function ClientePage({
     if (newIntervento.incluso) {
       const checklistId = String(newIntervento.checklistId || "");
       const projectCap = ultraCoverageByChecklist.get(checklistId);
+      const consumoProgetto = calcolaConsumoInterventiContratto({
+        contratto,
+        interventi,
+        checklistId,
+      });
       if (projectCap !== undefined && projectCap !== null) {
-        const usedOnProject = interventi.filter(
-          (i) => i.incluso && String(i.checklist_id || "") === checklistId
-        ).length;
-        if (usedOnProject >= projectCap) {
+        const usedOnProject = consumoProgetto.usati;
+        if (consumoProgetto.stato === "OK" && usedOnProject != null && usedOnProject >= projectCap) {
           inclusoToSave = false;
           setInterventiInfo(
             `Interventi inclusi terminati sul progetto (${usedOnProject}/${projectCap}) → registrato come EXTRA`
@@ -4102,6 +4128,7 @@ export default function ClientePage({
         contratto &&
         !contratto.illimitati &&
         interventiTotali != null &&
+        consumoInterventiContratto.stato === "OK" &&
         interventiInclusiUsati >= interventiTotali
       ) {
         // fallback legacy cliente-wide
@@ -5124,6 +5151,7 @@ export default function ClientePage({
         const { error } = await dbFrom("saas_contratti")
           .update({
             scadenza: editScadenzaForm.scadenza || null,
+            data_fine: editScadenzaForm.scadenza || null,
           })
           .eq("id", contrattoId);
         if (error) throw new Error(error.message);
@@ -5133,6 +5161,7 @@ export default function ClientePage({
               ? {
                   ...c,
                   scadenza: editScadenzaForm.scadenza || null,
+                  data_fine: editScadenzaForm.scadenza || null,
                 }
               : c
           )
@@ -5143,6 +5172,7 @@ export default function ClientePage({
               ? {
                   ...prev,
                   scadenza: editScadenzaForm.scadenza || null,
+                  data_fine: editScadenzaForm.scadenza || null,
                 }
               : prev
           );
@@ -6111,14 +6141,16 @@ export default function ClientePage({
     if (r.source === "saas_contratto") {
       const contrattoId = r.contratto_id ?? String(r.id || "").replace("saas_contratto:", "");
       const { error } = await dbFrom("saas_contratti")
-        .update({ scadenza: newDate })
+        .update({ scadenza: newDate, data_fine: newDate })
         .eq("id", contrattoId);
       if (error) {
         setRinnoviError("Errore aggiornamento scadenza SAAS_ULTRA: " + error.message);
         return false;
       }
       setContrattiRows((prev) =>
-        prev.map((c) => (String(c.id) === String(contrattoId) ? { ...c, scadenza: newDate } : c))
+        prev.map((c) =>
+          String(c.id) === String(contrattoId) ? { ...c, scadenza: newDate, data_fine: newDate } : c
+        )
       );
       return true;
     }
@@ -6961,14 +6993,31 @@ ${rinnovi30ggBreakdown.debugSample
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
             <div style={{ fontSize: 12, opacity: 0.7 }}>SAAS Cliente (ULTRA)</div>
             {contratto && (
-              <div style={{ fontSize: 12, opacity: 0.7 }}>
-                Attivo: {contratto.piano_codice ?? "—"}
+              <div style={{ display: "inline-flex", alignItems: "center", gap: 8, fontSize: 12 }}>
+                <span
+                  style={{
+                    border: "1px solid #e9d5ff",
+                    background: "#faf5ff",
+                    color: "#7e22ce",
+                    borderRadius: 999,
+                    padding: "2px 8px",
+                    fontWeight: 800,
+                  }}
+                >
+                  CARE ULTRA attivo
+                </span>
+                <span style={{ opacity: 0.7 }}>Attivo: {contratto.piano_codice ?? "—"}</span>
               </div>
             )}
           </div>
           <div style={{ marginTop: 4, fontSize: 12, opacity: 0.7 }}>
             Condizioni SAAS ULTRA
           </div>
+          {contratto ? (
+            <div style={{ marginTop: 6, fontSize: 13, fontWeight: 700, color: "#334155" }}>
+              {formatConsumoInterventiContratto(consumoInterventiContratto)}
+            </div>
+          ) : null}
 
           {contrattoError && (
             <div style={{ marginTop: 6, color: "crimson", fontSize: 12 }}>{contrattoError}</div>
@@ -7002,6 +7051,16 @@ ${rinnovi30ggBreakdown.debugSample
                   </option>
                 ))}
               </select>
+            </label>
+
+            <label>
+              Data inizio<br />
+              <input
+                type="date"
+                value={contrattoForm.data_inizio}
+                onChange={(e) => setContrattoForm({ ...contrattoForm, data_inizio: e.target.value })}
+                style={{ width: "100%", padding: 8 }}
+              />
             </label>
 
             <label>
@@ -8176,9 +8235,10 @@ ${rinnovi30ggBreakdown.debugSample
               alertNotice={alertNotice}
               setInterventiNotice={setInterventiInfo}
               includedUsed={interventiInclusiUsati}
+              includedUsedLabel={interventiInclusiUsatiLabel}
               includedTotal={contratto ? interventiTotali : null}
               includedResidual={contratto ? interventiResidui : null}
-              includedSummaryOverride={!contratto ? " / Totale inclusi: —" : null}
+              includedSummaryOverride={interventiInclusiSummaryOverride}
               attachmentCounts={new Map(
                 Array.from(interventoFilesById.entries()).map(([id, files]) => [id, files.length])
               )}

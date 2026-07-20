@@ -23,6 +23,8 @@ export const runtime = "nodejs";
  */
 
 import { NextResponse } from "next/server";
+import { calcolaConsumoInterventiContratto } from "@/lib/contratti/consumoInterventi";
+import type { InterventoRow } from "@/lib/interventi";
 import { isLifecycleAttivo, isMissingLifecycleStatusColumnError } from "@/lib/lifecycleStatus";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 
@@ -296,11 +298,27 @@ export async function GET(request: Request) {
   // Nota: il campo FK su saas_contratti si chiama "cliente" (non "cliente_id")
   let contrattiRows: any[] = [];
   if (clienteId) {
-    const { data: contratti } = await db
+    let { data: contratti, error: contrattiError } = await db
       .from("saas_contratti")
-      .select("id, cliente, piano_codice, scadenza, interventi_annui, illimitati")
+      .select("id, cliente, piano_codice, scadenza, interventi_annui, illimitati, data_inizio, data_fine")
       .eq("cliente", clienteId)
       .order("scadenza", { ascending: false });
+
+    const msg = String(contrattiError?.message || "").toLowerCase();
+    if (
+      contrattiError &&
+      (msg.includes("data_inizio") || msg.includes("data_fine")) &&
+      (msg.includes("does not exist") || msg.includes("schema cache") || msg.includes("column"))
+    ) {
+      const retry = await db
+        .from("saas_contratti")
+        .select("id, cliente, piano_codice, scadenza, interventi_annui, illimitati")
+        .eq("cliente", clienteId)
+        .order("scadenza", { ascending: false });
+      contratti = (retry.data || []).map((row: any) => ({ ...row, data_inizio: null, data_fine: null }));
+      contrattiError = retry.error;
+    }
+
     if (contratti?.length) contrattiRows = contratti as any[];
   }
 
@@ -311,11 +329,17 @@ export async function GET(request: Request) {
     .in("checklist_id", checklistIds)
     .order("position", { ascending: true });
 
+  const { data: interventiRows } = await db
+    .from("saas_interventi")
+    .select("id, checklist_id, data, incluso, created_at")
+    .in("checklist_id", checklistIds);
+
   // ── Determina tier ────────────────────────────────────────────────────────
   let tier: SupportTier = "expired";
   let saasExpiry: string | null = null;
   let saasLabel: string | null = null;
   let oreResidueContratto: number | null = null;
+  let consumoPeriodoStato: string | null = null;
 
   // Priorità 1: saas_contratti cliente-wide attivi
   const activeContratto = (contrattiRows).find((c: any) => isDateActive(c.scadenza));
@@ -325,9 +349,12 @@ export async function GET(request: Request) {
       tier = t;
       saasExpiry = activeContratto.scadenza ?? null;
       saasLabel = TIER_LABEL[t];
-      if (typeof activeContratto.interventi_annui === "number" && !activeContratto.illimitati) {
-        oreResidueContratto = activeContratto.interventi_annui;
-      }
+      const consumo = calcolaConsumoInterventiContratto({
+        contratto: activeContratto,
+        interventi: ((interventiRows || []) as InterventoRow[]) || [],
+      });
+      consumoPeriodoStato = consumo.stato;
+      oreResidueContratto = consumo.residui;
     }
   }
 
@@ -430,6 +457,7 @@ export async function GET(request: Request) {
       saas_expiry: saasExpiry,
       saas_type: saasLabel,
       ore_residue: oreResidueContratto,
+      interventi_periodo_stato: consumoPeriodoStato,
       matched_via: matchedVia,
       whatsapp,
       referente_tecnico: referenteTecnico,

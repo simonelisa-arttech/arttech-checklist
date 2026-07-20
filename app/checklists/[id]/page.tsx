@@ -50,6 +50,10 @@ import { removeImpiantoCover } from "@/lib/coverStorage";
 import { sendAlert } from "@/lib/sendAlert";
 import { calcM2FromDimensioni } from "@/lib/parseDimensioni";
 import {
+  calcolaConsumoInterventiContratto,
+  formatConsumoInterventiContratto,
+} from "@/lib/contratti/consumoInterventi";
+import {
   isHttpUrl,
   isMissingMagazzinoDriveColumnError,
   splitMagazzinoFields,
@@ -741,6 +745,8 @@ type ContrattoRow = {
   id: string;
   cliente: string;
   piano_codice: string | null;
+  data_inizio: string | null;
+  data_fine: string | null;
   scadenza: string | null;
   interventi_annui: number | null;
   illimitati: boolean | null;
@@ -2428,10 +2434,26 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
   const [rinnoviFilterScaduti, setRinnoviFilterScaduti] = useState(false);
   const [rinnoviFilterDaFatturare, setRinnoviFilterDaFatturare] = useState(false);
   const [projectInterventiExpandedId, setProjectInterventiExpandedId] = useState<string | null>(null);
-  const interventiInclusiUsati = useMemo(
-    () => projectInterventi.filter((row) => Boolean(row.incluso)).length,
-    [projectInterventi]
+  const consumoInterventiUltra = useMemo(
+    () =>
+      calcolaConsumoInterventiContratto({
+        contratto: contrattoUltra,
+        interventi: projectInterventi,
+        checklistId: checklist?.id || id,
+      }),
+    [contrattoUltra, projectInterventi, checklist?.id, id]
   );
+  const interventiInclusiUsati = consumoInterventiUltra.usati ?? 0;
+  const interventiInclusiUsatiLabel =
+    consumoInterventiUltra.stato === "PERIODO_NON_IMPOSTATO"
+      ? "—"
+      : String(consumoInterventiUltra.usati ?? 0);
+  const interventiInclusiSummaryOverride =
+    !contrattoUltra
+      ? " / Totale inclusi: —"
+      : consumoInterventiUltra.stato === "PERIODO_NON_IMPOSTATO"
+      ? " / Periodo non impostato"
+      : null;
   const [projectInterventoEditId, setProjectInterventoEditId] = useState<string | null>(null);
   const [projectInterventoEditForm, setProjectInterventoEditForm] = useState<ProjectInterventoForm | null>(null);
   const [projectInterventoAttachmentCounts, setProjectInterventoAttachmentCounts] = useState<Map<string, number>>(new Map());
@@ -6109,7 +6131,8 @@ function buildFormData(c: Checklist): FormData {
       const { data: contrattiDataRaw, error: contrattiErr } = await db<any[]>({
         table: "saas_contratti",
         op: "select",
-        select: "id, cliente, piano_codice, scadenza, interventi_annui, illimitati, created_at",
+        select:
+          "id, cliente, piano_codice, data_inizio, data_fine, scadenza, interventi_annui, illimitati, created_at",
         filter: { cliente: clienteKey },
         order: [{ col: "created_at", asc: false }],
         limit: 1000,
@@ -9297,15 +9320,10 @@ function buildFormData(c: Checklist): FormData {
       alertNotice={null}
       setInterventiNotice={setProjectInterventiNotice}
       includedUsed={interventiInclusiUsati}
-      includedTotal={contrattoUltra?.illimitati ? null : contrattoUltra?.interventi_annui ?? null}
-      includedResidual={
-        contrattoUltra?.illimitati
-          ? null
-          : contrattoUltra?.interventi_annui != null
-          ? Math.max(0, contrattoUltra.interventi_annui - interventiInclusiUsati)
-          : null
-      }
-      includedSummaryOverride={!contrattoUltra ? " / Totale inclusi: —" : null}
+      includedUsedLabel={interventiInclusiUsatiLabel}
+      includedTotal={consumoInterventiUltra.illimitati ? null : consumoInterventiUltra.totale}
+      includedResidual={consumoInterventiUltra.residui}
+      includedSummaryOverride={interventiInclusiSummaryOverride}
       attachmentCounts={projectInterventoAttachmentCounts}
       onInterventoAttachmentCountChange={syncProjectInterventoAttachmentCount}
       getOperatoreNome={(value) => operatoriMap.get(String(value || "")) || String(value || "—")}
@@ -12804,6 +12822,19 @@ function buildFormData(c: Checklist): FormData {
             left={
               contrattoUltra ? (
                 <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+                  <span
+                    style={{
+                      border: "1px solid #e9d5ff",
+                      background: "#faf5ff",
+                      color: "#7e22ce",
+                      borderRadius: 999,
+                      padding: "2px 8px",
+                      fontSize: 12,
+                      fontWeight: 800,
+                    }}
+                  >
+                    CARE ULTRA attivo
+                  </span>
                   <span>
                     {contrattoUltra.piano_codice ?? "—"}
                     {contrattoUltraNome ? ` — ${contrattoUltraNome}` : ""}
@@ -12813,16 +12844,7 @@ function buildFormData(c: Checklist): FormData {
                       ? new Date(contrattoUltra.scadenza).toLocaleDateString()
                       : "—"}
                   </span>
-                  <span>
-                    {contrattoUltra.illimitati
-                      ? `Usati ${interventiInclusiUsati} / illimitati`
-                      : contrattoUltra.interventi_annui != null
-                      ? `Usati ${interventiInclusiUsati} / Totale ${contrattoUltra.interventi_annui} / Residui ${Math.max(
-                          0,
-                          contrattoUltra.interventi_annui - interventiInclusiUsati
-                        )}`
-                      : `Usati ${interventiInclusiUsati} / Totale — / Residui —`}
-                  </span>
+                  <span>{formatConsumoInterventiContratto(consumoInterventiUltra)}</span>
                 </div>
               ) : (
                 "—"
