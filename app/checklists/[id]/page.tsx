@@ -2200,6 +2200,7 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
     licenze: false,
     rinnovi: false,
     sims: false,
+    interventiRows: false,
     interventi: false,
     checklistOperativa: false,
   });
@@ -2367,6 +2368,7 @@ export default function ChecklistDetailPage({ params }: { params: any }) {
   const [contrattoUltra, setContrattoUltra] = useState<ContrattoRow | null>(null);
   const [contrattoUltraNome, setContrattoUltraNome] = useState<string | null>(null);
   const [projectInterventi, setProjectInterventi] = useState<InterventoRow[]>([]);
+  const projectInterventiLoadPromiseRef = useRef<Promise<InterventoRow[]> | null>(null);
   const [projectInvoiceUrlDrafts, setProjectInvoiceUrlDrafts] = useState<Record<string, string>>({});
   const [projectInvoiceUrlSavingId, setProjectInvoiceUrlSavingId] = useState<string | null>(null);
   const [projectTagliando, setProjectTagliando] = useState<{
@@ -3853,6 +3855,25 @@ function buildFormData(c: Checklist): FormData {
           impiantoScope === "SINGOLO_IMPIANTO" ? fallbackIds[0] || row.checklist_impianto_id || null : null,
       };
     });
+  }
+
+  async function ensureProjectInterventiLoaded(checklistId: string) {
+    if (lazyDataLoaded.interventiRows) return projectInterventi;
+    if (projectInterventiLoadPromiseRef.current) return projectInterventiLoadPromiseRef.current;
+
+    const promise = loadProjectInterventi(checklistId)
+      .then((interventiData) => {
+        setProjectInterventi(interventiData);
+        setProjectInterventiError(null);
+        setLazyDataLoaded((prev) => ({ ...prev, interventiRows: true }));
+        return interventiData;
+      })
+      .finally(() => {
+        projectInterventiLoadPromiseRef.current = null;
+      });
+
+    projectInterventiLoadPromiseRef.current = promise;
+    return promise;
   }
 
   async function replaceInterventoImpiantiRelations(
@@ -5948,6 +5969,7 @@ function buildFormData(c: Checklist): FormData {
         licenze: false,
         rinnovi: false,
         sims: false,
+        interventiRows: false,
         interventi: false,
         checklistOperativa: false,
       });
@@ -6355,8 +6377,7 @@ function buildFormData(c: Checklist): FormData {
     if (!lazyDataLoaded.services) {
       await loadProjectServicesSection(checklistId, headChecklist);
     }
-    const interventiData = await loadProjectInterventi(checklistId);
-    setProjectInterventi(interventiData);
+    const interventiData = await ensureProjectInterventiLoaded(checklistId);
     await loadInterventoRowAttachmentCounts(interventiData);
     await fetchInterventoRowBulkLastAlert();
     setProjectInterventiError(null);
@@ -7502,7 +7523,10 @@ function buildFormData(c: Checklist): FormData {
     const alreadyLoaded =
       (sectionId === "section-dati-operativi" && lazyDataLoaded.cronoOperativi) ||
       sectionId === "section-documenti-checklist" ||
-      (sectionId === "section-servizi" && lazyDataLoaded.services && lazyDataLoaded.licenze) ||
+      (sectionId === "section-servizi" &&
+        lazyDataLoaded.services &&
+        lazyDataLoaded.licenze &&
+        lazyDataLoaded.interventiRows) ||
       (sectionId === "section-licenze" && lazyDataLoaded.licenze) ||
       (sectionId === "section-scadenze-rinnovi" && lazyDataLoaded.rinnovi && lazyDataLoaded.licenze) ||
       (sectionId === "section-sim" && lazyDataLoaded.sims) ||
@@ -7519,6 +7543,7 @@ function buildFormData(c: Checklist): FormData {
         setLazyDataLoaded((prev) => ({ ...prev, cronoOperativi: true }));
       } else if (sectionId === "section-servizi") {
         if (!lazyDataLoaded.services) await loadProjectServicesSection(id, checklist);
+        await ensureProjectInterventiLoaded(id);
         if (!lazyDataLoaded.licenze) await loadProjectLicenzeSection(id);
       } else if (sectionId === "section-licenze") {
         if (!lazyDataLoaded.licenze) await loadProjectLicenzeSection(id);
