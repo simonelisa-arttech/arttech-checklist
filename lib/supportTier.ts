@@ -1,4 +1,9 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import {
+  calcolaConsumoInterventiContratto,
+  type ConsumoInterventiContratto,
+} from "@/lib/contratti/consumoInterventi";
+import type { InterventoRow } from "@/lib/interventi";
 import { isLifecycleAttivo, isMissingLifecycleStatusColumnError } from "@/lib/lifecycleStatus";
 
 /**
@@ -22,6 +27,7 @@ export type SupportTierInfo = {
   saas_expiry: string | null;
   saas_type: string | null;
   ore_residue: number | null;
+  interventi_periodo_stato: ConsumoInterventiContratto["stato"] | null;
   whatsapp: string | null;
   referente_tecnico: string | null;
   impianti: Array<{
@@ -114,6 +120,38 @@ async function loadRinnoviForChecklistId(db: SupabaseClient, checklistId: string
   return rows.filter((row) => String(row.checklist_id || "") === checklistId);
 }
 
+async function loadSaasContrattiCliente(db: SupabaseClient, clienteId: string) {
+  const baseSelect =
+    "id, cliente, piano_codice, scadenza, interventi_annui, illimitati, data_inizio, data_fine";
+  let { data, error } = await db
+    .from("saas_contratti")
+    .select(baseSelect)
+    .eq("cliente", clienteId)
+    .order("scadenza", { ascending: false });
+
+  const msg = String(error?.message || "").toLowerCase();
+  if (
+    error &&
+    (msg.includes("data_inizio") || msg.includes("data_fine")) &&
+    (msg.includes("does not exist") || msg.includes("schema cache") || msg.includes("column"))
+  ) {
+    const retry = await db
+      .from("saas_contratti")
+      .select("id, cliente, piano_codice, scadenza, interventi_annui, illimitati")
+      .eq("cliente", clienteId)
+      .order("scadenza", { ascending: false });
+    data = (retry.data || []).map((row: any) => ({
+      ...row,
+      data_inizio: null,
+      data_fine: null,
+    }));
+    error = retry.error;
+  }
+
+  if (error) return [] as SupportRow[];
+  return (data || []) as SupportRow[];
+}
+
 export async function computeSupportTierForCliente(
   db: SupabaseClient,
   clienteId: string
@@ -124,6 +162,7 @@ export async function computeSupportTierForCliente(
     saas_expiry: null,
     saas_type: null,
     ore_residue: null,
+    interventi_periodo_stato: null,
     whatsapp: null,
     referente_tecnico: null,
     impianti: [],
@@ -142,13 +181,9 @@ export async function computeSupportTierForCliente(
   const checklists = (checklistRows || []) as any[];
   const checklistIds = checklists.map((r) => String(r.id || "")).filter(Boolean);
 
-  const [rinnoviRows, contrattiRes, impiantiRes] = await Promise.all([
+  const [rinnoviRows, contratti, impiantiRes, interventiRes] = await Promise.all([
     loadRinnoviForChecklistIds(db, checklistIds),
-    db
-      .from("saas_contratti")
-      .select("id, cliente, piano_codice, scadenza, interventi_annui, illimitati")
-      .eq("cliente", clienteId)
-      .order("scadenza", { ascending: false }),
+    loadSaasContrattiCliente(db, clienteId),
     checklistIds.length
       ? db
           .from("checklist_impianti")
@@ -156,15 +191,22 @@ export async function computeSupportTierForCliente(
           .in("checklist_id", checklistIds)
           .order("position", { ascending: true })
       : Promise.resolve({ data: [] as any[] } as any),
+    checklistIds.length
+      ? db
+          .from("saas_interventi")
+          .select("id, checklist_id, data, incluso, created_at")
+          .in("checklist_id", checklistIds)
+      : Promise.resolve({ data: [] as any[] } as any),
   ]);
   const rinnovi = rinnoviRows;
-  const contratti = contrattiRes.data;
   const impiantiRows = impiantiRes.data;
+  const interventiRows = interventiRes.data;
 
   let tier: SupportTier = "expired";
   let saasExpiry: string | null = null;
   let saasLabel: string | null = null;
   let oreResidue: number | null = null;
+  let interventiPeriodoStato: ConsumoInterventiContratto["stato"] | null = null;
 
   // 1. contratti cliente-wide
   const activeContratto = ((contratti || []) as any[]).find((c) => isDateActive(c.scadenza));
@@ -174,9 +216,12 @@ export async function computeSupportTierForCliente(
       tier = t;
       saasExpiry = activeContratto.scadenza ?? null;
       saasLabel = TIER_LABEL[t];
-      if (typeof activeContratto.interventi_annui === "number" && !activeContratto.illimitati) {
-        oreResidue = activeContratto.interventi_annui;
-      }
+      const consumo = calcolaConsumoInterventiContratto({
+        contratto: activeContratto,
+        interventi: ((interventiRows || []) as InterventoRow[]) || [],
+      });
+      interventiPeriodoStato = consumo.stato;
+      oreResidue = consumo.residui;
     }
   }
 
@@ -275,6 +320,7 @@ export async function computeSupportTierForCliente(
     saas_expiry: saasExpiry,
     saas_type: saasLabel,
     ore_residue: oreResidue,
+    interventi_periodo_stato: interventiPeriodoStato,
     whatsapp: hasDirectContact(tier) ? process.env.SUPPORT_PREMIUM_WHATSAPP || null : null,
     referente_tecnico: hasDirectContact(tier) ? process.env.SUPPORT_PREMIUM_REFERENTE || null : null,
     impianti,
@@ -326,6 +372,9 @@ export type InterventiInfo = {
   illimitati: boolean;
   usati: number | null;
   residui: number | null;
+  periodoStato: ConsumoInterventiContratto["stato"];
+  dataInizio: string | null;
+  dataFine: string | null;
 } | null;
 
 export type ImpiantoTier = {
@@ -370,6 +419,7 @@ export type ProgettoPreload = {
   rinnovi: SupportRow[];
   contratti: SupportRow[];
   impianti: SupportRow[];
+  interventi: InterventoRow[];
 };
 
 const PROGETTO_TIER_RANK: Record<SupportTierProgettoTier, number> = {
@@ -450,24 +500,33 @@ export async function computeSupportTierForProgetto(
     ck = (ckRow as SupportRow) || null;
     if (!ck) return base;
     const clienteIdLocal = String(ck.cliente_id || "");
-    const [rs, ctr, imp] = await Promise.all([
+    const [rs, ctr, imp, ints] = await Promise.all([
       loadRinnoviForChecklistId(db, progettoId),
       clienteIdLocal
-        ? db
-            .from("saas_contratti")
-            .select("id, cliente, piano_codice, scadenza, interventi_annui, illimitati")
-            .eq("cliente", clienteIdLocal)
-            .order("scadenza", { ascending: false })
-        : Promise.resolve({ data: [] as SupportRow[] } as any),
+        ? loadSaasContrattiCliente(db, clienteIdLocal)
+        : Promise.resolve([] as SupportRow[]),
       db
         .from("checklist_impianti")
         .select("id, checklist_id, impianto_codice, impianto_descrizione, dimensioni, passo, tipo_impianto")
         .eq("checklist_id", progettoId)
         .order("position", { ascending: true }),
+      db
+        .from("saas_interventi")
+        .select("id, checklist_id, data, incluso, created_at")
+        .eq("checklist_id", progettoId),
     ]);
     rinnovi = (rs as SupportRow[]) || [];
-    contratti = (ctr.data as SupportRow[]) || [];
+    contratti = (ctr as SupportRow[]) || [];
     impianti = (imp.data as SupportRow[]) || [];
+    opts = {
+      preload: {
+        checklist: ck,
+        rinnovi,
+        contratti,
+        impianti,
+        interventi: ((ints.data || []) as InterventoRow[]) || [],
+      },
+    };
   }
 
   if (!ck) return base;
@@ -526,14 +585,19 @@ export async function computeSupportTierForProgetto(
 
   // interventi inclusi dal contratto cliente-wide attivo (best-effort)
   if (activeContratto && (tier === "PLUS" || tier === "ULTRA" || tier === "EVENT")) {
+    const consumo = calcolaConsumoInterventiContratto({
+      contratto: activeContratto,
+      interventi: opts?.preload?.interventi || [],
+      checklistId: progettoId,
+    });
     interventi = {
-      inclusiAnno:
-        typeof activeContratto.interventi_annui === "number"
-          ? (activeContratto.interventi_annui as number)
-          : null,
-      illimitati: !!activeContratto.illimitati,
-      usati: null,
-      residui: null,
+      inclusiAnno: consumo.totale,
+      illimitati: consumo.illimitati,
+      usati: consumo.usati,
+      residui: consumo.residui,
+      periodoStato: consumo.stato,
+      dataInizio: consumo.dataInizio,
+      dataFine: consumo.dataFine,
     };
     if (!contrattoId) contrattoId = String(activeContratto.id || "") || null;
   }
@@ -661,22 +725,23 @@ export async function computeSupportForCliente(
   if (!checklists.length) return empty;
   const ids = checklists.map((c) => String(c.id || "")).filter(Boolean);
 
-  const [rs, ctr, imp] = await Promise.all([
+  const [rs, ctr, imp, ints] = await Promise.all([
     loadRinnoviForChecklistIds(db, ids),
-    db
-      .from("saas_contratti")
-      .select("id, cliente, piano_codice, scadenza, interventi_annui, illimitati")
-      .eq("cliente", clienteId)
-      .order("scadenza", { ascending: false }),
+    loadSaasContrattiCliente(db, clienteId),
     db
       .from("checklist_impianti")
       .select("id, checklist_id, impianto_codice, impianto_descrizione, dimensioni, passo, tipo_impianto")
       .in("checklist_id", ids)
       .order("position", { ascending: true }),
+    db
+      .from("saas_interventi")
+      .select("id, checklist_id, data, incluso, created_at")
+      .in("checklist_id", ids),
   ]);
   const rinnoviAll = (rs as SupportRow[]) || [];
-  const contrattiAll = (ctr.data as SupportRow[]) || [];
+  const contrattiAll = (ctr as SupportRow[]) || [];
   const impiantiAll = (imp.data as SupportRow[]) || [];
+  const interventiAll = ((ints.data || []) as InterventoRow[]) || [];
 
   const progetti: SupportTierProgetto[] = [];
   for (const ck of checklists) {
@@ -686,6 +751,7 @@ export async function computeSupportForCliente(
       rinnovi: rinnoviAll.filter((r) => String(r.checklist_id || "") === pid),
       contratti: contrattiAll,
       impianti: impiantiAll.filter((i) => String(i.checklist_id || "") === pid),
+      interventi: interventiAll.filter((i) => String(i.checklist_id || "") === pid),
     };
     progetti.push(await computeSupportTierForProgetto(db, pid, { preload }));
   }

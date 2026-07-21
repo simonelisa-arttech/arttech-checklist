@@ -573,6 +573,28 @@ export async function POST(request: Request) {
       }
 
       if (
+        table === "saas_contratti" &&
+        select !== "*" &&
+        (msg.includes("data_inizio") || msg.includes("data_fine")) &&
+        (msg.includes("does not exist") || msg.includes("schema cache") || msg.includes("column"))
+      ) {
+        let retrySelect = stripSelectColumn(select, "data_inizio");
+        retrySelect = stripSelectColumn(retrySelect, "data_fine");
+        let retryQ: any = supabaseAdmin.from(table).select(retrySelect);
+        for (const [k, v] of Object.entries(filter)) retryQ = applyEqOrIsNull(retryQ, k, v);
+        for (const [k, v] of Object.entries(filterIn)) retryQ = retryQ.in(k, v as any[]);
+        for (const o of order) retryQ = retryQ.order(o.col, { ascending: o.asc !== false });
+        if (normalizedLimit > 0) retryQ = retryQ.limit(normalizedLimit);
+        const retry = await retryQ;
+        data = (retry.data || []).map((row: any) => ({
+          ...row,
+          data_inizio: row?.data_inizio || null,
+          data_fine: row?.data_fine || null,
+        }));
+        error = retry.error;
+      }
+
+      if (
         table === "operatori" &&
         select !== "*" &&
         msg.includes("operatori.cliente") &&

@@ -8,6 +8,7 @@ type TierInfo = {
   saas_expiry: string | null;
   saas_type: string | null;
   ore_residue: number | null;
+  interventi_periodo_stato?: "OK" | "NESSUN_CONTRATTO" | "PERIODO_NON_IMPOSTATO" | null;
   whatsapp: string | null;
   referente_tecnico: string | null;
   impianti: Array<{
@@ -44,6 +45,9 @@ type ProgettoCopertura = {
     illimitati: boolean;
     usati: number | null;
     residui: number | null;
+    periodoStato?: "OK" | "NESSUN_CONTRATTO" | "PERIODO_NON_IMPOSTATO";
+    dataInizio?: string | null;
+    dataFine?: string | null;
   } | null;
   impianti: Array<{
     id: string | null;
@@ -120,7 +124,7 @@ const TIER_STYLE: Record<TierInfo["tier"], { label: string; bg: string; border: 
   standard: { label: "Garanzia Standard attiva", bg: "#eff6ff", border: "#bfdbfe", color: "#1d4ed8" },
   plus: { label: "Art Tech PLUS attivo", bg: "#f0fdf4", border: "#bbf7d0", color: "#15803d" },
   premium: { label: "Art Tech PREMIUM attivo", bg: "#fefce8", border: "#fde68a", color: "#a16207" },
-  ultra: { label: "Art Tech ULTRA attivo — priorità assoluta", bg: "#faf5ff", border: "#e9d5ff", color: "#7e22ce" },
+  ultra: { label: "CARE ULTRA attivo — priorità assoluta", bg: "#faf5ff", border: "#e9d5ff", color: "#7e22ce" },
   events: { label: "Art Tech EVENTS attivo — supporto evento", bg: "#fff7ed", border: "#fed7aa", color: "#c2410c" },
 };
 
@@ -137,6 +141,18 @@ function formatDate(d?: string | null) {
   if (!d) return "-";
   const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(d);
   return m ? `${m[3]}/${m[2]}/${m[1]}` : d;
+}
+
+function formatInterventiInfo(interventi: ProgettoCopertura["interventi"]) {
+  if (!interventi) return "";
+  if (interventi.periodoStato === "PERIODO_NON_IMPOSTATO") return "Periodo non impostato";
+  if (interventi.illimitati) return `Usati ${interventi.usati ?? 0} / illimitati`;
+  if (interventi.inclusiAnno != null) {
+    return `Usati ${interventi.usati ?? 0} / Totale ${interventi.inclusiAnno} / Residui ${
+      interventi.residui ?? 0
+    }`;
+  }
+  return "";
 }
 
 export default function ClienteAssistenzaSection({
@@ -471,8 +487,8 @@ export default function ClienteAssistenzaSection({
                 </span>
                 <span style={{ fontWeight: 500 }}>
                   {selectedProject.scadenzaPiano ? `scadenza ${formatDate(selectedProject.scadenzaPiano)}` : ""}
-                  {selectedProject.interventi && selectedProject.interventi.residui != null
-                    ? ` · ${selectedProject.interventi.residui} interventi residui`
+                  {formatInterventiInfo(selectedProject.interventi)
+                    ? ` · ${formatInterventiInfo(selectedProject.interventi)}`
                     : ""}
                 </span>
               </div>
@@ -547,7 +563,11 @@ export default function ClienteAssistenzaSection({
             <span style={{ fontWeight: 500 }}>
               {info.saas_type ? `${info.saas_type}` : ""}
               {info.saas_expiry ? ` · scadenza ${formatDate(info.saas_expiry)}` : ""}
-              {info.ore_residue != null ? ` · ${info.ore_residue} interventi residui` : ""}
+              {info.interventi_periodo_stato === "PERIODO_NON_IMPOSTATO"
+                ? " · Periodo non impostato"
+                : info.ore_residue != null
+                ? ` · ${info.ore_residue} interventi residui`
+                : ""}
             </span>
           </div>
 

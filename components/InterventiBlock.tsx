@@ -112,6 +112,7 @@ type Props = {
   includedUsed: number;
   includedTotal: number | null;
   includedResidual: number | null;
+  includedUsedLabel?: string | null;
   includedSummaryOverride?: string | null;
   attachmentCounts?: Map<string, number>;
   onInterventoAttachmentCountChange?: (interventoId: string, count: number) => void;
@@ -1103,6 +1104,7 @@ export default function InterventiBlock({
   includedUsed,
   includedTotal,
   includedResidual,
+  includedUsedLabel,
   includedSummaryOverride,
   attachmentCounts,
   onInterventoAttachmentCountChange,
@@ -1363,7 +1365,7 @@ export default function InterventiBlock({
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <h2 style={{ margin: 0, fontSize: 34, fontWeight: 800 }}>Interventi</h2>
           <div style={{ fontSize: 12, opacity: 0.8 }}>
-            Inclusi usati: {includedUsed}
+            Inclusi usati: {includedUsedLabel ?? includedUsed}
             {includedSummaryOverride != null ? (
               <>{includedSummaryOverride}</>
             ) : includedTotal == null ? (
