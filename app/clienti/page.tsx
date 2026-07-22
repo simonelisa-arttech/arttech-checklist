@@ -43,6 +43,7 @@ export default function ClientiPage() {
   const [canImpersonateCliente, setCanImpersonateCliente] = useState(false);
   const [canManagePortalAccess, setCanManagePortalAccess] = useState(false);
   const debounceRef = useRef<number | null>(null);
+  const handledEditClienteIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (debounceRef.current) window.clearTimeout(debounceRef.current);
@@ -88,6 +89,43 @@ export default function ClientiPage() {
       active = false;
     };
   }, [debounced, offset, includeInactive]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const editClienteId = String(new URLSearchParams(window.location.search).get("edit") || "").trim();
+    if (!editClienteId || handledEditClienteIdRef.current === editClienteId) return;
+    handledEditClienteIdRef.current = editClienteId;
+
+    let active = true;
+    void (async () => {
+      try {
+        const params = new URLSearchParams();
+        params.set("id", editClienteId);
+        params.set("include_inactive", "1");
+        params.set("limit", "1");
+        const res = await fetch(`/api/clienti?${params.toString()}`, {
+          credentials: "include",
+          cache: "no-store",
+        });
+        const json = await res.json().catch(() => ({}));
+        if (!active || !res.ok || !json?.ok) return;
+        const cliente = ((json.data || []) as ClienteRecord[])[0] || null;
+        if (!cliente) return;
+        setRows((prev) => {
+          const exists = prev.some((row) => row.id === cliente.id);
+          return exists ? prev.map((row) => (row.id === cliente.id ? cliente : row)) : [cliente, ...prev];
+        });
+        setEditing(cliente);
+        setModalOpen(true);
+      } catch {
+        if (!active) return;
+      }
+    })();
+
+    return () => {
+      active = false;
+    };
+  }, []);
 
   useEffect(() => {
     let active = true;

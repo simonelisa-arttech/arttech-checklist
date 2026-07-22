@@ -59,6 +59,8 @@ type DashboardClienteCockpitRow = {
   rowKey: string;
   cliente: string;
   clienteId: string | null;
+  duplicateCount: number;
+  duplicateGroupKey: string | null;
   projectCount: number;
   openActivities: number;
   imminentActivities: number;
@@ -528,6 +530,15 @@ function getDashboardClienteRowKey(clienteValue?: string | null, clienteIdValue?
   if (clienteId) return `id:${clienteId}`;
   const normalizedName = normalizeClienteSearchKey(clienteValue);
   return normalizedName ? `name:${normalizedName}` : null;
+}
+
+function getDashboardClienteDuplicateKey(row: ClienteAnagraficaRow) {
+  return normalizeClienteSearchKey(row.denominazione_norm || row.denominazione);
+}
+
+function getDashboardClienteHref(row: DashboardClienteCockpitRow) {
+  if (row.clienteId) return `/clienti?edit=${encodeURIComponent(row.clienteId)}`;
+  return `/clienti/${encodeURIComponent(row.cliente)}`;
 }
 
 function getDashboardSaasFilterKey(item: Checklist): Exclude<DashboardClientSaasFilter, "TUTTI"> | null {
@@ -1581,18 +1592,29 @@ function DashboardCockpitView({
 
     const clientMap = new Map<string, DashboardClienteCockpitEntry>();
     const keyByClienteId = new Map<string, string>();
-    const keyByClienteName = new Map<string, string>();
+    const keysByClienteName = new Map<string, string[]>();
+    const duplicateCountsByName = new Map<string, number>();
+
+    for (const clienteRow of clientiRegistry) {
+      const duplicateKey = getDashboardClienteDuplicateKey(clienteRow);
+      if (!duplicateKey) continue;
+      duplicateCountsByName.set(duplicateKey, (duplicateCountsByName.get(duplicateKey) || 0) + 1);
+    }
 
     for (const clienteRow of clientiRegistry) {
       const cliente = String(clienteRow.denominazione || "").trim();
       const clienteId = String(clienteRow.id || "").trim() || null;
       const normalizedName = normalizeClienteSearchKey(cliente);
+      const duplicateGroupKey = getDashboardClienteDuplicateKey(clienteRow) || null;
+      const duplicateCount = duplicateGroupKey ? duplicateCountsByName.get(duplicateGroupKey) || 0 : 0;
       if (!cliente && !clienteId) continue;
       const key = clienteId ? `id:${clienteId}` : `name:${normalizedName}`;
       if (!clientMap.has(key)) {
         clientMap.set(key, {
           cliente: cliente || "Cliente senza denominazione",
           clienteId,
+          duplicateCount,
+          duplicateGroupKey,
           projectCount: 0,
           openActivities: 0,
           imminentActivities: 0,
@@ -1611,16 +1633,21 @@ function DashboardCockpitView({
         });
       }
       if (clienteId) keyByClienteId.set(clienteId, key);
-      if (normalizedName) keyByClienteName.set(normalizedName, key);
+      if (normalizedName) {
+        const keys = keysByClienteName.get(normalizedName) || [];
+        keys.push(key);
+        keysByClienteName.set(normalizedName, keys);
+      }
     }
 
     const ensureClient = (clienteValue?: string | null, clienteIdValue?: string | null) => {
       const cliente = String(clienteValue || "").trim();
       const clienteId = String(clienteIdValue || "").trim() || null;
       const normalizedName = normalizeClienteSearchKey(cliente);
+      const nameKeys = normalizedName ? keysByClienteName.get(normalizedName) || [] : [];
       const existingKey =
         (clienteId && keyByClienteId.get(clienteId)) ||
-        (normalizedName && keyByClienteName.get(normalizedName)) ||
+        (nameKeys.length === 1 ? nameKeys[0] : null) ||
         null;
       if (existingKey && clientMap.has(existingKey)) {
         return clientMap.get(existingKey) || null;
@@ -1631,6 +1658,8 @@ function DashboardCockpitView({
         clientMap.set(dynamicKey, {
           cliente: cliente || "Cliente senza denominazione",
           clienteId,
+          duplicateCount: 0,
+          duplicateGroupKey: null,
           projectCount: 0,
           openActivities: 0,
           imminentActivities: 0,
@@ -1641,7 +1670,9 @@ function DashboardCockpitView({
         });
       }
       if (clienteId) keyByClienteId.set(clienteId, dynamicKey);
-      if (normalizedName) keyByClienteName.set(normalizedName, dynamicKey);
+      if (normalizedName && !keysByClienteName.has(normalizedName)) {
+        keysByClienteName.set(normalizedName, [dynamicKey]);
+      }
       return clientMap.get(dynamicKey) || null;
     };
 
@@ -1691,34 +1722,12 @@ function DashboardCockpitView({
       }
     }
 
-    const aggregatedRows = new Map<string, DashboardClienteCockpitEntry>();
-
-    for (const entry of clientMap.values()) {
-      const normalizedName = normalizeClienteSearchKey(entry.cliente);
-      const aggregateKey = normalizedName || (entry.clienteId ? `id:${entry.clienteId}` : "");
-      if (!aggregateKey) continue;
-      const existing = aggregatedRows.get(aggregateKey);
-      if (!existing) {
-        aggregatedRows.set(aggregateKey, { ...entry });
-        continue;
-      }
-      existing.cliente = existing.cliente || entry.cliente;
-      existing.clienteId = existing.clienteId || entry.clienteId;
-      existing.projectCount += entry.projectCount;
-      existing.openActivities += entry.openActivities;
-      existing.imminentActivities += entry.imminentActivities;
-      existing.overdueActivities += entry.overdueActivities;
-      existing.relevantDeadlines += entry.relevantDeadlines;
-      existing.overdueDeadlines += entry.overdueDeadlines;
-      existing.searchText = [existing.searchText, entry.searchText].filter(Boolean).join(" ");
-    }
-
-    return Array.from(aggregatedRows.entries())
-      .map(([aggregateKey, entry]) => {
+    return Array.from(clientMap.entries())
+      .map(([rowKey, entry]) => {
         const hasAttention = entry.overdueActivities > 0 || entry.overdueDeadlines > 0;
         const hasMonitoring = entry.imminentActivities > 0 || entry.relevantDeadlines > 0;
         return {
-          rowKey: entry.clienteId ? `id:${entry.clienteId}` : `name:${aggregateKey}`,
+          rowKey,
           ...entry,
           attentionLabel: hasAttention
             ? ("ATTENZIONE" as const)
@@ -1737,7 +1746,9 @@ function DashboardCockpitView({
         const bScore = b.overdueActivities + b.overdueDeadlines * 2 + b.imminentActivities + b.relevantDeadlines;
         if (bScore !== aScore) return bScore - aScore;
         if (b.projectCount !== a.projectCount) return b.projectCount - a.projectCount;
-        return a.cliente.localeCompare(b.cliente, "it", { sensitivity: "base" });
+        const nameCmp = a.cliente.localeCompare(b.cliente, "it", { sensitivity: "base" });
+        if (nameCmp !== 0) return nameCmp;
+        return a.rowKey.localeCompare(b.rowKey);
       });
   }, [clientiRegistry, items, cronoRows, cronoMetaByKey]);
 
@@ -4593,7 +4604,7 @@ function DashboardCockpitView({
                 clientRowsToRender.map((row) => (
                   <Link
                     key={row.rowKey}
-                    href={`/clienti/${encodeURIComponent(row.cliente)}`}
+                    href={getDashboardClienteHref(row)}
                     style={{
                       display: "grid",
                       gridTemplateColumns: "minmax(0, 1fr) auto",
@@ -4633,6 +4644,33 @@ function DashboardCockpitView({
                         <span style={{ padding: "4px 8px", borderRadius: 999, background: "#f8fafc", border: "1px solid #e2e8f0" }}>
                           {row.projectCount} progetti
                         </span>
+                        {row.duplicateCount > 1 ? (
+                          <span
+                            style={{
+                              padding: "4px 8px",
+                              borderRadius: 999,
+                              background: "#fff7ed",
+                              border: "1px solid #fdba74",
+                              color: "#c2410c",
+                              fontWeight: 800,
+                            }}
+                          >
+                            duplicato
+                          </span>
+                        ) : null}
+                        {row.clienteId ? (
+                          <span
+                            style={{
+                              padding: "4px 8px",
+                              borderRadius: 999,
+                              background: "#f8fafc",
+                              border: "1px solid #e2e8f0",
+                              color: "#64748b",
+                            }}
+                          >
+                            ID {row.clienteId.slice(0, 8)}
+                          </span>
+                        ) : null}
                         <span
                           style={{
                             padding: "4px 8px",
@@ -4697,7 +4735,7 @@ function DashboardCockpitView({
                         {row.attentionLabel}
                       </span>
                       <span style={{ fontSize: 12, fontWeight: 700, color: "#94a3b8", whiteSpace: "nowrap" }}>
-                        Apri cliente →
+                        {row.clienteId ? "Modifica record →" : "Apri cliente →"}
                       </span>
                     </div>
                   </Link>

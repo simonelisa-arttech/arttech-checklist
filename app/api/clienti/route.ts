@@ -257,6 +257,7 @@ export async function GET(request: Request) {
 
   const url = new URL(request.url);
   const q = (url.searchParams.get("q") || "").trim();
+  const id = (url.searchParams.get("id") || "").trim();
   const limitParam = Number(url.searchParams.get("limit") || 50);
   const offsetParam = Number(url.searchParams.get("offset") || 0);
   const limit = Number.isFinite(limitParam) && limitParam > 0 ? Math.min(limitParam, 200) : 50;
@@ -275,7 +276,9 @@ export async function GET(request: Request) {
       query = query.eq("attivo", true);
     }
 
-    if (qNorm) {
+    if (id) {
+      query = query.eq("id", id);
+    } else if (qNorm) {
       const like = `%${qNorm}%`;
       query = query.or(
         [
