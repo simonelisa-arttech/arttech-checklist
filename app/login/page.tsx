@@ -48,10 +48,10 @@ export default async function LoginPage({
             style={{ width: "100%", maxWidth: 120, height: "auto", objectFit: "contain" }}
           />
           <div style={{ fontSize: 28, fontWeight: 800, color: "#111827", lineHeight: 1.1 }}>
-            Area Cliente
+            Accesso piattaforma
           </div>
           <div style={{ fontSize: 14, color: "#6b7280" }}>
-            Accedi per gestire assistenza, coperture e richieste dei tuoi impianti.
+            Accedi per gestire assistenza, coperture, richieste e attività operative.
           </div>
         </div>
         <LoginForm redirectTo={redirectTo} />
