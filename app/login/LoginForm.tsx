@@ -137,7 +137,7 @@ export default function LoginForm({ redirectTo, showClienteLinks = true }: Login
         <div style={{ marginTop: 16, fontSize: 13, textAlign: "center", color: "#475569" }}>
           Primo accesso?{" "}
           <a href="/registrazione" style={{ color: "#1d4ed8", fontWeight: 700, textDecoration: "underline" }}>
-            Registrati all&apos;area cliente
+            Richiedi o completa la registrazione
           </a>
         </div>
       )}
